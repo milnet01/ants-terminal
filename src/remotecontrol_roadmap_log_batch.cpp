@@ -2232,6 +2232,398 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+namespace rcdetail {
+
+// ANTS-6176 — what cmdRoadmapLogAppendBatch's shared checks hand to its write:
+// the accepted bullets with their ids, and everything either write reads.
+// `store` is set on a project the roadmap store serves and null on one edited
+// as a file.
+struct AppendBatchPlan {
+    struct Accepted {
+        int bulletIndex = 0;
+        QString idStr;
+        QString emoji;
+        QJsonObject bulletReq;
+        // ANTS-3809 — the store path's body + trailer columns, filled during
+        // validation because a body_shadowed refusal is per bullet (§ 2.5) and
+        // must land before ids are assigned, or the accepted bullets' ids would
+        // not be contiguous (§ 2.3). Untouched on the markdown path.
+        RoadmapStore::ItemWrite w;
+    };
+    struct SecSlot { qint64 id = 0; int next = 0; };
+
+    QJsonObject  req;
+    QJsonArray   bullets;
+    QString      section;
+    bool         dryRun = false;
+    bool         useStablePrefix = false;
+    RoadmapStore *store = nullptr;
+    qint64       projectId = 0;
+    QString      callerCanonical;
+    QString      roadmapPath;
+    QString      counterPath;
+    QJsonObject  storeRebuilt;
+    QString      markdown;        // the file write splices into this text
+    int          insertAt = 0;    // the section's last line, for that splice
+    QVector<RoadmapParse::BulletRecord> preflightBullets;   // read before the write
+    QString      counterPfx;
+    bool         counterPfxGuessed = false;
+    qint64       counter = 0;
+    qint64       maxFileId = 0;
+    bool         counterReconciled = false;
+    qint64       nextId = 0;      // one past the last id allocated
+    bool         hintUsed = false;
+    bool         hasBefore = false;
+    qint64       beforePk = 0;
+    QHash<QString, SecSlot> secSlots;
+    QVector<Accepted> accepted;
+    QVector<Accepted> unresolvedAccepted;   // before {{id:N}} was resolved
+    QJsonArray   skipped;
+    QStringList  scrubbedRollup;
+    int          scrubbedUnnamedRollup = 0;
+    QStringList  scrubbedFragRollup;
+    QStringList  evNotPathRollup;
+};
+
+}  // namespace rcdetail
+
+namespace {
+
+using Accepted = AppendBatchPlan::Accepted;
+using SecSlot  = AppendBatchPlan::SecSlot;
+
+// Defined further down; the same {ok, code, error} envelope as
+// cmdRoadmapLogAppendBatch's rlErr.
+QJsonDocument rcSectionOpErr(const QString &code, const QString &message);
+
+// ANTS-4580 — `{{id:N}}` in a bullet's headline, body or layman is the id
+// bullet N of this call was given (N counts the `bullets` array from 0).
+// Bullets filed together often cite each other, and their ids do not exist
+// until now, so callers predicted them and got them wrong. Resolved before
+// anything is written; a token naming a bullet that was skipped or does not
+// exist refuses the whole call, because the file would otherwise publish
+// the literal token.
+// ANTS-6781 — a function of the ids, so the store write's transaction can
+// run it again on the unresolved text when another append moves them.
+QString rlResolveCitations(const QJsonArray &bullets,
+                           QVector<AppendBatchPlan::Accepted> &acc) {
+    static const QRegularExpression kIdToken(QStringLiteral("\\{\\{id:(\\d+)\\}\\}"));
+    QHash<int, QString> idOfBullet;
+    for (const AppendBatchPlan::Accepted &a : std::as_const(acc))
+        idOfBullet.insert(a.bulletIndex, a.idStr);
+    QString unresolved;
+    const auto resolve = [&](QString text, int citing) {
+        if (!text.contains(QStringLiteral("{{id:")))
+            return text;
+        QString out;
+        qsizetype from = 0;
+        for (auto it = kIdToken.globalMatch(text); it.hasNext();) {
+            const auto m = it.next();
+            out += text.mid(from, m.capturedStart() - from);
+            // An index too long for an int fails the parse; it must not
+            // read as 0 and take bullet 0's id.
+            bool nOk = false;
+            const int n = m.captured(1).toInt(&nOk);
+            if (nOk && idOfBullet.contains(n)) {
+                out += idOfBullet.value(n);
+            } else {
+                out += m.captured(0);
+                if (unresolved.isEmpty())
+                    unresolved = QStringLiteral(
+                        "bullet %1 cites {{id:%2}}, and bullet %2 %3")
+                        .arg(citing).arg(m.captured(1))
+                        .arg(nOk && n < bullets.size()
+                                 ? QStringLiteral("was skipped (see skipped[])")
+                                 : QStringLiteral("does not exist"));
+            }
+            from = m.capturedEnd();
+        }
+        return out + text.mid(from);
+    };
+    for (AppendBatchPlan::Accepted &a : acc) {
+        for (const char *key : {"headline", "body", "layman"}) {
+            const QString k = QString::fromLatin1(key);
+            if (a.bulletReq.contains(k))
+                a.bulletReq[k] = resolve(a.bulletReq.value(k).toString(), a.bulletIndex);
+        }
+        a.w.body   = resolve(a.w.body, a.bulletIndex);
+        a.w.layman = resolve(a.w.layman, a.bulletIndex);
+    }
+    return unresolved;
+}
+
+// ANTS-6176 — the advisories and the compact echo that end both writes'
+// replies. One function, so a fix reaches both: ANTS-4989's review-kind
+// warning was on the file write alone until this was shared.
+void rlAppendBatchAdvisories(QJsonObject &out, const AppendBatchPlan &p) {
+    // ANTS-2043 — non-blocking near-duplicate advisory, per accepted bullet,
+    // checked against the bullets parsed BEFORE the write, so a just-appended
+    // bullet cannot match itself. Absent when the whole batch is clean.
+    QJsonArray possibleDuplicates;
+    for (const Accepted &a : p.accepted) {
+        const QJsonArray cands = rcComputePossibleDuplicates(
+            p.preflightBullets,
+            a.bulletReq.value(QStringLiteral("headline")).toString());
+        if (cands.isEmpty()) continue;
+        QJsonObject o;
+        o["bullet_index"] = a.bulletIndex;
+        o["id"]           = a.idStr;
+        o["candidates"]   = cands;
+        possibleDuplicates.append(o);
+    }
+    if (!possibleDuplicates.isEmpty())
+        out[QStringLiteral("possible_duplicates")] = possibleDuplicates;
+    // ANTS-4572 / ANTS-5095 — fire when the scrub removed ANYTHING, not only a
+    // named parameter pair. A batch is where a silent partial scrub hides
+    // best: one bullet of many, and nobody re-reads the rendered file.
+    rlAddScrubWarning(out, p.scrubbedRollup, p.scrubbedUnnamedRollup,
+                      p.scrubbedFragRollup, /*batch=*/true);
+    // ANTS-4527 — rolled up across the batch, as the scrub warning is.
+    if (const QJsonObject ev = rlEvidenceAdvisory(p.evNotPathRollup); !ev.isEmpty())
+        rlAddWarning(out, ev);
+    if (p.counterPfxGuessed && !p.useStablePrefix)             // ANTS-5353
+        rlAddWarning(out, rlGuessedPrefixAdvisory(p.counterPfx));
+    // ANTS-4989 — the review-provenance advisory, rolled up the same way. One
+    // warning for the batch, naming the ids rather than repeating itself per
+    // bullet: a batch filing a review's findings is exactly where every bullet
+    // shares the pairing, and N identical advisories would bury the reply.
+    {
+        QJsonArray advisoryIds;
+        QJsonObject first;
+        // ANTS-5095 — named by the ids the batch ALLOCATED. It read id_hint
+        // with toString(), which is empty for the number a caller sends, so
+        // the warning listed headlines instead of ids.
+        for (const Accepted &a : p.accepted) {
+            const QJsonObject rk = rlReviewKindAdvisory(
+                a.bulletReq.value(QStringLiteral("kind")).toString(),
+                a.bulletReq.value(QStringLiteral("source")).toString());
+            if (rk.isEmpty()) continue;
+            if (first.isEmpty()) first = rk;
+            advisoryIds.append(a.idStr.isEmpty()
+                ? a.bulletReq.value(QStringLiteral("headline")).toString()
+                : a.idStr);
+        }
+        if (!first.isEmpty()) {
+            first[QStringLiteral("bullets")] = advisoryIds;
+            rlAddWarning(out, first);
+        }
+    }
+    // ANTS-2080 — confirm-after compact echo of every applied bullet.
+    if (rcReturnHeadlineOnly(p.req)) {
+        QJsonArray postBullets;
+        for (const Accepted &a : p.accepted)
+            postBullets.append(rcCompactBullet(
+                a.idStr,
+                a.bulletReq.value(QStringLiteral("status")).toString(),
+                a.bulletReq.value(QStringLiteral("headline")).toString()));
+        out[QStringLiteral("post_bullets")] = postBullets;
+    }
+}
+
+// ANTS-3809 § 2.2 — the store path's write: N putItem()s in ONE
+// transaction, then one raiseIdHighWater() for the last id (§ 2.3). Each
+// item's body and trailer columns were filled during validation; only its
+// identity, its filing and its position are decided here.
+QJsonDocument rlAppendBatchToStore(AppendBatchPlan &p) {
+    RoadmapStore &store = *p.store;
+    const qint64 projectId = p.projectId;
+    // ANTS-6828 — how many accepted bullets land before `before_id`.
+    const auto beforeCount = int(std::count_if(p.accepted.begin(), p.accepted.end(),
+        [&](const Accepted &a) {
+            const QString bs = a.bulletReq.value(QStringLiteral("section")).toString();
+            return bs.isEmpty() || bs == p.section;
+        }));
+    if (p.hasBefore && beforeCount == 0)
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: no bullet lands in section \"%1\", "
+                           "where `before_id` is filed; nothing was written")
+                .arg(p.section));
+
+    // ANTS-6781 — `nextPos` holds each section's next position, read inside
+    // the transaction.
+    const auto buildWrites = [&](QHash<QString, SecSlot> nextPos) {
+        QVector<RoadmapStore::ItemWrite> writes;
+        writes.reserve(p.accepted.size());
+        for (const Accepted &a : p.accepted) {
+            RoadmapStore::ItemWrite w = a.w;
+            w.projectId = projectId;
+            w.id        = a.idStr;
+            // roadmap-data-model.md § 7.1 — `synthesised` covers every id the
+            // store allocates after cutover, and a caller's `stable_id` is the
+            // same kind of thing: `parsed` would claim it matched the grammar in
+            // source text, `quarantined` would file a first-class project id
+            // with the junk.
+            w.idOrigin  = QStringLiteral("synthesised");
+            w.status    = a.bulletReq.value(QStringLiteral("status")).toString();
+            w.headline  = rcSanitizeBulletField(
+                a.bulletReq.value(QStringLiteral("headline")).toString(), 500);
+            // ANTS-5344 — the bullet's own section, or the call-level one.
+            const QString bs = a.bulletReq.value(QStringLiteral("section")).toString();
+            SecSlot &slot = nextPos[bs.isEmpty() ? p.section : bs];
+            w.sectionId = slot.id;
+            w.position  = slot.next++;
+            // ANTS-3838 — same branch as the single-append path: an allocated
+            // id is `store-generated` (roadmap-data-model.md § 7.7 over
+            // § 4.1's `write (store-populated)` marking), a caller's
+            // `stable_id` is `asserted`. `idOrigin` stays `synthesised` for
+            // both — it records how the id was formed, not who supplied it.
+            QJsonObject provenance = w.provenance;
+            provenance.insert(QStringLiteral("id"),
+                              p.useStablePrefix
+                                  ? QStringLiteral("asserted")
+                                  : QStringLiteral("store-generated"));
+            provenance.insert(QStringLiteral("status"), QStringLiteral("asserted"));
+            provenance.insert(QStringLiteral("headline"), QStringLiteral("asserted"));
+            // ANTS-4501 § 2.2 — same insert stamps as the single-append path.
+            w.created      = rlStampToday();
+            w.lastModified = w.created;
+            if (w.status == QLatin1String("shipped"))
+                w.shipped = w.created;
+            provenance.insert(QStringLiteral("created"),
+                              QStringLiteral("store-generated"));
+            provenance.insert(QStringLiteral("last_modified"),
+                              QStringLiteral("store-generated"));
+            if (!w.shipped.isEmpty())
+                provenance.insert(QStringLiteral("shipped"),
+                                  QStringLiteral("store-generated"));
+            w.provenance = provenance;
+            writes.append(w);
+        }
+        return writes;
+    };
+
+    // ANTS-6781 — a refusal found inside the transaction, for the
+    // envelope; mutate() can return only a bool.
+    QString lateCode;
+    QString duplicateOf;
+    const bool force = p.req.value(QStringLiteral("force")).toBool();
+    const auto mutate = [&](QString *err) -> bool {
+        // ANTS-6781 — another session's append can land between the shared
+        // checks' reads and this transaction (BEGIN IMMEDIATE), as ANTS-6466 found
+        // for op:"append". So the ids, the duplicate check and each
+        // section's end position are re-read here, where no other writer
+        // can move them. Moved ids re-resolve the {{id:N}} citations.
+        if (!p.useStablePrefix) {
+            const qint64 highWater =
+                rlStoreIdHighWater(store, projectId, p.counterPfx);
+            const qint64 firstId = p.nextId - p.accepted.size();
+            if (firstId <= highWater) {
+                if (p.hintUsed) {
+                    lateCode = QStringLiteral("id_taken");
+                    *err = QStringLiteral(
+                        "roadmap_log: id_hint %1 was taken by another "
+                        "write; the highest %2 id is now %3")
+                        .arg(firstId).arg(p.counterPfx).arg(highWater);
+                    return false;
+                }
+                const int width = store.counterIdWidth(projectId, p.counterPfx);
+                p.accepted = p.unresolvedAccepted;
+                p.nextId = highWater + 1;
+                for (Accepted &a : p.accepted)
+                    a.idStr = RoadmapStore::formatCounterId(p.counterPfx, p.nextId++, width);
+                rlResolveCitations(p.bullets, p.accepted);   // resolved once already: cannot fail
+            }
+        }
+        if (!force) {
+            RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+            const auto now = RoadmapSource::bulletsFromStore(
+                store, projectId, /*includeArchive=*/false, &why);
+            for (const Accepted &a : std::as_const(p.accepted)) {
+                if (!now)
+                    break;
+                const QString dupId = rcExactDuplicateId(
+                    *now, a.bulletReq.value(QStringLiteral("headline")).toString());
+                if (!dupId.isEmpty()) {
+                    lateCode    = QStringLiteral("duplicate_item");
+                    duplicateOf = dupId;
+                    *err = QStringLiteral(
+                        "roadmap_log: bullet %1's headline exactly matches %2; "
+                        "nothing was written. Pass force:true to file it "
+                        "anyway").arg(a.bulletIndex).arg(dupId);
+                    return false;
+                }
+            }
+        }
+        QHash<QString, SecSlot> nextPos = p.secSlots;
+        for (SecSlot &s : nextPos) {
+            const auto now = store.listElements(s.id, err);
+            if (!now)
+                return false;
+            int endPos = -1;
+            for (const RoadmapStore::ElementRow &e : *now)
+                endPos = std::max(endPos, e.position);
+            s.next = endPos + 1;
+        }
+        if (p.hasBefore) {
+            SecSlot &slot = nextPos[p.section];
+            slot.next = rlOpenGapBefore(store, slot.id, p.beforePk, beforeCount, err);
+            if (slot.next < 0)
+                return false;
+        }
+        for (const RoadmapStore::ItemWrite &w : buildWrites(nextPos))
+            if (!store.putItem(w, err))
+                return false;
+        if (p.useStablePrefix)
+            return true;
+        // One raise for the last allocated id — the ids are contiguous, so
+        // the highest is the only one the high-water has to record.
+        return store.raiseIdHighWater(projectId, p.counterPfx, p.nextId - 1, err);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, rcProjectRootFor(p.callerCanonical), p.roadmapPath, p.dryRun, mutate,
+        &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
+        // ANTS-6781 — applied after the mapper, as op:"append" does.
+        if (!lateCode.isEmpty()) {
+            env[QStringLiteral("code")]  = lateCode;
+            env[QStringLiteral("error")] = writeErr;
+        }
+        if (!duplicateOf.isEmpty())
+            env[QStringLiteral("duplicate_of")] = duplicateOf;
+        return QJsonDocument(env);
+    }
+
+    QJsonArray ids;
+    for (const Accepted &a : p.accepted) ids.append(a.idStr);
+    env[QStringLiteral("ok")]   = true;
+    env[QStringLiteral("op")]   = QStringLiteral("append_batch");
+    env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
+    // ANTS-4634 — `would_be_ids` on a preview, for the reason ANTS-4508
+    // gives; see the singular path's note. The rename reached the file
+    // write and not this one, which is the write every migrated project
+    // takes.
+    env[p.dryRun ? QStringLiteral("would_be_ids")
+                 : QStringLiteral("ids")] = ids;
+    if (!p.storeRebuilt.isEmpty())
+        env[QStringLiteral("store_rebuilt")] = p.storeRebuilt;   // ANTS-5638
+    // `would_apply_count` under dry_run, mirroring the markdown preview so a
+    // caller's branch on it does not change with the backend. No `lines` /
+    // `bytes`.
+    env[QStringLiteral("applied_count")] = p.dryRun ? 0 : p.accepted.size();
+    if (p.dryRun) {
+        env[QStringLiteral("dry_run")]           = true;
+        env[QStringLiteral("would_apply_count")] = p.accepted.size();
+    }
+    env[QStringLiteral("skipped")]        = p.skipped;
+    env[QStringLiteral("skipped_count")]  = p.skipped.size();
+    // ANTS-4635 — the reconciliation op:append has run since ANTS-4141
+    // part 2 and this path never did, which is what let the cache drift by
+    // a whole batch. `nextId - 1` is the last id allocated here; the ids
+    // are contiguous, so the highest is the only one the cache records.
+    if (!p.dryRun && !p.useStablePrefix)
+        rcRoadmapReconcileCounterCache(env, p.counterPath, p.nextId - 1);
+    rcRoadmapWriteFields(env, outcome, p.dryRun);   // ANTS-4463
+
+    rlAppendBatchAdvisories(env, p);
+    return QJsonDocument(env);
+}
+
+}  // namespace
+
 // ANTS-1879 — roadmap_log op:"append_batch". Append N bullets to one
 // section in a single read + single atomic commit. See
 // docs/specs/ANTS-1879-roadmap-log-op-append-batch.md. An all-skipped batch returns ok:true, as that
@@ -2420,10 +2812,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // leaves .roadmap-counter alone, and the read below would otherwise refuse
     // or auto-create a file a migrated project does not allocate from.
     //
-    // Resolved here and consumed at four later points rather than as one early
-    // branch, because everything between — per-bullet validation, the section
-    // refusals, the skipped[] granularity, the contiguous id assignment — is
-    // shared with the markdown path. Only allocation and the write differ.
+    // Resolved here and consulted through the checks below rather than as one
+    // early branch, because everything between — per-bullet validation, the
+    // section refusals, the skipped[] granularity, the contiguous id
+    // assignment — is shared with the markdown path. Only allocation and the
+    // write differ; the write is rlAppendBatchToStore or appendBatchToFile.
     // ANTS-5638 — op:append's rebuild, at the same point and for the same
     // reason: before the write target is resolved, so it finds the rebuilt row.
     QJsonObject storeRebuilt;
@@ -2619,17 +3012,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // 6. Per-bullet validation: kinds against RoadmapParse::canonicalKinds(),
     // statuses through rlResolveBatchStatus(), words only.
 
-    struct Accepted {
-        int bulletIndex = 0;
-        QString idStr;
-        QString emoji;
-        QJsonObject bulletReq;
-        // ANTS-3809 — the store path's body + trailer columns, filled during
-        // validation because a body_shadowed refusal is per bullet (§ 2.5) and
-        // must land before ids are assigned, or the accepted bullets' ids would
-        // not be contiguous (§ 2.3). Untouched on the markdown path.
-        RoadmapStore::ItemWrite w;
-    };
     QList<Accepted> accepted;
     QJsonArray skipped;
     QSet<QString> seenStableIds;   // ANTS-2078 — intra-batch dup guard
@@ -2712,7 +3094,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // markdown path splices the whole batch at one section's end, so a bullet
     // naming another section refuses the call rather than landing in the wrong
     // one.
-    struct SecSlot { qint64 id = 0; int next = 0; };
     QHash<QString, SecSlot> secSlots;
     if (writeTarget) secSlots.insert(section, SecSlot{storeSectionId, storePosition});
     if (!writeTarget) {
@@ -2913,62 +3294,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         ++nextId;
     }
 
-    // ANTS-4580 — `{{id:N}}` in a bullet's headline, body or layman is the id
-    // bullet N of this call was given (N counts the `bullets` array from 0).
-    // Bullets filed together often cite each other, and their ids do not exist
-    // until now, so callers predicted them and got them wrong. Resolved before
-    // anything is written; a token naming a bullet that was skipped or does not
-    // exist refuses the whole call, because the file would otherwise publish
-    // the literal token.
-    // ANTS-6781 — a function of the ids, so the store path's transaction can
-    // run it again on the unresolved text when another append moves them.
-    const auto resolveCitations = [&bullets](QVector<Accepted> &acc) {
-        static const QRegularExpression kIdToken(QStringLiteral("\\{\\{id:(\\d+)\\}\\}"));
-        QHash<int, QString> idOfBullet;
-        for (const Accepted &a : std::as_const(acc))
-            idOfBullet.insert(a.bulletIndex, a.idStr);
-        QString unresolved;
-        const auto resolve = [&](QString text, int citing) {
-            if (!text.contains(QStringLiteral("{{id:")))
-                return text;
-            QString out;
-            qsizetype from = 0;
-            for (auto it = kIdToken.globalMatch(text); it.hasNext();) {
-                const auto m = it.next();
-                out += text.mid(from, m.capturedStart() - from);
-                // An index too long for an int fails the parse; it must not
-                // read as 0 and take bullet 0's id.
-                bool nOk = false;
-                const int n = m.captured(1).toInt(&nOk);
-                if (nOk && idOfBullet.contains(n)) {
-                    out += idOfBullet.value(n);
-                } else {
-                    out += m.captured(0);
-                    if (unresolved.isEmpty())
-                        unresolved = QStringLiteral(
-                            "bullet %1 cites {{id:%2}}, and bullet %2 %3")
-                            .arg(citing).arg(m.captured(1))
-                            .arg(nOk && n < bullets.size()
-                                     ? QStringLiteral("was skipped (see skipped[])")
-                                     : QStringLiteral("does not exist"));
-                }
-                from = m.capturedEnd();
-            }
-            return out + text.mid(from);
-        };
-        for (Accepted &a : acc) {
-            for (const char *key : {"headline", "body", "layman"}) {
-                const QString k = QString::fromLatin1(key);
-                if (a.bulletReq.contains(k))
-                    a.bulletReq[k] = resolve(a.bulletReq.value(k).toString(), a.bulletIndex);
-            }
-            a.w.body   = resolve(a.w.body, a.bulletIndex);
-            a.w.layman = resolve(a.w.layman, a.bulletIndex);
-        }
-        return unresolved;
-    };
     const QVector<Accepted> unresolvedAccepted = accepted;
-    if (const QString unresolved = resolveCitations(accepted); !unresolved.isEmpty()) {
+    if (const QString unresolved = rlResolveCitations(bullets, accepted);
+        !unresolved.isEmpty()) {
         QJsonObject out;
         out["ok"]      = false;
         out["code"]    = QStringLiteral("bad_args");
@@ -3003,263 +3331,49 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
-    // ANTS-3809 § 2.2 — the store path's write: N putItem()s in ONE
-    // transaction, then one raiseIdHighWater() for the last id (§ 2.3). Each
-    // item's body and trailer columns were filled during validation above; only
-    // its identity, its filing and its position are decided here.
-    if (writeTarget) {
-        RoadmapStore &store = *writeTarget->store;
-        const qint64 projectId = writeTarget->projectId;
-        // ANTS-6828 — how many accepted bullets land before `before_id`.
-        const auto beforeCount = int(std::count_if(accepted.begin(), accepted.end(),
-            [&](const Accepted &a) {
-                const QString bs = a.bulletReq.value(QStringLiteral("section")).toString();
-                return bs.isEmpty() || bs == section;
-            }));
-        if (hasBefore && beforeCount == 0)
-            return rlErr(QStringLiteral("bad_args"),
-                QStringLiteral("roadmap_log: no bullet lands in section \"%1\", "
-                               "where `before_id` is filed; nothing was written")
-                    .arg(section));
+    // ANTS-6176 — everything above is shared by both backends; only the
+    // write differs.
+    AppendBatchPlan plan{
+        .req = req, .bullets = bullets, .section = section, .dryRun = dryRun,
+        .useStablePrefix = useStablePrefix,
+        .store = writeTarget ? writeTarget->store : nullptr,
+        .projectId = writeTarget ? writeTarget->projectId : 0,
+        .callerCanonical = callerCanonical, .roadmapPath = roadmapPath,
+        .counterPath = counterPath, .storeRebuilt = storeRebuilt,
+        .markdown = markdown, .insertAt = sec->lineEnd,
+        .preflightBullets = preflightBullets, .counterPfx = counterPfx,
+        .counterPfxGuessed = counterPfxGuessed, .counter = counter,
+        .maxFileId = maxFileId, .counterReconciled = counterReconciled,
+        .nextId = nextId, .hintUsed = hintUsed, .hasBefore = hasBefore,
+        .beforePk = beforePk, .secSlots = secSlots, .accepted = accepted,
+        .unresolvedAccepted = unresolvedAccepted, .skipped = skipped,
+        .scrubbedRollup = scrubbedRollup,
+        .scrubbedUnnamedRollup = scrubbedUnnamedRollup,
+        .scrubbedFragRollup = scrubbedFragRollup,
+        .evNotPathRollup = evNotPathRollup,
+    };
+    return plan.store ? rlAppendBatchToStore(plan) : appendBatchToFile(plan);
+}
 
-        // ANTS-6781 — `nextPos` holds each section's next position, read inside
-        // the transaction.
-        const auto buildWrites = [&](QHash<QString, SecSlot> nextPos) {
-            QVector<RoadmapStore::ItemWrite> writes;
-            writes.reserve(accepted.size());
-            for (const Accepted &a : accepted) {
-                RoadmapStore::ItemWrite w = a.w;
-                w.projectId = projectId;
-                w.id        = a.idStr;
-                // roadmap-data-model.md § 7.1 — `synthesised` covers every id the
-                // store allocates after cutover, and a caller's `stable_id` is the
-                // same kind of thing: `parsed` would claim it matched the grammar in
-                // source text, `quarantined` would file a first-class project id
-                // with the junk.
-                w.idOrigin  = QStringLiteral("synthesised");
-                w.status    = a.bulletReq.value(QStringLiteral("status")).toString();
-                w.headline  = rcSanitizeBulletField(
-                    a.bulletReq.value(QStringLiteral("headline")).toString(), 500);
-                // ANTS-5344 — the bullet's own section, or the call-level one.
-                const QString bs = a.bulletReq.value(QStringLiteral("section")).toString();
-                SecSlot &slot = nextPos[bs.isEmpty() ? section : bs];
-                w.sectionId = slot.id;
-                w.position  = slot.next++;
-                // ANTS-3838 — same branch as the single-append path: an allocated
-                // id is `store-generated` (roadmap-data-model.md § 7.7 over
-                // § 4.1's `write (store-populated)` marking), a caller's
-                // `stable_id` is `asserted`. `idOrigin` stays `synthesised` for
-                // both — it records how the id was formed, not who supplied it.
-                QJsonObject provenance = w.provenance;
-                provenance.insert(QStringLiteral("id"),
-                                  useStablePrefix
-                                      ? QStringLiteral("asserted")
-                                      : QStringLiteral("store-generated"));
-                provenance.insert(QStringLiteral("status"), QStringLiteral("asserted"));
-                provenance.insert(QStringLiteral("headline"), QStringLiteral("asserted"));
-                // ANTS-4501 § 2.2 — same insert stamps as the single-append path.
-                w.created      = rlStampToday();
-                w.lastModified = w.created;
-                if (w.status == QLatin1String("shipped"))
-                    w.shipped = w.created;
-                provenance.insert(QStringLiteral("created"),
-                                  QStringLiteral("store-generated"));
-                provenance.insert(QStringLiteral("last_modified"),
-                                  QStringLiteral("store-generated"));
-                if (!w.shipped.isEmpty())
-                    provenance.insert(QStringLiteral("shipped"),
-                                      QStringLiteral("store-generated"));
-                w.provenance = provenance;
-                writes.append(w);
-            }
-            return writes;
-        };
-
-        // ANTS-6781 — a refusal found inside the transaction, for the
-        // envelope; mutate() can return only a bool.
-        QString lateCode;
-        QString duplicateOf;
-        const bool force = req.value(QStringLiteral("force")).toBool();
-        const auto mutate = [&](QString *err) -> bool {
-            // ANTS-6781 — another session's append can land between the reads
-            // above and this transaction (BEGIN IMMEDIATE), as ANTS-6466 found
-            // for op:"append". So the ids, the duplicate check and each
-            // section's end position are re-read here, where no other writer
-            // can move them. Moved ids re-resolve the {{id:N}} citations.
-            if (!useStablePrefix) {
-                const qint64 highWater =
-                    rlStoreIdHighWater(store, projectId, counterPfx);
-                const qint64 firstId = nextId - accepted.size();
-                if (firstId <= highWater) {
-                    if (hintUsed) {
-                        lateCode = QStringLiteral("id_taken");
-                        *err = QStringLiteral(
-                            "roadmap_log: id_hint %1 was taken by another "
-                            "write; the highest %2 id is now %3")
-                            .arg(firstId).arg(counterPfx).arg(highWater);
-                        return false;
-                    }
-                    const int width = store.counterIdWidth(projectId, counterPfx);
-                    accepted = unresolvedAccepted;
-                    nextId = highWater + 1;
-                    for (Accepted &a : accepted)
-                        a.idStr = RoadmapStore::formatCounterId(counterPfx, nextId++, width);
-                    resolveCitations(accepted);   // resolved once already: cannot fail
-                }
-            }
-            if (!force) {
-                RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
-                const auto now = RoadmapSource::bulletsFromStore(
-                    store, projectId, /*includeArchive=*/false, &why);
-                for (const Accepted &a : std::as_const(accepted)) {
-                    if (!now)
-                        break;
-                    const QString dupId = rcExactDuplicateId(
-                        *now, a.bulletReq.value(QStringLiteral("headline")).toString());
-                    if (!dupId.isEmpty()) {
-                        lateCode    = QStringLiteral("duplicate_item");
-                        duplicateOf = dupId;
-                        *err = QStringLiteral(
-                            "roadmap_log: bullet %1's headline exactly matches %2; "
-                            "nothing was written. Pass force:true to file it "
-                            "anyway").arg(a.bulletIndex).arg(dupId);
-                        return false;
-                    }
-                }
-            }
-            QHash<QString, SecSlot> nextPos = secSlots;
-            for (SecSlot &s : nextPos) {
-                const auto now = store.listElements(s.id, err);
-                if (!now)
-                    return false;
-                int endPos = -1;
-                for (const RoadmapStore::ElementRow &e : *now)
-                    endPos = std::max(endPos, e.position);
-                s.next = endPos + 1;
-            }
-            if (hasBefore) {
-                SecSlot &slot = nextPos[section];
-                slot.next = rlOpenGapBefore(store, slot.id, beforePk, beforeCount, err);
-                if (slot.next < 0)
-                    return false;
-            }
-            for (const RoadmapStore::ItemWrite &w : buildWrites(nextPos))
-                if (!store.putItem(w, err))
-                    return false;
-            if (useStablePrefix)
-                return true;
-            // One raise for the last allocated id — the ids are contiguous, so
-            // the highest is the only one the high-water has to record.
-            return store.raiseIdHighWater(projectId, counterPfx, nextId - 1, err);
-        };
-
-        RoadmapRender::Outcome outcome;
-        QString writeErr;
-        const auto r = RoadmapWrite::commitAndRender(
-            store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun, mutate,
-            &outcome, &writeErr);
-        QJsonObject env;
-        if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
-            // ANTS-6781 — applied after the mapper, as op:"append" does.
-            if (!lateCode.isEmpty()) {
-                env[QStringLiteral("code")]  = lateCode;
-                env[QStringLiteral("error")] = writeErr;
-            }
-            if (!duplicateOf.isEmpty())
-                env[QStringLiteral("duplicate_of")] = duplicateOf;
-            return QJsonDocument(env);
-        }
-
-        QJsonArray ids;
-        for (const Accepted &a : accepted) ids.append(a.idStr);
-        env[QStringLiteral("ok")]   = true;
-        env[QStringLiteral("op")]   = QStringLiteral("append_batch");
-        env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
-        // ANTS-4634 — `would_be_ids` on a preview, for the reason ANTS-4508
-        // gives; see the singular path's note. The rename reached the markdown
-        // branch below and not this one, which is the branch every migrated
-        // project takes.
-        env[dryRun ? QStringLiteral("would_be_ids")
-                   : QStringLiteral("ids")] = ids;
-        if (!storeRebuilt.isEmpty())
-            env[QStringLiteral("store_rebuilt")] = storeRebuilt;   // ANTS-5638
-        // `would_apply_count` under dry_run, mirroring the markdown preview so a
-        // caller's branch on it does not change with the backend. No `lines` /
-        // `bytes`.
-        env[QStringLiteral("applied_count")] = dryRun ? 0 : accepted.size();
-        if (dryRun) {
-            env[QStringLiteral("dry_run")]           = true;
-            env[QStringLiteral("would_apply_count")] = accepted.size();
-        }
-        env[QStringLiteral("skipped")]        = skipped;
-        env[QStringLiteral("skipped_count")]  = skipped.size();
-        // ANTS-4635 — the reconciliation op:append has run since ANTS-4141
-        // part 2 and this path never did, which is what let the cache drift by
-        // a whole batch. `nextId - 1` is the last id allocated here; the ids
-        // are contiguous, so the highest is the only one the cache records.
-        if (!dryRun && !useStablePrefix)
-            rcRoadmapReconcileCounterCache(env, counterPath, nextId - 1);
-        rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
-
-        // ANTS-2043 — the per-bullet near-duplicate advisory, kept: the file is
-        // the render's own output and was parsed BEFORE the write, so a
-        // just-appended bullet cannot match itself.
-        QJsonArray possibleDuplicates;
-        for (const Accepted &a : accepted) {
-            const QJsonArray cands = rcComputePossibleDuplicates(
-                preflightBullets,
-                a.bulletReq.value(QStringLiteral("headline")).toString());
-            if (cands.isEmpty()) continue;
-            QJsonObject o;
-            o["bullet_index"] = a.bulletIndex;
-            o["id"]           = a.idStr;
-            o["candidates"]   = cands;
-            possibleDuplicates.append(o);
-        }
-        if (!possibleDuplicates.isEmpty())
-            env[QStringLiteral("possible_duplicates")] = possibleDuplicates;
-        // ANTS-4572 — fire when the scrub removed ANYTHING, not only a named
-        // parameter pair. A batch is where a silent partial scrub hides best:
-        // one bullet of many, and nobody re-reads the rendered file.
-        rlAddScrubWarning(env, scrubbedRollup, scrubbedUnnamedRollup,
-                          scrubbedFragRollup, /*batch=*/true);
-        // ANTS-4527 — rolled up across the batch, as the scrub warning is.
-        if (const QJsonObject ev = rlEvidenceAdvisory(evNotPathRollup);
-            !ev.isEmpty()) {
-            rlAddWarning(env, ev);
-        }
-        if (counterPfxGuessed && !useStablePrefix)             // ANTS-5353
-            rlAddWarning(env, rlGuessedPrefixAdvisory(counterPfx));
-        if (rcReturnHeadlineOnly(req)) {
-            QJsonArray postBullets;
-            for (const Accepted &a : accepted)
-                postBullets.append(rcCompactBullet(
-                    a.idStr,
-                    a.bulletReq.value(QStringLiteral("status")).toString(),
-                    a.bulletReq.value(QStringLiteral("headline")).toString()));
-            env[QStringLiteral("post_bullets")] = postBullets;
-        }
-        return QJsonDocument(env);
-    }
-
+QJsonDocument RemoteControl::appendBatchToFile(AppendBatchPlan &p) {
     // 7. Format every accepted bullet via the shared helper.
     QStringList bulletBlocks;
     qint64 totalBytes = 0;
-    for (const Accepted &a : accepted) {
+    for (const Accepted &a : p.accepted) {
         QStringList scrubbed;
         const QString blk = formatRoadmapBullet(
             a.bulletReq, a.idStr, a.emoji, scrubbed,
-            &scrubbedUnnamedRollup, &scrubbedFragRollup);
+            &p.scrubbedUnnamedRollup, &p.scrubbedFragRollup);
         bulletBlocks.append(blk);
         totalBytes += blk.toUtf8().size();
         // Dedup scrubbed names across all bullets.
         for (const QString &n : scrubbed)
-            if (!scrubbedRollup.contains(n)) scrubbedRollup.append(n);
+            if (!p.scrubbedRollup.contains(n)) p.scrubbedRollup.append(n);
     }
 
-    // 8. Splice all blocks at sec->lineEnd in document order.
-    QStringList docLines = markdown.split(QChar('\n'));
-    const int insertAt = sec->lineEnd;
+    // 8. Splice all blocks at the section end in document order.
+    QStringList docLines = p.markdown.split(QChar('\n'));
+    const int insertAt = p.insertAt;
     QJsonArray emittedLines;
     int cursor = insertAt;
     QStringList toSplice;
@@ -3279,9 +3393,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // bullets and 1-based insertion lines WITHOUT writing ROADMAP.md or
     // bumping .roadmap-counter. applied_count stays 0 (nothing written);
     // would_apply_count carries the count that a real call would apply.
-    if (dryRun) {
+    if (p.dryRun) {
         QJsonArray ids;
-        for (const Accepted &a : accepted) ids.append(a.idStr);
+        for (const Accepted &a : p.accepted) ids.append(a.idStr);
         QJsonArray previewBullets;
         for (const QString &blk : bulletBlocks) {
             QString b = blk;
@@ -3298,118 +3412,51 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         out["lines"]             = emittedLines;
         out["bullets"]           = previewBullets;
         out["applied_count"]     = 0;
-        out["would_apply_count"] = accepted.size();
-        out["skipped"]           = skipped;
-        out["skipped_count"]     = skipped.size();
+        out["would_apply_count"] = p.accepted.size();
+        out["skipped"]           = p.skipped;
+        out["skipped_count"]     = p.skipped.size();
         out["bytes"]             = totalBytes;
-        if (counterReconciled)        // ANTS-2179 — last allocated id
-            out["counter_advanced_to"] = nextId - 1;
-        if (counterReconciled) rlExplainCounterFloor(out, counter, maxFileId);
+        if (p.counterReconciled)        // ANTS-2179 — last allocated id
+            out["counter_advanced_to"] = p.nextId - 1;
+        if (p.counterReconciled) rlExplainCounterFloor(out, p.counter, p.maxFileId);
         return QJsonDocument(out);
     }
 
     // 9. Atomic write — counter first, then ROADMAP (parity with append,
     // ANTS-5094). ANTS-2078 — stable_prefix wrote no counter to bump.
-    if (!useStablePrefix && !rlWriteCounter(counterPath, nextId - 1))
-        return rlErr(QStringLiteral("counter_write_failed"),
+    if (!p.useStablePrefix && !rlWriteCounter(p.counterPath, p.nextId - 1))
+        return rcSectionOpErr(QStringLiteral("counter_write_failed"),
             QStringLiteral("roadmap_log: atomic write of "
                            ".roadmap-counter failed"));
 
-    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
-        return rlErr(QStringLiteral("roadmap_write_failed"), err);
+    if (const QString err = rlAtomicWrite(p.roadmapPath, updated); !err.isEmpty())
+        return rcSectionOpErr(QStringLiteral("roadmap_write_failed"), err);
 
     // 10. Success envelope.
     QJsonArray ids;
-    for (const Accepted &a : accepted) ids.append(a.idStr);
-
-    // ANTS-2043 — non-blocking near-duplicate advisory, per accepted
-    // bullet (checked against the pre-splice on-disk bullets, so a
-    // just-appended bullet can't match itself). Only bullets with at
-    // least one candidate appear; absent when the whole batch is clean.
-    QJsonArray possibleDuplicates;
-    for (const Accepted &a : accepted) {
-        const QString hl =
-            a.bulletReq.value(QStringLiteral("headline")).toString();
-        const QJsonArray cands =
-            rcComputePossibleDuplicates(preflightBullets, hl);
-        if (cands.isEmpty()) continue;
-        QJsonObject o;
-        o["bullet_index"] = a.bulletIndex;
-        o["id"]           = a.idStr;
-        o["candidates"]   = cands;
-        possibleDuplicates.append(o);
-    }
-
+    for (const Accepted &a : p.accepted) ids.append(a.idStr);
     QJsonObject out;
     out["ok"]            = true;
     out["op"]            = QStringLiteral("append_batch");
     out["file"]          = QStringLiteral("ROADMAP.md");
     out["ids"]           = ids;
     out["lines"]         = emittedLines;
-    out["applied_count"] = accepted.size();
-    out["skipped"]       = skipped;
-    out["skipped_count"] = skipped.size();
+    out["applied_count"] = p.accepted.size();
+    out["skipped"]       = p.skipped;
+    out["skipped_count"] = p.skipped.size();
     out["bytes_written"] = totalBytes;
-    if (counterReconciled) {          // ANTS-2179 — self-healed high-water
-        out["counter_advanced_to"] = nextId - 1;
-        rlExplainCounterFloor(out, counter, maxFileId);
+    if (p.counterReconciled) {          // ANTS-2179 — self-healed high-water
+        out["counter_advanced_to"] = p.nextId - 1;
+        rlExplainCounterFloor(out, p.counter, p.maxFileId);
     }
-    if (!possibleDuplicates.isEmpty()) {
-        out["possible_duplicates"] = possibleDuplicates;
+    // ANTS-4527 — this path never ran rlFillItemBody, which collects the
+    // store path's list, so it is read from the request here.
+    for (const auto &bv : p.req.value(QStringLiteral("bullets")).toArray()) {
+        const QJsonObject ev = rlEvidenceAdvisoryForReq(bv.toObject());
+        for (const auto &e : ev.value(QStringLiteral("elements")).toArray())
+            p.evNotPathRollup << e.toString();
     }
-    // ANTS-5095 — the store path's warning: this path reported only a NAMED
-    // parameter, so an unnamed fragment was stripped in silence (ANTS-4572).
-    rlAddScrubWarning(out, scrubbedRollup, scrubbedUnnamedRollup,
-                      scrubbedFragRollup, /*batch=*/true);
-    // ANTS-4527 — rolled up over the batch's bullets, like the scrub warning.
-    {
-        QStringList bad;
-        for (const auto &bv : req.value(QStringLiteral("bullets")).toArray()) {
-            const QJsonObject ev = rlEvidenceAdvisoryForReq(bv.toObject());
-            for (const auto &e : ev.value(QStringLiteral("elements")).toArray())
-                bad << e.toString();
-        }
-        if (const QJsonObject ev = rlEvidenceAdvisory(bad); !ev.isEmpty())
-            rlAddWarning(out, ev);
-    }
-    if (counterPfxGuessed && !useStablePrefix)                 // ANTS-5353
-        rlAddWarning(out, rlGuessedPrefixAdvisory(counterPfx));
-    // ANTS-4989 — the review-provenance advisory, rolled up the same way. One
-    // warning for the batch, naming the ids rather than repeating itself per
-    // bullet: a batch filing a review's findings is exactly where every bullet
-    // shares the pairing, and N identical advisories would bury the reply.
-    {
-        QJsonArray advisoryIds;
-        QJsonObject first;
-        // ANTS-5095 — named by the ids the batch ALLOCATED. It read id_hint
-        // with toString(), which is empty for the number a caller sends, so
-        // the warning listed headlines instead of ids.
-        for (const Accepted &a : accepted) {
-            const QJsonObject rk = rlReviewKindAdvisory(
-                a.bulletReq.value(QStringLiteral("kind")).toString(),
-                a.bulletReq.value(QStringLiteral("source")).toString());
-            if (rk.isEmpty()) continue;
-            if (first.isEmpty()) first = rk;
-            advisoryIds.append(a.idStr.isEmpty()
-                ? a.bulletReq.value(QStringLiteral("headline")).toString()
-                : a.idStr);
-        }
-        if (!first.isEmpty()) {
-            first[QStringLiteral("bullets")] = advisoryIds;
-            rlAddWarning(out, first);
-        }
-    }
-    // ANTS-2080 — confirm-after compact echo of every applied bullet.
-    if (rcReturnHeadlineOnly(req)) {
-        QJsonArray postBullets;
-        for (const Accepted &a : accepted) {
-            postBullets.append(rcCompactBullet(
-                a.idStr,
-                a.bulletReq.value(QStringLiteral("status")).toString(),
-                a.bulletReq.value(QStringLiteral("headline")).toString()));
-        }
-        out["post_bullets"] = postBullets;
-    }
+    rlAppendBatchAdvisories(out, p);
     return QJsonDocument(out);
 }
 

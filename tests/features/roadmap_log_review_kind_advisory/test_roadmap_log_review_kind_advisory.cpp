@@ -10,12 +10,20 @@
 // belongs anyway: it is a roadmap-convention rule, not RemoteControl
 // plumbing. RoadmapParse returns the decision; RemoteControl builds the
 // envelope.
+#include "remotecontrol.h"
 #include "roadmapparse.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/roadmap_migrated_store.h"
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QString>
+#include <QTemporaryDir>
 
 #include <string>
 
@@ -121,4 +129,59 @@ TEST(RoadmapLogReviewKindAdvisory, Inv2AndInv6WiredIntoBothWritePaths) {
     EXPECT_EQ(rc.find("return rlErr(QStringLiteral(\"kind_ignores_review"),
               std::string::npos)
         << "ANTS-4989 INV-2: it is an ADVISORY — it must never become a refusal";
+}
+
+// INV-7 — the store path warns too, once, naming the ids it allocated. The
+// batch op's store write built its own reply and left this advisory out
+// (ANTS-6176), so every migrated project filed review fixes as `fix` unwarned.
+TEST(RoadmapLogReviewKindAdvisory, Inv7StoreBatchWarnsOnceNamingIds) {
+    QTemporaryDir xdg;
+    QTemporaryDir proj;
+    ASSERT_TRUE(xdg.isValid() && proj.isValid());
+    ants_test::XdgGuard env;
+    env.setEnv("XDG_DATA_HOME", xdg.path().toLocal8Bit());
+    {
+        QFile f(proj.path() + QStringLiteral("/ROADMAP.md"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        // ants-v1 with a Layman line on the open item: the store serves only
+        // that dialect, and the render refuses an open item without one.
+        f.write("<!-- ants-roadmap-format: 1 -->\n\n# Demo — Roadmap\n\n## Work\n\n"
+                "- \xF0\x9F\x93\x8B [DEMO-0007] **An open item.**\n"
+                "  Layman: A thing.\n  Kind: implement.\n  Source: fixture.\n");
+    }
+    ASSERT_TRUE(ants_test::migrateDefaultStore(proj.path()));
+
+    QJsonArray bullets;
+    for (const char *h : {"First finding.", "Second finding."}) {
+        QJsonObject b;
+        b[QStringLiteral("headline")] = QString::fromUtf8(h);
+        b[QStringLiteral("layman")]   = QStringLiteral("A plain sentence.");
+        bullets.append(b);
+    }
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = proj.path();
+    req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+    req[QStringLiteral("section")]    = QStringLiteral("work");
+    req[QStringLiteral("status")]     = QStringLiteral("planned");
+    req[QStringLiteral("kind")]       = QStringLiteral("fix");
+    req[QStringLiteral("source")]     = QStringLiteral("indie-review-2026-11-20");
+    req[QStringLiteral("bullets")]    = bullets;
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    const std::string dump = QJsonDocument(out).toJson().toStdString();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool()) << dump;
+    ASSERT_TRUE(out.contains(QStringLiteral("items_rendered")))
+        << "did not take the store path, so this case proves nothing\n" << dump;
+
+    QJsonArray hits;
+    for (const auto &w : out.value(QStringLiteral("warnings")).toArray())
+        if (w.toObject().value(QStringLiteral("code")).toString()
+                == QLatin1String("kind_ignores_review_provenance"))
+            hits.append(w);
+    ASSERT_EQ(hits.size(), 1)
+        << "INV-7: one warning for the batch on the store path\n" << dump;
+    EXPECT_EQ(hits.at(0).toObject().value(QStringLiteral("bullets")).toArray(),
+              out.value(QStringLiteral("ids")).toArray())
+        << "INV-7: the warning names the ids the batch allocated\n" << dump;
 }

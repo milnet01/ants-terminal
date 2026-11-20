@@ -11,7 +11,7 @@ Part of **ANTS-1879**. Full design + invariants live in
   (m_main-independent, mirrors `cmdRoadmapLogFlipBatchForTest`).
 - `RemoteControl::formatRoadmapBullet` — shared bullet-formatting
   helper extracted from `cmdRoadmapLogAppend:3293-3344`; called from
-  BOTH `cmdRoadmapLogAppend` and `cmdRoadmapLogAppendBatch`.
+  BOTH `cmdRoadmapLogAppend` and `appendBatchToFile`.
 - `cmdRoadmapLog` dispatch ladder routing `op:"append_batch"`.
 
 ## Invariants tested
@@ -29,7 +29,9 @@ Part of **ANTS-1879**. Full design + invariants live in
 - **INV-7** order preservation in spliced output.
 - **INV-9** `unrecognised_format` short-circuits the whole batch.
 - **INV-10** source-grep: `formatRoadmapBullet(` is called from
-  both `cmdRoadmapLogAppend` AND `cmdRoadmapLogAppendBatch`.
+  both `cmdRoadmapLogAppend` AND append_batch's file write,
+  `appendBatchToFile` (split out of `cmdRoadmapLogAppendBatch` by
+  ANTS-6176).
 - **ANTS-2179** counter reconcile — the `.roadmap-counter` is a hint,
   not the sole source of truth. When it lags the file's true max
   `[PREFIX-NNNN]` id, both the single and batch append paths skip past

@@ -47,6 +47,8 @@ class RoadmapStore;
 // reason: the three seam wrappers take it by reference, so no definition is
 // needed to declare them.
 namespace RoadmapSource { enum class ReadError; class RoadmapText; }
+// ANTS-6176 — append_batch's checked plan; defined where it is filled.
+namespace rcdetail { struct AppendBatchPlan; }
 
 // Remote-control server for Ants Terminal. Kitty-style JSON envelopes
 // over a Unix domain socket — unlocks scripting, IDE integration, CI.
@@ -1436,6 +1438,10 @@ private:
     // partial-apply contract (ok:true even when all-skipped); shared
     // bullet-formatting helper extracted from cmdRoadmapLogAppend.
     QJsonDocument cmdRoadmapLogAppendBatch(const QJsonObject &req);
+    // ANTS-6176 — append_batch's write on a project edited as a file. A
+    // member because it formats through formatRoadmapBullet; the store write
+    // is a free function beside it.
+    QJsonDocument appendBatchToFile(rcdetail::AppendBatchPlan &plan);
     // ANTS-1691 — bundle_row: append a row to the Markdown table under a
     // named section (the "## 📊 Bundle progress" cross-session table),
     // pipe/newline-escaping each cell; find-or-create the table. No

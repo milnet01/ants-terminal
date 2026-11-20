@@ -47,10 +47,13 @@ more often than followed, and the check is not a flood.
 - **INV-6** — `op:"append_batch"` warns ONCE for the batch, naming the
   bullets. A batch filing one review's findings is where every bullet shares
   the pairing, and N identical advisories would bury the reply.
+- **INV-7** — INV-6 holds on a project the roadmap store serves: one warning
+  for the batch, naming the ids the batch allocated (ANTS-6176).
 
 ## Test shape
 
-Drives `RemoteControl::cmdRoadmapLog` against a seeded temp roadmap, the same
-harness the other roadmap_log feature tests use. Behavioural throughout.
+INV-1, INV-3, INV-4 and INV-5 call `RoadmapParse::reviewKindMismatch`. INV-2
+and INV-6 read the RemoteControl sources for the wiring. INV-7 drives
+`cmdRoadmapLogAppendBatchForTest` on a migrated fixture.
 
 Label: `features;fast`.

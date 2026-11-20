@@ -273,10 +273,10 @@ the name + delegate). The same change:
   `RemoteControl::formatRoadmapBullet(bulletReq, idStr, statusEmoji,
   scrubbedNames)` (new code introduced by this spec — not currently
   present) and call it from both `cmdRoadmapLogAppend` and
-  `cmdRoadmapLogAppendBatch`. *Test:* source-grep within
-  `src/remotecontrol.cpp` — at least one call site inside
-  `cmdRoadmapLogAppend` AND at least one inside
-  `cmdRoadmapLogAppendBatch` (a future verb may reuse the helper —
+  append_batch's file write (`appendBatchToFile` since ANTS-6176).
+  *Test:* source-grep over the RemoteControl sources — at least one
+  call site inside `cmdRoadmapLogAppend` AND at least one inside
+  `appendBatchToFile` (a future verb may reuse the helper —
   count ≥ 2, named sites required). The body scrub continues to
   populate `scrubbedNames` through the out-param.
 

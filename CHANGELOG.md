@@ -544,6 +544,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log append_batch now gives the review-kind warning on projects the roadmap store serves, as it already did on file-edited ones** (ANTS-6176)
+  Both of append_batch's writes now end through one shared set of
+  advisories, so a fix to one reaches the other.
+
 - **A tab opened by remote control or by the welcome dialog's install button is saved in the tab order at once, as a tab opened from the menu is.** (ANTS-6172)
   The menu and remote control now open a tab through the same code.
 

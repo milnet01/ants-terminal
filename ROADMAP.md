@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6841 -->
+<!-- ants-roadmap-id-high-water: ANTS=6843 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -107075,7 +107075,7 @@ worked after these.
   Source: review-readability-2026-10-22 L15.
   Lanes: claude-integration-b.
 
-- 📋 [ANTS-6176] **Split cmdRoadmapLogAppendBatch into a store write and a file write after the shared checks (L21-F4).**
+- ✅ [ANTS-6176] **Split cmdRoadmapLogAppendBatch into a store write and a file write after the shared checks (L21-F4).**
   L21-F4 (HIGH), queued from ANTS-6130 on 2026-10-23.
   cmdRoadmapLogAppendBatch threads writeTarget through about ten
   branches; comments record fixes that reached one backend only
@@ -107090,6 +107090,12 @@ worked after these.
   The 2026-11-06 reviews also found this: row 872
   `src/remotecontrol_roadmap_log_batch.cpp:2986`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-20. After the shared checks, cmdRoadmapLogAppendBatch
+  fills one AppendBatchPlan and hands it to rlAppendBatchToStore or
+  RemoteControl::appendBatchToFile. Both end through
+  rlAppendBatchAdvisories, so the store write now carries ANTS-4989's
+  review-kind warning (review_kind_advisory INV-7, red before the
+  change). The {{id:N}} resolver is rlResolveCitations.
   **Layman:** One very long function writes new roadmap items two different ways; split it so each way can be read and fixed on its own.
   Kind: refactor.
   Source: review-readability-2026-10-22 L21.
@@ -115405,6 +115411,29 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: review-readability-2026-10-22 L22.
   Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6842] **Three roadmap tests fold their own copy of migrateDefaultStore into tests/_support/roadmap_migrated_store.h.**
+  ANTS-6176 added the shared helper for a new case. The copies:
+  roadmap_log_possible_duplicates, roadmap_source_witness and
+  roadmap_log_store_preview_and_counter. Each fixture's project name
+  and changedAt must match the helper's, or it takes parameters.
+  **Layman:** Three tests each carry the same setup code for a test roadmap database; point them at the one shared copy.
+  Kind: refactor.
+  Source: in-session-2026-11-20 (ANTS-6176 edit).
+  Lanes: tests.
+
+- 📋 [ANTS-6843] **Clear nine clang-tidy notes in remotecontrol_roadmap_query_verb.cpp: five missed moves, three converting loop variables, one file-static.**
+  clangd showed these on 2026-11-20; none from that edit.
+  - performance-use-std-move: `kept` (three sites), `pruned`,
+    `trulyMissing`.
+  - performance-implicit-conversion-in-loop: three `const QJsonValue &v`
+    loops over a QJsonArray.
+  - misc-use-anonymous-namespace: rcBuildBulletCacheArray.
+  The bugprone-optional-value-conversion note there is ANTS-5452's.
+  **Layman:** Small speed and tidiness warnings a code checker raises in the roadmap query code.
+  Kind: audit-fix.
+  Source: in-session-2026-11-20 (ANTS-6176 edit).
+  Lanes: mcp-roadmap-query-log.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

@@ -358,28 +358,26 @@ TEST(McpRoadmapLogAppendBatch, Inv10FormatHelperShared) {
            "(cmdRoadmapLogAppend + cmdRoadmapLogAppendBatch); found "
         << callSites;
 
-    // Both handler names must reference the helper inside their bodies.
+    // Both writers must reference the helper inside their bodies. The
+    // batch's file write is appendBatchToFile since ANTS-6176 split it out.
     const auto appendPos = src.find(
         "QJsonDocument RemoteControl::cmdRoadmapLogAppend(");
-    const auto batchPos = src.find(
-        "QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(");
     ASSERT_NE(appendPos, std::string::npos);
-    ASSERT_NE(batchPos,  std::string::npos);
-    // Slice each handler to its next handler boundary.
+    // Slice the handler to its next handler boundary.
     const auto appendEnd = src.find(
         "QJsonDocument RemoteControl::", appendPos + 20);
-    const auto batchEnd = src.find(
-        "QJsonDocument RemoteControl::", batchPos + 20);
     const std::string appendBody =
         src.substr(appendPos, (appendEnd == std::string::npos ? src.size() - appendPos
                                                               : appendEnd - appendPos));
-    const std::string batchBody =
-        src.substr(batchPos, (batchEnd == std::string::npos ? src.size() - batchPos
-                                                            : batchEnd - batchPos));
+    const std::string batchBody = ants_test::slurpFunctionBody(
+        src, "QJsonDocument RemoteControl::appendBatchToFile(");
+    ASSERT_FALSE(batchBody.empty())
+        << "append_batch's file write, appendBatchToFile, must exist";
     EXPECT_NE(appendBody.find("formatRoadmapBullet("), std::string::npos)
         << "cmdRoadmapLogAppend must call formatRoadmapBullet";
-    EXPECT_NE(batchBody.find("formatRoadmapBullet("), std::string::npos)
-        << "cmdRoadmapLogAppendBatch must call formatRoadmapBullet";
+    EXPECT_NE(ants_test::stripComments(batchBody).find("formatRoadmapBullet("),
+              std::string::npos)
+        << "append_batch's file write must call formatRoadmapBullet";
 }
 
 // Success envelope shape.
