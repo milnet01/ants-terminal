@@ -610,6 +610,12 @@ private:
     // and the three orphan chrome items (Roadmap button,
     // update QAction, 5 s startup update-check).
     void setupStatusBarChrome();
+    // ANTS-6184 — the status bar's left-hand widgets and the 2 s timer that
+    // refreshes the whole bar. Needs setupStatusBarChrome() run first.
+    void setupStatusWidgets();
+    // ANTS-6184 — load the Lua plugins and wire their signals; a no-op in a
+    // build without ANTS_LUA_PLUGINS. Needs the command palette to exist.
+    void setupPlugins();
     // ANTS-1146 — MCP-provider plumbing for ClaudeIntegration
     // (scrollback / cwd / lastCommand / git-status / environment
     // providers + startHookServer). Split from setupClaudeIntegration

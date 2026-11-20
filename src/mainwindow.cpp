@@ -477,161 +477,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     });
     rebuildCommandPalette();
 
-#ifdef ANTS_LUA_PLUGINS
-    // Initialize plugin system
-    QString pluginDir = m_config.pluginDir();
-    if (pluginDir.isEmpty()) {
-        pluginDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
-                    + "/ants-terminal/plugins";
-    }
-    m_pluginManager = new PluginManager(this);
-    m_pluginManager->setPluginDir(pluginDir);
-
-    // Persist + retrieve manifest v2 grants via Config
-    m_pluginManager->setGrantStore(
-        [this](const QString &name) { return m_config.pluginGrants(name); },
-        [this](const QString &name, const QStringList &grants) {
-            m_config.setPluginGrants(name, grants);
-        });
-
-    // Permission prompt: dialog listing requested permissions with Accept/Deny.
-    // Users get the browser-extension UX — explicit opt-in for each permission.
-    m_pluginManager->setPermissionPrompt(
-        [this](const PluginInfo &info, const QStringList &requested) -> QStringList {
-            QDialog dlg(this);
-            dlg.setWindowTitle(QString("Plugin permissions: %1").arg(info.name));
-            // ANTS-5681 — dialogs.md D1–D4.
-            auto chrome = DialogChrome::install(
-                &dlg, QString(), /*resizable=*/true,
-                QStringLiteral("PluginPermissionsDialog"));
-            auto *layout = new QVBoxLayout(chrome.contentArea);
-            auto *label = new QLabel(QString(
-                "The plugin <b>%1</b> (v%2) is requesting the following "
-                "permissions. Uncheck any you don't want to grant.")
-                .arg(info.name, info.version), &dlg);
-            label->setWordWrap(true);
-            layout->addWidget(label);
-            QList<QCheckBox *> boxes;
-            for (const QString &p : requested) {
-                auto *cb = new QCheckBox(p, &dlg);
-                cb->setChecked(true);
-                const QString tip = SettingsDialog::describePluginPermission(p);
-                cb->setToolTip(tip.isEmpty() ? p : tip);
-                layout->addWidget(cb);
-                boxes << cb;
-            }
-            auto *btns = new QDialogButtonBox(
-                QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-            btns->button(QDialogButtonBox::Ok)->setText("Accept");
-            btns->button(QDialogButtonBox::Cancel)->setText("Deny all");
-            connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-            connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-            layout->addWidget(btns);
-            QStringList out;
-            if (dlg.exec() == QDialog::Accepted) {
-                for (int i = 0; i < boxes.size(); ++i) {
-                    if (boxes[i]->isChecked()) out << requested[i];
-                }
-            }
-            return out;
-        });
-
-    m_pluginManager->scanAndLoad(m_config.enabledPlugins());
-
-    // Manifest v2: register plugin keybindings. Rescan on pluginsReloaded so
-    // hot-reload picks up newly-added or changed shortcuts without restart.
-    auto registerPluginKeybindings = [this]() {
-        // Drop any previously-registered plugin shortcuts
-        for (auto *sc : m_pluginShortcuts) sc->deleteLater();
-        m_pluginShortcuts.clear();
-        for (const auto &info : m_pluginManager->plugins()) {
-            if (!info.enabled) continue;
-            const QJsonObject &kb = info.keybindings;
-            for (auto it = kb.constBegin(); it != kb.constEnd(); ++it) {
-                QString actionId = it.key();
-                QString seq = it.value().toString();
-                if (seq.isEmpty()) continue;
-                QKeySequence ks(seq);
-                if (ks.isEmpty()) {
-                    showStatusMessage(QString("Plugin %1: invalid keybinding '%2' for '%3'")
-                                       .arg(info.name, seq, actionId), 6000);
-                    continue;
-                }
-                auto *sc = new QShortcut(ks, this);
-                QString pluginName = info.name;
-                connect(sc, &QShortcut::activated, this, [this, pluginName, actionId]() {
-                    // ANTS-1750 INV-10 — route through the queued dispatchTo()
-                    // so the keybinding handler runs on the plugin's worker,
-                    // not lua_* on the GUI thread (engineFor()->fireEvent()
-                    // would block the UI on a slow handler).
-                    m_pluginManager->dispatchTo(pluginName, PluginEvent::Keybinding,
-                                                actionId);
-                });
-                m_pluginShortcuts.append(sc);
-            }
-        }
-    };
-    registerPluginKeybindings();
-    connect(m_pluginManager, &PluginManager::pluginsReloaded, this, registerPluginKeybindings);
-    connect(m_pluginManager, &PluginManager::sendToTerminal, this, [this](const QString &text) {
-        if (auto *t = focusedTerminal()) t->writeCommand(text);
-    });
-    // ANTS-4273 — PluginManager re-emits the engine's showNotification, and
-    // nothing consumed it, so ants.notify() accepted its arguments and did
-    // nothing. PLUGINS.md promises a desktop notification "or falls back to
-    // the status bar", so the status bar is used when delivery fails rather
-    // than as well as it.
-    connect(m_pluginManager, &PluginManager::showNotification, this,
-            [this](const QString &title, const QString &message) {
-        if (!showDesktopNotification(title, message)) {
-            showStatusMessage(title.isEmpty() ? message
-                                              : title + QStringLiteral(" — ") + message,
-                              5000);
-        }
-    });
-
-    connect(m_pluginManager, &PluginManager::statusMessage, this, [this](const QString &msg) {
-        showStatusMessage(msg, 5000);
-    });
-    connect(m_pluginManager, &PluginManager::logMessage, this, [this](const QString &msg) {
-        showStatusMessage("Plugin: " + msg, 3000);
-    });
-    // ants.clipboard.write — capability-gated clipboard write.
-    // ANTS-1014 — Lua plugins are untrusted (third-party code);
-    // funnel through clipboardguard so the 1 MiB cap + NUL strip
-    // apply uniformly with the OSC 52 path.
-    connect(m_pluginManager, &PluginManager::clipboardWriteRequested, this,
-            [](const QString &text) {
-        clipboardguard::writeText(text,
-            clipboardguard::Source::UntrustedPlugin);
-    });
-    // ants.settings.get / set — backed by Config::pluginSetting[s]
-    connect(m_pluginManager, &PluginManager::settingsGetRequested, this,
-            [this](const QString &pluginName, const QString &key, QString &out) {
-                out = m_config.pluginSetting(pluginName, key);
-            });
-    connect(m_pluginManager, &PluginManager::settingsSetRequested, this,
-            [this](const QString &pluginName, const QString &key, const QString &value,
-                   QString &error) {
-                error = m_config.setPluginSetting(pluginName, key, value);
-            });
-    // 0.6.9 — palette entries from ants.palette.register({...}). Each call
-    // appends one entry and rebuilds the Ctrl+Shift+P list. Hot reload
-    // discards all entries first (via pluginsReloaded below) so stale
-    // entries from removed plugins don't survive across reloads.
-    connect(m_pluginManager, &PluginManager::paletteEntryRegistered, this,
-            &MainWindow::onPluginPaletteRegistered);
-    // Drop all plugin palette entries on a full reload — init.lua re-runs
-    // and re-registers anything that should still be there. Without this
-    // each reload would double-register every entry.
-    connect(m_pluginManager, &PluginManager::pluginsReloaded, this, [this]() {
-        // Tear down all plugin entries; they'll be re-added by re-running
-        // init.lua during scanAndLoad.
-        for (const auto &e : m_pluginPaletteEntries) e.release();
-        m_pluginPaletteEntries.clear();
-        rebuildCommandPalette();
-    });
-#endif
+    setupPlugins();
 
     // ANTS-1842 — register Config for DialogChrome D3 size persistence
     // (mirrors the setActiveTheme broadcast). Must precede any dialog
@@ -687,202 +533,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // tabs on startup — UUIDs won't match so tab_groups looked empty.
     applyTabColorSequence();
 
-    // Status bar info widgets (git branch, status message, process).
-    // Transient status messages go into m_statusMessage (not statusBar()->showMessage),
-    // so the git branch label stays visible to the left of them.
-    //
-    // 0.6.26 — pin the bar to a consistent minimum height. User report:
-    // status bar's height jumped when the transient "Add to allowlist"
-    // button appeared (tall, inherits global QPushButton padding) and
-    // shrank when it disappeared, leaving only label-height widgets.
-    // QStatusBar's size hint is max(child size hints); without a floor,
-    // it follows the tallest child. Pinning a floor that covers the
-    // default button height keeps the bar visually stable as children
-    // come and go. Value chosen to match global QPushButton: text height
-    // (~14px at the app font) + padding 6px·2 + border 1px·2 ≈ 28–30px,
-    // plus a small QStatusBar internal margin → 32px is comfortable.
-    statusBar()->setMinimumHeight(32);
-
-    // Status-bar layout rule (user feedback 2026-04-18): the git branch,
-    // process name, Claude status, and transient buttons are FIXED-width —
-    // their sizeHint is their natural width, QSizePolicy::Fixed prevents
-    // QStatusBar's internal QBoxLayout from squeezing them. The ONLY
-    // elastic widget is m_statusMessage (stretch=1, ElideMiddle); when
-    // the bar runs out of space it is the notification that gets
-    // truncated with "…", never the informational chips. Past
-    // regressions where the branch label rendered as "…" were all
-    // traced to ElidedLabel + stylesheet padding miscalculation under
-    // layout pressure; plain QLabel + Fixed sizePolicy sidesteps the
-    // entire class of bug.
-    m_statusGitBranch = new QLabel(this);
-    m_statusGitBranch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    m_statusGitBranch->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    // 0.7.54 (2026-04-27 indie-review) — accessible name for screen
-    // readers. Powerline glyph in front of the branch name reads as
-    // an unrecognised codepoint; the accessible name overrides that
-    // with semantic text. Description updates dynamically via
-    // updateStatusBar when the branch changes.
-    m_statusGitBranch->setAccessibleName(tr("Git branch"));
-    statusBar()->addWidget(m_statusGitBranch);
-
-    // 0.7.49 — Repo visibility badge. Public/Private chip for the
-    // active tab's GitHub repo. Was on the right (addPermanentWidget,
-    // 0.7.45) but the user asked 2026-04-27 for it next to the branch
-    // — repo provenance reads as "branch · visibility" naturally, and
-    // the right side is busy with Claude Code chrome. Same sizePolicy
-    // contract as the branch label: Fixed so it's never squeezed.
-    // Hidden when the cwd isn't a GitHub-backed repo, when `gh` is
-    // missing, or when authentication / network fails. Theme-coloured
-    // and chip-styled in refreshRepoVisibility(); the foreground colour
-    // (green ansi[2] for public, red ansi[3] for private) is preserved
-    // from 0.7.45 — only the chip frame is new.
-    m_repoVisibilityLabel = new QLabel(this);
-    m_repoVisibilityLabel->setObjectName(QStringLiteral("repoVisibilityLabel"));
-    m_repoVisibilityLabel->setSizePolicy(QSizePolicy::Fixed,
-                                         QSizePolicy::Preferred);
-    m_repoVisibilityLabel->setAccessibleName(tr("GitHub repository visibility"));
-    m_repoVisibilityLabel->hide();
-    statusBar()->addWidget(m_repoVisibilityLabel);
-    statusinfo::attach(m_repoVisibilityLabel, tr("Repository"));   // ANTS-5759
-
-    // ANTS-5223 — red chip while broadcast input is on, so a mode that copies
-    // typing into other panes is never invisible. refreshBroadcastChip()
-    // styles and shows it.
-    m_broadcastChip = new QLabel(tr("Broadcast"), this);
-    m_broadcastChip->setObjectName(QStringLiteral("broadcastChip"));
-    m_broadcastChip->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    m_broadcastChip->setAccessibleName(tr("Broadcast input is on"));
-    m_broadcastChip->setToolTip(
-        tr("Typing is copied to every pane in this tab. "
-           "Turn it off under Settings → Broadcast Input."));
-    m_broadcastChip->hide();
-    statusBar()->addWidget(m_broadcastChip);
-    statusinfo::attach(m_broadcastChip, tr("Broadcast"));   // ANTS-5759
-
-    // 0.6.26 — the "chip" styling on the branch label (rounded bg + border)
-    // blends into the status bar background on low-contrast themes (Gruvbox
-    // especially). A hard QFrame::VLine between the branch label and the
-    // transient-status slot gives a deterministic divider that survives
-    // every theme. Cheap widget, painted from the theme's border color via
-    // the global QFrame stylesheet / palette.
-    m_statusGitSep = new QFrame(this);
-    m_statusGitSep->setFrameShape(QFrame::VLine);
-    m_statusGitSep->setFrameShadow(QFrame::Plain);
-    m_statusGitSep->setFixedWidth(1);
-    m_statusGitSep->setContentsMargins(0, 4, 0, 4);
-    m_statusGitSep->hide();  // shown whenever the branch label is shown
-    statusBar()->addWidget(m_statusGitSep);
-
-    {
-        // Middle slot (stretch=1) — elide-middle keeps both the leading
-        // label ("Claude permission:") and the trailing detail visible
-        // when the combined string overflows available width.
-        auto *lbl = new ElidedLabel(this);
-        lbl->setElideMode(Qt::ElideMiddle);
-        m_statusMessage = lbl;
-    }
-    m_statusMessage->setAccessibleName(tr("Status notification"));
-    statusinfo::attach(m_statusMessage, tr("Status message"));   // ANTS-5759
-    statusBar()->addWidget(m_statusMessage, 1);
-
-    m_statusProcess = new QLabel(this);
-    m_statusProcess->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    m_statusProcess->setAccessibleName(tr("Foreground process"));
-    statusBar()->addWidget(m_statusProcess);
-
-    // Status update timer (every 2 seconds). updateStatusBar() walks the
-    // terminal's cwd for .git/HEAD (for the branch label) and the
-    // /proc/PID/comm (for the foreground-process label). refreshReviewButton()
-    // spawns a non-blocking `git status --porcelain=v1 -b` — both cheap, both
-    // async. Coupling both to the same tick ensures the Review Changes
-    // button reflects git state changes the user made outside of Claude's
-    // hooks (manual `git add`, edits from another editor, etc.) without
-    // waiting for a tab-switch. Previously refreshReviewButton was tied
-    // only to tab-switch + hook fileChanged, which left the button hidden
-    // on boot in a dirty repo and during hookless workflows.
-    m_statusTimer = new QTimer(this);
-    // ANTS-1219-INV-2: 2 s cadence is the upper bound on how long a
-    // resolver-result swap can go un-propagated to the task-list
-    // tracker. Any change here re-shapes the chip's freshness
-    // contract — adjust the spec INV alongside.
-    m_statusTimer->setInterval(2000);
-    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateStatusBar);
-    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateTabTitles);
-    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshReviewButton);
-    // ANTS-1160 P2 (0.7.78) — RoadMap button + GitHub repo-type
-    // badge both read shellCwd(), which depends on shellPid().
-    // The first onTabChanged(0) fires from newTab()'s setCurrentIndex
-    // BEFORE startShell() sets the PID, so shellCwd() returns empty
-    // and the widget hides on the first tick. Wire to the 2-second
-    // status timer so a stale-hidden state is recovered within 2 s
-    // of any cwd change. Same fix shape as refreshBgTasksButton,
-    // which the same timer drives. Spec: docs/specs/
-    // ANTS-1160-roadmap-dialog-redesign-format-spec.md §9. Test: tests/features/roadmap_status_bar_refresh/.
-    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRoadmapButton);
-    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRepoVisibility);
-    // 0.7.49 — also drive the background-tasks button refresh on the
-    // status tick. Without this the liveness-sweep (mtime check on
-    // /tmp/.../<id>.output) never re-runs while the transcript is
-    // silent, leaving a phantom "Background Tasks (12)" chip when
-    // every task has actually finished. User report 2026-04-27.
-    connect(m_statusTimer, &QTimer::timeout, m_claudeStatusBarController, &ClaudeStatusBarController::refreshBgTasksButton);
-    // ANTS-5620 — unread-mail chip; re-queries only when the cwd or the
-    // store's files changed, so the tick is a few stat() calls otherwise.
-    connect(m_statusTimer, &QTimer::timeout, m_claudeStatusBarController,
-            &ClaudeStatusBarController::refreshMailChip);
-    // ANTS-1158 — task-list chip ticks alongside bg-tasks. Same 2 s
-    // cadence; cheap (one parseTranscript per fire on a 16 MiB-capped
-    // file) but only meaningful when the focused tab has a Claude
-    // session. The refresh function self-gates on transcript
-    // presence.
-    // ANTS-1219-INV-2: status-timer → refreshTasksButton connect.
-    // Pairs with the 2 s setInterval above to bound resolver-swap
-    // propagation latency.
-    connect(m_statusTimer, &QTimer::timeout,
-            m_claudeStatusBarController,
-            &ClaudeStatusBarController::refreshTasksButton);
-    // ANTS-1226 — model recommender chip, same 2 s cadence.
-    connect(m_statusTimer, &QTimer::timeout,
-            m_claudeStatusBarController,
-            &ClaudeStatusBarController::refreshModelChip);
-    // ANTS-1888 — passive per-tab model + thinking-level chip, same tick.
-    // mtime short-circuit inside the method makes the per-tick cost zero
-    // when the focused tab's transcript hasn't changed.
-    connect(m_statusTimer, &QTimer::timeout,
-            m_claudeStatusBarController,
-            &ClaudeStatusBarController::refreshModelStateChip);
-    // ANTS-1735 §2.3 — autonomous switcher gate runs on the same tick.
-    // Default-off via Config::claudeAutoModel().switch_enabled (INV-14);
-    // the method short-circuits when disabled, so the cost is one
-    // config read + early return.
-    connect(m_statusTimer, &QTimer::timeout,
-            m_claudeStatusBarController,
-            &ClaudeStatusBarController::refreshAutoModelSwitch);
-    // ANTS-1951 — auto-confirm a user-typed /model "Switch model?" dialog on
-    // the same tick, independently of the auto-switch master toggle. Gated by
-    // claude.auto_model_confirm_user_switch (default on); cheap early return
-    // when no dialog is visible.
-    connect(m_statusTimer, &QTimer::timeout,
-            m_claudeStatusBarController,
-            &ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch);
-    // ANTS-1735 §2.5 — outcome fill-in tick. Same 2 s timer, but the
-    // method internally throttles to once per 30 s and bails fast when
-    // the ledger is empty or has no pending records.
-    // ANTS-1890 — qOverload<> disambiguates the no-arg production
-    // overload from the path-injecting test overload added for INV-7.
-    connect(m_statusTimer, &QTimer::timeout,
-            m_claudeStatusBarController,
-            qOverload<>(&ClaudeStatusBarController::fillPendingLedgerOutcomes));
-    // ANTS-1735 §8 OQ-3 — first-run nudge. Controller fires this at most
-    // once per process when Claude Code is running in the focused tab,
-    // the switch is still default-off, and the persistent
-    // claude.auto_model_nudge_shown flag is false. We show a one-shot
-    // QMessageBox; either answer persists the flag so no future session
-    // re-prompts.
-    connect(m_claudeStatusBarController,
-            &ClaudeStatusBarController::firstRunNudgeRequested,
-            this, &MainWindow::showClaudeAutoModelNudge);
-    m_statusTimer->start();
+    setupStatusWidgets();
 
     // Main-thread stall detector (ROADMAP § 0.8.0 "Terminal throughput
     // slowdowns" — user report 2026-04-20: "slow down experienced at
@@ -924,23 +575,6 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
         ANTS_LOG(DebugLog::Perf,
             "stall detector armed: interval=200ms threshold=100ms");
     }
-
-    // Populate the status bar immediately so the user sees correct state
-    // on boot instead of waiting 2 s for the first timer tick. onTabChanged
-    // fires during initial addTab() above but *before* the status widgets
-    // here were created, so those updates were no-ops (guarded against
-    // null m_statusGitBranch). This is the first call after the widgets
-    // exist.
-    QTimer::singleShot(0, this, [this]() {
-        updateStatusBar();
-        refreshReviewButton();
-        // ANTS-1160 P2 — first refresh AFTER startShell() has had
-        // a turn of the event loop and shellPid() is set. Without
-        // this both widgets stay hidden until the user manually
-        // switches tabs (v0.7.77 regression).
-        refreshRoadmapButton();
-        refreshRepoVisibility();
-    });
 
     // 0.6.26 — auto-return focus to the active terminal whenever focus
     // lands on "chrome" widgets (status bar buttons, tab bar, menu bar
@@ -1696,6 +1330,381 @@ void MainWindow::showEvent(QShowEvent *event) {
         });
     }
 }
+
+void MainWindow::setupPlugins() {
+#ifdef ANTS_LUA_PLUGINS
+    QString pluginDir = m_config.pluginDir();
+    if (pluginDir.isEmpty()) {
+        pluginDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                    + "/ants-terminal/plugins";
+    }
+    m_pluginManager = new PluginManager(this);
+    m_pluginManager->setPluginDir(pluginDir);
+
+    // Persist + retrieve manifest v2 grants via Config
+    m_pluginManager->setGrantStore(
+        [this](const QString &name) { return m_config.pluginGrants(name); },
+        [this](const QString &name, const QStringList &grants) {
+            m_config.setPluginGrants(name, grants);
+        });
+
+    // Permission prompt: dialog listing requested permissions with Accept/Deny.
+    // Users get the browser-extension UX — explicit opt-in for each permission.
+    m_pluginManager->setPermissionPrompt(
+        [this](const PluginInfo &info, const QStringList &requested) -> QStringList {
+            QDialog dlg(this);
+            dlg.setWindowTitle(QString("Plugin permissions: %1").arg(info.name));
+            // ANTS-5681 — dialogs.md D1–D4.
+            auto chrome = DialogChrome::install(
+                &dlg, QString(), /*resizable=*/true,
+                QStringLiteral("PluginPermissionsDialog"));
+            auto *layout = new QVBoxLayout(chrome.contentArea);
+            auto *label = new QLabel(QString(
+                "The plugin <b>%1</b> (v%2) is requesting the following "
+                "permissions. Uncheck any you don't want to grant.")
+                .arg(info.name, info.version), &dlg);
+            label->setWordWrap(true);
+            layout->addWidget(label);
+            QList<QCheckBox *> boxes;
+            for (const QString &p : requested) {
+                auto *cb = new QCheckBox(p, &dlg);
+                cb->setChecked(true);
+                const QString tip = SettingsDialog::describePluginPermission(p);
+                cb->setToolTip(tip.isEmpty() ? p : tip);
+                layout->addWidget(cb);
+                boxes << cb;
+            }
+            auto *btns = new QDialogButtonBox(
+                QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+            btns->button(QDialogButtonBox::Ok)->setText("Accept");
+            btns->button(QDialogButtonBox::Cancel)->setText("Deny all");
+            connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+            connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+            layout->addWidget(btns);
+            QStringList out;
+            if (dlg.exec() == QDialog::Accepted) {
+                for (int i = 0; i < boxes.size(); ++i) {
+                    if (boxes[i]->isChecked()) out << requested[i];
+                }
+            }
+            return out;
+        });
+
+    m_pluginManager->scanAndLoad(m_config.enabledPlugins());
+
+    // Manifest v2: register plugin keybindings. Rescan on pluginsReloaded so
+    // hot-reload picks up newly-added or changed shortcuts without restart.
+    auto registerPluginKeybindings = [this]() {
+        // Drop any previously-registered plugin shortcuts
+        for (auto *sc : m_pluginShortcuts) sc->deleteLater();
+        m_pluginShortcuts.clear();
+        for (const auto &info : m_pluginManager->plugins()) {
+            if (!info.enabled) continue;
+            const QJsonObject &kb = info.keybindings;
+            for (auto it = kb.constBegin(); it != kb.constEnd(); ++it) {
+                QString actionId = it.key();
+                QString seq = it.value().toString();
+                if (seq.isEmpty()) continue;
+                QKeySequence ks(seq);
+                if (ks.isEmpty()) {
+                    showStatusMessage(QString("Plugin %1: invalid keybinding '%2' for '%3'")
+                                       .arg(info.name, seq, actionId), 6000);
+                    continue;
+                }
+                auto *sc = new QShortcut(ks, this);
+                QString pluginName = info.name;
+                connect(sc, &QShortcut::activated, this, [this, pluginName, actionId]() {
+                    // ANTS-1750 INV-10 — route through the queued dispatchTo()
+                    // so the keybinding handler runs on the plugin's worker,
+                    // not lua_* on the GUI thread (engineFor()->fireEvent()
+                    // would block the UI on a slow handler).
+                    m_pluginManager->dispatchTo(pluginName, PluginEvent::Keybinding,
+                                                actionId);
+                });
+                m_pluginShortcuts.append(sc);
+            }
+        }
+    };
+    registerPluginKeybindings();
+    connect(m_pluginManager, &PluginManager::pluginsReloaded, this, registerPluginKeybindings);
+    connect(m_pluginManager, &PluginManager::sendToTerminal, this, [this](const QString &text) {
+        if (auto *t = focusedTerminal()) t->writeCommand(text);
+    });
+    // ANTS-4273 — PluginManager re-emits the engine's showNotification, and
+    // nothing consumed it, so ants.notify() accepted its arguments and did
+    // nothing. PLUGINS.md promises a desktop notification "or falls back to
+    // the status bar", so the status bar is used when delivery fails rather
+    // than as well as it.
+    connect(m_pluginManager, &PluginManager::showNotification, this,
+            [this](const QString &title, const QString &message) {
+        if (!showDesktopNotification(title, message)) {
+            showStatusMessage(title.isEmpty() ? message
+                                              : title + QStringLiteral(" — ") + message,
+                              5000);
+        }
+    });
+
+    connect(m_pluginManager, &PluginManager::statusMessage, this, [this](const QString &msg) {
+        showStatusMessage(msg, 5000);
+    });
+    connect(m_pluginManager, &PluginManager::logMessage, this, [this](const QString &msg) {
+        showStatusMessage("Plugin: " + msg, 3000);
+    });
+    // ants.clipboard.write — capability-gated clipboard write.
+    // ANTS-1014 — Lua plugins are untrusted (third-party code);
+    // funnel through clipboardguard so the 1 MiB cap + NUL strip
+    // apply uniformly with the OSC 52 path.
+    connect(m_pluginManager, &PluginManager::clipboardWriteRequested, this,
+            [](const QString &text) {
+        clipboardguard::writeText(text,
+            clipboardguard::Source::UntrustedPlugin);
+    });
+    // ants.settings.get / set — backed by Config::pluginSetting[s]
+    connect(m_pluginManager, &PluginManager::settingsGetRequested, this,
+            [this](const QString &pluginName, const QString &key, QString &out) {
+                out = m_config.pluginSetting(pluginName, key);
+            });
+    connect(m_pluginManager, &PluginManager::settingsSetRequested, this,
+            [this](const QString &pluginName, const QString &key, const QString &value,
+                   QString &error) {
+                error = m_config.setPluginSetting(pluginName, key, value);
+            });
+    // 0.6.9 — palette entries from ants.palette.register({...}). Each call
+    // appends one entry and rebuilds the Ctrl+Shift+P list. Hot reload
+    // discards all entries first (via pluginsReloaded below) so stale
+    // entries from removed plugins don't survive across reloads.
+    connect(m_pluginManager, &PluginManager::paletteEntryRegistered, this,
+            &MainWindow::onPluginPaletteRegistered);
+    // Drop all plugin palette entries on a full reload — init.lua re-runs
+    // and re-registers anything that should still be there. Without this
+    // each reload would double-register every entry.
+    connect(m_pluginManager, &PluginManager::pluginsReloaded, this, [this]() {
+        // Tear down all plugin entries; they'll be re-added by re-running
+        // init.lua during scanAndLoad.
+        for (const auto &e : m_pluginPaletteEntries) e.release();
+        m_pluginPaletteEntries.clear();
+        rebuildCommandPalette();
+    });
+#endif
+}
+
+
+void MainWindow::setupStatusWidgets() {
+    // Status bar info widgets (git branch, status message, process).
+    // Transient status messages go into m_statusMessage (not statusBar()->showMessage),
+    // so the git branch label stays visible to the left of them.
+    //
+    // 0.6.26 — pin the bar to a consistent minimum height. User report:
+    // status bar's height jumped when the transient "Add to allowlist"
+    // button appeared (tall, inherits global QPushButton padding) and
+    // shrank when it disappeared, leaving only label-height widgets.
+    // QStatusBar's size hint is max(child size hints); without a floor,
+    // it follows the tallest child. Pinning a floor that covers the
+    // default button height keeps the bar visually stable as children
+    // come and go. Value chosen to match global QPushButton: text height
+    // (~14px at the app font) + padding 6px·2 + border 1px·2 ≈ 28–30px,
+    // plus a small QStatusBar internal margin → 32px is comfortable.
+    statusBar()->setMinimumHeight(32);
+
+    // Status-bar layout rule (user feedback 2026-04-18): the git branch,
+    // process name, Claude status, and transient buttons are FIXED-width —
+    // their sizeHint is their natural width, QSizePolicy::Fixed prevents
+    // QStatusBar's internal QBoxLayout from squeezing them. The ONLY
+    // elastic widget is m_statusMessage (stretch=1, ElideMiddle); when
+    // the bar runs out of space it is the notification that gets
+    // truncated with "…", never the informational chips. Past
+    // regressions where the branch label rendered as "…" were all
+    // traced to ElidedLabel + stylesheet padding miscalculation under
+    // layout pressure; plain QLabel + Fixed sizePolicy sidesteps the
+    // entire class of bug.
+    m_statusGitBranch = new QLabel(this);
+    m_statusGitBranch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_statusGitBranch->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    // 0.7.54 (2026-04-27 indie-review) — accessible name for screen
+    // readers. Powerline glyph in front of the branch name reads as
+    // an unrecognised codepoint; the accessible name overrides that
+    // with semantic text. Description updates dynamically via
+    // updateStatusBar when the branch changes.
+    m_statusGitBranch->setAccessibleName(tr("Git branch"));
+    statusBar()->addWidget(m_statusGitBranch);
+
+    // 0.7.49 — Repo visibility badge. Public/Private chip for the
+    // active tab's GitHub repo. Was on the right (addPermanentWidget,
+    // 0.7.45) but the user asked 2026-04-27 for it next to the branch
+    // — repo provenance reads as "branch · visibility" naturally, and
+    // the right side is busy with Claude Code chrome. Same sizePolicy
+    // contract as the branch label: Fixed so it's never squeezed.
+    // Hidden when the cwd isn't a GitHub-backed repo, when `gh` is
+    // missing, or when authentication / network fails. Theme-coloured
+    // and chip-styled in refreshRepoVisibility(); the foreground colour
+    // (green ansi[2] for public, red ansi[3] for private) is preserved
+    // from 0.7.45 — only the chip frame is new.
+    m_repoVisibilityLabel = new QLabel(this);
+    m_repoVisibilityLabel->setObjectName(QStringLiteral("repoVisibilityLabel"));
+    m_repoVisibilityLabel->setSizePolicy(QSizePolicy::Fixed,
+                                         QSizePolicy::Preferred);
+    m_repoVisibilityLabel->setAccessibleName(tr("GitHub repository visibility"));
+    m_repoVisibilityLabel->hide();
+    statusBar()->addWidget(m_repoVisibilityLabel);
+    statusinfo::attach(m_repoVisibilityLabel, tr("Repository"));   // ANTS-5759
+
+    // ANTS-5223 — red chip while broadcast input is on, so a mode that copies
+    // typing into other panes is never invisible. refreshBroadcastChip()
+    // styles and shows it.
+    m_broadcastChip = new QLabel(tr("Broadcast"), this);
+    m_broadcastChip->setObjectName(QStringLiteral("broadcastChip"));
+    m_broadcastChip->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_broadcastChip->setAccessibleName(tr("Broadcast input is on"));
+    m_broadcastChip->setToolTip(
+        tr("Typing is copied to every pane in this tab. "
+           "Turn it off under Settings → Broadcast Input."));
+    m_broadcastChip->hide();
+    statusBar()->addWidget(m_broadcastChip);
+    statusinfo::attach(m_broadcastChip, tr("Broadcast"));   // ANTS-5759
+
+    // 0.6.26 — the "chip" styling on the branch label (rounded bg + border)
+    // blends into the status bar background on low-contrast themes (Gruvbox
+    // especially). A hard QFrame::VLine between the branch label and the
+    // transient-status slot gives a deterministic divider that survives
+    // every theme. Cheap widget, painted from the theme's border color via
+    // the global QFrame stylesheet / palette.
+    m_statusGitSep = new QFrame(this);
+    m_statusGitSep->setFrameShape(QFrame::VLine);
+    m_statusGitSep->setFrameShadow(QFrame::Plain);
+    m_statusGitSep->setFixedWidth(1);
+    m_statusGitSep->setContentsMargins(0, 4, 0, 4);
+    m_statusGitSep->hide();  // shown whenever the branch label is shown
+    statusBar()->addWidget(m_statusGitSep);
+
+    {
+        // Middle slot (stretch=1) — elide-middle keeps both the leading
+        // label ("Claude permission:") and the trailing detail visible
+        // when the combined string overflows available width.
+        auto *lbl = new ElidedLabel(this);
+        lbl->setElideMode(Qt::ElideMiddle);
+        m_statusMessage = lbl;
+    }
+    m_statusMessage->setAccessibleName(tr("Status notification"));
+    statusinfo::attach(m_statusMessage, tr("Status message"));   // ANTS-5759
+    statusBar()->addWidget(m_statusMessage, 1);
+
+    m_statusProcess = new QLabel(this);
+    m_statusProcess->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_statusProcess->setAccessibleName(tr("Foreground process"));
+    statusBar()->addWidget(m_statusProcess);
+
+    // Status update timer (every 2 seconds). updateStatusBar() walks the
+    // terminal's cwd for .git/HEAD (for the branch label) and the
+    // /proc/PID/comm (for the foreground-process label). refreshReviewButton()
+    // spawns a non-blocking `git status --porcelain=v1 -b` — both cheap, both
+    // async. Coupling both to the same tick ensures the Review Changes
+    // button reflects git state changes the user made outside of Claude's
+    // hooks (manual `git add`, edits from another editor, etc.) without
+    // waiting for a tab-switch. Previously refreshReviewButton was tied
+    // only to tab-switch + hook fileChanged, which left the button hidden
+    // on boot in a dirty repo and during hookless workflows.
+    m_statusTimer = new QTimer(this);
+    // ANTS-1219-INV-2: 2 s cadence is the upper bound on how long a
+    // resolver-result swap can go un-propagated to the task-list
+    // tracker. Any change here re-shapes the chip's freshness
+    // contract — adjust the spec INV alongside.
+    m_statusTimer->setInterval(2000);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateStatusBar);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateTabTitles);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshReviewButton);
+    // ANTS-1160 P2 (0.7.78) — RoadMap button + GitHub repo-type
+    // badge both read shellCwd(), which depends on shellPid().
+    // The first onTabChanged(0) fires from newTab()'s setCurrentIndex
+    // BEFORE startShell() sets the PID, so shellCwd() returns empty
+    // and the widget hides on the first tick. Wire to the 2-second
+    // status timer so a stale-hidden state is recovered within 2 s
+    // of any cwd change. Same fix shape as refreshBgTasksButton,
+    // which the same timer drives. Spec: docs/specs/
+    // ANTS-1160-roadmap-dialog-redesign-format-spec.md §9. Test: tests/features/roadmap_status_bar_refresh/.
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRoadmapButton);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRepoVisibility);
+    // 0.7.49 — also drive the background-tasks button refresh on the
+    // status tick. Without this the liveness-sweep (mtime check on
+    // /tmp/.../<id>.output) never re-runs while the transcript is
+    // silent, leaving a phantom "Background Tasks (12)" chip when
+    // every task has actually finished. User report 2026-04-27.
+    connect(m_statusTimer, &QTimer::timeout, m_claudeStatusBarController, &ClaudeStatusBarController::refreshBgTasksButton);
+    // ANTS-5620 — unread-mail chip; re-queries only when the cwd or the
+    // store's files changed, so the tick is a few stat() calls otherwise.
+    connect(m_statusTimer, &QTimer::timeout, m_claudeStatusBarController,
+            &ClaudeStatusBarController::refreshMailChip);
+    // ANTS-1158 — task-list chip ticks alongside bg-tasks. Same 2 s
+    // cadence; cheap (one parseTranscript per fire on a 16 MiB-capped
+    // file) but only meaningful when the focused tab has a Claude
+    // session. The refresh function self-gates on transcript
+    // presence.
+    // ANTS-1219-INV-2: status-timer → refreshTasksButton connect.
+    // Pairs with the 2 s setInterval above to bound resolver-swap
+    // propagation latency.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::refreshTasksButton);
+    // ANTS-1226 — model recommender chip, same 2 s cadence.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::refreshModelChip);
+    // ANTS-1888 — passive per-tab model + thinking-level chip, same tick.
+    // mtime short-circuit inside the method makes the per-tick cost zero
+    // when the focused tab's transcript hasn't changed.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::refreshModelStateChip);
+    // ANTS-1735 §2.3 — autonomous switcher gate runs on the same tick.
+    // Default-off via Config::claudeAutoModel().switch_enabled (INV-14);
+    // the method short-circuits when disabled, so the cost is one
+    // config read + early return.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::refreshAutoModelSwitch);
+    // ANTS-1951 — auto-confirm a user-typed /model "Switch model?" dialog on
+    // the same tick, independently of the auto-switch master toggle. Gated by
+    // claude.auto_model_confirm_user_switch (default on); cheap early return
+    // when no dialog is visible.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch);
+    // ANTS-1735 §2.5 — outcome fill-in tick. Same 2 s timer, but the
+    // method internally throttles to once per 30 s and bails fast when
+    // the ledger is empty or has no pending records.
+    // ANTS-1890 — qOverload<> disambiguates the no-arg production
+    // overload from the path-injecting test overload added for INV-7.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            qOverload<>(&ClaudeStatusBarController::fillPendingLedgerOutcomes));
+    // ANTS-1735 §8 OQ-3 — first-run nudge. Controller fires this at most
+    // once per process when Claude Code is running in the focused tab,
+    // the switch is still default-off, and the persistent
+    // claude.auto_model_nudge_shown flag is false. We show a one-shot
+    // QMessageBox; either answer persists the flag so no future session
+    // re-prompts.
+    connect(m_claudeStatusBarController,
+            &ClaudeStatusBarController::firstRunNudgeRequested,
+            this, &MainWindow::showClaudeAutoModelNudge);
+    m_statusTimer->start();
+
+    // Populate the status bar immediately so the user sees correct state
+    // on boot instead of waiting 2 s for the first timer tick. onTabChanged
+    // fires during initial addTab() above but *before* the status widgets
+    // here were created, so those updates were no-ops (guarded against
+    // null m_statusGitBranch). This is the first call after the widgets
+    // exist.
+    QTimer::singleShot(0, this, [this]() {
+        updateStatusBar();
+        refreshReviewButton();
+        // ANTS-1160 P2 — first refresh AFTER startShell() has had
+        // a turn of the event loop and shellPid() is set. Without
+        // this both widgets stay hidden until the user manually
+        // switches tabs (v0.7.77 regression).
+        refreshRoadmapButton();
+        refreshRepoVisibility();
+    });
+}
+
 
 // ANTS-1146 — formerly setupClaudeIntegration. Constructs
 // ClaudeIntegration + ClaudeTabTracker (services owned by
