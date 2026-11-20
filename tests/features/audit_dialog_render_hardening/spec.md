@@ -27,8 +27,9 @@ Two indie-review #6 findings in the AuditDialog AI-triage / results-render path.
 - **INV-3** (ANTS-2108, superseded by ANTS-2121) The egress guard is present on
   **both** AI-triage POST paths — single-finding and batch. Because neither
   routes through `LlmClient::send`, the chokepoint backstop added there does not
-  cover them; each calls `LlmClient::endpointEgressError(...)` independently (and
-  sets `ManualRedirectPolicy`). ANTS-2121 replaced the former per-path inline
+  cover them. Both post only through `AuditDialog::postTriageRequest`
+  (ANTS-6174), which calls `LlmClient::endpointEgressError(...)` and sets
+  `ManualRedirectPolicy`. ANTS-2121 replaced the former per-path inline
   cleartext check with this shared validator. (Pre-2108 only the single-finding
   path was guarded.)
 - **INV-2** (ANTS-1830) The verdict-badge `title` attribute that interpolates

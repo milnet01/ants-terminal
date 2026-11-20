@@ -69,8 +69,13 @@ TEST(AuditScopeAndTriage, BatchTriageIsBounded) {
     ASSERT_FALSE(batch.isEmpty()) << "requestAiTriageBatch not found";
     EXPECT_FALSE(batch.contains(QStringLiteral("auto *mgr = new QNetworkAccessManager")))
         << "each batch builds its own network manager";
-    EXPECT_TRUE(batch.contains(QStringLiteral("m_triageNam->post(")));
+    EXPECT_TRUE(batch.contains(QStringLiteral("postTriageRequest(")));
     EXPECT_FALSE(batch.contains(QStringLiteral("renderResults()")));
+    // ANTS-6174 — the one triage POST builder uses the shared manager.
+    const QString builder = functionBody(src,
+        QStringLiteral("QNetworkReply *AuditDialog::postTriageRequest("));
+    ASSERT_FALSE(builder.isEmpty()) << "postTriageRequest not found";
+    EXPECT_TRUE(builder.contains(QStringLiteral("m_triageNam->post(")));
 }
 
 // INV-5
@@ -82,7 +87,12 @@ TEST(AuditScopeAndTriage, TriageRepliesAreCapped) {
         QStringLiteral("void AuditDialog::requestAiTriageBatch("));
     ASSERT_FALSE(single.isEmpty());
     ASSERT_FALSE(batch.isEmpty());
-    EXPECT_TRUE(single.contains(QStringLiteral("capTriageReply(reply)")));
-    EXPECT_TRUE(batch.contains(QStringLiteral("capTriageReply(reply)")));
+    // ANTS-6174 — both paths post through the one builder, which caps.
+    const QString builder = functionBody(src,
+        QStringLiteral("QNetworkReply *AuditDialog::postTriageRequest("));
+    ASSERT_FALSE(builder.isEmpty());
+    EXPECT_TRUE(single.contains(QStringLiteral("postTriageRequest(")));
+    EXPECT_TRUE(batch.contains(QStringLiteral("postTriageRequest(")));
+    EXPECT_TRUE(builder.contains(QStringLiteral("capTriageReply(reply)")));
     EXPECT_TRUE(src.contains(QStringLiteral("received > LlmClient::kMaxBytes")));
 }

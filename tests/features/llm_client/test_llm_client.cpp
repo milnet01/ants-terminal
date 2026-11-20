@@ -406,28 +406,23 @@ TEST(LlmClient, Ants2121_EndpointEgressError) {
         .contains(QStringLiteral("credential"), Qt::CaseInsensitive));
 }
 
-// ANTS-2121 INV-8 (wiring) — the AuditDialog AI-triage POSTs build a raw
-// QNetworkAccessManager rather than routing through LlmClient::send, so they
-// must call endpointEgressError AND set ManualRedirectPolicy to enforce the
-// same egress policy. Source-grep guard against a regression that reintroduces
-// the partial scheme+cleartext-only check this path used to duplicate.
+// ANTS-2121 INV-8 (wiring), ANTS-6174 — the AuditDialog AI-triage POSTs use a
+// raw QNetworkAccessManager rather than LlmClient::send, so their one builder,
+// AuditDialog::postTriageRequest, must call endpointEgressError AND set
+// ManualRedirectPolicy. AuditDialogRenderHardening INV-3 checks that both
+// triage paths post through it. Comments are stripped, so a comment naming
+// either guard cannot stand in for it.
 TEST(LlmClient, Ants2121_AuditTriageRoutesThroughEgressValidator) {
     const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty()) << "could not read the AuditDialog sources";
-    // Both triage POSTs (single + batch) call the shared validator.
-    const std::string needle = "LlmClient::endpointEgressError";
-    const size_t first = src.find(needle);
-    ASSERT_NE(first, std::string::npos)
-        << "audit triage must call endpointEgressError";
-    EXPECT_NE(src.find(needle, first + needle.size()), std::string::npos)
-        << "both requestAiTriage and requestAiTriageBatch must call it";
-    // ...and both refuse redirects (the guard endpointEgressError can't carry).
-    const std::string mrp = "ManualRedirectPolicy";
-    const size_t firstMrp = src.find(mrp);
-    ASSERT_NE(firstMrp, std::string::npos)
-        << "audit triage must set ManualRedirectPolicy";
-    EXPECT_NE(src.find(mrp, firstMrp + mrp.size()), std::string::npos)
-        << "both triage POSTs must set ManualRedirectPolicy";
+    const std::string builder = ants_test::stripComments(ants_test::slurpFunctionBody(
+        src, "QNetworkReply *AuditDialog::postTriageRequest("));
+    ASSERT_FALSE(builder.empty()) << "the one AI-triage POST builder is missing";
+    EXPECT_NE(builder.find("LlmClient::endpointEgressError("), std::string::npos)
+        << "the triage builder must run the shared egress validator";
+    // The guard endpointEgressError cannot carry: refuse redirects.
+    EXPECT_NE(builder.find("ManualRedirectPolicy"), std::string::npos)
+        << "the triage builder must set ManualRedirectPolicy";
 }
 
 // ANTS-5010 — INV-21: plaintextPromptWarning is a table over the endpoint /

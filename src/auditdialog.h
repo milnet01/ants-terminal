@@ -30,6 +30,9 @@ class ToggleSwitch;
 class QTabWidget;
 class LlmClient;
 class QNetworkAccessManager;
+class QNetworkReply;
+class QJsonObject;
+class QUrl;
 
 class AuditDialog : public QDialog {
     Q_OBJECT
@@ -544,6 +547,12 @@ private:
     // the caller slices above that cap. Uses the same endpoint / model
     // / auth as the single-finding path.
     void requestAiTriageBatch(const QStringList &dedupKeys);
+    // ANTS-6174 — the one AI-triage POST, for both paths above. Returns
+    // nullptr, with the reason on the status line, when the endpoint fails
+    // the egress check.
+    QNetworkReply *postTriageRequest(const QUrl &endpointUrl,
+                                     const QString &apiKey,
+                                     const QJsonObject &body, int timeoutMs);
     // ANTS-5084 — sends queued batches while fewer than a fixed number are
     //   in flight, and re-renders once when the last reply lands.
     void pumpTriageBatches();

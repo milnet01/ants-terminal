@@ -107024,7 +107024,7 @@ worked after these.
   Source: review-readability-2026-10-22 L04.
   Lanes: mainwindow.
 
-- 📋 [ANTS-6174] **Fold the AI-triage request setup (endpoint fixup, egress check, headers, redirect policy) into one builder (L07-F2 rest).**
+- ✅ [ANTS-6174] **Fold the AI-triage request setup (endpoint fixup, egress check, headers, redirect policy) into one builder (L07-F2 rest).**
   L07-F2 (HIGH), the request half, queued from ANTS-6116 on
   2026-10-23. The reply half (body build, reply parse, verdict
   whitelist) is shared since then. Still copied in requestAiTriage and
@@ -107042,6 +107042,11 @@ worked after these.
   headers, timeouts and redirect policy are still per path.
   The 2026-11-06 reviews also found this: row 587
   `src/auditdialog_triage.cpp:477`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-20: AuditDialog::postTriageRequest is the one AI-triage
+  POST (egress check, headers, timeout, ManualRedirectPolicy, reply cap);
+  both triage paths call it. Four scrape contracts now read its body
+  (audit_dialog_render_hardening INV-3, llm_client INV-8,
+  audit_scope_and_triage INV-4/5), comments stripped where they counted.
   **Layman:** The two AI-triage paths still each set up their network request by hand; make that one piece of code once the tests allow it.
   Kind: refactor.
   Source: review-readability-2026-10-22 L07.

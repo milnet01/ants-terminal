@@ -52,6 +52,39 @@ static QString triageErrorText(const QNetworkReply *reply) {
         : reply->errorString();
 }
 
+QNetworkReply *AuditDialog::postTriageRequest(const QUrl &endpointUrl,
+                                              const QString &apiKey,
+                                              const QJsonObject &body,
+                                              int timeoutMs) {
+    // ANTS-2121 — this raw-QNAM path enforces LlmClient's FULL egress policy
+    // (scheme, URL userinfo, SSRF host-block, cleartext-remote Bearer, with
+    // loopback exempt so a local dev LLM server still works keyed) via the
+    // shared validator, mirroring send().
+    const QString egressErr =
+        LlmClient::endpointEgressError(endpointUrl.toString(), apiKey);
+    if (!egressErr.isEmpty()) {
+        if (m_statusLabel)
+            m_statusLabel->setFullText("AI triage: " + egressErr);
+        return nullptr;
+    }
+
+    QNetworkRequest req(endpointUrl);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!apiKey.isEmpty())
+        req.setRawHeader("Authorization", ("Bearer " + apiKey).toUtf8());
+    req.setTransferTimeout(timeoutMs);
+    // ANTS-1798/2121 — refuse redirects so a hostile 3xx can't bounce the POST
+    // (and Bearer key) into a metadata host the SSRF guard never re-validates.
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                     QNetworkRequest::ManualRedirectPolicy);
+
+    if (!m_triageNam) m_triageNam = new QNetworkAccessManager(this);
+    QNetworkReply *reply =
+        m_triageNam->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    capTriageReply(reply);
+    return reply;
+}
+
 // Both triage paths' POST body. `user` must already be scrubbed.
 static QJsonObject triageRequestBody(const QString &model, const QString &sys,
                                      const QString &user) {
@@ -168,7 +201,7 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
     // LlmClient::buildRequestBody, which scrubs its prompts. The snippet
     // above is verbatim project source, and for a secrets_scan or gitleaks
     // finding that snippet IS the credential. endpointEgressError, checked
-    // above, validates the DESTINATION rather than the body, and the
+    // in postTriageRequest, validates the DESTINATION rather than the body, and the
     // 0.6.22 fence hardening is prompt-injection defence, not a scrub.
     //
     // `sys` is a compile-time literal, so only the user message is scrubbed.
@@ -177,33 +210,9 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
     const QJsonObject body = triageRequestBody(model, sys, scrubbedUser.text);
 
     const QUrl endpointUrl = LlmClient::chatCompletionsUrl(endpoint);
-    // ANTS-2121 — enforce the FULL LlmClient egress policy (scheme, URL
-    // userinfo, SSRF host-block, cleartext-remote Bearer) via the shared
-    // validator instead of the partial scheme+cleartext check this raw-QNAM
-    // path used to duplicate. Mirror send(); the ManualRedirectPolicy below
-    // completes the parity by closing the redirect-into-metadata hole.
-    const QString egressErr =
-        LlmClient::endpointEgressError(endpointUrl.toString(), apiKey);
-    if (!egressErr.isEmpty()) {
-        if (m_statusLabel)
-            m_statusLabel->setFullText("AI triage: " + egressErr);
-        return;
-    }
-
-    QNetworkRequest req(endpointUrl);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    if (!apiKey.isEmpty())
-        req.setRawHeader("Authorization", ("Bearer " + apiKey).toUtf8());
-    req.setTransferTimeout(30000);
-    // ANTS-1798/2121 — refuse redirects so a hostile 3xx can't bounce the POST
-    // (and Bearer key) into a metadata host the SSRF guard never re-validates.
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                     QNetworkRequest::ManualRedirectPolicy);
-
-    if (!m_triageNam) m_triageNam = new QNetworkAccessManager(this);
     QNetworkReply *reply =
-        m_triageNam->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    capTriageReply(reply);
+        postTriageRequest(endpointUrl, apiKey, body, /*timeoutMs=*/30000);
+    if (!reply) return;
     // ANTS-4448 — say when the prompt was scrubbed. A silent redaction
     // changes what the model was shown, so a verdict that looks wrong would
     // otherwise have no visible cause.
@@ -452,37 +461,11 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
 
     const QJsonObject body = triageRequestBody(model, sys, scrubbedUser.text);
 
-    const QUrl endpointUrl = LlmClient::chatCompletionsUrl(endpoint);
-    // ANTS-2108/2121 — the batch path uses a raw QNetworkAccessManager (not
-    // LlmClient::send), so it enforces the SAME egress policy via the shared
-    // validator: scheme, URL userinfo, SSRF host-block, and cleartext-remote
-    // Bearer (loopback exempt so a local dev LLM server still works keyed).
-    // Was a scheme+cleartext-only subset; the ManualRedirectPolicy below
-    // completes send()'s guard set.
-    const QString egressErr =
-        LlmClient::endpointEgressError(endpointUrl.toString(), apiKey);
-    if (!egressErr.isEmpty()) {
-        if (m_statusLabel)
-            m_statusLabel->setFullText("AI triage: " + egressErr);
-        return;
-    }
-
-    QNetworkRequest req(endpointUrl);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    if (!apiKey.isEmpty())
-        req.setRawHeader("Authorization", ("Bearer " + apiKey).toUtf8());
-    // Batch requests can legitimately take longer than the single-finding
-    // path — 60s cap instead of 30s.
-    req.setTransferTimeout(60000);
-    // ANTS-1798/2121 — refuse redirects so a hostile 3xx can't bounce the POST
-    // (and Bearer key) into a metadata host the SSRF guard never re-validates.
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                     QNetworkRequest::ManualRedirectPolicy);
-
-    if (!m_triageNam) m_triageNam = new QNetworkAccessManager(this);
-    QNetworkReply *reply = m_triageNam->post(req,
-        QJsonDocument(body).toJson(QJsonDocument::Compact));
-    capTriageReply(reply);
+    // A batch can legitimately take longer than one finding: 60 s, not 30 s.
+    QNetworkReply *reply = postTriageRequest(
+        LlmClient::chatCompletionsUrl(endpoint), apiKey, body,
+        /*timeoutMs=*/60000);
+    if (!reply) return;
     ++m_triageBatchesInFlight;  // released by the finished handler's guard
 
     const int batchSize = batch.size();

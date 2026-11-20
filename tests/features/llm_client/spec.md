@@ -50,7 +50,9 @@ without a live network.
   `send()` calls it (preserving its verbatim `AI endpoint rejected — …`
   messages), and the AuditDialog AI-triage POSTs (`requestAiTriage` +
   `requestAiTriageBatch`) — which build a raw `QNetworkAccessManager` instead of
-  routing through `send()` — call it too and additionally set
+  routing through `send()` — post through one builder,
+  `AuditDialog::postTriageRequest` (ANTS-6174), which calls it too and
+  additionally sets
   `QNetworkRequest::ManualRedirectPolicy` (ANTS-1798), so both channels enforce
   the identical policy. A source-grep guard locks the auditdialog wiring against
   regressing to the former scheme+cleartext-only subset.

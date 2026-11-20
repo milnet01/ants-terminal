@@ -21,11 +21,13 @@ prefixes the status line with the reason.
 **INV-4 — batch triage is bounded.** The dispatch loop appends to
 `m_triageBatchQueue`; `pumpTriageBatches` sends while fewer than
 `kMaxTriageInFlight` are in flight. `requestAiTriageBatch` creates no
-`QNetworkAccessManager` of its own and does not re-render the list itself.
+`QNetworkAccessManager` of its own and does not re-render the list itself;
+it posts through `postTriageRequest`, which uses the shared `m_triageNam`.
 
 **INV-5 — triage replies are capped.** Both `requestAiTriage` and
-`requestAiTriageBatch` call `capTriageReply(reply)`, which aborts a reply
-past `LlmClient::kMaxBytes`.
+`requestAiTriageBatch` post through `postTriageRequest` (ANTS-6174), which
+calls `capTriageReply(reply)`; that aborts a reply past
+`LlmClient::kMaxBytes`.
 
 ## Rationale
 
