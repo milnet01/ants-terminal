@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6845 -->
+<!-- ants-roadmap-id-high-water: ANTS=6848 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -107212,7 +107212,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L03-F9).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6184] **Split the MainWindow constructor: setupPlugins() and setupStatusWidgets(), called in a documented order.**
+- ✅ [ANTS-6184] **Split the MainWindow constructor: setupPlugins() and setupStatusWidgets(), called in a documented order.**
   From ANTS-6113 (L04 MEDIUM F14). The ctor builds half the status bar
   inline and setupStatusBarChrome builds the rest, with a ~160-line
   plugin bootstrap and an inline permission dialog between them. A
@@ -107224,6 +107224,10 @@ worked after these.
   Hot reload: none needed; a refactor with no new running state.
   The 2026-11-06 reviews also found this: row 535
   `src/mainwindow.cpp:970`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 8871e058 (carve, motion-checked) + 4c82f9e7 (start-up order
+  comment; palette comment corrected). Found on the way: ANTS-6846
+  (plugin signals lost during a permission prompt), ANTS-6847
+  (split-motion-check markers).
   **Layman:** The window's start-up code is one very long function; splitting it shows a newcomer where each part goes and which order matters.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L04-F14).
@@ -108788,6 +108792,58 @@ worked after these.
   **Layman:** A test's description lists five places that may set a tab's title; the code now has only one, so the description misleads.
   Kind: doc-fix.
   Source: in-session-2026-11-20 (session 302 handoff).
+
+- 📋 [ANTS-6846] **Connect MainWindow's plugin slots before scanAndLoad(), so a permission prompt at start-up cannot drop another plugin's palette entries or status text.**
+  MainWindow::setupPlugins() calls m_pluginManager->scanAndLoad() and only
+  then connects paletteEntryRegistered, statusMessage, sendToTerminal and
+  the rest. That is normally safe: engine signals reach the GUI thread as
+  queued calls, after the constructor. But PluginManager::loadPlugin()
+  runs the permission prompt (QDialog::exec) inside scanAndLoad(), and its
+  nested event loop delivers an earlier plugin's queued uiUpdatesPending.
+  PluginManager::wireEngine's handler swaps the entries out of the box and
+  re-emits them with no receiver connected, so they are lost for good.
+  The same prompt on a hot reload lets an earlier plugin's fresh entries
+  land before scanAndLoad() emits pluginsReloaded, whose handler then
+  clears them. Connecting first does not fix that half: the clear needs
+  to run before any init.lua is queued.
+  Fix shape: make every connect, then scanAndLoad(); the pluginsReloaded
+  connect then registers keybindings, so drop the explicit call.
+  Proof needs a nested event loop inside scanAndLoad (a test seam on the
+  prompt), which is why it was not fixed inside the ANTS-6184 refactor.
+  Hot reload: none needed; a fix.
+  **Layman:** If a plugin asks for permissions the first time the terminal starts, another plugin's menu entries or status text can silently go missing.
+  Kind: fix.
+  Source: ants-terminal-session-2026-11-20 (found in ANTS-6184).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6847] **tools/split-motion-check.py reports mainwindow piece-marker failures at HEAD: mainwindow_tablist.cpp has no marker and the others say n/8 where the list has 9.**
+  Seen running `split-motion-check.py --pre HEAD~2 --post HEAD~1 --stem
+  mainwindow` (parent of ANTS-6184): eight marker FAIL lines before any
+  ANTS-6184 change. ANTS_MAINWINDOW_SOURCES_REL gained
+  src/mainwindow_tablist.cpp (ANTS-5645) and src/mainwindow_repo.cpp
+  without the ANTS-1677 INV-7 ordinal markers being renumbered. Decide
+  whether a feature file added to the list is a 'piece' (renumber every
+  marker) or the checker should skip files that are not cuts.
+  Hot reload: none needed; a tool fix.
+  **Layman:** A checker that proves code was only moved, not changed, fails on files added later without its numbering line, so every future move check starts red.
+  Kind: fix.
+  Source: ants-terminal-session-2026-11-20 (found in ANTS-6184).
+  Lanes: tools.
+
+- 📋 [ANTS-6848] **The status bar's message slot shows only "…" on a fresh headless --e2e launch, with room to spare.**
+  Seen in the ANTS-6184 launch check: QT_QPA_PLATFORM=offscreen, --e2e,
+  own XDG dirs, one plugin calling ants.set_status("PLUGIN_STATUS_6184")
+  in init.lua. The grab-image a few seconds after launch shows the branch
+  chip, the separator, then "…" in m_statusMessage (ElidedLabel,
+  ElideMiddle, stretch 1) with several hundred pixels free before the
+  right-hand chips. The pre-change installed binary shows the same, so it
+  predates ANTS-6184. Unknown: which text the label holds, and whether a
+  real (non-offscreen) window does it too. Start with ElidedLabel's elide
+  width when setText runs before the first layout pass.
+  **Layman:** On a freshly started test window, the status message area shows just "…" instead of its text.
+  Kind: investigate.
+  Source: ants-terminal-session-2026-11-20 (found in ANTS-6184).
+  Lanes: statusbar.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
