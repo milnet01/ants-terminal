@@ -246,6 +246,22 @@ const char *const kRcUnavailable = ClaudeIntegration::kMcpRcUnavailable;
 
 MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     : QMainWindow(parent) {
+    // Start-up order. Each step relies on the ones before it:
+    //  1. Window chrome: title bar, menu bar, tabs, the status bar, menus and
+    //     the command palette. OpaqueStatusBar goes in before anything calls
+    //     statusBar(), which would create a plain one.
+    //  2. setupPlugins(): plugin palette entries go into step 1's palette.
+    //  3. Theme, then setupStatusBarChrome(): ClaudeIntegration, the status
+    //     bar's right-hand widgets, and, when they are on, the MCP and hook
+    //     socket paths exported into this process's environment.
+    //  4. newTab() and restoreSessions(): the first shell inherits step 3's
+    //     environment, and newTab() hands its PID to ClaudeIntegration.
+    //  5. setupStatusWidgets(): the status bar's left-hand widgets and the
+    //     2 s timer, which also drives step 3's controller.
+    //  6. Stall detector, focus redirect, quake mode, config watching,
+    //     session cleanup.
+    //  7. RemoteControl last: it must be created after step 3's
+    //     ClaudeIntegration (ANTS-5090, below).
     sweepKwinScriptOrphansOnce();
 
     // Disable QMainWindow's built-in QWidgetAnimator. It exists to
@@ -1390,6 +1406,10 @@ void MainWindow::setupPlugins() {
             return out;
         });
 
+    // The connects below come after this load. Engine signals reach this
+    // window as queued calls, so they normally arrive after the constructor;
+    // a permission prompt's exec() inside the load can deliver them early,
+    // with nothing connected yet (ANTS-6846).
     m_pluginManager->scanAndLoad(m_config.enabledPlugins());
 
     // Manifest v2: register plugin keybindings. Rescan on pluginsReloaded so
@@ -1470,17 +1490,16 @@ void MainWindow::setupPlugins() {
                 error = m_config.setPluginSetting(pluginName, key, value);
             });
     // 0.6.9 — palette entries from ants.palette.register({...}). Each call
-    // appends one entry and rebuilds the Ctrl+Shift+P list. Hot reload
-    // discards all entries first (via pluginsReloaded below) so stale
-    // entries from removed plugins don't survive across reloads.
+    // appends one entry and rebuilds the Ctrl+Shift+P list.
     connect(m_pluginManager, &PluginManager::paletteEntryRegistered, this,
             &MainWindow::onPluginPaletteRegistered);
-    // Drop all plugin palette entries on a full reload — init.lua re-runs
-    // and re-registers anything that should still be there. Without this
-    // each reload would double-register every entry.
+    // Drop every plugin palette entry on a reload, or each reload would
+    // register every entry twice. scanAndLoad() emits pluginsReloaded as it
+    // returns, having only queued each init.lua on its plugin's worker; the
+    // entries those scripts register arrive later as queued calls, so this
+    // clear runs first, unless a permission prompt inside the load ran the
+    // event loop early (ANTS-6846).
     connect(m_pluginManager, &PluginManager::pluginsReloaded, this, [this]() {
-        // Tear down all plugin entries; they'll be re-added by re-running
-        // init.lua during scanAndLoad.
         for (const auto &e : m_pluginPaletteEntries) e.release();
         m_pluginPaletteEntries.clear();
         rebuildCommandPalette();
@@ -1689,10 +1708,9 @@ void MainWindow::setupStatusWidgets() {
 
     // Populate the status bar immediately so the user sees correct state
     // on boot instead of waiting 2 s for the first timer tick. onTabChanged
-    // fires during initial addTab() above but *before* the status widgets
-    // here were created, so those updates were no-ops (guarded against
-    // null m_statusGitBranch). This is the first call after the widgets
-    // exist.
+    // fires during the constructor's first newTab(), before these widgets
+    // exist, so those updates were no-ops (guarded against null
+    // m_statusGitBranch). This is the first call after the widgets exist.
     QTimer::singleShot(0, this, [this]() {
         updateStatusBar();
         refreshReviewButton();
