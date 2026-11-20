@@ -29,6 +29,7 @@
 #include <sys/types.h>
 
 class QLabel;
+class QPainter;
 class QHBoxLayout;
 class QPushButton;
 class QPlainTextEdit;
@@ -971,6 +972,42 @@ private:
     // probe. Same reuse pattern as m_paintRuns: cleared per row, capacity
     // retained. Each pair is a half-open [startCol, endCol) match range.
     mutable std::vector<std::pair<int,int>> m_paintSearchSpans;
+
+    // ANTS-6179 — paintEvent's split. PaintFrame holds the values computed
+    // once per frame; paintRow draws one view row; each paint* overlay
+    // helper returns at once when its overlay is off.
+    struct PaintFrame {
+        int rows = 0;
+        int cols = 0;
+        int scrollbackSize = 0;
+        int viewStart = 0;          // global line shown on view row 0
+        QColor defaultBg;
+        int effectiveAlpha = 255;   // terminal-area alpha from the Opacity setting
+        BracketPair bracket{-1, -1, -1, -1};
+        bool hasSelection = false;
+        OrderedSelection selection;
+    };
+    const std::vector<PaintHighlightSpan> &highlightSpansForLine(int globalLine) const;
+    void paintBackgroundImage(QPainter &p) const;
+    void paintBadge(QPainter &p) const;
+    void paintRow(QPainter &p, const PaintFrame &f, int vr);
+    void paintCellDecorations(QPainter &p, const Cell &c, const QColor &fg,
+                              int px_x, int px_y, bool isHoveredUrl) const;
+    void drawTextRuns(QPainter &p, int px_y);
+    void paintBookmarkMarkers(QPainter &p, const PaintFrame &f) const;
+    void paintPromptChrome(QPainter &p, const PaintFrame &f) const;
+    void paintFoldIndicator(QPainter &p, const PromptRegion &pr,
+                            int regionIndex, int py) const;
+    void paintInlineImages(QPainter &p, const PaintFrame &f) const;
+    void paintCursor(QPainter &p, const PaintFrame &f) const;
+    void paintSuggestionGhost(QPainter &p, const PaintFrame &f) const;
+    void paintPreedit(QPainter &p) const;
+    void paintNewOutputMarker(QPainter &p, const PaintFrame &f) const;
+    void paintQuickSelect(QPainter &p, const PaintFrame &f) const;
+    void paintStickyHeader(QPainter &p, const PaintFrame &f) const;
+    void paintPerfOverlay(QPainter &p, const PaintFrame &f);
+    void paintCommandMarkGutter(QPainter &p, const PaintFrame &f) const;
+    void paintProgressStrip(QPainter &p) const;
 
     // Trigger rules
     std::vector<TriggerRule> m_triggerRules;

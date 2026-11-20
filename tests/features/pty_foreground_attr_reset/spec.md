@@ -36,7 +36,7 @@ happens to emit SGR 0 or 22.
 
 Measured: the user's Kanagawa `textPrimary` `#DCD7BA` (220,215,186)
 rendered as (147,143,124) — exactly `darker(150)`, the dim path in
-`TerminalWidget::paintEvent`. Reproduced in a throwaway `--e2e`
+`TerminalWidget::paintRow`. Reproduced in a throwaway `--e2e`
 instance: plain text after an unterminated `ESC[2m` lands on
 (147,143,124) with channel coverage 1.00/1.00/1.00, against
 (220,215,186) for the control line before it.

@@ -107185,7 +107185,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L03-F7).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6179] **Split TerminalWidget::paintEvent into a per-row painter and one helper per overlay.**
+- ✅ [ANTS-6179] **Split TerminalWidget::paintEvent into a per-row painter and one helper per overlay.**
   From ANTS-6112 (L03 MEDIUM F9). paintEvent's column loop does three
   jobs (bg runs, text runs, underline/strike) with a `continue` on
   wide-char continuation cells between the first two, so per-cell work
@@ -107199,6 +107199,14 @@ worked after these.
   Hot reload: none needed; a refactor with no new running state.
   The 2026-11-06 reviews also found this: row 510
   `src/terminalwidget.cpp:1109`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-20. paintEvent sets up a PaintFrame, calls paintRow
+  per damaged row, then one paint* helper per overlay; each helper
+  returns at once when its overlay is off. The wide-char `continue` in
+  paintRow now says why per-cell work above it reaches the continuation
+  cell and work below does not; underline and strikethrough moved to
+  paintCellDecorations, the text-run draw to drawTextRuns, the highlight
+  lookup to highlightSpansForLine. A 20-state pixel render of the real
+  widget is byte-identical before and after.
   **Layman:** The function that draws the terminal is about a thousand lines long; splitting it lets a newcomer change one part without breaking another.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L03-F9).

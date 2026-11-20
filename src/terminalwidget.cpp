@@ -958,9 +958,10 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     QPainter p(this);
     p.setFont(m_font);
 
-    const int rows = m_grid->rows();
-    const int cols = m_grid->cols();
-    const QColor defaultBg = m_grid->defaultBg();
+    PaintFrame f;
+    f.rows = m_grid->rows();
+    f.cols = m_grid->cols();
+    f.defaultBg = m_grid->defaultBg();
 
     // Per-pixel alpha for terminal background transparency (driven by Opacity setting).
     // CompositionMode_Source REPLACES the destination pixel rather than blending,
@@ -974,10 +975,10 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     // reuses its FBO across frames"; that hasn't been true since 0.7.44 (GL
     // path retired). Updated to describe the current QWidget backing-store +
     // translucent-compositor reasoning.
-    QColor bgFill = defaultBg;
-    int effectiveAlpha = static_cast<int>(255 * m_windowOpacity);
-    if (effectiveAlpha < 255)
-        bgFill.setAlpha(effectiveAlpha);
+    QColor bgFill = f.defaultBg;
+    f.effectiveAlpha = static_cast<int>(255 * m_windowOpacity);
+    if (f.effectiveAlpha < 255)
+        bgFill.setAlpha(f.effectiveAlpha);
     // ANTS-3454 — honour the damage rect. blinkCursor (the only partial
     // update(rect) caller) invalidates just the cursor cell; Qt already clips
     // the pixels, but filling the whole widget and shaping every row below is
@@ -989,35 +990,13 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     p.fillRect(damage, bgFill);
     p.setCompositionMode(QPainter::CompositionMode_SourceOver);
 
-    // Background image (rendered behind all content)
-    if (!m_backgroundImage.isNull()) {
-        p.setOpacity(0.15); // subtle background
-        // ANTS-5077 — the image was pre-scaled to cover the widget with its
-        // aspect kept (setBackgroundImage); draw its centred widget-sized
-        // part instead of stretching the whole image back onto rect().
-        const QRect bgSrc(QPoint((m_backgroundImage.width() - width()) / 2,
-                                 (m_backgroundImage.height() - height()) / 2),
-                          size());
-        p.drawImage(rect(), m_backgroundImage,
-                    bgSrc.intersected(m_backgroundImage.rect()));
-        p.setOpacity(1.0);
-    }
+    paintBackgroundImage(p);
+    paintBadge(p);
 
-    // Badge watermark (large semi-transparent text in background)
-    if (!m_badgeText.isEmpty()) {
-        p.setFont(m_badgeFont);  // ANTS-1207 — cached in updateFontMetrics
-        QColor badgeColor = m_grid->defaultFg();
-        badgeColor.setAlpha(20);
-        p.setPen(badgeColor);
-        QRect badgeRect = rect().adjusted(0, 0, -20, -20);
-        p.drawText(badgeRect, Qt::AlignBottom | Qt::AlignRight, m_badgeText);
-        p.setFont(m_font);
-    }
+    f.scrollbackSize = m_grid->scrollbackSize();
+    f.viewStart = f.scrollbackSize - m_scrollOffset;
 
-    int scrollbackSize = m_grid->scrollbackSize();
-    int viewStart = scrollbackSize - m_scrollOffset;
-
-    BracketPair bp = (m_scrollOffset == 0) ? findMatchingBracket() : BracketPair{-1,-1,-1,-1};
+    f.bracket = (m_scrollOffset == 0) ? findMatchingBracket() : BracketPair{-1,-1,-1,-1};
     // A scrolled-up paint skips the lookup but still clears m_spanCacheDirty
     // below, so the cached pair cannot tell what changed meanwhile.
     if (m_scrollOffset != 0) m_cachedBracketCursorRow = -1;
@@ -1033,11 +1012,8 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     }
 
     // Order the selection bounds once per frame, not once per cell.
-    const bool hasSel = m_hasSelection;
-    const OrderedSelection sel = orderedSelection();
-    auto cellInSelection = [&](int gl, int col) -> bool {
-        return hasSel && sel.contains(gl, col);
-    };
+    f.hasSelection = m_hasSelection;
+    f.selection = orderedSelection();
 
     // ANTS-3454 — bound the per-row shape+draw to the rows the damage rect
     // touches (see the damage-bounded fill above). Floor-divide the damage
@@ -1045,642 +1021,24 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     // unchanged, so full repaints are untouched. relBot < 0 (damage entirely
     // in the top padding) gives lastRow = -1 and the loop is skipped.
     int firstRow = 0;
-    int lastRow = rows - 1;
+    int lastRow = f.rows - 1;
     if (m_cellHeight > 0) {
         const int relTop = damage.top() - m_padding;
         const int relBot = damage.bottom() - m_padding;
-        firstRow = relTop > 0 ? std::min(rows - 1, relTop / m_cellHeight) : 0;
-        lastRow = relBot >= 0 ? std::min(rows - 1, relBot / m_cellHeight) : -1;
+        firstRow = relTop > 0 ? std::min(f.rows - 1, relTop / m_cellHeight) : 0;
+        lastRow = relBot >= 0 ? std::min(f.rows - 1, relBot / m_cellHeight) : -1;
     }
-    for (int vr = firstRow; vr <= lastRow; ++vr) {
-        int globalLine = viewStart + vr;
-        int px_y = m_padding + vr * m_cellHeight;
+    for (int vr = firstRow; vr <= lastRow; ++vr)
+        paintRow(p, f, vr);
 
-        // URL spans — use cache to avoid per-frame regex matching
-        const auto &urlSpans = urlSpansForLine(globalLine);
-
-        // Highlight spans — use cache to avoid per-frame regex matching.
-        // ANTS-5077 — with no rules there is nothing to match, so no cache
-        // entry is made for the line.
-        static const std::vector<PaintHighlightSpan> kNoHighlightSpans;
-        const std::vector<PaintHighlightSpan> *hlSpansPtr = &kNoHighlightSpans;
-        if (!m_highlightRules.empty()) {
-            auto hlCacheIt = m_hlSpanCache.find(globalLine);
-            if (hlCacheIt == m_hlSpanCache.end()) {
-                std::vector<PaintHighlightSpan> computed;
-                QString lt = lineText(globalLine);
-                std::optional<LineColumns> ltCols;   // offsets → cells, on first match
-                for (const auto &rule : m_highlightRules) {
-                    auto it = rule.pattern.globalMatch(lt);
-                    while (it.hasNext()) {
-                        auto m = it.next();
-                        if (m.capturedLength() <= 0) continue;
-                        if (!ltCols) ltCols = lineColumns(globalLine);
-                        computed.push_back({ltCols->columnAt(m.capturedStart()),
-                                            ltCols->lastColumnBefore(m.capturedEnd()),
-                                            rule.fg, rule.bg});
-                    }
-                }
-                hlCacheIt = m_hlSpanCache.emplace(globalLine, std::move(computed)).first;
-            }
-            hlSpansPtr = &hlCacheIt->second;
-        }
-        const auto &hlSpans = *hlSpansPtr;
-
-        // ANTS-3457 — precompute this row's search-match spans once instead
-        // of a per-cell std::lower_bound (isCellSearchMatch was probed for
-        // every painted cell). Mirrors the urlSpans/hlSpans per-row caching
-        // above. m_searchMatches is empty when no search is active, so this
-        // hoists the (short-circuited) probe out of the column loop entirely.
-        m_paintSearchSpans.clear();
-        if (!m_searchMatches.empty()) {
-            auto sm = std::lower_bound(m_searchMatches.begin(), m_searchMatches.end(),
-                globalLine, [](const SearchMatch &m, int gl) { return m.globalLine < gl; });
-            for (; sm != m_searchMatches.end() && sm->globalLine == globalLine; ++sm)
-                m_paintSearchSpans.push_back({sm->col, sm->col + sm->length});
-        }
-        // (isCellCurrentMatch stays per-cell — it is O(1), a single index +
-        // compare, not the std::lower_bound this item targets.)
-
-        // --- Ligature-aware text rendering ---
-        // We accumulate runs of same-attribute cells and draw them together
-        // to let Qt apply font ligatures (JetBrains Mono, Fira Code, etc.).
-        // 0.7.9 — codepoints are accumulated into a char32_t buffer and
-        // converted to QString once per run at draw time, instead of calling
-        // QString::fromUcs4() per cell and reallocating a per-run QString on
-        // each append. Saves N per-frame small-QString constructions in the
-        // common case of ASCII-only TUI output.
-        // ANTS-1779 — m_paintRuns / m_paintCps are members reused across
-        // rows and frames; clear() retains capacity so the per-row run
-        // vector and the codepoint arena are no longer reallocated every
-        // row of every frame. `current` is a small POD descriptor that
-        // records its codepoint slice as [cpStart, cpStart+cpLen) into
-        // m_paintCps rather than owning a nested vector.
-        m_paintRuns.clear();
-        m_paintCps.clear();
-        PaintTextRun current{};
-        current.startCol = 0;
-        bool currentValid = false;
-
-        // ANTS-1180: coalesce contiguous same-bg cells into a single
-        // fillRect. Previously the inner loop called fillRect once
-        // per non-default-bg cell — a fully-styled vim status line
-        // (cols × N) at every paint. Same shape as the TextRun
-        // aggregation above, applied to backgrounds.
-        int bgRunStartX = 0;
-        int bgRunWidth = 0;   // 0 == no run active
-        QColor bgRunColor;
-        // Paint the pending bg run, if any. ANTS-1864 — Source mode so a
-        // semi-transparent cell bg REPLACES the destination alpha rather
-        // than compositing on top of the base fill (SourceOver would
-        // double-count alpha, making coloured cells visibly more opaque
-        // than the surrounding terminal area on translucent windows).
-        // alpha=255 cells (selection, searchMatch): Source and SourceOver
-        // are equivalent when src.a==1 so no regression.
-        auto flushBgRun = [&] {
-            if (bgRunWidth <= 0) return;
-            if (bgRunColor.alpha() < 255)
-                p.setCompositionMode(QPainter::CompositionMode_Source);
-            p.fillRect(bgRunStartX, px_y, bgRunWidth, m_cellHeight, bgRunColor);
-            if (bgRunColor.alpha() < 255)
-                p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-        };
-
-        for (int col = 0; col < cols; ++col) {
-            int px_x = m_padding + col * m_cellWidth;
-
-            const Cell &c = cellAtGlobal(globalLine, col);
-            QColor fg = c.attrs.fg;
-            QColor bg = c.attrs.bg;
-            if (c.attrs.inverse) std::swap(fg, bg);
-            if (c.attrs.dim) fg = fg.darker(150);
-
-            bool isUrl = false;
-            bool isHoveredUrl = false;
-            for (const auto &u : urlSpans) {
-                if (col >= u.startCol && col <= u.endCol) {
-                    isUrl = true;
-                    // Check if this URL span is being hovered
-                    if (m_hoverGlobalLine == globalLine &&
-                        m_hoverCol >= u.startCol && m_hoverCol <= u.endCol)
-                        isHoveredUrl = true;
-                    break;
-                }
-            }
-
-            // Apply highlight rules
-            for (const auto &hl : hlSpans) {
-                if (col >= hl.start && col <= hl.end) {
-                    if (hl.fg.isValid()) fg = hl.fg;
-                    if (hl.bg.isValid()) bg = hl.bg;
-                    break;
-                }
-            }
-
-            bool selected = cellInSelection(globalLine, col);
-            // ANTS-1841 — compute the search-match predicate once per cell
-            // (used here AND at the opacity check below). ANTS-3457 — the
-            // spans are now precomputed per row (m_paintSearchSpans), so the
-            // per-cell test is a walk of this row's (typically 0) match
-            // ranges rather than a std::lower_bound into all matches.
-            // `!selected` short-circuits it for selected cells (which never
-            // reach the opacity branch anyway), so this is non-pessimizing.
-            const bool searchMatch = !selected && [&] {
-                for (const auto &s : m_paintSearchSpans)
-                    if (col >= s.first && col < s.second) return true;
-                return false;
-            }();
-            if (selected) {
-                fg = m_selectionFg;
-                bg = m_selectionBg;
-            } else if (isCellCurrentMatch(globalLine, col)) {
-                fg = m_searchCurrentFg;
-                bg = m_searchCurrentBg;
-            } else if (searchMatch) {
-                fg = m_searchHighlightFg;
-                bg = m_searchHighlightBg;
-            } else if ((globalLine == bp.line1 && col == bp.col1) ||
-                       (globalLine == bp.line2 && col == bp.col2)) {
-                bg = m_bracketHighlightBg;
-            } else if (isUrl) {
-                fg = m_urlColor;
-            }
-
-            // Paint cell background (wide chars get double-width bg).
-            // ANTS-1180: coalesce — extend the active bg run if the
-            // colour matches; otherwise flush the previous run with
-            // one fillRect and start a new one. Default-bg cells
-            // flush whatever was running and don't open a new run.
-            int cellDrawWidth = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
-            QColor cellBg;
-            bool wantBgFill = false;
-            if (bg != defaultBg) {
-                cellBg = bg;
-                if (effectiveAlpha < 255 && !selected && !searchMatch)
-                    cellBg.setAlpha(effectiveAlpha);
-                wantBgFill = true;
-            }
-            if (wantBgFill && bgRunWidth > 0 && cellBg == bgRunColor) {
-                // ANTS-4456 — a wide char's LEAD cell already contributes
-                // both columns, so its continuation cell must add nothing
-                // when it extends the same run. Adding a third cell width
-                // per wide char pushed the fill one column right for each
-                // of them, cumulatively: a selection over CJK or emoji
-                // highlighted N columns too far. The continuation cell can
-                // still OPEN a run of its own in the else branch below,
-                // which is the split-selection case and is meant to paint.
-                if (!c.isWideCont)
-                    bgRunWidth += cellDrawWidth;
-            } else {
-                flushBgRun();
-                if (wantBgFill) {
-                    bgRunStartX = px_x;
-                    bgRunWidth = cellDrawWidth;
-                    bgRunColor = cellBg;
-                } else {
-                    bgRunWidth = 0;
-                }
-            }
-
-            // Skip continuation cells of wide characters (already drawn)
-            if (c.isWideCont) continue;
-
-            // Determine if this cell continues the current run
-            bool sameAttrs = currentValid &&
-                fg == current.fg && bg == current.bg &&
-                c.attrs.bold == current.bold &&
-                c.attrs.italic == current.italic &&
-                c.attrs.underline == current.underline &&
-                c.attrs.strikethrough == current.strikethrough &&
-                isUrl == current.isUrl;
-
-            if (c.codepoint != ' ' && c.codepoint != 0) {
-                if (!sameAttrs) {
-                    if (currentValid && current.cpLen > 0) {
-                        m_paintRuns.push_back(current);
-                    }
-                    current = PaintTextRun{};
-                    current.startCol = col;
-                    current.cpStart = static_cast<int>(m_paintCps.size());
-                    current.cpLen = 0;
-                    current.fg = fg;
-                    current.bg = bg;
-                    current.bold = c.attrs.bold;
-                    current.italic = c.attrs.italic;
-                    current.underline = c.attrs.underline;
-                    current.strikethrough = c.attrs.strikethrough;
-                    current.isUrl = isUrl;
-                    currentValid = true;
-                }
-                m_paintCps.push_back(static_cast<char32_t>(c.codepoint));
-                ++current.cpLen;
-                if (auto *comb = combiningAt(globalLine, col)) {
-                    for (uint32_t combCp : *comb) {
-                        m_paintCps.push_back(static_cast<char32_t>(combCp));
-                        ++current.cpLen;
-                    }
-                }
-            } else {
-                // Space or null breaks the run
-                if (currentValid && current.cpLen > 0) {
-                    m_paintRuns.push_back(current);
-                    currentValid = false;
-                }
-            }
-
-            // 0.6.22 — render-side filter: cell decorations (underline /
-            // strikethrough) are visually meaningful only on cells that
-            // carry a visible glyph. On space (0x20) and null cells, the
-            // decoration has nothing to decorate — but our cells still
-            // carry the SGR attrs from when they were written / scrolled
-            // in. Drawing strikethrough or underline on those produces
-            // the long "horizontal-line on otherwise-blank row" artifact
-            // users see when TUI apps (Claude Code, etc.) leave SGR 9 /
-            // SGR 4 active across rows. Skipping the draw on space cells
-            // is purely cosmetic — the underlying attrs remain intact —
-            // but eliminates the visual noise without policing what apps
-            // are allowed to emit.
-            const bool isGlyphCell = (c.codepoint != ' ' && c.codepoint != 0);
-
-            // Underline rendering (font-metric positioning like Konsole).
-            // Suppress plain single underlines without custom color — TUI apps
-            // like Claude Code set SGR 4 globally as decoration and never
-            // clear it. Styled underlines (curly 4:3, dotted 4:4, dashed 4:5)
-            // and colored underlines (SGR 58) are always rendered (Neovim LSP
-            // diagnostics, etc.) Hovered URLs always show the hint regardless
-            // of cell content.
-            bool suppressUl = c.attrs.underline
-                && c.attrs.underlineStyle == UnderlineStyle::Single
-                && !c.attrs.underlineColor.isValid();
-            const bool drawUnderline =
-                ((c.attrs.underline && !suppressUl) || isHoveredUrl) &&
-                (isHoveredUrl || isGlyphCell);   // hover hints draw on space too
-            if (drawUnderline) {
-                QColor ulColor = c.attrs.underlineColor.isValid() ? QColor(c.attrs.underlineColor) : fg;
-                // Position underline at the font's underline position (under baseline)
-                // This matches Konsole behavior and makes decorative underlines (used by
-                // TUI apps like Claude Code on every cell) blend with character glyphs
-                int ulY = px_y + m_fontAscent + m_fontUnderlinePos;
-                int ulW = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
-                int lineW = m_fontLineWidth;
-                UnderlineStyle style = isHoveredUrl ? UnderlineStyle::Single
-                                     : c.attrs.underlineStyle;
-                if (style == UnderlineStyle::None) style = UnderlineStyle::Single;
-
-                QPen ulPen(ulColor, lineW);
-                p.setPen(ulPen);
-                switch (style) {
-                case UnderlineStyle::Single:
-                    p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
-                    break;
-                case UnderlineStyle::Double:
-                    p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
-                    p.drawLine(px_x, ulY + lineW + 1, px_x + ulW - 1, ulY + lineW + 1);
-                    break;
-                case UnderlineStyle::Curly: {
-                    // Font-proportional undercurl (wavelength/amplitude scale with font)
-                    qreal wavelength = m_cellWidth / 1.2;
-                    qreal amplitude = m_cellHeight / 8.0;
-                    int cycles = std::max(1, static_cast<int>(ulW / wavelength));
-                    qreal actualWL = static_cast<qreal>(ulW) / cycles;
-                    QPainterPath path;
-                    path.moveTo(px_x, ulY);
-                    for (int cyc = 0; cyc < cycles; ++cyc) {
-                        qreal x0 = px_x + cyc * actualWL;
-                        path.quadTo(x0 + actualWL * 0.25, ulY - amplitude,
-                                    x0 + actualWL * 0.5, ulY);
-                        path.quadTo(x0 + actualWL * 0.75, ulY + amplitude,
-                                    x0 + actualWL, ulY);
-                    }
-                    p.setBrush(Qt::NoBrush);
-                    p.drawPath(path);
-                    break;
-                }
-                case UnderlineStyle::Dotted: {
-                    QPen dotPen(ulColor, lineW, Qt::DotLine);
-                    p.setPen(dotPen);
-                    p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
-                    p.setPen(ulColor);
-                    break;
-                }
-                case UnderlineStyle::Dashed: {
-                    QPen dashPen(ulColor, lineW, Qt::DashLine);
-                    p.setPen(dashPen);
-                    p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
-                    p.setPen(ulColor);
-                    break;
-                }
-                default: break;
-                }
-            }
-            if (c.attrs.strikethrough && isGlyphCell) {
-                p.setPen(fg);
-                int sy = px_y + m_cellHeight / 2;
-                p.drawLine(px_x, sy, px_x + cellDrawWidth - 1, sy);
-            }
-        }
-
-        // Flush last run
-        if (currentValid && current.cpLen > 0) {
-            m_paintRuns.push_back(current);
-        }
-
-        // ANTS-1180: flush trailing bg-fill run for this row.
-        flushBgRun();
-
-        // Draw all text runs using QTextLayout for proper ligature shaping.
-        // Build the QString from accumulated codepoints once per run.
-        //
-        // ANTS-3453 — shaped runs are cached (m_shapedRunCache) keyed by
-        // (run text, font variant), so a run whose text is unchanged
-        // frame-to-frame draws straight from its cached layout with no
-        // HarfBuzz re-shape. That shape pass — not the per-run impl alloc
-        // that ANTS-1149 (0.7.72) amortised via one reused layout — was the
-        // dominant per-frame cost behind the multi-second typing freeze under
-        // heavy Claude Code output. Colour + position are applied at draw
-        // time, so a single cached layout serves the run in any colour.
-        for (const auto &run : m_paintRuns) {
-            const QFont *drawFont = &m_font;
-            if (run.bold && run.italic) drawFont = &m_fontBoldItalic;
-            else if (run.bold) drawFont = &m_fontBold;
-            else if (run.italic) drawFont = &m_fontItalic;
-
-            p.setPen(run.fg);
-            int px_x = m_padding + run.startCol * m_cellWidth;
-
-            // ANTS-1207 — ASCII fast path. >90% of TUI content is
-            // <0x80, where a UTF-32→UTF-16 transcode is unnecessary.
-            // Pre-allocated QString + QChar copy is roughly 2-3× faster
-            // than fromUcs4 on the hot run loop.
-            // m_paintRunText is a member so a cache hit reuses its buffer
-            // instead of allocating a fresh QString per run per frame; a
-            // miss shares it with the stored key, and the next resize
-            // detaches.
-            QString &runText = m_paintRunText;
-            const char32_t *cps = m_paintCps.data() + run.cpStart;
-            const int n = run.cpLen;
-            bool allAscii = true;
-            for (int i = 0; i < n; ++i) {
-                if (cps[i] >= 0x80) { allAscii = false; break; }
-            }
-            if (allAscii) {
-                runText.resize(n);
-                QChar *out = runText.data();
-                for (int i = 0; i < n; ++i) {
-                    out[i] = QChar(static_cast<ushort>(cps[i]));
-                }
-            } else {
-                runText = QString::fromUcs4(cps, n);
-            }
-            // ANTS-3453 — resolve the shaped layout from the cache. A hit
-            // skips beginLayout/endLayout (the HarfBuzz pass); a miss shapes
-            // once (unbounded line width so a monospace run never wraps) and
-            // stores. The cached baselineOff reproduces the ANTS-2100 per-run
-            // baseline correction (m_fontAscent − line.ascent()), which pins
-            // every run to the shared cell baseline, so the draw is identical
-            // to the pre-cache path.
-            const int variant = (run.bold ? 1 : 0) | (run.italic ? 2 : 0);
-            qreal baselineOff = 0;
-            QTextLayout *layout = m_shapedRunCache.layoutFor(
-                runText, variant, *drawFont, m_fontAscent, baselineOff);
-            layout->draw(&p, QPointF(px_x, px_y + baselineOff));
-        }
-    }
-
-    // Draw bookmark markers in left gutter
-    if (!m_bookmarks.empty()) {
-        p.setPen(Qt::NoPen);
-        p.setBrush(m_cursorColor);
-        for (int bm : m_bookmarks) {
-            int vr = bm - viewStart;
-            if (vr >= 0 && vr < rows) {
-                int py = m_padding + vr * m_cellHeight + m_cellHeight / 2;
-                p.drawEllipse(QPoint(2, py), 2, 2);
-            }
-        }
-    }
-
-    // Command timestamps and fold indicators (OSC 133 shell integration)
-    {
-        const auto &regions = m_grid->promptRegions();
-        const QFontMetrics &sfm = m_smallFontMetrics;  // ANTS-3460 — cached
-
-        // ANTS-3458 — regions are sorted ascending by startLine (append-only
-        // at prompt-start, front-eviction on cap), so binary-search to the
-        // first region at/after the viewport top and stop once startLine
-        // falls below it, instead of scanning the whole session's command
-        // history (O(#commands)) every paint just to `continue` past the
-        // off-screen ones.
-        auto prFirst = std::lower_bound(regions.begin(), regions.end(), viewStart,
-            [](const PromptRegion &r, int vs) { return r.startLine < vs; });
-        for (auto it = prFirst; it != regions.end() && it->startLine - viewStart < rows; ++it) {
-            const auto &pr = *it;
-            int vr = pr.startLine - viewStart;   // guaranteed in [0, rows) by the loop bounds
-
-            int py = m_padding + vr * m_cellHeight;
-
-            // Command duration and timestamp (right-aligned)
-            if (pr.commandStartMs > 0) {
-                p.setFont(m_smallFont);
-                QColor dimColor = m_grid->defaultFg();
-                dimColor.setAlpha(100);
-                p.setPen(dimColor);
-
-                QString info;
-                if (pr.commandEndMs > 0)
-                    info = formatCommandDuration(pr.commandStartMs, pr.commandEndMs) + "  ";
-
-                QDateTime dt = QDateTime::fromMSecsSinceEpoch(pr.commandStartMs);
-                info += dt.toString("HH:mm:ss");
-
-                // A fixed gap from the right edge, picked by eye; it is not
-                // derived from the scroll bar's width.
-                constexpr int kInfoRightGapPx = 14;
-                int textW = sfm.horizontalAdvance(info);
-                p.drawText(width() - textW - m_padding - kInfoRightGapPx,
-                           py + sfm.ascent(), info);
-                p.setFont(m_font);
-            }
-
-            // Exit-code status stripe (0.7.0). A 2px vertical bar along the
-            // left gutter of the prompt line — green for success, red for
-            // failure. Rendered whenever the command has completed
-            // (commandEndMs > 0); unlike the fold triangle, it shows on the
-            // most recent finished block too, since it doesn't need a
-            // successor region to compute anything.
-            if (pr.commandEndMs > 0) {
-                QColor statusColor = (pr.exitCode == 0)
-                    ? QColor(0x9E, 0xCE, 0x6A)   // green (success)
-                    : QColor(0xF7, 0x76, 0x8E);  // red (failure)
-                statusColor.setAlpha(200);
-                p.fillRect(0, py, 2, m_cellHeight, statusColor);
-            }
-
-            // Fold indicator for completed command output
-            if (pr.hasOutput && pr.commandEndMs > 0 && std::next(it) != regions.end()) {
-                int foldX = m_padding - 2;
-                if (foldX < 0) foldX = 2;
-                QColor foldColor = m_cursorColor;
-                foldColor.setAlpha(120);
-                p.setPen(foldColor);
-                // Draw a small triangle (right = expanded, down = collapsed)
-                if (pr.folded) {
-                    // Right-pointing triangle (collapsed)
-                    QPolygon tri;
-                    tri << QPoint(foldX, py + 2)
-                        << QPoint(foldX, py + m_cellHeight - 2)
-                        << QPoint(foldX + 6, py + m_cellHeight / 2);
-                    p.setBrush(foldColor);
-                    p.drawPolygon(tri);
-                    p.setBrush(Qt::NoBrush);
-
-                    // Draw fold summary bar
-                    const auto [outFirst, outEnd] = m_grid->promptRegionOutputLines(
-                        static_cast<int>(it - regions.begin()));
-                    int foldedLines = outEnd - outFirst;
-                    if (foldedLines > 0) {
-                        int barY = py + m_cellHeight;
-                        QColor barBg = m_grid->defaultBg().lighter(130);
-                        barBg.setAlpha(80);
-                        p.fillRect(m_padding, barY, width() - m_padding * 2, m_cellHeight, barBg);
-                        p.setFont(m_smallFont);
-                        QColor foldText = m_grid->defaultFg();
-                        foldText.setAlpha(130);
-                        p.setPen(foldText);
-                        p.drawText(m_padding + 8, barY + sfm.ascent() + 2,
-                                   QString("... %1 lines hidden (click to expand)").arg(foldedLines));
-                        p.setFont(m_font);
-                    }
-                } else {
-                    // Down-pointing triangle (expanded)
-                    QPolygon tri;
-                    tri << QPoint(foldX, py + 3)
-                        << QPoint(foldX + 6, py + 3)
-                        << QPoint(foldX + 3, py + 3 + 5);
-                    p.setBrush(foldColor);
-                    p.drawPolygon(tri);
-                    p.setBrush(Qt::NoBrush);
-                }
-            }
-        }
-    }
-
-    // Draw inline images
-    for (const auto &img : m_grid->inlineImages()) {
-        int px_x = m_padding + img.col * m_cellWidth;
-        int imgRow = img.row;
-        int screenGlobalLine = scrollbackSize + imgRow;
-        int vr = screenGlobalLine - viewStart;
-        if (vr < 0 || vr >= rows) continue;
-        int px_y = m_padding + vr * m_cellHeight;
-        int pw, ph;
-        if (img.pixelSized) {
-            // Sixel/Kitty: dimensions are pixels, render at actual size
-            pw = img.cellWidth;
-            ph = img.cellHeight;
-        } else {
-            // iTerm2/cell-based: dimensions are in cells
-            pw = img.cellWidth * m_cellWidth;
-            ph = img.cellHeight * m_cellHeight;
-        }
-        p.drawImage(QRect(px_x, px_y, pw, ph), img.image);
-    }
-
-    // Cursor — shape-aware (DECSCUSR: block, underline, bar)
-    // Steady cursor shapes always show; blinking shapes respect blink timer
-    bool cursorShouldShow = m_cursorBlinkOn || !m_hasFocus || !m_grid->cursorBlink();
-    if (m_scrollOffset == 0 && m_grid->cursorVisible() && cursorShouldShow) {
-        // ANTS-1148 — render at frozen position when sync snapshot
-        // is held; live position otherwise. The accessor centralises
-        // the policy (also used at the under-cursor glyph render
-        // below and at the autocomplete-ghost site, plus blinkCursor's
-        // partial-update rect).
-        int cx = m_padding + effectiveCursorCol() * m_cellWidth;
-        int cy = m_padding + effectiveCursorRow() * m_cellHeight;
-        CursorShape shape = m_grid->cursorShape();
-
-        // Cursor glow effect (subtle radial glow behind cursor in dark themes)
-        if (m_hasFocus && m_cursorBlinkOn) {
-            QColor glow = m_cursorGlowColor.isValid() ? m_cursorGlowColor : m_cursorColor;
-            glow.setAlpha(30);
-            int glowSize = 4;
-            p.setPen(Qt::NoPen);
-            p.setBrush(glow);
-            p.drawRoundedRect(cx - glowSize, cy - glowSize,
-                              m_cellWidth + glowSize * 2, m_cellHeight + glowSize * 2,
-                              glowSize, glowSize);
-        }
-
-        if (m_hasFocus) {
-            switch (shape) {
-            case CursorShape::BlinkBar:
-            case CursorShape::SteadyBar:
-                p.fillRect(cx, cy, 2, m_cellHeight, m_cursorColor);
-                break;
-            case CursorShape::BlinkUnderline:
-            case CursorShape::SteadyUnderline:
-                p.fillRect(cx, cy + m_cellHeight - 2, m_cellWidth, 2, m_cursorColor);
-                break;
-            default: // Block cursor
-                p.fillRect(cx, cy, m_cellWidth, m_cellHeight, m_cursorColor);
-                {
-                    int cursorGL = scrollbackSize + effectiveCursorRow();
-                    QString cursorText = cellText(cursorGL, effectiveCursorCol());
-                    if (!cursorText.isEmpty()) {
-                        p.setPen(m_grid->defaultBg());
-                        p.drawText(cx, cy + m_fontAscent, cursorText);
-                    }
-                }
-                break;
-            }
-        } else {
-            // Unfocused: hollow outline cursor
-            QPen outlinePen(m_cursorColor, 1.5);
-            p.setPen(outlinePen);
-            p.setBrush(Qt::NoBrush);
-            p.drawRect(cx, cy, m_cellWidth - 1, m_cellHeight - 1);
-        }
-    }
-
-    // Autocomplete ghost text (drawn after cursor, in dim text)
-    if (m_scrollOffset == 0 && !m_currentSuggestion.isEmpty()) {
-        int cursorCol = effectiveCursorCol();
-        int gx = m_padding + cursorCol * m_cellWidth;
-        int gy = m_padding + effectiveCursorRow() * m_cellHeight;
-
-        QColor ghost = m_grid->defaultFg();
-        ghost.setAlpha(80);
-        p.setPen(ghost);
-        p.setFont(m_font);
-
-        // Truncate suggestion to remaining columns
-        int remaining = cols - cursorCol;
-        QString text = m_currentSuggestion.left(remaining);
-        p.drawText(gx, gy + m_fontAscent, text);
-    }
-
-    // ANTS-1780 — IME pre-edit (composition) text, drawn inline at the
-    // cursor with an underline so uncommitted CJK / dead-key input is
-    // visible while composing. Painted after the cursor so it overlays
-    // the block-cursor cell; the bg fill clears whatever is underneath.
-    if (m_scrollOffset == 0 && !m_preeditString.isEmpty()) {
-        int cursorCol = effectiveCursorCol();
-        int gx = m_padding + cursorCol * m_cellWidth;
-        int gy = m_padding + effectiveCursorRow() * m_cellHeight;
-        QString text = m_preeditString;
-        const QFontMetrics &fm = m_fontMetrics;  // ANTS-3460 — cached
-        int textW = fm.horizontalAdvance(text);
-        // Don't paint past the right padding edge.
-        int maxW = width() - m_padding - gx;
-        if (textW > maxW) textW = maxW;
-        if (textW > 0) {
-            p.fillRect(gx, gy, textW, m_cellHeight, m_grid->defaultBg());
-            p.setPen(m_grid->defaultFg());
-            p.setFont(m_font);
-            p.drawText(gx, gy + m_fontAscent, text);
-            p.fillRect(gx, gy + m_cellHeight - 1, textW, 1, m_grid->defaultFg());
-        }
-    }
+    // Overlays, back to front: each helper returns at once when its
+    // overlay is off.
+    paintBookmarkMarkers(p, f);
+    paintPromptChrome(p, f);
+    paintInlineImages(p, f);
+    paintCursor(p, f);
+    paintSuggestionGhost(p, f);
+    paintPreedit(p);
 
     // Dim overlay for unfocused split panes
     if (!m_hasFocus && parentWidget() && qobject_cast<QSplitter *>(parentWidget())) {
@@ -1695,233 +1053,902 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
         p.fillRect(rect(), flash);
     }
 
-    // New output separator line (when scrolled up and new output arrived)
-    if (m_newOutputMarkerLine >= 0 && m_scrollOffset > 0) {
-        int vr = m_newOutputMarkerLine - viewStart;
-        if (vr >= 0 && vr < rows) {
-            int markerY = m_padding + vr * m_cellHeight;
-            QColor markerColor = m_cursorColor;
-            markerColor.setAlpha(120);
-            QPen dashPen(markerColor, 1, Qt::DashLine);
-            p.setPen(dashPen);
-            p.drawLine(m_padding, markerY, width() - m_padding, markerY);
-            // Label — ANTS-1207 cached small font.
-            p.setFont(m_smallFont);
-            p.setPen(markerColor);
-            p.drawText(width() - 120, markerY - 2, "new output");
-            p.setFont(m_font);
-        }
+    paintNewOutputMarker(p, f);
+    paintQuickSelect(p, f);
+    paintStickyHeader(p, f);
+    paintPerfOverlay(p, f);
+    paintCommandMarkGutter(p, f);
+    paintProgressStrip(p);
+}
+
+// Background image (rendered behind all content)
+void TerminalWidget::paintBackgroundImage(QPainter &p) const {
+    if (m_backgroundImage.isNull()) return;
+    p.setOpacity(0.15); // subtle background
+    // ANTS-5077 — the image was pre-scaled to cover the widget with its
+    // aspect kept (setBackgroundImage); draw its centred widget-sized
+    // part instead of stretching the whole image back onto rect().
+    const QRect bgSrc(QPoint((m_backgroundImage.width() - width()) / 2,
+                             (m_backgroundImage.height() - height()) / 2),
+                      size());
+    p.drawImage(rect(), m_backgroundImage,
+                bgSrc.intersected(m_backgroundImage.rect()));
+    p.setOpacity(1.0);
+}
+
+// Badge watermark (large semi-transparent text in background)
+void TerminalWidget::paintBadge(QPainter &p) const {
+    if (m_badgeText.isEmpty()) return;
+    p.setFont(m_badgeFont);  // ANTS-1207 — cached in updateFontMetrics
+    QColor badgeColor = m_grid->defaultFg();
+    badgeColor.setAlpha(20);
+    p.setPen(badgeColor);
+    QRect badgeRect = rect().adjusted(0, 0, -20, -20);
+    p.drawText(badgeRect, Qt::AlignBottom | Qt::AlignRight, m_badgeText);
+    p.setFont(m_font);
+}
+
+// One view row: cell backgrounds, then text runs, then underline and
+// strikethrough, all coloured by selection, search, bracket, URL and
+// highlight-rule state.
+void TerminalWidget::paintRow(QPainter &p, const PaintFrame &f, int vr) {
+    const int globalLine = f.viewStart + vr;
+    const int px_y = m_padding + vr * m_cellHeight;
+
+    // URL spans — use cache to avoid per-frame regex matching
+    const auto &urlSpans = urlSpansForLine(globalLine);
+    const auto &hlSpans = highlightSpansForLine(globalLine);
+
+    // ANTS-3457 — precompute this row's search-match spans once instead
+    // of a per-cell std::lower_bound (isCellSearchMatch was probed for
+    // every painted cell). Mirrors the urlSpans/hlSpans per-row caching
+    // above. m_searchMatches is empty when no search is active, so this
+    // hoists the (short-circuited) probe out of the column loop entirely.
+    m_paintSearchSpans.clear();
+    if (!m_searchMatches.empty()) {
+        auto sm = std::lower_bound(m_searchMatches.begin(), m_searchMatches.end(),
+            globalLine, [](const SearchMatch &m, int gl) { return m.globalLine < gl; });
+        for (; sm != m_searchMatches.end() && sm->globalLine == globalLine; ++sm)
+            m_paintSearchSpans.push_back({sm->col, sm->col + sm->length});
     }
+    // (isCellCurrentMatch stays per-cell — it is O(1), a single index +
+    // compare, not the std::lower_bound this item targets.)
 
-    // URL quick-select overlay labels
-    if (m_urlQuickSelectActive && !m_quickSelectLabels.empty()) {
-        p.setFont(m_quickSelectFont);  // ANTS-1207 — cached
-        const QFontMetrics &lfm = m_quickSelectFontMetrics;  // ANTS-3460 — cached
+    // --- Ligature-aware text rendering ---
+    // We accumulate runs of same-attribute cells and draw them together
+    // to let Qt apply font ligatures (JetBrains Mono, Fira Code, etc.).
+    // 0.7.9 — codepoints are accumulated into a char32_t buffer and
+    // converted to QString once per run at draw time, instead of calling
+    // QString::fromUcs4() per cell and reallocating a per-run QString on
+    // each append. Saves N per-frame small-QString constructions in the
+    // common case of ASCII-only TUI output.
+    // ANTS-1779 — m_paintRuns / m_paintCps are members reused across
+    // rows and frames; clear() retains capacity so the per-row run
+    // vector and the codepoint arena are no longer reallocated every
+    // row of every frame. `current` is a small POD descriptor that
+    // records its codepoint slice as [cpStart, cpStart+cpLen) into
+    // m_paintCps rather than owning a nested vector.
+    m_paintRuns.clear();
+    m_paintCps.clear();
+    PaintTextRun current{};
+    current.startCol = 0;
+    bool currentValid = false;
 
-        for (const auto &ql : m_quickSelectLabels) {
-            int vr = ql.globalLine - viewStart;
-            if (vr < 0 || vr >= rows) continue;
-            int lx = m_padding + ql.startCol * m_cellWidth - 2;
-            int ly = m_padding + vr * m_cellHeight;
+    // ANTS-1180: coalesce contiguous same-bg cells into a single
+    // fillRect. Previously the inner loop called fillRect once
+    // per non-default-bg cell — a fully-styled vim status line
+    // (cols × N) at every paint. Same shape as the TextRun
+    // aggregation above, applied to backgrounds.
+    int bgRunStartX = 0;
+    int bgRunWidth = 0;   // 0 == no run active
+    QColor bgRunColor;
+    // Paint the pending bg run, if any. ANTS-1864 — Source mode so a
+    // semi-transparent cell bg REPLACES the destination alpha rather
+    // than compositing on top of the base fill (SourceOver would
+    // double-count alpha, making coloured cells visibly more opaque
+    // than the surrounding terminal area on translucent windows).
+    // alpha=255 cells (selection, searchMatch): Source and SourceOver
+    // are equivalent when src.a==1 so no regression.
+    auto flushBgRun = [&] {
+        if (bgRunWidth <= 0) return;
+        if (bgRunColor.alpha() < 255)
+            p.setCompositionMode(QPainter::CompositionMode_Source);
+        p.fillRect(bgRunStartX, px_y, bgRunWidth, m_cellHeight, bgRunColor);
+        if (bgRunColor.alpha() < 255)
+            p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    };
 
-            // Draw label badge
-            int labelW = lfm.horizontalAdvance(ql.label) + 8;
-            int labelH = lfm.height() + 4;
-            QColor badgeBg = m_cursorColor;
-            p.setPen(Qt::NoPen);
-            p.setBrush(badgeBg);
-            p.drawRoundedRect(lx - labelW - 2, ly, labelW, labelH, 3, 3);
-            p.setPen(m_grid->defaultBg());
-            p.drawText(lx - labelW + 2, ly + lfm.ascent() + 2, ql.label);
+    for (int col = 0; col < f.cols; ++col) {
+        int px_x = m_padding + col * m_cellWidth;
 
-            // Highlight the URL span
-            QColor hlBg = m_cursorColor;
-            hlBg.setAlpha(40);
-            int spanW = (ql.endCol - ql.startCol + 1) * m_cellWidth;
-            p.fillRect(m_padding + ql.startCol * m_cellWidth, ly, spanW, m_cellHeight, hlBg);
-        }
-        p.setFont(m_font);
+        const Cell &c = cellAtGlobal(globalLine, col);
+        QColor fg = c.attrs.fg;
+        QColor bg = c.attrs.bg;
+        if (c.attrs.inverse) std::swap(fg, bg);
+        if (c.attrs.dim) fg = fg.darker(150);
 
-        // Draw input so far at bottom
-        if (!m_quickSelectInput.isEmpty()) {
-            QColor inputBg = m_grid->defaultBg().darker(120);
-            inputBg.setAlpha(220);
-            int ibH = m_cellHeight + 8;
-            int ibY = height() - ibH - (m_searchVisible ? m_searchBar->height() : 0);
-            p.fillRect(0, ibY, width(), ibH, inputBg);
-            p.setPen(m_grid->defaultFg());
-            p.drawText(m_padding + 4, ibY + m_fontAscent + 4,
-                        "Quick Select: " + m_quickSelectInput);
-        }
-    }
-
-    // Sticky command header (pin command at top when scrolling through its output)
-    if (m_scrollOffset > 0) {
-        const auto &regions = m_grid->promptRegions();
-        // ANTS-3458 — the region whose output spans the viewport top is the
-        // last one with startLine <= viewStart (outputs are contiguous and
-        // non-overlapping between consecutive regions), so binary-search to
-        // that single candidate instead of scanning all regions backwards on
-        // every scrolled paint (was O(#commands) when scrolled deep).
-        auto stickyUp = std::upper_bound(regions.begin(), regions.end(), viewStart,
-            [](int vs, const PromptRegion &r) { return vs < r.startLine; });
-        for (auto it = stickyUp; it != regions.begin(); ) {
-            --it;   // the single candidate; the break below guarantees one pass
-            const auto &pr = *it;
-            const auto [outFirst, outEnd] = m_grid->promptRegionOutputLines(
-                static_cast<int>(it - regions.begin()));
-            // Viewport top line
-            if (outFirst <= viewStart && viewStart < outEnd && pr.hasOutput) {
-                // ANTS-5027 — the command text, cut to the header's width
-                // less the room kept on the right for the duration.
-                constexpr int kDurationReservePx = 80;
-                const int maxChars =
-                    (width() - m_padding * 2 - kDurationReservePx) / m_cellWidth;
-                const QString truncated = stickyCommandText(
-                    pr.startLine, pr.endLine, maxChars,
-                    [this](int gl) { return lineText(gl); });
-                if (truncated.isEmpty()) break;
-
-                // Draw sticky header bar at top
-                QColor headerBg = m_grid->defaultBg().lighter(120);
-                headerBg.setAlpha(230);
-                int headerH = m_cellHeight + 4;
-                p.fillRect(0, 0, width(), headerH, headerBg);
-
-                // Bottom border
-                QColor borderColor = m_cursorColor;
-                borderColor.setAlpha(100);
-                p.setPen(borderColor);
-                p.drawLine(0, headerH, width(), headerH);
-
-                // Command text
-                p.setPen(m_grid->defaultFg());
-                p.setFont(m_font);
-                p.drawText(m_padding + 4, 2 + m_fontAscent, truncated);
-
-                // Duration (right side)
-                if (pr.commandStartMs > 0 && pr.commandEndMs > 0) {
-                    const QString durStr =
-                        formatCommandDuration(pr.commandStartMs, pr.commandEndMs);
-                    QColor dimColor = m_grid->defaultFg();
-                    dimColor.setAlpha(130);
-                    p.setPen(dimColor);
-                    const QFontMetrics &fm = m_fontMetrics;  // ANTS-3460 — cached
-                    p.drawText(width() - fm.horizontalAdvance(durStr) - m_padding - 4, 2 + m_fontAscent, durStr);
-                }
+        bool isUrl = false;
+        bool isHoveredUrl = false;
+        for (const auto &u : urlSpans) {
+            if (col >= u.startCol && col <= u.endCol) {
+                isUrl = true;
+                // Check if this URL span is being hovered
+                if (m_hoverGlobalLine == globalLine &&
+                    m_hoverCol >= u.startCol && m_hoverCol <= u.endCol)
+                    isHoveredUrl = true;
                 break;
             }
-            break;   // single candidate only — never iterate to earlier regions
-        }
-    }
-
-    // Performance overlay
-    if (m_showPerfOverlay) {
-        ++m_perfFrameCount;
-        qint64 elapsed = m_perfFrameTimer.elapsed();
-        if (elapsed >= 1000) {
-            m_perfFps = m_perfFrameCount * 1000.0 / elapsed;
-            m_perfFrameCount = 0;
-            m_perfFrameTimer.restart();
         }
 
-        QStringList lines;
-        lines << QString("FPS: %1").arg(m_perfFps, 0, 'f', 1);
-        lines << QString("Scrollback: %1").arg(m_grid->scrollbackSize());
-        lines << QString("Grid: %1x%2").arg(cols).arg(rows);
-        lines << QString("Scroll offset: %1").arg(m_scrollOffset);
-
-        // Measure and draw background — ANTS-1207 cached perf font.
-        p.setFont(m_perfFont);
-        const QFontMetrics &pfm = m_perfFontMetrics;  // ANTS-3460 — cached
-        int lineH = pfm.height();
-        int maxW = 0;
-        for (const auto &l : lines) maxW = qMax(maxW, pfm.horizontalAdvance(l));
-        int boxW = maxW + 16;
-        int boxH = lines.size() * lineH + 12;
-        int bx = width() - boxW - 8;
-        int by = 8;
-
-        p.setPen(Qt::NoPen);
-        QColor overlay = m_grid->defaultBg();
-        overlay.setAlpha(200);
-        p.setBrush(overlay);
-        p.drawRoundedRect(bx, by, boxW, boxH, 4, 4);
-
-        p.setPen(m_grid->defaultFg());
-        for (int i = 0; i < lines.size(); ++i) {
-            p.drawText(bx + 8, by + 8 + (i + 1) * lineH - pfm.descent(), lines[i]);
-        }
-        p.setFont(m_font);
-    }
-
-    // Command-mark gutter (0.6.41). Narrow 4-px vertical strip just left
-    // of the scrollbar, one tick per OSC 133 PromptRegion, mapping the
-    // region's startLine to y via startLine / (scrollbackSize + rows).
-    // Color by exit status: green (exit 0), red (non-zero exit), gray
-    // (in-progress, no D marker yet). Lets users see command boundaries
-    // across the full scrollback at a glance — jump targets for
-    // Ctrl+Shift+Up/Down. No-op when no prompt regions exist, so users
-    // without shell integration see nothing change.
-    // ANTS-3458 — unlike the two loops above, this one is O(#regions) by
-    // design: it is a full-scrollback minimap, so every region maps to a
-    // tick across the whole widget height and cannot be viewport-bounded.
-    // Only runs when m_showCommandMarks is on.
-    if (m_showCommandMarks) {
-        const auto &regions = m_grid->promptRegions();
-        if (!regions.empty()) {
-            constexpr int gutterW = 4;
-            constexpr int tickH = 2;
-            int gutterRight = width();
-            if (m_scrollBar && m_scrollBar->isVisible())
-                gutterRight -= m_scrollBar->width();
-            const int gutterX = gutterRight - gutterW;
-            const int total = std::max(1, scrollbackSize + rows);
-            for (const auto &pr : regions) {
-                double frac = static_cast<double>(pr.startLine) / total;
-                int y = static_cast<int>(frac * height());
-                if (y < 0 || y >= height()) continue;
-                QColor c;
-                if (pr.commandEndMs > 0)
-                    c = (pr.exitCode == 0) ? QColor(0x9F, 0xE0, 0x64)   // success green
-                                           : QColor(0xE0, 0x64, 0x64); // failure red
-                else
-                    c = QColor(0x80, 0x80, 0x80);                      // in-progress gray
-                c.setAlpha(180);
-                p.fillRect(gutterX, y, gutterW, tickH, c);
+        // Apply highlight rules
+        for (const auto &hl : hlSpans) {
+            if (col >= hl.start && col <= hl.end) {
+                if (hl.fg.isValid()) fg = hl.fg;
+                if (hl.bg.isValid()) bg = hl.bg;
+                break;
             }
         }
+
+        const bool selected = f.hasSelection && f.selection.contains(globalLine, col);
+        // ANTS-1841 — compute the search-match predicate once per cell
+        // (used here AND at the opacity check below). ANTS-3457 — the
+        // spans are now precomputed per row (m_paintSearchSpans), so the
+        // per-cell test is a walk of this row's (typically 0) match
+        // ranges rather than a std::lower_bound into all matches.
+        // `!selected` short-circuits it for selected cells (which never
+        // reach the opacity branch anyway), so this is non-pessimizing.
+        const bool searchMatch = !selected && [&] {
+            for (const auto &s : m_paintSearchSpans)
+                if (col >= s.first && col < s.second) return true;
+            return false;
+        }();
+        if (selected) {
+            fg = m_selectionFg;
+            bg = m_selectionBg;
+        } else if (isCellCurrentMatch(globalLine, col)) {
+            fg = m_searchCurrentFg;
+            bg = m_searchCurrentBg;
+        } else if (searchMatch) {
+            fg = m_searchHighlightFg;
+            bg = m_searchHighlightBg;
+        } else if ((globalLine == f.bracket.line1 && col == f.bracket.col1) ||
+                   (globalLine == f.bracket.line2 && col == f.bracket.col2)) {
+            bg = m_bracketHighlightBg;
+        } else if (isUrl) {
+            fg = m_urlColor;
+        }
+
+        // Paint cell background (wide chars get double-width bg).
+        // ANTS-1180: coalesce — extend the active bg run if the
+        // colour matches; otherwise flush the previous run with
+        // one fillRect and start a new one. Default-bg cells
+        // flush whatever was running and don't open a new run.
+        int cellDrawWidth = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
+        QColor cellBg;
+        bool wantBgFill = false;
+        if (bg != f.defaultBg) {
+            cellBg = bg;
+            if (f.effectiveAlpha < 255 && !selected && !searchMatch)
+                cellBg.setAlpha(f.effectiveAlpha);
+            wantBgFill = true;
+        }
+        if (wantBgFill && bgRunWidth > 0 && cellBg == bgRunColor) {
+            // ANTS-4456 — a wide char's LEAD cell already contributes
+            // both columns, so its continuation cell must add nothing
+            // when it extends the same run. Adding a third cell width
+            // per wide char pushed the fill one column right for each
+            // of them, cumulatively: a selection over CJK or emoji
+            // highlighted N columns too far. The continuation cell can
+            // still OPEN a run of its own in the else branch below,
+            // which is the split-selection case and is meant to paint.
+            if (!c.isWideCont)
+                bgRunWidth += cellDrawWidth;
+        } else {
+            flushBgRun();
+            if (wantBgFill) {
+                bgRunStartX = px_x;
+                bgRunWidth = cellDrawWidth;
+                bgRunColor = cellBg;
+            } else {
+                bgRunWidth = 0;
+            }
+        }
+
+        // Everything below draws a glyph or its decoration. A wide
+        // character's continuation cell has neither: its lead cell drew
+        // both columns. Per-cell work that must reach that cell goes above.
+        if (c.isWideCont) continue;
+
+        // Determine if this cell continues the current run
+        bool sameAttrs = currentValid &&
+            fg == current.fg && bg == current.bg &&
+            c.attrs.bold == current.bold &&
+            c.attrs.italic == current.italic &&
+            c.attrs.underline == current.underline &&
+            c.attrs.strikethrough == current.strikethrough &&
+            isUrl == current.isUrl;
+
+        if (c.codepoint != ' ' && c.codepoint != 0) {
+            if (!sameAttrs) {
+                if (currentValid && current.cpLen > 0) {
+                    m_paintRuns.push_back(current);
+                }
+                current = PaintTextRun{};
+                current.startCol = col;
+                current.cpStart = static_cast<int>(m_paintCps.size());
+                current.cpLen = 0;
+                current.fg = fg;
+                current.bg = bg;
+                current.bold = c.attrs.bold;
+                current.italic = c.attrs.italic;
+                current.underline = c.attrs.underline;
+                current.strikethrough = c.attrs.strikethrough;
+                current.isUrl = isUrl;
+                currentValid = true;
+            }
+            m_paintCps.push_back(static_cast<char32_t>(c.codepoint));
+            ++current.cpLen;
+            if (auto *comb = combiningAt(globalLine, col)) {
+                for (uint32_t combCp : *comb) {
+                    m_paintCps.push_back(static_cast<char32_t>(combCp));
+                    ++current.cpLen;
+                }
+            }
+        } else {
+            // Space or null breaks the run
+            if (currentValid && current.cpLen > 0) {
+                m_paintRuns.push_back(current);
+                currentValid = false;
+            }
+        }
+
+        paintCellDecorations(p, c, fg, px_x, px_y, isHoveredUrl);
     }
 
-    // OSC 9;4 progress strip — thin bar along the bottom edge.
-    // Matches Microsoft Terminal's visual convention: blue/red/yellow fill by
-    // state, ~3px tall, drawn above anything except the search bar.
-    if (m_grid->progressState() != ProgressState::None) {
-        int stripH = 3;
-        int stripY = height() - stripH;
-        // Reserve right-hand gap for the scroll bar if one is showing
-        int stripRight = width();
-        if (m_scrollBar && m_scrollBar->isVisible()) {
-            stripRight -= m_scrollBar->width();
-        }
-        QColor stripColor;
-        bool full = false;
-        switch (m_grid->progressState()) {
-            case ProgressState::Normal:        stripColor = QColor(0x89, 0xB4, 0xFA); break; // blue
-            case ProgressState::Error:         stripColor = QColor(0xF3, 0x8B, 0xA8); break; // red
-            case ProgressState::Warning:       stripColor = QColor(0xF9, 0xE2, 0xAF); break; // yellow
-            case ProgressState::Indeterminate: stripColor = QColor(0xB4, 0xBE, 0xFE); full = true; break; // lavender
-            default: break;
-        }
-        // Background channel (dim)
-        QColor bgStrip = stripColor;
-        bgStrip.setAlpha(60);
-        p.fillRect(0, stripY, stripRight, stripH, bgStrip);
-        // Fill channel
-        int pct = full ? 100 : std::clamp(m_grid->progressValue(), 0, 100);
-        int fillW = stripRight * pct / 100;
-        p.fillRect(0, stripY, fillW, stripH, stripColor);
+    // Flush last run
+    if (currentValid && current.cpLen > 0) {
+        m_paintRuns.push_back(current);
     }
+
+    // ANTS-1180: flush trailing bg-fill run for this row.
+    flushBgRun();
+
+    drawTextRuns(p, px_y);
+}
+
+// A cell's underline and strikethrough.
+void TerminalWidget::paintCellDecorations(QPainter &p, const Cell &c,
+                                          const QColor &fg, int px_x, int px_y,
+                                          bool isHoveredUrl) const {
+    const int cellDrawWidth = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
+
+    // 0.6.22 — render-side filter: cell decorations (underline /
+    // strikethrough) are visually meaningful only on cells that
+    // carry a visible glyph. On space (0x20) and null cells, the
+    // decoration has nothing to decorate — but our cells still
+    // carry the SGR attrs from when they were written / scrolled
+    // in. Drawing strikethrough or underline on those produces
+    // the long "horizontal-line on otherwise-blank row" artifact
+    // users see when TUI apps (Claude Code, etc.) leave SGR 9 /
+    // SGR 4 active across rows. Skipping the draw on space cells
+    // is purely cosmetic — the underlying attrs remain intact —
+    // but eliminates the visual noise without policing what apps
+    // are allowed to emit.
+    const bool isGlyphCell = (c.codepoint != ' ' && c.codepoint != 0);
+
+    // Underline rendering (font-metric positioning like Konsole).
+    // Suppress plain single underlines without custom color — TUI apps
+    // like Claude Code set SGR 4 globally as decoration and never
+    // clear it. Styled underlines (curly 4:3, dotted 4:4, dashed 4:5)
+    // and colored underlines (SGR 58) are always rendered (Neovim LSP
+    // diagnostics, etc.) Hovered URLs always show the hint regardless
+    // of cell content.
+    bool suppressUl = c.attrs.underline
+        && c.attrs.underlineStyle == UnderlineStyle::Single
+        && !c.attrs.underlineColor.isValid();
+    const bool drawUnderline =
+        ((c.attrs.underline && !suppressUl) || isHoveredUrl) &&
+        (isHoveredUrl || isGlyphCell);   // hover hints draw on space too
+    if (drawUnderline) {
+        QColor ulColor = c.attrs.underlineColor.isValid() ? QColor(c.attrs.underlineColor) : fg;
+        // Position underline at the font's underline position (under baseline)
+        // This matches Konsole behavior and makes decorative underlines (used by
+        // TUI apps like Claude Code on every cell) blend with character glyphs
+        int ulY = px_y + m_fontAscent + m_fontUnderlinePos;
+        int ulW = cellDrawWidth;
+        int lineW = m_fontLineWidth;
+        UnderlineStyle style = isHoveredUrl ? UnderlineStyle::Single
+                             : c.attrs.underlineStyle;
+        if (style == UnderlineStyle::None) style = UnderlineStyle::Single;
+
+        QPen ulPen(ulColor, lineW);
+        p.setPen(ulPen);
+        switch (style) {
+        case UnderlineStyle::Single:
+            p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
+            break;
+        case UnderlineStyle::Double:
+            p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
+            p.drawLine(px_x, ulY + lineW + 1, px_x + ulW - 1, ulY + lineW + 1);
+            break;
+        case UnderlineStyle::Curly: {
+            // Font-proportional undercurl (wavelength/amplitude scale with font)
+            qreal wavelength = m_cellWidth / 1.2;
+            qreal amplitude = m_cellHeight / 8.0;
+            int cycles = std::max(1, static_cast<int>(ulW / wavelength));
+            qreal actualWL = static_cast<qreal>(ulW) / cycles;
+            QPainterPath path;
+            path.moveTo(px_x, ulY);
+            for (int cyc = 0; cyc < cycles; ++cyc) {
+                qreal x0 = px_x + cyc * actualWL;
+                path.quadTo(x0 + actualWL * 0.25, ulY - amplitude,
+                            x0 + actualWL * 0.5, ulY);
+                path.quadTo(x0 + actualWL * 0.75, ulY + amplitude,
+                            x0 + actualWL, ulY);
+            }
+            p.setBrush(Qt::NoBrush);
+            p.drawPath(path);
+            break;
+        }
+        case UnderlineStyle::Dotted: {
+            QPen dotPen(ulColor, lineW, Qt::DotLine);
+            p.setPen(dotPen);
+            p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
+            p.setPen(ulColor);
+            break;
+        }
+        case UnderlineStyle::Dashed: {
+            QPen dashPen(ulColor, lineW, Qt::DashLine);
+            p.setPen(dashPen);
+            p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
+            p.setPen(ulColor);
+            break;
+        }
+        default: break;
+        }
+    }
+    if (c.attrs.strikethrough && isGlyphCell) {
+        p.setPen(fg);
+        int sy = px_y + m_cellHeight / 2;
+        p.drawLine(px_x, sy, px_x + cellDrawWidth - 1, sy);
+    }
+}
+
+// Draw all text runs using QTextLayout for proper ligature shaping.
+// Build the QString from accumulated codepoints once per run.
+//
+// ANTS-3453 — shaped runs are cached (m_shapedRunCache) keyed by
+// (run text, font variant), so a run whose text is unchanged
+// frame-to-frame draws straight from its cached layout with no
+// HarfBuzz re-shape. That shape pass — not the per-run impl alloc
+// that ANTS-1149 (0.7.72) amortised via one reused layout — was the
+// dominant per-frame cost behind the multi-second typing freeze under
+// heavy Claude Code output. Colour + position are applied at draw
+// time, so a single cached layout serves the run in any colour.
+void TerminalWidget::drawTextRuns(QPainter &p, int px_y) {
+    for (const auto &run : m_paintRuns) {
+        const QFont *drawFont = &m_font;
+        if (run.bold && run.italic) drawFont = &m_fontBoldItalic;
+        else if (run.bold) drawFont = &m_fontBold;
+        else if (run.italic) drawFont = &m_fontItalic;
+
+        p.setPen(run.fg);
+        int px_x = m_padding + run.startCol * m_cellWidth;
+
+        // ANTS-1207 — ASCII fast path. >90% of TUI content is
+        // <0x80, where a UTF-32→UTF-16 transcode is unnecessary.
+        // Pre-allocated QString + QChar copy is roughly 2-3× faster
+        // than fromUcs4 on the hot run loop.
+        // m_paintRunText is a member so a cache hit reuses its buffer
+        // instead of allocating a fresh QString per run per frame; a
+        // miss shares it with the stored key, and the next resize
+        // detaches.
+        QString &runText = m_paintRunText;
+        const char32_t *cps = m_paintCps.data() + run.cpStart;
+        const int n = run.cpLen;
+        bool allAscii = true;
+        for (int i = 0; i < n; ++i) {
+            if (cps[i] >= 0x80) { allAscii = false; break; }
+        }
+        if (allAscii) {
+            runText.resize(n);
+            QChar *out = runText.data();
+            for (int i = 0; i < n; ++i) {
+                out[i] = QChar(static_cast<ushort>(cps[i]));
+            }
+        } else {
+            runText = QString::fromUcs4(cps, n);
+        }
+        // ANTS-3453 — resolve the shaped layout from the cache. A hit
+        // skips beginLayout/endLayout (the HarfBuzz pass); a miss shapes
+        // once (unbounded line width so a monospace run never wraps) and
+        // stores. The cached baselineOff reproduces the ANTS-2100 per-run
+        // baseline correction (m_fontAscent − line.ascent()), which pins
+        // every run to the shared cell baseline, so the draw is identical
+        // to the pre-cache path.
+        const int variant = (run.bold ? 1 : 0) | (run.italic ? 2 : 0);
+        qreal baselineOff = 0;
+        QTextLayout *layout = m_shapedRunCache.layoutFor(
+            runText, variant, *drawFont, m_fontAscent, baselineOff);
+        layout->draw(&p, QPointF(px_x, px_y + baselineOff));
+    }
+}
+
+// Draw bookmark markers in left gutter
+void TerminalWidget::paintBookmarkMarkers(QPainter &p, const PaintFrame &f) const {
+    if (m_bookmarks.empty()) return;
+    p.setPen(Qt::NoPen);
+    p.setBrush(m_cursorColor);
+    for (int bm : m_bookmarks) {
+        int vr = bm - f.viewStart;
+        if (vr >= 0 && vr < f.rows) {
+            int py = m_padding + vr * m_cellHeight + m_cellHeight / 2;
+            p.drawEllipse(QPoint(2, py), 2, 2);
+        }
+    }
+}
+
+// Command timestamps and fold indicators (OSC 133 shell integration)
+void TerminalWidget::paintPromptChrome(QPainter &p, const PaintFrame &f) const {
+    const auto &regions = m_grid->promptRegions();
+    const QFontMetrics &sfm = m_smallFontMetrics;  // ANTS-3460 — cached
+
+    // ANTS-3458 — regions are sorted ascending by startLine (append-only
+    // at prompt-start, front-eviction on cap), so binary-search to the
+    // first region at/after the viewport top and stop once startLine
+    // falls below it, instead of scanning the whole session's command
+    // history (O(#commands)) every paint just to `continue` past the
+    // off-screen ones.
+    auto prFirst = std::lower_bound(regions.begin(), regions.end(), f.viewStart,
+        [](const PromptRegion &r, int vs) { return r.startLine < vs; });
+    for (auto it = prFirst; it != regions.end() && it->startLine - f.viewStart < f.rows; ++it) {
+        const auto &pr = *it;
+        int vr = pr.startLine - f.viewStart;   // guaranteed in [0, rows) by the loop bounds
+
+        int py = m_padding + vr * m_cellHeight;
+
+        // Command duration and timestamp (right-aligned)
+        if (pr.commandStartMs > 0) {
+            p.setFont(m_smallFont);
+            QColor dimColor = m_grid->defaultFg();
+            dimColor.setAlpha(100);
+            p.setPen(dimColor);
+
+            QString info;
+            if (pr.commandEndMs > 0)
+                info = formatCommandDuration(pr.commandStartMs, pr.commandEndMs) + "  ";
+
+            QDateTime dt = QDateTime::fromMSecsSinceEpoch(pr.commandStartMs);
+            info += dt.toString("HH:mm:ss");
+
+            // A fixed gap from the right edge, picked by eye; it is not
+            // derived from the scroll bar's width.
+            constexpr int kInfoRightGapPx = 14;
+            int textW = sfm.horizontalAdvance(info);
+            p.drawText(width() - textW - m_padding - kInfoRightGapPx,
+                       py + sfm.ascent(), info);
+            p.setFont(m_font);
+        }
+
+        // Exit-code status stripe (0.7.0). A 2px vertical bar along the
+        // left gutter of the prompt line — green for success, red for
+        // failure. Rendered whenever the command has completed
+        // (commandEndMs > 0); unlike the fold triangle, it shows on the
+        // most recent finished block too, since it doesn't need a
+        // successor region to compute anything.
+        if (pr.commandEndMs > 0) {
+            QColor statusColor = (pr.exitCode == 0)
+                ? QColor(0x9E, 0xCE, 0x6A)   // green (success)
+                : QColor(0xF7, 0x76, 0x8E);  // red (failure)
+            statusColor.setAlpha(200);
+            p.fillRect(0, py, 2, m_cellHeight, statusColor);
+        }
+
+        // Fold indicator for completed command output
+        if (pr.hasOutput && pr.commandEndMs > 0 && std::next(it) != regions.end())
+            paintFoldIndicator(p, pr, static_cast<int>(it - regions.begin()), py);
+    }
+}
+
+// A finished command's fold triangle (right = collapsed, down = expanded)
+// and, when collapsed, the bar saying how many lines it hides.
+void TerminalWidget::paintFoldIndicator(QPainter &p, const PromptRegion &pr,
+                                        int regionIndex, int py) const {
+    const QFontMetrics &sfm = m_smallFontMetrics;  // ANTS-3460 — cached
+    int foldX = m_padding - 2;
+    if (foldX < 0) foldX = 2;
+    QColor foldColor = m_cursorColor;
+    foldColor.setAlpha(120);
+    p.setPen(foldColor);
+    // Draw a small triangle (right = expanded, down = collapsed)
+    if (pr.folded) {
+        // Right-pointing triangle (collapsed)
+        QPolygon tri;
+        tri << QPoint(foldX, py + 2)
+            << QPoint(foldX, py + m_cellHeight - 2)
+            << QPoint(foldX + 6, py + m_cellHeight / 2);
+        p.setBrush(foldColor);
+        p.drawPolygon(tri);
+        p.setBrush(Qt::NoBrush);
+
+        // Draw fold summary bar
+        const auto [outFirst, outEnd] = m_grid->promptRegionOutputLines(regionIndex);
+        int foldedLines = outEnd - outFirst;
+        if (foldedLines > 0) {
+            int barY = py + m_cellHeight;
+            QColor barBg = m_grid->defaultBg().lighter(130);
+            barBg.setAlpha(80);
+            p.fillRect(m_padding, barY, width() - m_padding * 2, m_cellHeight, barBg);
+            p.setFont(m_smallFont);
+            QColor foldText = m_grid->defaultFg();
+            foldText.setAlpha(130);
+            p.setPen(foldText);
+            p.drawText(m_padding + 8, barY + sfm.ascent() + 2,
+                       QString("... %1 lines hidden (click to expand)").arg(foldedLines));
+            p.setFont(m_font);
+        }
+    } else {
+        // Down-pointing triangle (expanded)
+        QPolygon tri;
+        tri << QPoint(foldX, py + 3)
+            << QPoint(foldX + 6, py + 3)
+            << QPoint(foldX + 3, py + 3 + 5);
+        p.setBrush(foldColor);
+        p.drawPolygon(tri);
+        p.setBrush(Qt::NoBrush);
+    }
+}
+
+// Draw inline images
+void TerminalWidget::paintInlineImages(QPainter &p, const PaintFrame &f) const {
+    for (const auto &img : m_grid->inlineImages()) {
+        int px_x = m_padding + img.col * m_cellWidth;
+        int imgRow = img.row;
+        int screenGlobalLine = f.scrollbackSize + imgRow;
+        int vr = screenGlobalLine - f.viewStart;
+        if (vr < 0 || vr >= f.rows) continue;
+        int px_y = m_padding + vr * m_cellHeight;
+        int pw, ph;
+        if (img.pixelSized) {
+            // Sixel/Kitty: dimensions are pixels, render at actual size
+            pw = img.cellWidth;
+            ph = img.cellHeight;
+        } else {
+            // iTerm2/cell-based: dimensions are in cells
+            pw = img.cellWidth * m_cellWidth;
+            ph = img.cellHeight * m_cellHeight;
+        }
+        p.drawImage(QRect(px_x, px_y, pw, ph), img.image);
+    }
+}
+
+// Cursor — shape-aware (DECSCUSR: block, underline, bar)
+// Steady cursor shapes always show; blinking shapes respect blink timer
+void TerminalWidget::paintCursor(QPainter &p, const PaintFrame &f) const {
+    bool cursorShouldShow = m_cursorBlinkOn || !m_hasFocus || !m_grid->cursorBlink();
+    if (m_scrollOffset != 0 || !m_grid->cursorVisible() || !cursorShouldShow) return;
+    // ANTS-1148 — render at frozen position when sync snapshot
+    // is held; live position otherwise. The accessor centralises
+    // the policy (also used at the under-cursor glyph render
+    // below, in paintSuggestionGhost and paintPreedit, plus
+    // blinkCursor's partial-update rect).
+    int cx = m_padding + effectiveCursorCol() * m_cellWidth;
+    int cy = m_padding + effectiveCursorRow() * m_cellHeight;
+    CursorShape shape = m_grid->cursorShape();
+
+    // Cursor glow effect (subtle radial glow behind cursor in dark themes)
+    if (m_hasFocus && m_cursorBlinkOn) {
+        QColor glow = m_cursorGlowColor.isValid() ? m_cursorGlowColor : m_cursorColor;
+        glow.setAlpha(30);
+        int glowSize = 4;
+        p.setPen(Qt::NoPen);
+        p.setBrush(glow);
+        p.drawRoundedRect(cx - glowSize, cy - glowSize,
+                          m_cellWidth + glowSize * 2, m_cellHeight + glowSize * 2,
+                          glowSize, glowSize);
+    }
+
+    if (m_hasFocus) {
+        switch (shape) {
+        case CursorShape::BlinkBar:
+        case CursorShape::SteadyBar:
+            p.fillRect(cx, cy, 2, m_cellHeight, m_cursorColor);
+            break;
+        case CursorShape::BlinkUnderline:
+        case CursorShape::SteadyUnderline:
+            p.fillRect(cx, cy + m_cellHeight - 2, m_cellWidth, 2, m_cursorColor);
+            break;
+        default: // Block cursor
+            p.fillRect(cx, cy, m_cellWidth, m_cellHeight, m_cursorColor);
+            {
+                int cursorGL = f.scrollbackSize + effectiveCursorRow();
+                QString cursorText = cellText(cursorGL, effectiveCursorCol());
+                if (!cursorText.isEmpty()) {
+                    p.setPen(m_grid->defaultBg());
+                    p.drawText(cx, cy + m_fontAscent, cursorText);
+                }
+            }
+            break;
+        }
+    } else {
+        // Unfocused: hollow outline cursor
+        QPen outlinePen(m_cursorColor, 1.5);
+        p.setPen(outlinePen);
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(cx, cy, m_cellWidth - 1, m_cellHeight - 1);
+    }
+}
+
+// Autocomplete ghost text (drawn after cursor, in dim text)
+void TerminalWidget::paintSuggestionGhost(QPainter &p, const PaintFrame &f) const {
+    if (m_scrollOffset != 0 || m_currentSuggestion.isEmpty()) return;
+    int cursorCol = effectiveCursorCol();
+    int gx = m_padding + cursorCol * m_cellWidth;
+    int gy = m_padding + effectiveCursorRow() * m_cellHeight;
+
+    QColor ghost = m_grid->defaultFg();
+    ghost.setAlpha(80);
+    p.setPen(ghost);
+    p.setFont(m_font);
+
+    // Truncate suggestion to remaining columns
+    int remaining = f.cols - cursorCol;
+    QString text = m_currentSuggestion.left(remaining);
+    p.drawText(gx, gy + m_fontAscent, text);
+}
+
+// ANTS-1780 — IME pre-edit (composition) text, drawn inline at the
+// cursor with an underline so uncommitted CJK / dead-key input is
+// visible while composing. Painted after the cursor so it overlays
+// the block-cursor cell; the bg fill clears whatever is underneath.
+void TerminalWidget::paintPreedit(QPainter &p) const {
+    if (m_scrollOffset != 0 || m_preeditString.isEmpty()) return;
+    int cursorCol = effectiveCursorCol();
+    int gx = m_padding + cursorCol * m_cellWidth;
+    int gy = m_padding + effectiveCursorRow() * m_cellHeight;
+    QString text = m_preeditString;
+    const QFontMetrics &fm = m_fontMetrics;  // ANTS-3460 — cached
+    int textW = fm.horizontalAdvance(text);
+    // Don't paint past the right padding edge.
+    int maxW = width() - m_padding - gx;
+    if (textW > maxW) textW = maxW;
+    if (textW > 0) {
+        p.fillRect(gx, gy, textW, m_cellHeight, m_grid->defaultBg());
+        p.setPen(m_grid->defaultFg());
+        p.setFont(m_font);
+        p.drawText(gx, gy + m_fontAscent, text);
+        p.fillRect(gx, gy + m_cellHeight - 1, textW, 1, m_grid->defaultFg());
+    }
+}
+
+// New output separator line (when scrolled up and new output arrived)
+void TerminalWidget::paintNewOutputMarker(QPainter &p, const PaintFrame &f) const {
+    if (m_newOutputMarkerLine < 0 || m_scrollOffset <= 0) return;
+    int vr = m_newOutputMarkerLine - f.viewStart;
+    if (vr < 0 || vr >= f.rows) return;
+    int markerY = m_padding + vr * m_cellHeight;
+    QColor markerColor = m_cursorColor;
+    markerColor.setAlpha(120);
+    QPen dashPen(markerColor, 1, Qt::DashLine);
+    p.setPen(dashPen);
+    p.drawLine(m_padding, markerY, width() - m_padding, markerY);
+    // Label — ANTS-1207 cached small font.
+    p.setFont(m_smallFont);
+    p.setPen(markerColor);
+    p.drawText(width() - 120, markerY - 2, "new output");
+    p.setFont(m_font);
+}
+
+// URL quick-select overlay labels
+void TerminalWidget::paintQuickSelect(QPainter &p, const PaintFrame &f) const {
+    if (!m_urlQuickSelectActive || m_quickSelectLabels.empty()) return;
+    p.setFont(m_quickSelectFont);  // ANTS-1207 — cached
+    const QFontMetrics &lfm = m_quickSelectFontMetrics;  // ANTS-3460 — cached
+
+    for (const auto &ql : m_quickSelectLabels) {
+        int vr = ql.globalLine - f.viewStart;
+        if (vr < 0 || vr >= f.rows) continue;
+        int lx = m_padding + ql.startCol * m_cellWidth - 2;
+        int ly = m_padding + vr * m_cellHeight;
+
+        // Draw label badge
+        int labelW = lfm.horizontalAdvance(ql.label) + 8;
+        int labelH = lfm.height() + 4;
+        QColor badgeBg = m_cursorColor;
+        p.setPen(Qt::NoPen);
+        p.setBrush(badgeBg);
+        p.drawRoundedRect(lx - labelW - 2, ly, labelW, labelH, 3, 3);
+        p.setPen(m_grid->defaultBg());
+        p.drawText(lx - labelW + 2, ly + lfm.ascent() + 2, ql.label);
+
+        // Highlight the URL span
+        QColor hlBg = m_cursorColor;
+        hlBg.setAlpha(40);
+        int spanW = (ql.endCol - ql.startCol + 1) * m_cellWidth;
+        p.fillRect(m_padding + ql.startCol * m_cellWidth, ly, spanW, m_cellHeight, hlBg);
+    }
+    p.setFont(m_font);
+
+    // Draw input so far at bottom
+    if (!m_quickSelectInput.isEmpty()) {
+        QColor inputBg = m_grid->defaultBg().darker(120);
+        inputBg.setAlpha(220);
+        int ibH = m_cellHeight + 8;
+        int ibY = height() - ibH - (m_searchVisible ? m_searchBar->height() : 0);
+        p.fillRect(0, ibY, width(), ibH, inputBg);
+        p.setPen(m_grid->defaultFg());
+        p.drawText(m_padding + 4, ibY + m_fontAscent + 4,
+                    "Quick Select: " + m_quickSelectInput);
+    }
+}
+
+// Sticky command header (pin command at top when scrolling through its output)
+void TerminalWidget::paintStickyHeader(QPainter &p, const PaintFrame &f) const {
+    if (m_scrollOffset <= 0) return;
+    const int viewStart = f.viewStart;
+    const auto &regions = m_grid->promptRegions();
+    // ANTS-3458 — the region whose output spans the viewport top is the
+    // last one with startLine <= viewStart (outputs are contiguous and
+    // non-overlapping between consecutive regions), so binary-search to
+    // that single candidate instead of scanning all regions backwards on
+    // every scrolled paint (was O(#commands) when scrolled deep).
+    auto stickyUp = std::upper_bound(regions.begin(), regions.end(), viewStart,
+        [](int vs, const PromptRegion &r) { return vs < r.startLine; });
+    if (stickyUp == regions.begin()) return;
+    const auto it = std::prev(stickyUp);
+    const auto &pr = *it;
+    const auto [outFirst, outEnd] = m_grid->promptRegionOutputLines(
+        static_cast<int>(it - regions.begin()));
+    // Viewport top line
+    if (outFirst > viewStart || viewStart >= outEnd || !pr.hasOutput) return;
+
+    // ANTS-5027 — the command text, cut to the header's width
+    // less the room kept on the right for the duration.
+    constexpr int kDurationReservePx = 80;
+    const int maxChars =
+        (width() - m_padding * 2 - kDurationReservePx) / m_cellWidth;
+    const QString truncated = stickyCommandText(
+        pr.startLine, pr.endLine, maxChars,
+        [this](int gl) { return lineText(gl); });
+    if (truncated.isEmpty()) return;
+
+    // Draw sticky header bar at top
+    QColor headerBg = m_grid->defaultBg().lighter(120);
+    headerBg.setAlpha(230);
+    int headerH = m_cellHeight + 4;
+    p.fillRect(0, 0, width(), headerH, headerBg);
+
+    // Bottom border
+    QColor borderColor = m_cursorColor;
+    borderColor.setAlpha(100);
+    p.setPen(borderColor);
+    p.drawLine(0, headerH, width(), headerH);
+
+    // Command text
+    p.setPen(m_grid->defaultFg());
+    p.setFont(m_font);
+    p.drawText(m_padding + 4, 2 + m_fontAscent, truncated);
+
+    // Duration (right side)
+    if (pr.commandStartMs > 0 && pr.commandEndMs > 0) {
+        const QString durStr =
+            formatCommandDuration(pr.commandStartMs, pr.commandEndMs);
+        QColor dimColor = m_grid->defaultFg();
+        dimColor.setAlpha(130);
+        p.setPen(dimColor);
+        const QFontMetrics &fm = m_fontMetrics;  // ANTS-3460 — cached
+        p.drawText(width() - fm.horizontalAdvance(durStr) - m_padding - 4, 2 + m_fontAscent, durStr);
+    }
+}
+
+// Performance overlay
+void TerminalWidget::paintPerfOverlay(QPainter &p, const PaintFrame &f) {
+    if (!m_showPerfOverlay) return;
+    ++m_perfFrameCount;
+    qint64 elapsed = m_perfFrameTimer.elapsed();
+    if (elapsed >= 1000) {
+        m_perfFps = m_perfFrameCount * 1000.0 / elapsed;
+        m_perfFrameCount = 0;
+        m_perfFrameTimer.restart();
+    }
+
+    QStringList lines;
+    lines << QString("FPS: %1").arg(m_perfFps, 0, 'f', 1);
+    lines << QString("Scrollback: %1").arg(m_grid->scrollbackSize());
+    lines << QString("Grid: %1x%2").arg(f.cols).arg(f.rows);
+    lines << QString("Scroll offset: %1").arg(m_scrollOffset);
+
+    // Measure and draw background — ANTS-1207 cached perf font.
+    p.setFont(m_perfFont);
+    const QFontMetrics &pfm = m_perfFontMetrics;  // ANTS-3460 — cached
+    int lineH = pfm.height();
+    int maxW = 0;
+    for (const auto &l : lines) maxW = qMax(maxW, pfm.horizontalAdvance(l));
+    int boxW = maxW + 16;
+    int boxH = lines.size() * lineH + 12;
+    int bx = width() - boxW - 8;
+    int by = 8;
+
+    p.setPen(Qt::NoPen);
+    QColor overlay = m_grid->defaultBg();
+    overlay.setAlpha(200);
+    p.setBrush(overlay);
+    p.drawRoundedRect(bx, by, boxW, boxH, 4, 4);
+
+    p.setPen(m_grid->defaultFg());
+    for (int i = 0; i < lines.size(); ++i) {
+        p.drawText(bx + 8, by + 8 + (i + 1) * lineH - pfm.descent(), lines[i]);
+    }
+    p.setFont(m_font);
+}
+
+// Command-mark gutter (0.6.41). Narrow 4-px vertical strip just left
+// of the scrollbar, one tick per OSC 133 PromptRegion, mapping the
+// region's startLine to y via startLine / (scrollbackSize + rows).
+// Color by exit status: green (exit 0), red (non-zero exit), gray
+// (in-progress, no D marker yet). Lets users see command boundaries
+// across the full scrollback at a glance — jump targets for
+// Ctrl+Shift+Up/Down. No-op when no prompt regions exist, so users
+// without shell integration see nothing change.
+// ANTS-3458 — unlike the prompt-chrome and sticky-header loops, this one
+// is O(#regions) by design: it is a full-scrollback minimap, so every
+// region maps to a tick across the whole widget height and cannot be
+// viewport-bounded. Only runs when m_showCommandMarks is on.
+void TerminalWidget::paintCommandMarkGutter(QPainter &p, const PaintFrame &f) const {
+    if (!m_showCommandMarks) return;
+    const auto &regions = m_grid->promptRegions();
+    if (regions.empty()) return;
+    constexpr int gutterW = 4;
+    constexpr int tickH = 2;
+    int gutterRight = width();
+    if (m_scrollBar && m_scrollBar->isVisible())
+        gutterRight -= m_scrollBar->width();
+    const int gutterX = gutterRight - gutterW;
+    const int total = std::max(1, f.scrollbackSize + f.rows);
+    for (const auto &pr : regions) {
+        double frac = static_cast<double>(pr.startLine) / total;
+        int y = static_cast<int>(frac * height());
+        if (y < 0 || y >= height()) continue;
+        QColor c;
+        if (pr.commandEndMs > 0)
+            c = (pr.exitCode == 0) ? QColor(0x9F, 0xE0, 0x64)   // success green
+                                   : QColor(0xE0, 0x64, 0x64); // failure red
+        else
+            c = QColor(0x80, 0x80, 0x80);                      // in-progress gray
+        c.setAlpha(180);
+        p.fillRect(gutterX, y, gutterW, tickH, c);
+    }
+}
+
+// OSC 9;4 progress strip — thin bar along the bottom edge.
+// Matches Microsoft Terminal's visual convention: blue/red/yellow fill by
+// state, ~3px tall, drawn above anything except the search bar.
+void TerminalWidget::paintProgressStrip(QPainter &p) const {
+    if (m_grid->progressState() == ProgressState::None) return;
+    int stripH = 3;
+    int stripY = height() - stripH;
+    // Reserve right-hand gap for the scroll bar if one is showing
+    int stripRight = width();
+    if (m_scrollBar && m_scrollBar->isVisible()) {
+        stripRight -= m_scrollBar->width();
+    }
+    QColor stripColor;
+    bool full = false;
+    switch (m_grid->progressState()) {
+        case ProgressState::Normal:        stripColor = QColor(0x89, 0xB4, 0xFA); break; // blue
+        case ProgressState::Error:         stripColor = QColor(0xF3, 0x8B, 0xA8); break; // red
+        case ProgressState::Warning:       stripColor = QColor(0xF9, 0xE2, 0xAF); break; // yellow
+        case ProgressState::Indeterminate: stripColor = QColor(0xB4, 0xBE, 0xFE); full = true; break; // lavender
+        default: break;
+    }
+    // Background channel (dim)
+    QColor bgStrip = stripColor;
+    bgStrip.setAlpha(60);
+    p.fillRect(0, stripY, stripRight, stripH, bgStrip);
+    // Fill channel
+    int pct = full ? 100 : std::clamp(m_grid->progressValue(), 0, 100);
+    int fillW = stripRight * pct / 100;
+    p.fillRect(0, stripY, fillW, stripH, stripColor);
 }
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
@@ -4464,6 +4491,37 @@ TerminalWidget::urlSpansForLine(int globalLine) const {
     if (it == m_urlSpanCache.end())
         it = m_urlSpanCache.emplace(globalLine, detectUrls(globalLine)).first;
     return it->second;
+}
+
+// The highlight-rule spans on a line, from m_hlSpanCache; computed and
+// memoised on a miss, under the same lifetime as urlSpansForLine's.
+// ANTS-5077 — with no rules there is nothing to match, so no cache entry
+// is made for the line.
+const std::vector<TerminalWidget::PaintHighlightSpan> &
+TerminalWidget::highlightSpansForLine(int globalLine) const {
+    static const std::vector<PaintHighlightSpan> kNoHighlightSpans;
+    if (!m_highlightRules.empty()) {
+        auto hlCacheIt = m_hlSpanCache.find(globalLine);
+        if (hlCacheIt == m_hlSpanCache.end()) {
+            std::vector<PaintHighlightSpan> computed;
+            QString lt = lineText(globalLine);
+            std::optional<LineColumns> ltCols;   // offsets → cells, on first match
+            for (const auto &rule : m_highlightRules) {
+                auto it = rule.pattern.globalMatch(lt);
+                while (it.hasNext()) {
+                    auto m = it.next();
+                    if (m.capturedLength() <= 0) continue;
+                    if (!ltCols) ltCols = lineColumns(globalLine);
+                    computed.push_back({ltCols->columnAt(m.capturedStart()),
+                                        ltCols->lastColumnBefore(m.capturedEnd()),
+                                        rule.fg, rule.bg});
+                }
+            }
+            hlCacheIt = m_hlSpanCache.emplace(globalLine, std::move(computed)).first;
+        }
+        return hlCacheIt->second;
+    }
+    return kNoHighlightSpans;
 }
 
 std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) const {

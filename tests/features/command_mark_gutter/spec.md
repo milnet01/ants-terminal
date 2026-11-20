@@ -21,9 +21,9 @@ configuration step most users won't discover.
 `setShowCommandMarks(bool)` + `showCommandMarks()` on TerminalWidget,
 backed by `m_showCommandMarks` (default true).
 
-### (3) paintEvent gates the gutter on m_showCommandMarks AND non-empty regions
+### (3) paintCommandMarkGutter gates the gutter on m_showCommandMarks AND non-empty regions
 
-The painting block must be gated on `m_showCommandMarks` and must early-out
+`paintEvent` calls `paintCommandMarkGutter`, which must be gated on `m_showCommandMarks` and must early-out
 when `promptRegions().empty()`. The first condition is the user toggle;
 the second is the "no shell integration" silent-no-op invariant — users
 without OSC 133 markers see no visual change.

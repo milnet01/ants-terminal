@@ -86,22 +86,23 @@ TEST(TerminalWidgetHotPathPerf, Inv3TripleClickClearsRectFlag) {
            "a prior Alt-drag leaves m_rectSelection set";
 }
 
-// INV-4 — paintEvent precomputes search-match spans per row (ANTS-3457)
-// and evaluates a single shared per-cell predicate (ANTS-1841).
+// INV-4 — the per-row painter precomputes search-match spans per row
+// (ANTS-3457) and evaluates a single shared per-cell predicate (ANTS-1841).
+// ANTS-6179 moved the cell loop from paintEvent into paintRow.
 TEST(TerminalWidgetHotPathPerf, Inv4SearchMatchComputedOncePerCell) {
     const QString body = functionBody(
-        tw(), QStringLiteral("void TerminalWidget::paintEvent("));
-    ASSERT_FALSE(body.isEmpty()) << "paintEvent not found";
+        tw(), QStringLiteral("void TerminalWidget::paintRow("));
+    ASSERT_FALSE(body.isEmpty()) << "paintRow not found";
     EXPECT_TRUE(body.contains(QStringLiteral("const bool searchMatch")))
-        << "paintEvent must hoist the per-cell search-match result into one "
+        << "paintRow must hoist the per-cell search-match result into one "
            "shared local (colour + opacity decisions)";
     // ANTS-3457 — the std::lower_bound probe is precomputed per row, so the
     // per-cell isCellSearchMatch(globalLine, col) call must be gone entirely.
     EXPECT_EQ(body.count(QStringLiteral("isCellSearchMatch(globalLine, col)")), 0)
-        << "paintEvent still probes isCellSearchMatch per cell — the "
+        << "paintRow still probes isCellSearchMatch per cell — the "
            "std::lower_bound must be hoisted to a per-row precompute";
     EXPECT_TRUE(body.contains(QStringLiteral("m_paintSearchSpans")))
-        << "paintEvent must precompute this row's search-match spans once "
+        << "paintRow must precompute this row's search-match spans once "
            "into m_paintSearchSpans instead of a per-cell probe";
 }
 
@@ -117,7 +118,7 @@ TEST(TerminalWidgetHotPathPerf, Inv5PaintHonorsDamageRect) {
         << "paintEvent must read the QPaintEvent damage rect";
     EXPECT_TRUE(body.contains(QStringLiteral("vr = firstRow")))
         << "the per-row loop must start at the first damaged row";
-    EXPECT_FALSE(body.contains(QStringLiteral("for (int vr = 0; vr < rows")))
+    EXPECT_FALSE(body.contains(QStringLiteral("for (int vr = 0; vr <")))
         << "paintEvent still walks all rows unconditionally — the damage rect "
            "is ignored, so a cursor blink re-shapes the whole grid";
 }
@@ -139,27 +140,28 @@ TEST(TerminalWidgetHotPathPerf, Inv6SuggestionScanDoesNotDetachHistory) {
         << "updateSuggestion still range-fors the member directly";
 }
 
-// INV-7 (ANTS-5077) — paintEvent touches the highlight span cache only when
-// highlight rules exist.
+// INV-7 (ANTS-5077) — painting touches the highlight span cache only when
+// highlight rules exist. ANTS-6179 moved the lookup into highlightSpansForLine.
 TEST(TerminalWidgetHotPathPerf, Inv7NoHighlightCacheWithoutRules) {
     const QString body = functionBody(
-        tw(), QStringLiteral("void TerminalWidget::paintEvent("));
-    ASSERT_FALSE(body.isEmpty()) << "paintEvent not found";
+        tw(), QStringLiteral("TerminalWidget::highlightSpansForLine(int globalLine) const"));
+    ASSERT_FALSE(body.isEmpty()) << "highlightSpansForLine not found";
     const int guard = body.indexOf(QStringLiteral("if (!m_highlightRules.empty())"));
     const int find = body.indexOf(QStringLiteral("m_hlSpanCache.find("));
     ASSERT_GE(guard, 0) << "highlight-rules guard missing";
     ASSERT_GE(find, 0) << "highlight span cache lookup missing";
     EXPECT_LT(guard, find)
-        << "paintEvent looks up (and fills) the highlight cache before checking "
+        << "highlightSpansForLine looks up (and fills) the highlight cache before checking "
            "for rules, adding an entry per painted line with no rules";
 }
 
 // INV-8 (ANTS-5077) — the pre-scaled background is drawn through a source
-// rect, not stretched onto the widget.
+// rect, not stretched onto the widget. ANTS-6179 moved the draw into
+// paintBackgroundImage.
 TEST(TerminalWidgetHotPathPerf, Inv8BackgroundNotStretched) {
     const QString body = functionBody(
-        tw(), QStringLiteral("void TerminalWidget::paintEvent("));
-    ASSERT_FALSE(body.isEmpty()) << "paintEvent not found";
+        tw(), QStringLiteral("void TerminalWidget::paintBackgroundImage("));
+    ASSERT_FALSE(body.isEmpty()) << "paintBackgroundImage not found";
     EXPECT_FALSE(body.contains(QStringLiteral("p.drawImage(rect(), m_backgroundImage);")))
         << "the background image is stretched onto rect() every paint";
     EXPECT_TRUE(body.contains(QStringLiteral("p.drawImage(rect(), m_backgroundImage,")));

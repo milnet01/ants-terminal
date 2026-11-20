@@ -34,7 +34,7 @@ the invariants are source-scrape assertions against
 
 - **INV-4 / search-match predicate hoisted per row, computed once per
   cell.** ANTS-1841 removed the double per-cell probe (colour + opacity
-  each ran `isCellSearchMatch`). ANTS-3457 goes further: the paint cell
+  each ran `isCellSearchMatch`). ANTS-3457 goes further: `paintRow`'s cell
   loop MUST NOT call `isCellSearchMatch(globalLine, col)` at all — the
   underlying `std::lower_bound` into `m_searchMatches` is precomputed
   once per row into `m_paintSearchSpans`, and the per-cell result is a
@@ -49,12 +49,12 @@ the invariants are source-scrape assertions against
 - **INV-6 / the suggestion scan does not detach history** (ANTS-4780).
   `updateSuggestion` iterates `std::as_const(m_historyEntries)`.
 
-- **INV-7 / no highlight cache without rules** (ANTS-5077). In `paintEvent`
-  the `if (!m_highlightRules.empty())` guard precedes `m_hlSpanCache.find(`,
+- **INV-7 / no highlight cache without rules** (ANTS-5077). In
+  `highlightSpansForLine` the `if (!m_highlightRules.empty())` guard precedes `m_hlSpanCache.find(`,
   so a session with no rules adds no cache entry per painted line.
 
 - **INV-8 / background drawn, not stretched** (ANTS-5077). The pre-scaled
-  background image is drawn through a source rect
+  background image is drawn by `paintBackgroundImage` through a source rect
   (`p.drawImage(rect(), m_backgroundImage, …)`), not stretched onto `rect()`.
 
 - **INV-9 / key log records no typed text** (ANTS-5077). `keyPressEvent`'s

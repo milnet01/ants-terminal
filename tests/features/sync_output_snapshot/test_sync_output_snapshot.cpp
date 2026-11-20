@@ -255,27 +255,34 @@ TEST(SyncOutputSnapshot, Main) {
                 "effectiveCursorCol()");
     }
     {
-        // paintEvent: ≥ 3 calls to each accessor; zero direct
-        // m_grid->cursorRow()/Col() reads in the body.
-        // Match the param-name-agnostic prefix (ANTS-3454 named the
-        // QPaintEvent param `event`) — same robust form the hotpath-perf
-        // source-scrape uses.
-        const std::string body = functionBody(tw,
-            "void TerminalWidget::paintEvent(");
-        if (body.empty())
-            fail("INV-9", "paintEvent body missing");
+        // The paint path: ≥ 3 calls to each accessor; zero direct
+        // m_grid->cursorRow()/Col() reads. ANTS-6179 split paintEvent, so
+        // the path is paintEvent plus the helpers that paint a row or at
+        // the cursor. Match the param-name-agnostic prefix (ANTS-3454 named
+        // the QPaintEvent param `event`).
+        std::string body;
+        for (const char *sig : {"void TerminalWidget::paintEvent(",
+                                "void TerminalWidget::paintRow(",
+                                "void TerminalWidget::paintCursor(",
+                                "void TerminalWidget::paintSuggestionGhost(",
+                                "void TerminalWidget::paintPreedit("}) {
+            const std::string part = functionBody(tw, sig);
+            if (part.empty())
+                fail("INV-9", std::string(sig) + " body missing");
+            body += part;
+        }
         const auto rowCalls = countOccurrences(body, "effectiveCursorRow()");
         const auto colCalls = countOccurrences(body, "effectiveCursorCol()");
         if (rowCalls < 3 || colCalls < 3) {
             std::fprintf(stderr,
-                "[INV-9] FAIL: paintEvent expected ≥ 3 effectiveCursorRow/Col() "
+                "[INV-9] FAIL: the paint path expected ≥ 3 effectiveCursorRow/Col() "
                 "calls each, got row=%zu col=%zu\n", rowCalls, colCalls);
             FAIL();
         }
         if (contains(body, "m_grid->cursorRow()") ||
             contains(body, "m_grid->cursorCol()"))
             fail("INV-9",
-                "paintEvent body still contains `m_grid->cursorRow()` "
+                "the paint path still contains `m_grid->cursorRow()` "
                 "or `m_grid->cursorCol()` — every render-path read must "
                 "go through the accessor; otherwise the cursor leaks "
                 "the live position during sync");

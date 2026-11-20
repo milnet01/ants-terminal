@@ -75,19 +75,23 @@ TEST(CommandMarkGutter, Main) {
     if (!std::regex_search(twHdr, std::regex(R"(bool\s+m_showCommandMarks\s*=\s*true\s*;)")))
         fail("terminalwidget.h missing m_showCommandMarks default-true member");
 
-    // (3) paintEvent gates on m_showCommandMarks AND non-empty regions.
-    //     Scope the search to just the paintEvent body via the balanced-
-    //     brace scanner so we don't pay std::regex backtracking cost on
-    //     a 4500-line source file.
-    const std::string paintBody = extractFunctionBody(twImp, "TerminalWidget::paintEvent");
+    // (3) The gutter painter gates on m_showCommandMarks AND non-empty
+    //     regions, and paintEvent calls it. ANTS-6179 moved the gutter out
+    //     of paintEvent into paintCommandMarkGutter. Scope the search to
+    //     each body via the balanced-brace scanner.
+    const std::string eventBody = extractFunctionBody(twImp, "TerminalWidget::paintEvent");
+    if (eventBody.find("paintCommandMarkGutter(") == std::string::npos)
+        fail("paintEvent must call paintCommandMarkGutter");
+    const std::string paintBody =
+        extractFunctionBody(twImp, "TerminalWidget::paintCommandMarkGutter");
     if (paintBody.empty()) {
-        fail("terminalwidget.cpp paintEvent body not found");
+        fail("terminalwidget.cpp paintCommandMarkGutter body not found");
     } else {
         if (paintBody.find("m_showCommandMarks") == std::string::npos)
-            fail("paintEvent must gate gutter drawing on m_showCommandMarks");
+            fail("paintCommandMarkGutter must gate on m_showCommandMarks");
         if (paintBody.find("regions.empty()") == std::string::npos &&
             paintBody.find("promptRegions().empty()") == std::string::npos)
-            fail("paintEvent must early-out when promptRegions().empty()");
+            fail("paintCommandMarkGutter must early-out when promptRegions().empty()");
         // (4) Gutter positioned just left of the scrollbar.
         if (paintBody.find("m_scrollBar->width()") == std::string::npos)
             fail("gutter painting must subtract m_scrollBar->width() for positioning");
@@ -98,9 +102,8 @@ TEST(CommandMarkGutter, Main) {
             paintBody.find("exitCode == 0") == std::string::npos) {
             fail("gutter color logic must branch on commandEndMs > 0 and exitCode == 0");
         } else {
-            // Count QColor occurrences in the paint body — we expect at
-            // least 3 (success / failure / in-progress). Allow more in case
-            // unrelated painting in the same function uses QColor too.
+            // Count QColor occurrences in the gutter body — we expect at
+            // least 3 (success / failure / in-progress).
             size_t pos = 0, count = 0;
             while ((pos = paintBody.find("QColor", pos)) != std::string::npos) {
                 ++count;

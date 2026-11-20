@@ -42,12 +42,13 @@ manually.
   `m_frozenCursorRow = 0` and `m_frozenCursorCol = 0`.
 - **INV-9** Cursor-position policy centralised in two
   inline accessors (`effectiveCursorRow()` / `effectiveCursorCol()`)
-  declared on `TerminalWidget`. `paintEvent` calls each
-  accessor ≥ 3 times (cursor draw + under-cursor glyph +
-  autocomplete-ghost render). `blinkCursor` calls each accessor
+  declared on `TerminalWidget`. The paint path (`paintEvent` and its
+  `paintRow`, `paintCursor`, `paintSuggestionGhost` and `paintPreedit`
+  helpers) calls each accessor ≥ 3 times (cursor draw + under-cursor
+  glyph + autocomplete-ghost and pre-edit renders). `blinkCursor` calls each accessor
   exactly once (the partial-update rect — must target the
   cell paintEvent will draw, not the live cursor cell).
-  Neither function contains `m_grid->cursorRow()` or
+  Neither the paint path nor `blinkCursor` contains `m_grid->cursorRow()` or
   `m_grid->cursorCol()` in the post-fix body. Other reader
   functions (keyPressEvent, inputMethodQuery,
   clickToMoveCursor, findMatchingBracket, toggleFoldAtCursor,

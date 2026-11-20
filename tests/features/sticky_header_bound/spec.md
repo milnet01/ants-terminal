@@ -67,7 +67,7 @@ In scope: `stickyCommandText`'s own contract — how many times it calls
 `lineAt` for a given span and `maxChars`, and what string it returns.
 
 Out of scope:
-- `TerminalWidget::paintEvent`'s call site, the per-region cache the
+- `TerminalWidget::paintStickyHeader`'s call site, the per-region cache the
   ANTS-5027 roadmap entry also asks for, and the B-forgery bound — none of
   those are reachable from this header-only, `QString`-only function, and
   none is asserted here.

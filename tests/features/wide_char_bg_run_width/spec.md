@@ -2,7 +2,7 @@
 
 ## Problem
 
-`TerminalWidget::paintEvent` coalesces adjacent same-colour cell
+`TerminalWidget::paintRow` coalesces adjacent same-colour cell
 backgrounds into one `fillRect` (ANTS-1180). It walks every column,
 computes `cellDrawWidth` — double for a cell whose `isWideChar` is set —
 and either extends the active run by that width or flushes and starts a
@@ -38,7 +38,7 @@ and is what this feature requires.
 ## Invariants
 
 **INV-1 — the extend branch does not add width for a continuation
-cell.** Source-grep `TerminalWidget::paintEvent`: the branch that
+cell.** Source-grep `TerminalWidget::paintRow`: the branch that
 extends an active background run tests `isWideCont` before adding.
 
 **INV-2 — the guard is on the extend branch only.** The branch that
