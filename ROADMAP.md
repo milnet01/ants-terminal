@@ -106942,7 +106942,7 @@ worked after these.
   Kind: doc-fix.
   Source: close-findings sweep 2026-10-23 (ANTS-6153 L05-F1).
 
-- 📋 [ANTS-6172] **Fold newTab, newTabForRemote and the restoreSessions tab setup into one tab-creation helper (L04-F3).**
+- ✅ [ANTS-6172] **Fold newTab, newTabForRemote and the restoreSessions tab setup into one tab-creation helper (L04-F3).**
   L04-F3 (HIGH), queued from ANTS-6113 on 2026-10-23. Three copies
   of "make a tab" have drifted: newTabForRemote (rc new-tab, the
   welcome install tab) never calls saveTabOrderOnly (ANTS-1159 crash
@@ -106956,6 +106956,15 @@ worked after these.
   scrapes unless each spec is amended and gated first.
   The 2026-11-06 reviews also found this: row 543
   `src/mainwindow_tabs.cpp:1229`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-20. `MainWindow::openShellTab` is the one way to open a
+  tab with a running shell; `newTab` and `newTabForRemote` call it, so a
+  remote tab now saves the tab order (ANTS-1159). `addShellTab` adds the
+  tab and its session id, shared with `restoreSessions`, which now calls
+  `trackTerminalShell`. Feature specs amended in the same commit:
+  crash_safe_session_persist INV-4, claude_dot_restored_tabs WI-1/WI-2,
+  plugin_tab_title_events INV-2, shell_command_wiring I3, tab_rename_pin
+  INV-3 prose. tab_list_panel INV-11's test floor moved with the call
+  count. Amended tests red before the move, default suite green after.
   **Layman:** Opening a tab is written out three times and the copies have drifted; make it one piece of code.
   Kind: refactor.
   Source: review-readability-2026-10-22 L04.

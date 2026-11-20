@@ -306,7 +306,9 @@ TEST(TabListPanel, Inv11OneFunctionDecidesTheTabBar) {
     EXPECT_NE(body.find("count() > 1"), std::string::npos) << "one tab needs no bar";
     EXPECT_NE(body.find("tabListPanelHidesTabBar()"), std::string::npos)
         << "the side list's hide setting is ignored";
-    EXPECT_GE(count("updateTabBarVisibility()"), 6) << "a tab-count site does not call it";
+    // The definition, plus openShellTab, restoreSessions, performTabClose
+    // and applyTabListPanelConfig.
+    EXPECT_GE(count("updateTabBarVisibility()"), 5) << "a tab-count site does not call it";
 }
 
 TEST(TabListPanel, Inv7BothReloadPathsApplyThePanel) {

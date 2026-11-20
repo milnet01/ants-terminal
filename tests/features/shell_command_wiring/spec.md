@@ -48,9 +48,10 @@ The `QMetaObject::invokeMethod(m_vtStream, "start", …, Q_ARG(QString, shell), 
 call passes the method's `shell` parameter, NOT `QString()`. A
 refactor that drops the parameter back to empty re-opens the bug.
 
-### Invariant 3 — All four production call sites in `MainWindow` pass `m_config.shellCommand()`
+### Invariant 3 — Every production call site in `MainWindow` passes `m_config.shellCommand()`
 
-`MainWindow::newTab`, `MainWindow::newTabForRemote`,
+`MainWindow::openShellTab` (the one place `newTab` and
+`newTabForRemote` start a shell),
 `MainWindow::splitCurrentPane`, and the `restoredTabs` loop in
 `MainWindow::restoreSessions` (or equivalent session-restore path)
 all pass `m_config.shellCommand()` as the `shell` argument. The
@@ -79,7 +80,7 @@ Steps:
    the `Q_ARG(QString, …)` for the shell slot is `shell`, not
    `QString()`.
 3. **I3:** open `src/mainwindow.cpp`, count occurrences of
-   `startShell(…m_config.shellCommand(…)…)` — must be ≥ 4.
+   `startShell(…m_config.shellCommand(…)…)` — must be ≥ 3.
    Also require zero occurrences of `startShell(` that lack the
    `shellCommand` token, excluding the comment block (canonicalise
    by stripping `//` lines before the grep).

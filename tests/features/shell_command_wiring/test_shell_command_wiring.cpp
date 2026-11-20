@@ -131,10 +131,10 @@ void checkI3() {
         from = at + 11;  // len("startShell(")
     }
 
-    expect(wired >= 4,
-           "I3/at-least-4-call-sites-pass-shellCommand",
-           QStringLiteral("expected >= 4 wired call sites, got %1 "
-                          "(newTab + newTabForRemote + splitCurrentPane + "
+    expect(wired >= 3,
+           "I3/at-least-3-call-sites-pass-shellCommand",
+           QStringLiteral("expected >= 3 wired call sites, got %1 "
+                          "(openShellTab + splitCurrentPane + "
                           "session-restore)")
                .arg(wired));
     expect(orphan == 0,

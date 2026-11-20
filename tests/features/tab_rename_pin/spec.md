@@ -69,8 +69,7 @@ that carries the clear-pin semantics.
 Every tab-label-writing path in `mainwindow.cpp` outside the two
 intentional *consumers* (`setTabTitleForRemote` itself, the
 format-driven `updateTabTitles`, the OSC 0/2 `titleChanged` signal
-handler, `newTabForRemote`'s `"Shell"` initializer, `newTab`
-slots, the close path) MUST either (a) consult
+handler, `addShellTab`'s `"Shell"` initializer, the close path) MUST either (a) consult
 `m_tabTitlePins.contains(...)` before writing, or (b) populate
 `m_tabTitlePins` when writing. A future rename-like feature that
 directly mutates tab text without either check regresses this

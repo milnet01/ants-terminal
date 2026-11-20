@@ -276,6 +276,13 @@ private:
     void showScrollScanPermissionButton(TerminalWidget *terminal,
                                         const QString &rawRule);
     void splitCurrentPane(Qt::Orientation orientation);
+    // Adds a "Shell" tab holding a new connected terminal, under `tabId`.
+    // Starts no shell: session restore starts its shells after layout.
+    TerminalWidget *addShellTab(const QString &tabId);
+    // The one way to open a tab with a running shell: adds it, makes it
+    // current, starts the shell in `cwd` (empty inherits the focused
+    // terminal's), tracks it, fires tab_created and saves the tab order.
+    TerminalWidget *openShellTab(const QString &cwd, bool *shellStarted = nullptr);
     // ANTS-5079 — register a terminal's shell with the per-tab Claude
     // tracker and the background-task tracker, and release it again.
     void trackTerminalShell(TerminalWidget *terminal);

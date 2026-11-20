@@ -2,7 +2,7 @@
 // Source-grep only: behavioural exercise of restoreSessions requires
 // a full MainWindow + session-persistence fixture, which is heavier
 // than the test_core bundle can carry. The grep here catches a
-// regression that re-introduces the missing trackShell call.
+// regression that re-introduces the missing shell tracking.
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
@@ -27,16 +27,22 @@ void testWiring() {
            "anchor: MainWindow::restoreSessions body slurped");
     if (body.empty()) return;
 
-    // WI-1 — restoreSessions calls trackShell on each restored tab.
+    // WI-1 — restoreSessions calls trackTerminalShell on each restored
+    // tab, after its shell starts.
     // Without this, ClaudeTabTracker::m_shells is missing the
     // restored shell PIDs and shellState() returns NotRunning →
     // no per-tab Claude dot.
-    expect(body.find("trackShell(") != std::string::npos,
-           "WI-1 restoreSessions calls trackShell on restored shells");
+    const size_t started = body.find("startShell(");
+    const size_t tracked = body.find("trackTerminalShell(");
+    expect(tracked != std::string::npos && started != std::string::npos
+               && tracked > started,
+           "WI-1 restoreSessions calls trackTerminalShell after startShell");
+    // trackTerminalShell is what reaches the tab tracker.
+    expect(ants_test::slurpFunctionBody(mwc, "void MainWindow::trackTerminalShell(")
+                   .find("m_claudeTabTracker->trackShell(") != std::string::npos,
+           "WI-1 trackTerminalShell calls ClaudeTabTracker::trackShell");
 
-    // WI-2 — the body still starts shells (defensive against
-    // accidental hoist of trackShell out of the loop where it must
-    // run AFTER startShell has set the shell PID).
+    // WI-2 — the body still starts shells.
     expect(body.find("startShell(") != std::string::npos,
            "WI-2 restoreSessions still calls startShell");
 

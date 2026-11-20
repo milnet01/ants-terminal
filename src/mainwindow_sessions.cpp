@@ -191,11 +191,7 @@ void MainWindow::restoreSessions() {
     QList<RestoredTab> restoredTabs;
 
     for (const QString &tabId : sessions) {
-        auto *terminal = createTerminal();
-        connectTerminal(terminal);
-
-        m_tabWidget->addTab(terminal, "Shell");
-        m_tabSessionIds[terminal] = tabId;
+        auto *terminal = addShellTab(tabId);
         // Re-apply any persisted colour tag for this UUID. Must happen
         // after addTab (tab has an index) and after m_tabSessionIds is
         // populated (so applyPersistedTabColor can resolve the UUID).
@@ -289,18 +285,9 @@ void MainWindow::restoreSessions() {
             // The tab's .dat stays: the next save overwrites it. Deleting it
             // here left no copy until that save, up to 30 s away, and a
             // reboot in that window lost every tab (2026-10-12).
-            // ANTS-1375 — register the restored shell with the Claude
-            // services. newTab + newTabForRemote already do this; the
-            // restoreSessions path forgot, so per-tab Claude state dots
-            // stayed dark on every tab carried across an Ants restart
-            // (the bottom-bar status still works because onTabChanged
-            // wires ClaudeIntegration on focus,
-            // but ClaudeTabTracker::m_shells is only ever populated by
-            // trackShell — no other path reaches it).
-            if (m_claudeTabTracker && tab.terminal->shellPid() > 0)
-                m_claudeTabTracker->trackShell(tab.terminal->shellPid());
-            if (m_claudeStatusBarController && tab.terminal->shellPid() > 0)
-                m_claudeStatusBarController->trackBgShell(tab.terminal->shellPid());
+            // ANTS-1375 — without this the per-tab Claude dots stay dark
+            // on every tab carried across a restart.
+            trackTerminalShell(tab.terminal);
         }
 
         // ANTS-5733 — setCurrentIndex ran before any shell started, so the

@@ -537,6 +537,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A tab opened by remote control or by the welcome dialog's install button is saved in the tab order at once, as a tab opened from the menu is.** (ANTS-6172)
+  The menu and remote control now open a tab through the same code.
+
 - **The status bar and tab dot count a helper agent that Claude Code revives with SendMessage as running background work until it finishes again.** (ANTS-6832)
 
 - **changelog_query's release lint treats an id written as "part of <ID>" as a cross-reference, as cut-release does, so an entry that names its unfinished parent item is no longer reported as cited but not shipped** (ANTS-6831)

@@ -28,13 +28,16 @@ TEST(PluginTabTitleEvents, TitleChangeFires) {
 
 // INV-2
 TEST(PluginTabTitleEvents, NewTabsAndPanesFireCreated) {
-    for (const char *sig : {"void MainWindow::newTab()",
-                            "int MainWindow::newTabForRemote(",
+    for (const char *sig : {"TerminalWidget *MainWindow::openShellTab(",
                             "void MainWindow::splitCurrentPane(",
                             "void MainWindow::restoreSessions("}) {
         const std::string b = body(sig);
         ASSERT_FALSE(b.empty()) << sig << " not found";
         EXPECT_TRUE(has(b, "firePluginTabEvent(true,")) << sig;
+    }
+    for (const char *sig : {"void MainWindow::newTab()",
+                            "int MainWindow::newTabForRemote("}) {
+        EXPECT_TRUE(has(body(sig), "openShellTab(")) << sig;
     }
     // A restored tab's index is read after the default tab is removed.
     const std::string r = body("void MainWindow::restoreSessions(");

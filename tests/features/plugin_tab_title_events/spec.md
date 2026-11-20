@@ -7,8 +7,9 @@
 title, for every pane, whether or not its tab's label is pinned.
 
 **INV-2 — `tab_created` fires for every new tab and pane.**
-`MainWindow::newTab`, `MainWindow::newTabForRemote` and
-`MainWindow::splitCurrentPane` call `firePluginTabEvent(true, …)`.
+`MainWindow::openShellTab` and `MainWindow::splitCurrentPane` call
+`firePluginTabEvent(true, …)`. `MainWindow::newTab` and
+`MainWindow::newTabForRemote` open their tab through `openShellTab`.
 `MainWindow::restoreSessions` calls it once per restored tab, after the
 default tab is removed, so the index is the tab's final one.
 

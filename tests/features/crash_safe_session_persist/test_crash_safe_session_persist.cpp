@@ -114,10 +114,18 @@ TEST(CrashSafeSessionPersist, Inv4_calledFromNewTab) {
     const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-4: read mainwindow.cpp";
 
-    const std::string body = extractBody(cp, "void MainWindow::newTab()");
-    expect(!body.empty(), "ANTS-1159-INV-4: newTab body extracted");
-    expect(contains(body, "saveTabOrderOnly"),
-           "ANTS-1159-INV-4: newTab calls saveTabOrderOnly");
+    const std::string body = extractBody(cp, "TerminalWidget *MainWindow::openShellTab(");
+    expect(!body.empty(), "ANTS-1159-INV-4: openShellTab body extracted");
+    const size_t added = body.find("addShellTab(");
+    const size_t saved = body.find("saveTabOrderOnly");
+    expect(added != std::string::npos && saved != std::string::npos && added < saved,
+           "ANTS-1159-INV-4: openShellTab calls saveTabOrderOnly after adding the tab");
+    // Both ways a user or a script opens a tab go through it (ANTS-6172:
+    // newTabForRemote had its own copy, which never saved the order).
+    expect(contains(extractBody(cp, "void MainWindow::newTab()"), "openShellTab("),
+           "ANTS-1159-INV-4: newTab opens its tab through openShellTab");
+    expect(contains(extractBody(cp, "int MainWindow::newTabForRemote("), "openShellTab("),
+           "ANTS-1159-INV-4: newTabForRemote opens its tab through openShellTab");
     EXPECT_EQ(0, expect_failures()) << "Inv4_calledFromNewTab failed";
 }
 

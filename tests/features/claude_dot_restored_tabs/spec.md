@@ -28,21 +28,19 @@ handler passes `setShellPid` a PID of 0 and the poll stops. The status
 label survived through the tracker, but the context gauge stayed hidden
 until a tab switch.
 
-Fix: one line. After `startShell` succeeds in `restoreSessions`,
-call `trackShell(terminal->shellPid())` (same shape as `newTab`).
+Fix: after `startShell` succeeds in `restoreSessions`, call
+`trackTerminalShell(terminal)`, the call every other new shell makes.
 
 ## What the C++ test pins
 
 Source-grep on `MainWindow::restoreSessions` body via the
 `slurpFunctionBody` helper (`srcgrep.h`):
 
-- **WI-1** body contains a `trackShell(` call — without this, the
-  regression returns silently and the per-tab dots stay dark on
-  restored shells.
-- **WI-2** body still contains the `startShell(` call — defensive
-  against accidental hoist of the trackShell call out of the
-  restoredTabs loop (where it must run AFTER startShell sets the
-  shell PID).
+- **WI-1** body calls `trackTerminalShell(` after `startShell(`, which
+  sets the shell PID, and `MainWindow::trackTerminalShell` calls
+  `m_claudeTabTracker->trackShell(` — without this, the regression
+  returns silently and the per-tab dots stay dark on restored shells.
+- **WI-2** body still contains the `startShell(` call.
 - **WI-3** body calls `setShellPid(` after `startShell(` — without
   this, `ClaudeIntegration` never polls the restored focused tab and
   the context gauge stays hidden (ANTS-5733).

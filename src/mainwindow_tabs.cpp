@@ -476,26 +476,32 @@ void MainWindow::firePluginTabEvent(bool created, int tabIndex, bool split) {
 #endif
 }
 
-void MainWindow::newTab() {
-    // Inherit CWD from the currently focused terminal
-    QString inheritCwd;
-    if (auto *prev = focusedTerminal())
-        inheritCwd = prev->shellCwd();
-    else if (auto *fallback = currentTerminal())
-        inheritCwd = fallback->shellCwd();
-
+TerminalWidget *MainWindow::addShellTab(const QString &tabId) {
     auto *terminal = createTerminal();
     connectTerminal(terminal);
-
-    QString tabId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    int idx = m_tabWidget->addTab(terminal, "Shell");
-    m_tabWidget->setCurrentIndex(idx);
+    m_tabWidget->addTab(terminal, "Shell");
     m_tabSessionIds[terminal] = tabId;
+    return terminal;
+}
 
-    if (!terminal->startShell(inheritCwd, m_config.shellCommand())) {
-        showStatusMessage("Failed to start shell!");
+TerminalWidget *MainWindow::openShellTab(const QString &cwd, bool *shellStarted) {
+    // An empty cwd inherits the focused terminal's.
+    QString startDir = cwd;
+    if (startDir.isEmpty()) {
+        if (auto *prev = focusedTerminal())
+            startDir = prev->shellCwd();
+        else if (auto *fallback = currentTerminal())
+            startDir = fallback->shellCwd();
     }
 
+    auto *terminal = addShellTab(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    const int idx = m_tabWidget->indexOf(terminal);
+    m_tabWidget->setCurrentIndex(idx);
+
+    // The tab stays when the shell fails; the caller is told.
+    const bool started = terminal->startShell(startDir, m_config.shellCommand());
+    if (shellStarted) *shellStarted = started;
+    if (!started) showStatusMessage("Failed to start shell!");
     terminal->setFocus();
 
     // Track shell process for Claude Code integration
@@ -506,15 +512,16 @@ void MainWindow::newTab() {
     updateTabBarVisibility();
     firePluginTabEvent(true, idx, false);
 
-    // ANTS-1159 — persist the new tab in the on-disk order
-    // immediately so a crash in the next 30 s window doesn't
-    // lose it. saveTabOrderOnly's own guards short-circuit
-    // when sessionPersistence is off or during the 5 s uptime
-    // floor (the constructor's restoreSessions path lands here
-    // for every restored tab and we don't want those replays
-    // overwriting the on-disk order with a partially-built
-    // list).
+    // ANTS-1159 — persist the new tab in the on-disk order immediately, so
+    // a crash in the next 30 s window doesn't lose it. saveTabOrderOnly's
+    // own guards short-circuit when sessionPersistence is off or during
+    // the 5 s uptime floor.
     saveTabOrderOnly();
+    return terminal;
+}
+
+void MainWindow::newTab() {
+    openShellTab(QString());
 }
 
 void MainWindow::onSshConnect(const QString &sshCommand, bool inNewTab) {
@@ -1228,40 +1235,12 @@ bool MainWindow::selectTabForRemote(int index) {
 
 int MainWindow::newTabForRemote(const QString &cwd, const QString &command,
                                 bool *shellStarted) {
-    // Mirror of the newTab() slot but with explicit cwd/command
-    // plumbing so rc_protocol `new-tab` doesn't need to round-trip
-    // through signals. Returns the index of the created tab so the
-    // caller can target it in follow-up commands.
-    QString effectiveCwd = cwd;
-    if (effectiveCwd.isEmpty()) {
-        if (auto *prev = focusedTerminal())
-            effectiveCwd = prev->shellCwd();
-        else if (auto *fallback = currentTerminal())
-            effectiveCwd = fallback->shellCwd();
-    }
-
-    auto *terminal = createTerminal();
-    connectTerminal(terminal);
-
-    QString tabId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    int idx = m_tabWidget->addTab(terminal, "Shell");
-    m_tabWidget->setCurrentIndex(idx);
-    m_tabSessionIds[terminal] = tabId;
-
-    // The tab stays when the shell fails, as the menu's newTab() leaves it;
-    // the caller is told, and no command is queued into a dead tab.
-    const bool started = terminal->startShell(effectiveCwd, m_config.shellCommand());
+    bool started = false;
+    TerminalWidget *terminal = openShellTab(cwd, &started);
     if (shellStarted) *shellStarted = started;
-    if (!started) showStatusMessage("Failed to start shell!");
-    terminal->setFocus();
+    const int idx = m_tabWidget->indexOf(terminal);
 
-    if (m_claudeIntegration)
-        m_claudeIntegration->setShellPid(terminal->shellPid());
-    trackTerminalShell(terminal);
-
-    updateTabBarVisibility();
-    firePluginTabEvent(true, idx, false);
-
+    // No command is queued into a tab whose shell failed.
     if (started && !command.isEmpty()) {
         // 200 ms settle before writing — same timing the SSH-manager
         // wiring uses (onSshConnect) because the shell child needs a

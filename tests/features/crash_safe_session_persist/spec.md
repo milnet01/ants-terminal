@@ -13,7 +13,7 @@ INV labels qualified `ANTS-1159-INV-N`.
 | 1  | `m_sessionSaveTimer` member exists in `mainwindow.h` and is initialised with interval `30000`. |
 | 2  | The timer's `timeout` signal is connected to `MainWindow::saveAllSessions`. |
 | 3  | `saveTabOrderOnly` (or equivalently-named member) is declared in `mainwindow.h` and defined in `mainwindow.cpp`. |
-| 4  | `saveTabOrderOnly` is called from within `MainWindow::newTab` (post-`addTab`). |
+| 4  | `saveTabOrderOnly` is called from within `MainWindow::openShellTab`, after it adds the tab. `MainWindow::newTab` and `MainWindow::newTabForRemote` both open their tab through `openShellTab`. |
 | 5  | `saveTabOrderOnly` is called from within `MainWindow::performTabClose` (post-`removeTab`). |
 | 6  | `saveTabOrderOnly` is connected to a `tabMoved` signal on the tab bar. |
 | 7  | `MainWindow::closeEvent` stops `m_sessionSaveTimer` before calling `saveAllSessions` (so the timer can't re-enter mid-shutdown). |
