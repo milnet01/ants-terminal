@@ -107101,7 +107101,7 @@ worked after these.
   Source: review-readability-2026-10-22 L21.
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6177] **Keep each screen row's OSC 8 link spans on its TermLine, so links move with their row.**
+- ✅ [ANTS-6177] **Keep each screen row's OSC 8 link spans on its TermLine, so links move with their row.**
   From ANTS-6111 (L02 MEDIUM F9). m_screenHyperlinks is a per-row list
   kept in step with m_screenLines by hand in insertLines, deleteLines,
   scrollUp, scrollDown, resize and alt-screen entry and exit; ANTS-1668
@@ -107113,6 +107113,13 @@ worked after these.
   Hot reload: none needed; a refactor with no new running state.
   The 2026-11-06 reviews also found this: row 482
   `src/terminalgrid.cpp:2152`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-20. TermLine::hyperlinks (HyperlinkList, one pointer)
+  holds a screen line's spans; m_screenHyperlinks and
+  m_altScreenHyperlinks are gone, and pushToScrollback moves a line's
+  spans into m_scrollbackHyperlinks. A width reflow carries spans
+  through joinLogical/rewrap (test I4 in hyperlink_resize_clamp); a
+  reflowed overflow row still reaches scrollback with none (ANTS-1333
+  INV-4). Audit rule bug_hyperlink_sync_on_line_edits retired.
   **Layman:** Store each line's web links with the line itself, so they can't drift onto the wrong line when the screen scrolls.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L02-F9).

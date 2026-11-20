@@ -138,6 +138,62 @@ private:
     std::unique_ptr<Map> m_map;
 };
 
+// OSC 8 hyperlink span stored per-line
+struct HyperlinkSpan {
+    int startCol = 0;
+    int endCol = 0;
+    std::string uri;
+    std::string id;  // optional link id for grouping
+};
+
+// ANTS-6177 — a screen line's OSC 8 spans, held on the line so they move
+// with it. Behind a pointer for CombiningMap's reason: most lines have none.
+// A scrollback line holds none; TerminalGrid::m_scrollbackHyperlinks does.
+class HyperlinkList {
+public:
+    using Spans = std::vector<HyperlinkSpan>;
+
+    HyperlinkList() = default;
+    HyperlinkList(const HyperlinkList &o) : m_spans(cloneOf(o)) {}
+    HyperlinkList &operator=(const HyperlinkList &o) {
+        if (this != &o) m_spans = cloneOf(o);
+        return *this;
+    }
+    HyperlinkList(HyperlinkList &&) noexcept = default;
+    HyperlinkList &operator=(HyperlinkList &&) noexcept = default;
+
+    bool empty() const { return !m_spans || m_spans->empty(); }
+    const Spans &view() const {
+        static const Spans s_empty;
+        return m_spans ? *m_spans : s_empty;
+    }
+    void push_back(HyperlinkSpan &&s) {
+        if (!m_spans) m_spans = std::make_unique<Spans>();
+        m_spans->push_back(std::move(s));
+    }
+    // Drops every span that covers any column in [startCol, endCol).
+    void dropOverlapping(int startCol, int endCol) {
+        if (!m_spans) return;
+        std::erase_if(*m_spans, [startCol, endCol](const HyperlinkSpan &sp) {
+            return sp.startCol < endCol && sp.endCol >= startCol;
+        });
+        if (m_spans->empty()) m_spans.reset();
+    }
+    // Moves the spans out, leaving the list empty.
+    Spans take() {
+        Spans out = m_spans ? std::move(*m_spans) : Spans{};
+        m_spans.reset();
+        return out;
+    }
+    void clear() { m_spans.reset(); }
+
+private:
+    static std::unique_ptr<Spans> cloneOf(const HyperlinkList &o) {
+        return o.empty() ? nullptr : std::make_unique<Spans>(*o.m_spans);
+    }
+    std::unique_ptr<Spans> m_spans;
+};
+
 struct TermLine {
     std::vector<Cell> cells;
     bool softWrapped = false; // true if line was wrapped at right edge (not \n)
@@ -148,6 +204,7 @@ struct TermLine {
     bool dirty = true;
     // Combining characters: col -> list of combining codepoints.
     CombiningMap combining;
+    HyperlinkList hyperlinks;
 };
 
 // OSC 9;4 progress state (ConEmu / Microsoft Terminal convention)
@@ -176,14 +233,6 @@ struct InlineImage {
     int cellHeight = 0; // height in cells (or pixels if pixelSized)
     bool pixelSized = false; // true for Sixel/Kitty (dimensions are pixels, not cells)
     Origin origin = Origin::ITerm2;
-};
-
-// OSC 8 hyperlink span stored per-line
-struct HyperlinkSpan {
-    int startCol = 0;
-    int endCol = 0;
-    std::string uri;
-    std::string id;  // optional link id for grouping
 };
 
 // Shell integration (OSC 133) prompt region
@@ -526,13 +575,10 @@ public:
     // Session restore: direct access for SessionManager (respects max scrollback)
     void pushScrollbackLine(TermLine &&line) {
         ++m_contentRevision;  // ANTS-5030
-        m_scrollback.push_back(trimmedForScrollback(std::move(line)));  // ANTS-6703
-        m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
         // ANTS-2119 M1 — restore counts as "pushed" too, so a restored session's
         // scrollbackPushed() reflects its scrollback depth (the get_scrollback
         // since_cursor cursor is this counter).
-        ++m_scrollbackPushed;
-        // Restore carries no OSC 8 spans, so no hyperlink entry (ANTS-5204).
+        pushToScrollback(std::move(line));
         trimScrollbackToCap();
     }
     TermLine &screenLine(int row) { ++m_contentRevision; return m_screenLines[row]; }  // ANTS-5030
@@ -897,7 +943,6 @@ private:
     std::vector<TermLine> m_altScreen;
     int m_altCursorRow = 0, m_altCursorCol = 0;
     int m_altScrollTop = 0, m_altScrollBottom = 0;
-    std::vector<std::vector<HyperlinkSpan>> m_altScreenHyperlinks;
     std::vector<InlineImage> m_altInlineImages;
     mutable std::vector<PromptRegion> m_altPromptRegions;  // ANTS-5029: see m_promptRegionShift
     // DECSC state checkpointed on 1049 entry, restored on 1049 exit.
@@ -919,14 +964,14 @@ private:
     // Inline images
     std::vector<InlineImage> m_inlineImages;
 
-    // OSC 8 hyperlinks per screen/scrollback line
-    std::vector<std::vector<HyperlinkSpan>> m_screenHyperlinks;
+    // OSC 8 hyperlinks. A screen line holds its own (TermLine::hyperlinks).
     // ANTS-5204 — spans only for scrollback lines that have any, keyed by
     // m_scrollbackHlBase + scrollback index, so a front eviction moves no key.
     std::map<qint64, std::vector<HyperlinkSpan>> m_scrollbackHyperlinks;
     qint64 m_scrollbackHlBase = 0;
-    // Files the spans of the line just pushed to the back of m_scrollback.
-    void addBackScrollbackHyperlinks(std::vector<HyperlinkSpan> &&spans);
+    // The one way a line enters the back of m_scrollback: trimmed, counted,
+    // and its spans moved into m_scrollbackHyperlinks.
+    void pushToScrollback(TermLine &&line);
     // Active hyperlink state (between open and close OSC 8)
     bool m_hyperlinkActive = false;
     std::string m_hyperlinkUri;

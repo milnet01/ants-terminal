@@ -11,10 +11,12 @@
 #include "terminalgrid.h"
 #include "vtparser.h"
 
+#include <algorithm>
 #include <clocale>
 #include <cstdio>
 #include <gtest/gtest.h>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -93,4 +95,36 @@ TEST(HyperlinkResizeClamp, Main) {
     }
 
     std::printf("hyperlink_resize_clamp: resize closes the open span; fresh OSC 8 works\n");
+}
+
+// I4 (ANTS-6177) — a committed link's spans cover exactly its text's cells
+// after a width change rewraps the screen.
+TEST(HyperlinkResizeClamp, I4CommittedLinkFollowsRewrap) {
+    Harness h;
+    h.feed(cup(2, 10));
+    h.feed("\033]8;;https://long.example/\x07" + std::string(60, 'z') + "\033]8;;\x07");
+
+    auto expectSpansCoverText = [&h](const char *step) {
+        int textCells = 0;
+        for (int r = 0; r < h.grid.rows(); ++r) {
+            const std::vector<Cell> &cells = h.grid.screenLine(r).cells;
+            std::vector<bool> text(cells.size()), link(cells.size());
+            for (size_t c = 0; c < cells.size(); ++c) text[c] = cells[c].codepoint == 'z';
+            for (const auto &s : h.grid.screenHyperlinks(r)) {
+                ASSERT_LT(s.endCol, static_cast<int>(cells.size()))
+                    << step << ": span on row " << r << " runs past the row";
+                for (int c = s.startCol; c <= s.endCol; ++c) link[c] = true;
+            }
+            EXPECT_EQ(link, text) << step << ": row " << r
+                                  << "'s link columns differ from its text columns";
+            textCells += static_cast<int>(std::count(text.begin(), text.end(), true));
+        }
+        EXPECT_EQ(textCells, 60) << step << ": the link text did not survive the resize";
+    };
+
+    expectSpansCoverText("before");
+    h.grid.resize(24, 25);
+    expectSpansCoverText("narrow to 25");
+    h.grid.resize(24, 80);
+    expectSpansCoverText("widen to 80");
 }

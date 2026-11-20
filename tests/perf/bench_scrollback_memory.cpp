@@ -9,7 +9,7 @@
 //   cells        sizeof(Cell) x each scrollback row's capacity
 //   content      the cells up to each row's last non-blank one: what a row
 //                trimmed of trailing blanks would keep (lever b)
-//   line_headers sizeof(TermLine) per line, plus the hyperlink side table
+//   line_headers sizeof(TermLine) per line
 //
 //   case,cols,scrollback_lines,sizeof_cell,heap_mib,heap_bytes_per_line,
 //   cells_mib,content_cells_pct,line_header_mib
@@ -93,9 +93,9 @@ int main(int argc, char **argv) {
         while (last >= 0 && row[last].codepoint == ' ') --last;
         contentCells += last + 1;
     }
-    // TermLine itself sits in the deque; the hyperlink side table holds one
-    // empty vector per line (std::deque<std::vector<HyperlinkSpan>>).
-    const double headerBytes = double(n) * (sizeof(TermLine) + sizeof(std::vector<int>));
+    // TermLine itself sits in the deque. The scrollback's hyperlink map holds
+    // entries only for lines with links, and this corpus has none.
+    const double headerBytes = double(n) * sizeof(TermLine);
 
     const double mib = 1024.0 * 1024.0;
     const double heap = double(after - before);

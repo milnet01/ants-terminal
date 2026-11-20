@@ -2,23 +2,16 @@
 
 ## Motivation
 
-OSC 8 hyperlinks are stored in a per-screen-row vector
-(`m_screenHyperlinks`) that parallels the cell vector
-(`m_screenLines`). CSI L (Insert Line, `insertLines`) and CSI M
+Each screen row holds its own OSC 8 spans (`TermLine::hyperlinks`), so
+they move with the row's cells. CSI L (Insert Line, `insertLines`) and CSI M
 (Delete Line, `deleteLines`) rearrange rows in the main screen
 buffer to implement scrolling within a margin — vim uses them
 heavily during `:insert`/`:delete`, as do any editors that edit a
 middle region of the screen.
 
-Before the 0.7.7 fix, `insertLines`/`deleteLines` manipulated
-`m_screenLines` but left `m_screenHyperlinks` untouched. A clickable
-link on row 5 would drift to row 4 (or 6) after a single Insert-Line
-at row 3 — the underline visual moved with the text, but the
-clickable bounding box stayed behind, so clicking the visible
-hyperlink did nothing or opened the wrong URL. The fix: run the
-same erase/insert pattern against `m_screenHyperlinks` in lock-step,
-gated on `bottom < m_screenHyperlinks.size()` so the lazy-grow path
-at `addRowHyperlink` doesn't throw when the table is under-populated.
+A link whose spans stayed behind when its row moved would leave the
+underline on the text but the clickable box on the old row, so
+clicking it did nothing or opened the wrong URL.
 
 ## Invariants
 

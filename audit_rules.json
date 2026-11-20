@@ -110,18 +110,6 @@
       "auto_select": false,
       "drop_if_contains": ["// shellquote-ok"],
       "max_lines": 40
-    },
-    {
-      "id": "bug_hyperlink_sync_on_line_edits",
-      "name": "Line Insert/Delete Without m_screenHyperlinks Sync",
-      "description": "`m_screenLines.insert/erase` inside terminalgrid.cpp must be paired with the same operation on `m_screenHyperlinks` — otherwise OSC 8 spans drift away from the cells containing the clickable text. Fixed in 0.7.7 for insertLines/deleteLines; guard rails to catch new copies of the pattern.",
-      "category": "Bugs",
-      "command": "grep -nE 'm_screenLines\\.(insert|erase)\\(' src/terminalgrid.cpp || true",
-      "type": "bug",
-      "severity": "minor",
-      "auto_select": false,
-      "drop_if_contains": ["// hl-sync-not-needed"],
-      "max_lines": 40
     }
   ],
   "path_rules": [

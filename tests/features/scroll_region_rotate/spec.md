@@ -48,7 +48,7 @@ must not push into scrollback. (Alt-screen apps own the whole grid,
 don't contribute to history.)
 
 ### I7 — Hyperlinks follow their row.
-`m_screenHyperlinks[r]` tracks the row at index `r`. After a scroll,
+Each row's spans travel with that row. After a scroll,
 each hyperlink span must still be on the same cells it was on before
 the scroll (now at a different row index). Vacated rows' hyperlink
 vectors are empty.

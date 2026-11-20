@@ -189,7 +189,6 @@ TerminalGrid::TerminalGrid(int rows, int cols)
     for (auto &line : m_screenLines) {
         line.cells = makeRow(m_cols, m_defaultFg, m_defaultBg);
     }
-    m_screenHyperlinks.resize(m_rows);
     initTabStops();
 
     // Load the OSC 133 HMAC key at construction: the key file, else
@@ -295,8 +294,8 @@ void TerminalGrid::sendQueryResponse(const std::string &data) {
 
 const std::vector<HyperlinkSpan> &TerminalGrid::screenHyperlinks(int row) const {
     static const std::vector<HyperlinkSpan> s_empty;
-    if (row >= 0 && row < static_cast<int>(m_screenHyperlinks.size()))
-        return m_screenHyperlinks[row];
+    if (row >= 0 && row < static_cast<int>(m_screenLines.size()))
+        return m_screenLines[row].hyperlinks.view();
     return s_empty;
 }
 
@@ -307,8 +306,12 @@ const std::vector<HyperlinkSpan> &TerminalGrid::scrollbackHyperlinks(int idx) co
     return it != m_scrollbackHyperlinks.end() ? it->second : s_empty;
 }
 
-void TerminalGrid::addBackScrollbackHyperlinks(std::vector<HyperlinkSpan> &&spans) {
-    if (spans.empty() || m_scrollback.empty()) return;
+void TerminalGrid::pushToScrollback(TermLine &&line) {
+    std::vector<HyperlinkSpan> spans = line.hyperlinks.take();
+    m_scrollback.push_back(trimmedForScrollback(std::move(line)));  // ANTS-6703
+    m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
+    ++m_scrollbackPushed;
+    if (spans.empty()) return;
     const qint64 key = m_scrollbackHlBase + static_cast<qint64>(m_scrollback.size()) - 1;
     m_scrollbackHyperlinks.insert_or_assign(key, std::move(spans));
 }
@@ -1953,9 +1956,6 @@ void TerminalGrid::insertLines(int count) {
     if (m_cursorRow < m_scrollTop || m_cursorRow > bottom) return;
     markAllScreenDirty();
     count = std::min(count, bottom - m_cursorRow + 1);
-    // m_screenHyperlinks must track m_screenLines — otherwise OSC 8 spans
-    // drift away from the cells that contain the clickable text.
-    const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
     if (count <= 0) return;
     moveOpenHyperlinkStart(m_cursorRow, bottom, count);  // ANTS-5218
     // One rotate of [cursorRow, bottom] instead of an erase + insert per
@@ -1966,16 +1966,10 @@ void TerminalGrid::insertLines(int count) {
     std::rotate(m_screenLines.begin() + m_cursorRow,
                 m_screenLines.begin() + bottom + 1 - count,
                 m_screenLines.begin() + bottom + 1);
-    if (hlInRange) {
-        std::rotate(m_screenHyperlinks.begin() + m_cursorRow,
-                    m_screenHyperlinks.begin() + bottom + 1 - count,
-                    m_screenHyperlinks.begin() + bottom + 1);
-    }
     for (int i = 0; i < count; ++i) {
         TermLine tl;
         tl.cells = takeBlankedCellsRow();
         m_screenLines[m_cursorRow + i] = std::move(tl);
-        if (hlInRange) m_screenHyperlinks[m_cursorRow + i].clear();
     }
 }
 
@@ -1984,7 +1978,6 @@ void TerminalGrid::deleteLines(int count) {
     if (m_cursorRow < m_scrollTop || m_cursorRow > bottom) return;
     markAllScreenDirty();
     count = std::min(count, bottom - m_cursorRow + 1);
-    const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
     if (count <= 0) return;
     // ANTS-5218 — a start on a deleted row moves above the cursor row and is
     // clamped to it, where the link's surviving text now begins.
@@ -1996,17 +1989,10 @@ void TerminalGrid::deleteLines(int count) {
     std::rotate(m_screenLines.begin() + m_cursorRow,
                 m_screenLines.begin() + m_cursorRow + count,
                 m_screenLines.begin() + bottom + 1);
-    if (hlInRange) {
-        std::rotate(m_screenHyperlinks.begin() + m_cursorRow,
-                    m_screenHyperlinks.begin() + m_cursorRow + count,
-                    m_screenHyperlinks.begin() + bottom + 1);
-    }
     for (int i = 0; i < count; ++i) {
-        const int dstRow = bottom - count + 1 + i;
         TermLine tl;
         tl.cells = takeBlankedCellsRow();
-        m_screenLines[dstRow] = std::move(tl);
-        if (hlInRange) m_screenHyperlinks[dstRow].clear();
+        m_screenLines[bottom - count + 1 + i] = std::move(tl);
     }
 }
 
@@ -2124,11 +2110,8 @@ void TerminalGrid::scrollUp(int count) {
     //     verbatim from the per-iteration loop.
     const bool suppressForDoublingGuard =
         inCsiClearWindow && !m_scrollbackInsertPaused;
-    const bool pushToScrollback =
+    const bool keepInScrollback =
         (m_scrollTop == 0) && !m_altScreenActive && !suppressForDoublingGuard;
-
-    const int hlSize = static_cast<int>(m_screenHyperlinks.size());
-    const bool hlInRange = m_scrollBottom < hlSize;
 
     // Push (or salvage) the top `count` rows. Order preserved — the
     // push loop walks scrollTop..scrollTop+count-1 left-to-right, same
@@ -2136,12 +2119,8 @@ void TerminalGrid::scrollUp(int count) {
     // [scrollTop] after each erase, naturally walking the same range).
     for (int i = 0; i < count; ++i) {
         const int srcRow = m_scrollTop + i;
-        if (pushToScrollback) {
-            m_scrollback.push_back(trimmedForScrollback(std::move(m_screenLines[srcRow])));
-            m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
-            ++m_scrollbackPushed;
-            if (hlInRange)
-                addBackScrollbackHyperlinks(std::move(m_screenHyperlinks[srcRow]));
+        if (keepInScrollback) {
+            pushToScrollback(std::move(m_screenLines[srcRow]));
         } else {
             returnCellsRow(std::move(m_screenLines[srcRow].cells));
         }
@@ -2156,14 +2135,9 @@ void TerminalGrid::scrollUp(int count) {
     std::rotate(m_screenLines.begin() + m_scrollTop,
                 m_screenLines.begin() + m_scrollTop + count,
                 m_screenLines.begin() + m_scrollBottom + 1);
-    if (hlInRange) {
-        std::rotate(m_screenHyperlinks.begin() + m_scrollTop,
-                    m_screenHyperlinks.begin() + m_scrollTop + count,
-                    m_screenHyperlinks.begin() + m_scrollBottom + 1);
-    }
 
     // Re-blank the now-bottom `count` rows. Default-construct fresh
-    // TermLine to reset softWrapped / dirty / combining (the
+    // TermLine to reset softWrapped / dirty / combining / hyperlinks (the
     // moved-from TermLine carries those fields from its previous role
     // as one of the top rows); refill cells from the pool.
     for (int i = 0; i < count; ++i) {
@@ -2171,7 +2145,6 @@ void TerminalGrid::scrollUp(int count) {
         TermLine tl;
         tl.cells = takeBlankedCellsRow();
         m_screenLines[dstRow] = std::move(tl);
-        if (hlInRange) m_screenHyperlinks[dstRow].clear();
     }
 }
 
@@ -2181,8 +2154,6 @@ void TerminalGrid::scrollDown(int count) {
     if (count <= 0 || regionSize <= 0) return;
     count = std::min(count, regionSize);
 
-    const int hlSize = static_cast<int>(m_screenHyperlinks.size());
-    const bool hlInRange = m_scrollBottom < hlSize;
     moveOpenHyperlinkStart(m_scrollTop, m_scrollBottom, count);  // ANTS-5218
 
     // Salvage the bottom `count` rows' cells into the pool so they can
@@ -2200,21 +2171,12 @@ void TerminalGrid::scrollDown(int count) {
     std::rotate(m_screenLines.begin() + m_scrollTop,
                 m_screenLines.begin() + m_scrollBottom + 1 - count,
                 m_screenLines.begin() + m_scrollBottom + 1);
-    // ANTS-1668 — keep OSC 8 hyperlink spans aligned with their rows on
-    // reverse-index / RI / IL-driven downward scrolls (mirrors scrollUp,
-    // which already rotates its hyperlink side-table).
-    if (hlInRange) {
-        std::rotate(m_screenHyperlinks.begin() + m_scrollTop,
-                    m_screenHyperlinks.begin() + m_scrollBottom + 1 - count,
-                    m_screenHyperlinks.begin() + m_scrollBottom + 1);
-    }
 
     for (int i = 0; i < count; ++i) {
         const int dstRow = m_scrollTop + i;
         TermLine tl;
         tl.cells = takeBlankedCellsRow();
         m_screenLines[dstRow] = std::move(tl);
-        if (hlInRange) m_screenHyperlinks[dstRow].clear();
     }
 }
 
@@ -2365,7 +2327,7 @@ void TerminalGrid::pushHyperlinkSpansForActive() {
             // ANTS-6491 — a link closed after a cursor move printed nothing
             // that would drop the old spans, so the new one replaces them.
             dropHyperlinkSpans(startRow, s.startCol, s.endCol + 1);
-            m_screenHyperlinks[startRow].push_back(std::move(s));
+            m_screenLines[startRow].hyperlinks.push_back(std::move(s));
         }
     } else {
         // Forward wrap (startRow < endRow) — emit per-row spans so
@@ -2379,7 +2341,7 @@ void TerminalGrid::pushHyperlinkSpansForActive() {
             s.endCol = eCol;
             s.uri = m_hyperlinkUri;
             s.id = m_hyperlinkId;
-            m_screenHyperlinks[row].push_back(std::move(s));
+            m_screenLines[row].hyperlinks.push_back(std::move(s));
         };
         pushSpan(startRow, m_hyperlinkStartCol, cols - 1);
         for (int r = startRow + 1; r < endRow; ++r)
@@ -2468,11 +2430,6 @@ void TerminalGrid::addRowHyperlink(int row, int startCol, int endCol,
     // behavior (text still prints, just isn't clickable).
     if (!isAllowedHyperlinkScheme(uri.toStdString())) return;
 
-    // m_screenHyperlinks is grown on demand by the OSC 8 path; mirror that
-    // semantics here so a trigger-created hyperlink on an otherwise empty
-    // hyperlink row Just Works.
-    if (row >= static_cast<int>(m_screenHyperlinks.size()))
-        m_screenHyperlinks.resize(row + 1);
     int maxCol = static_cast<int>(m_screenLines[row].cells.size());
     int start = std::max(0, startCol);
     int end   = std::min(maxCol - 1, endCol);
@@ -2481,7 +2438,7 @@ void TerminalGrid::addRowHyperlink(int row, int startCol, int endCol,
     span.startCol = start;
     span.endCol   = end;
     span.uri      = uri.toStdString();
-    m_screenHyperlinks[row].push_back(std::move(span));
+    m_screenLines[row].hyperlinks.push_back(std::move(span));
     m_screenLines[row].dirty = true;
 }
 
@@ -2530,7 +2487,6 @@ void TerminalGrid::enterAltScreen(int mode) {
     m_altScrollTop = m_scrollTop;
     m_altScrollBottom = m_scrollBottom;
     m_altScreen = m_screenLines;
-    m_altScreenHyperlinks = m_screenHyperlinks;
     m_altInlineImages = m_inlineImages;
     applyPromptRegionShift();  // ANTS-5029
     m_altPromptRegions = m_promptRegions;
@@ -2548,9 +2504,8 @@ void TerminalGrid::enterAltScreen(int mode) {
             c.attrs.bg = m_defaultBg;
         }
         line.combining.clear();
+        line.hyperlinks.clear();
     }
-    for (auto &hl : m_screenHyperlinks)
-        hl.clear();
     m_inlineImages.clear();
     m_promptRegions.clear();
     // Bytes for the just-cleared images are still
@@ -2576,7 +2531,6 @@ void TerminalGrid::exitAltScreen() {
     markAllScreenDirty();
     // Moved, not copied: the saved buffers are cleared just below anyway.
     m_screenLines = std::move(m_altScreen);
-    m_screenHyperlinks = std::move(m_altScreenHyperlinks);
     m_inlineImages = std::move(m_altInlineImages);
     applyPromptRegionShift();  // ANTS-5029
     m_promptRegions = std::move(m_altPromptRegions);
@@ -2598,7 +2552,6 @@ void TerminalGrid::exitAltScreen() {
     // may now point at a non-cleared cell — that's
     // intentional (matches xterm behaviour).
     m_altScreen.clear();
-    m_altScreenHyperlinks.clear();
     m_altInlineImages.clear();
     m_altPromptRegions.clear();
     // Restored m_inlineImages above; recompute so the
@@ -2709,15 +2662,8 @@ void TerminalGrid::clearRow(int row, int startCol, int endCol) {
 }
 
 void TerminalGrid::dropHyperlinkSpans(int row, int startCol, int endCol) {
-    if (row < 0 || row >= static_cast<int>(m_screenHyperlinks.size())) return;
-    auto &spans = m_screenHyperlinks[row];
-    if (spans.empty()) return;
-    spans.erase(std::remove_if(spans.begin(), spans.end(),
-                               [startCol, endCol](const HyperlinkSpan &sp) {
-                                   return sp.startCol < endCol &&
-                                          sp.endCol >= startCol;
-                               }),
-                spans.end());
+    if (row < 0 || row >= static_cast<int>(m_screenLines.size())) return;
+    m_screenLines[row].hyperlinks.dropOverlapping(startCol, endCol);
 }
 
 void TerminalGrid::clearScreenContent() {
@@ -2768,10 +2714,12 @@ void TerminalGrid::resize(int rows, int cols) {
     const int oldCols = m_cols;
 
     // A "logical line" is a join of all cells from one or more soft-wrapped
-    // lines, plus a parallel combining map keyed by position-in-the-join.
+    // lines, plus a parallel combining map and link spans keyed by
+    // position-in-the-join.
     struct LogicalLine {
         std::vector<Cell> cells;
         std::unordered_map<int, std::vector<uint32_t>> combining;
+        std::vector<HyperlinkSpan> spans;
     };
 
     auto joinLogical = [](auto &lines) {
@@ -2793,6 +2741,15 @@ void TerminalGrid::resize(int rows, int cols) {
             for (auto &kv : sl.combining) {
                 if (kv.first < len)
                     cur.combining[before + kv.first] = kv.second;
+            }
+            // ANTS-6177 — link spans shift the same way, clipped to the kept
+            // cells. Only screen lines hold spans; scrollback's are in a map.
+            for (const HyperlinkSpan &sp : sl.hyperlinks.view()) {
+                if (sp.startCol >= len) continue;
+                HyperlinkSpan s = sp;
+                s.startCol += before;
+                s.endCol = before + std::min(sp.endCol, len - 1);
+                cur.spans.push_back(std::move(s));
             }
             if (!sl.softWrapped) {
                 out.push_back(std::move(cur));
@@ -2834,6 +2791,14 @@ void TerminalGrid::resize(int rows, int cols) {
             for (auto &kv : logical.combining) {
                 if (kv.first >= pos && kv.first < pos + chunk)
                     tl.combining[kv.first - pos] = kv.second;
+            }
+            // A span split by the wrap keeps one piece per row.
+            for (const HyperlinkSpan &sp : logical.spans) {
+                if (sp.endCol < pos || sp.startCol >= pos + chunk) continue;
+                HyperlinkSpan s = sp;
+                s.startCol = std::max(sp.startCol, pos) - pos;
+                s.endCol = std::min(sp.endCol, pos + chunk - 1) - pos;
+                tl.hyperlinks.push_back(std::move(s));
             }
             pos += chunk;
             tl.softWrapped = (pos < total);
@@ -2991,14 +2956,13 @@ void TerminalGrid::resize(int rows, int cols) {
         for (int k = 0; k < overflow; ++k) {
             TermLine front = std::move(reflowed[k]);
             if (!isBlankLine(front)) {
-                m_scrollback.push_back(trimmedForScrollback(std::move(front)));
-                m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
                 // ANTS-2119 M1 — count reflow overflow as "pushed" so the
                 // scrollbackPushed() contract holds (get_scrollback's
                 // since_cursor diff must see these lines).
-                ++m_scrollbackPushed;
-                // ANTS-1333 INV-4 — reflowed rows came from joinLogical, with
-                // no usable mapping back to their spans, so they carry none.
+                // ANTS-1333 INV-4 — a reflowed row reaches scrollback with
+                // no spans.
+                front.hyperlinks.clear();
+                pushToScrollback(std::move(front));
             }
         }
         reflowed.erase(reflowed.begin(), reflowed.begin() + overflow);
@@ -3035,26 +2999,17 @@ void TerminalGrid::resize(int rows, int cols) {
         // 0.6.28 — preserve the per-line combining-char side table. The
         // old copy walked cells only, so resize that widened/shrank the
         // terminal wiped accents/ZWJ/diacritics on all lines. Filter
-        // entries whose column is now out of bounds (shrink case).
+        // entries whose column is now out of bounds (shrink case). Link
+        // spans move with their line, unclipped.
         // ANTS-6530 — on the main screen, a shrink that would cut off the
         // cursor row moves the rows above it into scrollback, as xterm
         // does, so the cursor line and the newest output stay on screen.
         int shift = 0;
         if (!m_altScreenActive)
             shift = std::max(0, m_cursorRow - rows + 1);
-        const int hlSize = static_cast<int>(m_screenHyperlinks.size());
-        for (int r = 0; r < shift; ++r) {
-            m_scrollback.push_back(trimmedForScrollback(std::move(m_screenLines[r])));
-            m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
-            ++m_scrollbackPushed;
-            if (r < hlSize)
-                addBackScrollbackHyperlinks(std::move(m_screenHyperlinks[r]));
-        }
-        if (shift > 0) {
-            m_screenHyperlinks.erase(m_screenHyperlinks.begin(),
-                                     m_screenHyperlinks.begin() + std::min(shift, hlSize));
-            m_cursorRow -= shift;
-        }
+        for (int r = 0; r < shift; ++r)
+            pushToScrollback(std::move(m_screenLines[r]));
+        m_cursorRow -= shift;
 
         std::vector<TermLine> newScreen(rows);
         for (auto &line : newScreen)
@@ -3062,7 +3017,7 @@ void TerminalGrid::resize(int rows, int cols) {
         int copyRows = std::min(rows, m_rows - shift);
         int copyCols = std::min(cols, m_cols);
         for (int r = 0; r < copyRows; ++r) {
-            const TermLine &src = m_screenLines[r + shift];
+            TermLine &src = m_screenLines[r + shift];
             for (int c = 0; c < copyCols; ++c)
                 newScreen[r].cells[c] = src.cells[c];
             newScreen[r].softWrapped = src.softWrapped;
@@ -3070,6 +3025,7 @@ void TerminalGrid::resize(int rows, int cols) {
                 if (kv.first < copyCols)
                     newScreen[r].combining.emplace(kv.first, kv.second);
             }
+            newScreen[r].hyperlinks = std::move(src.hyperlinks);
         }
         m_screenLines = std::move(newScreen);
     }
@@ -3096,20 +3052,9 @@ void TerminalGrid::resize(int rows, int cols) {
             // scrollback, which is this screen's while the alt screen runs.
             const int altRows = static_cast<int>(m_altScreen.size());
             const int altShift = std::clamp(m_altCursorRow - rows + 1, 0, altRows);
-            const int altHlSize = static_cast<int>(m_altScreenHyperlinks.size());
-            for (int r = 0; r < altShift; ++r) {
-                m_scrollback.push_back(trimmedForScrollback(std::move(m_altScreen[r])));
-                m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
-                ++m_scrollbackPushed;
-                if (r < altHlSize)
-                    addBackScrollbackHyperlinks(std::move(m_altScreenHyperlinks[r]));
-            }
-            if (altShift > 0) {
-                m_altScreenHyperlinks.erase(
-                    m_altScreenHyperlinks.begin(),
-                    m_altScreenHyperlinks.begin() + std::min(altShift, altHlSize));
-                m_altCursorRow -= altShift;
-            }
+            for (int r = 0; r < altShift; ++r)
+                pushToScrollback(std::move(m_altScreen[r]));
+            m_altCursorRow -= altShift;
 
             std::vector<TermLine> newAlt(rows);
             for (auto &line : newAlt)
@@ -3117,7 +3062,7 @@ void TerminalGrid::resize(int rows, int cols) {
             int altCopyRows = std::min(rows, altRows - altShift);
             int altCopyCols = std::min(cols, oldCols);
             for (int r = 0; r < altCopyRows; ++r) {
-                const TermLine &src = m_altScreen[r + altShift];
+                TermLine &src = m_altScreen[r + altShift];
                 for (int c = 0; c < altCopyCols && c < static_cast<int>(src.cells.size()); ++c)
                     newAlt[r].cells[c] = src.cells[c];
                 newAlt[r].softWrapped = src.softWrapped;
@@ -3125,18 +3070,12 @@ void TerminalGrid::resize(int rows, int cols) {
                     if (kv.first < altCopyCols)
                         newAlt[r].combining.emplace(kv.first, kv.second);
                 }
+                newAlt[r].hyperlinks = std::move(src.hyperlinks);
             }
             m_altScreen = std::move(newAlt);
         }
         m_altCursorRow = std::clamp(m_altCursorRow, 0, rows - 1);
         m_altCursorCol = std::clamp(m_altCursorCol, 0, cols - 1);
-        // ANTS-1654 — length-lock the saved main-screen hyperlink side-table to
-        // the new row count so the restore (m_screenHyperlinks =
-        // m_altScreenHyperlinks) stays consistent with m_screenLines. (After a
-        // cols reflow the spans no longer map row-for-row — the same accepted
-        // limitation as the live path per ANTS-1333 INV-4 — but the length is
-        // correct and rows-only resizes keep the spans aligned.)
-        m_altScreenHyperlinks.resize(rows);
     }
 
     // The reflow overflow above pushes up to a screen of lines after the
@@ -3199,7 +3138,6 @@ void TerminalGrid::resize(int rows, int cols) {
     // on the new screen. Close the active hyperlink for real here —
     // matches xterm's behaviour.
     dropActiveHyperlink();
-    m_screenHyperlinks.resize(m_rows);
 
     // Reinitialize tab stops for new width
     initTabStops();

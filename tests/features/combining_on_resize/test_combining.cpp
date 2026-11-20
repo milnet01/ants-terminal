@@ -126,9 +126,12 @@ TEST(CombiningOnResize, Main) {
 
 // ANTS-6395 — an empty combining table costs one pointer, not an
 // unordered_map header, on every line; a set one copies deeply.
+// ANTS-6177 — the line's link spans cost one more pointer.
 TEST(CombiningOnResize, Ants6395EmptyTableIsOnePointer) {
-    static_assert(sizeof(TermLine) <= sizeof(std::vector<Cell>) + 2 * sizeof(void *),
-                  "TermLine carries more than its cells, two flags and one pointer");
+    static_assert(sizeof(CombiningMap) == sizeof(void *), "CombiningMap is not one pointer");
+    static_assert(sizeof(HyperlinkList) == sizeof(void *), "HyperlinkList is not one pointer");
+    static_assert(sizeof(TermLine) <= sizeof(std::vector<Cell>) + 3 * sizeof(void *),
+                  "TermLine carries more than its cells, two flags and two pointers");
     TermLine a;
     EXPECT_TRUE(a.combining.empty());
     a.combining[3].push_back(0x0301);

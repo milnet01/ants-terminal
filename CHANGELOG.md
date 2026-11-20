@@ -544,6 +544,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Web links on screen stay on their text when the window is resized** (ANTS-6177)
+  Each screen line now keeps its own OSC 8 links, so scrolling, line
+  inserts and deletes, the alternate screen and a resize all move a link
+  with its line. A width change that rewraps a long link splits it across
+  the new rows instead of leaving it on the old row and columns.
+
 - **roadmap_log append_batch now gives the review-kind warning on projects the roadmap store serves, as it already did on file-edited ones** (ANTS-6176)
   Both of append_batch's writes now end through one shared set of
   advisories, so a fix to one reaches the other.
