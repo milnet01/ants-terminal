@@ -3090,7 +3090,6 @@ auto RemoteControl::RoadmapQueryCall::sectionIndex() -> QJsonDocument {
 // (mirror of the section_index lazy-fill; the helper keeps section_slug
 // on the shared cache for a follow-up section_index call within the TTL).
 auto RemoteControl::RoadmapQueryCall::bundles() -> QJsonDocument {
-    auto &text = *textHolder;
     if (auto r = fillBulletsIfCold()) return *r;
     const int cap = (rc.m_bundleSoftCapOverride > 0)
                         ? rc.m_bundleSoftCapOverride
