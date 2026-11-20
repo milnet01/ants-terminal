@@ -218,6 +218,16 @@ out="$(env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build --grep '^ERROR
 out="$(env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build --summary 1 --grep '^ERROR')" || true
 [ "$(sed -n '2,$p' <<<"$out")" = 'ERROR at 19' ] ||
     { echo "FAIL INV-13: --summary 1 --grep did not keep the last match: $out"; exit 1; }
+# A --grep that matched nothing showed nothing, so the log stays unread and
+# clean still refuses it (album-builder lost a suite's output this way).
+cp "$sum/build.log" "$sum/quiet.log"; cp "$sum/build.exit" "$sum/quiet.exit"
+cp "$sum/build.info" "$sum/quiet.info"
+env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait quiet --grep '^NO SUCH LINE' >/dev/null || true
+[ ! -e "$sum/quiet.read" ] ||
+    { echo "FAIL INV-13: a --grep that printed no line counted as reading the log"; exit 1; }
+env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" clean quiet >/dev/null 2>&1 || true
+[ -e "$sum/quiet.log" ] ||
+    { echo "FAIL INV-13: clean removed a log only an empty --grep had touched"; exit 1; }
 out="$(env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build)" || true
 [ "$(wc -l <<<"$out")" = 1 ] || { echo "FAIL INV-13: a plain wait printed more than the status: $out"; exit 1; }
 rc=0

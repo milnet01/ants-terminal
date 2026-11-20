@@ -32,7 +32,8 @@ cc-job watch <name>         open a Konsole window following the output live
 cc-job stop <name>          stop the job
 cc-job clean <name> [--force]
                             delete a finished job's log and records; refused
-                            until `tail` has shown the log, unless --force
+                            until `tail`, or a `wait --summary` or `--grep` that
+                            printed lines, has shown the log, unless --force
 cc-job clean --mine [--force]
                             the same for every finished job this Claude Code
                             session started; names the jobs it kept
@@ -338,10 +339,13 @@ wait_job() {
     status_one "$name"
     if [[ -n $pattern ]]; then
         # grep exits 1 on no match, which is an answer here, not a failure.
-        if [[ -n $lines ]]; then { grep -E -- "$pattern" "$log" || true; } | tail -n "$lines"
-        else grep -E -- "$pattern" "$log" || true
+        local matched
+        matched=$(grep -E -- "$pattern" "$log" || true)
+        [[ -n $lines && -n $matched ]] && matched=$(tail -n "$lines" <<<"$matched")
+        # Only lines shown count as reading the log: clean keeps it otherwise.
+        if [[ -n $matched ]]; then
+            printf '%s\n' "$matched"; : >"$JOB_DIR/$name.read"
         fi
-        : >"$JOB_DIR/$name.read"
     elif [[ -n $lines ]]; then
         tail -n "$lines" "$log"; : >"$JOB_DIR/$name.read"
     fi

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6844 -->
+<!-- ants-roadmap-id-high-water: ANTS=6845 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93117,6 +93117,20 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Cleaning up finished background jobs once hung with no output; find out why.
   Kind: investigate.
   Source: ants-terminal-session-2026-11-20.
+  Lanes: shell-surface.
+
+- ✅ [ANTS-6845] **cc-job wait --grep that prints no line leaves the log unread, so clean keeps it.**
+  Reported 2026-11-20 by album-builder via claude-config: after
+  `cc-job wait ab-suite2 --grep ...` matched nothing, a plain
+  `cc-job clean ab-suite2` deleted the log and the suite's pass count
+  with it. wait_job marked the log read after any --grep. Now only a
+  --grep that printed lines does; --help says which reads count.
+  INV-13 in tests/features/cc_job_bundle covers it.
+  Hot reload: the installed cc-job is the repo script, re-read on
+  every call.
+  **Layman:** Checking a finished job for a pattern that wasn't there no longer lets its output be deleted unseen.
+  Kind: fix.
+  Source: album-builder-via-claude-config-2026-11-20.
   Lanes: shell-surface.
 
 ### Ants MCP feedback from CC sessions (2026-11-15 triage)

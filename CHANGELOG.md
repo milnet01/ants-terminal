@@ -544,6 +544,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **cc-job keeps a job's output until something has actually shown it** (ANTS-6845)
+  `cc-job wait --grep` counts as reading the log only when it printed
+  matching lines, so `cc-job clean` no longer deletes output nobody saw.
+
 - **Web links on screen stay on their text when the window is resized** (ANTS-6177)
   Each screen line now keeps its own OSC 8 links, so scrolling, line
   inserts and deletes, the alternate screen and a resize all move a link
