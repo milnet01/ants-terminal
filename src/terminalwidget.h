@@ -1047,6 +1047,9 @@ private:
     QScrollBar *m_scrollBar = nullptr;
     void updateScrollBar();
     void positionScrollBar();
+    // Puts global line `line` at the top of the view, clamped to the
+    // scrollback; moves the scroll bar with it and repaints.
+    void scrollToGlobalLine(int line);
 
     // Smooth scrolling
     double m_smoothScrollTarget = 0.0;

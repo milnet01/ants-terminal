@@ -183,16 +183,25 @@ TEST(TerminalWidgetHotPathPerf, Inv10DurationNeverNegative) {
         << "a command duration is computed from wall-clock stamps unclamped";
 }
 
-// INV-11 (ANTS-5078) — search and bookmark navigation update the scroll bar.
+// INV-11 (ANTS-5078, ANTS-6178) — search, bookmark and prompt navigation
+// move the view only through scrollToGlobalLine, which updates the bar.
 TEST(TerminalWidgetHotPathPerf, Inv11NavigationUpdatesScrollBar) {
     const QString src = tw();
+    const QString helper =
+        functionBody(src, QStringLiteral("void TerminalWidget::scrollToGlobalLine(int line)"));
+    ASSERT_FALSE(helper.isEmpty()) << "scrollToGlobalLine not found";
+    EXPECT_TRUE(helper.contains(QStringLiteral("updateScrollBar()")))
+        << "scrollToGlobalLine moves the view without updating the scroll bar";
     for (const char *sig : {"void TerminalWidget::scrollToMatch()",
                             "void TerminalWidget::nextBookmark()",
-                            "void TerminalWidget::prevBookmark()"}) {
+                            "void TerminalWidget::prevBookmark()",
+                            "void TerminalWidget::navigatePrompt(int direction)"}) {
         const QString body = functionBody(src, QString::fromLatin1(sig));
         ASSERT_FALSE(body.isEmpty()) << sig << " not found";
-        EXPECT_TRUE(body.contains(QStringLiteral("updateScrollBar()")))
-            << sig << " moves the view without updating the scroll bar";
+        EXPECT_TRUE(body.contains(QStringLiteral("scrollToGlobalLine(")))
+            << sig << " does not move the view through scrollToGlobalLine";
+        EXPECT_FALSE(body.contains(QStringLiteral("m_scrollOffset =")))
+            << sig << " sets the view offset itself, skipping the scroll bar update";
     }
 }
 

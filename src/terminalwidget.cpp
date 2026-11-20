@@ -3460,41 +3460,35 @@ void TerminalWidget::navigatePrompt(int direction) {
     const auto &regions = m_grid->promptRegions();
     if (regions.empty()) return;
 
-    int scrollbackSize = m_grid->scrollbackSize();
-    // Current view top in global line coordinates
-    int viewTop = scrollbackSize - m_scrollOffset;
+    const int scrollbackSize = m_grid->scrollbackSize();
+    const int viewTop = scrollbackSize - m_scrollOffset;  // a global line
 
+    // A prompt within one line of the view's top counts as the current
+    // one, so a repeat press moves past it. Bookmarks do the same.
     if (direction < 0) {
-        // Find the prompt region whose startLine is above current viewTop
         for (int i = static_cast<int>(regions.size()) - 1; i >= 0; --i) {
             if (regions[i].startLine < viewTop - 1) {
-                m_scrollOffset = scrollbackSize - regions[i].startLine;
-                m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
-                updateScrollBar();
-                update();
+                scrollToGlobalLine(regions[i].startLine);
                 return;
             }
         }
-        // Already at topmost prompt — scroll to start
-        m_scrollOffset = scrollbackSize;
-        updateScrollBar();
-        update();
+        scrollToGlobalLine(0);  // already at the topmost prompt
     } else {
-        // Find the prompt region whose startLine is below current viewTop
         for (const auto &region : regions) {
             if (region.startLine > viewTop + 1) {
-                m_scrollOffset = scrollbackSize - region.startLine;
-                m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
-                updateScrollBar();
-                update();
+                scrollToGlobalLine(region.startLine);
                 return;
             }
         }
-        // Already at bottommost prompt — scroll to end
-        m_scrollOffset = 0;
-        updateScrollBar();
-        update();
+        scrollToGlobalLine(scrollbackSize);  // already at the last prompt
     }
+}
+
+void TerminalWidget::scrollToGlobalLine(int line) {
+    const int scrollbackSize = m_grid->scrollbackSize();
+    m_scrollOffset = std::clamp(scrollbackSize - line, 0, scrollbackSize);
+    updateScrollBar();  // ANTS-5078 — keep the bar in step with the view
+    update();
 }
 
 void TerminalWidget::forceRecalcSize() {
@@ -5030,15 +5024,12 @@ void TerminalWidget::rescanSearchFrom(int firstLine) {
 void TerminalWidget::scrollToMatch() {
     if (m_currentMatchIdx < 0) return;
     const auto &m = m_searchMatches[m_currentMatchIdx];
-    int scrollbackSize = m_grid->scrollbackSize();
-    int rows = m_grid->rows();
-    int viewStart = scrollbackSize - m_scrollOffset;
-    int viewEnd = viewStart + rows - 1;
-    if (m.globalLine < viewStart || m.globalLine > viewEnd) {
-        m_scrollOffset = std::clamp(scrollbackSize - m.globalLine + rows / 2,
-                                     0, scrollbackSize);
-        updateScrollBar();  // ANTS-5078 — keep the bar in step with the view
-    }
+    const int rows = m_grid->rows();
+    const int viewStart = m_grid->scrollbackSize() - m_scrollOffset;
+    const int viewEnd = viewStart + rows - 1;
+    // An off-screen match lands mid-view.
+    if (m.globalLine < viewStart || m.globalLine > viewEnd)
+        scrollToGlobalLine(m.globalLine - rows / 2);
 }
 
 void TerminalWidget::searchNext() {
@@ -5449,42 +5440,26 @@ void TerminalWidget::toggleBookmark() {
 
 void TerminalWidget::nextBookmark() {
     if (m_bookmarks.empty()) return;
-    int scrollbackSize = m_grid->scrollbackSize();
-    int viewTop = scrollbackSize - m_scrollOffset;
+    const int viewTop = m_grid->scrollbackSize() - m_scrollOffset;
     for (int bm : m_bookmarks) {
-        if (bm > viewTop + 1) {
-            m_scrollOffset = scrollbackSize - bm;
-            m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
-            updateScrollBar();  // ANTS-5078
-            update();
+        if (bm > viewTop + 1) {  // one-line margin: see navigatePrompt
+            scrollToGlobalLine(bm);
             return;
         }
     }
-    // Wrap to first bookmark
-    m_scrollOffset = scrollbackSize - m_bookmarks.front();
-    m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
-    updateScrollBar();  // ANTS-5078
-    update();
+    scrollToGlobalLine(m_bookmarks.front());  // wrap to the first
 }
 
 void TerminalWidget::prevBookmark() {
     if (m_bookmarks.empty()) return;
-    int scrollbackSize = m_grid->scrollbackSize();
-    int viewTop = scrollbackSize - m_scrollOffset;
+    const int viewTop = m_grid->scrollbackSize() - m_scrollOffset;
     for (int i = static_cast<int>(m_bookmarks.size()) - 1; i >= 0; --i) {
-        if (m_bookmarks[i] < viewTop - 1) {
-            m_scrollOffset = scrollbackSize - m_bookmarks[i];
-            m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
-            updateScrollBar();  // ANTS-5078
-            update();
+        if (m_bookmarks[i] < viewTop - 1) {  // one-line margin: see navigatePrompt
+            scrollToGlobalLine(m_bookmarks[i]);
             return;
         }
     }
-    // Wrap to last bookmark
-    m_scrollOffset = scrollbackSize - m_bookmarks.back();
-    m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
-    updateScrollBar();  // ANTS-5078
-    update();
+    scrollToGlobalLine(m_bookmarks.back());  // wrap to the last
 }
 
 void TerminalWidget::setPadding(int px) {

@@ -107125,7 +107125,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L02-F9).
   Lanes: terminal-grid.
 
-- 📋 [ANTS-6178] **One scrollToGlobalLine helper for prompt, bookmark and search-match navigation in TerminalWidget.**
+- ✅ [ANTS-6178] **One scrollToGlobalLine helper for prompt, bookmark and search-match navigation in TerminalWidget.**
   From ANTS-6112 (L03 MEDIUM F7). "Scroll the view to global line N" is
   written out four times in navigatePrompt, four in next/prevBookmark and
   once in scrollToMatch; ANTS-5078 had to add updateScrollBar() to each
@@ -107138,6 +107138,13 @@ worked after these.
   Hot reload: none needed; a refactor with no new running state.
   The 2026-11-06 reviews also found this: row 516
   `src/terminalwidget.cpp:5256`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-20. TerminalWidget::scrollToGlobalLine(line) sets the
+  view top (clamped), updates the scroll bar and repaints;
+  navigatePrompt, nextBookmark, prevBookmark and scrollToMatch call it.
+  The one-line slack is commented by its effect (a target within one
+  line of the top counts as current); no reason is recorded in history.
+  INV-11 now pins the helper's updateScrollBar() and forbids a direct
+  m_scrollOffset write in the four bodies.
   **Layman:** Jumping to a prompt, a bookmark or a search hit would all use one piece of code, so a fix to scrolling lands everywhere at once.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L03-F7).

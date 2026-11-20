@@ -64,8 +64,10 @@ the invariants are source-scrape assertions against
   computed as a bare `pr.commandEndMs - pr.commandStartMs`; both display sites
   clamp at zero.
 
-- **INV-11 / navigation updates the scroll bar** (ANTS-5078).
-  `scrollToMatch`, `nextBookmark` and `prevBookmark` each call
+- **INV-11 / navigation updates the scroll bar** (ANTS-5078, ANTS-6178).
+  `scrollToMatch`, `nextBookmark`, `prevBookmark` and `navigatePrompt`
+  move the view only through `scrollToGlobalLine`, never by setting
+  `m_scrollOffset` themselves; `scrollToGlobalLine` calls
   `updateScrollBar()`.
 
 - **INV-12 / right-click bounds the selection first** (ANTS-5078).
