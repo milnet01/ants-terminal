@@ -37,13 +37,14 @@ QJsonObject makeEncodingProp();
 
 // tools/list descriptor pieces (ANTS-1677 § 2.2 kind B). Each appends one
 // contiguous run of today's descriptor order; handleMcpRequest calls them in
-// this order, with the `trace` descriptor inline between Store and Reports
-// because it reads ClaudeIntegration::m_toolProviders.
+// this order. Trace sits between Store and Reports, called only when the
+// process registered `trace` (ClaudeIntegration::m_toolProviders).
 void appendToolSchemasTerminal(QJsonArray &tools);     // get_scrollback .. last_selection
 void appendToolSchemasCodeNav(QJsonArray &tools);      // find_sources .. apply_edits
 void appendToolSchemasDocs(QJsonArray &tools);         // codebase_index .. last_audit_summary
 void appendToolSchemasOrientation(QJsonArray &tools);  // session_orient .. caller_cwd_info
 void appendToolSchemasStore(QJsonArray &tools);        // roadmap_log .. session_cost
+void appendToolSchemasTrace(QJsonArray &tools);        // trace (ANTS-5734)
 void appendToolSchemasReports(QJsonArray &tools);      // dependency_inventory .. session_memory
 
 }  // namespace claudeintegrationdetail

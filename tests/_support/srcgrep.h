@@ -215,8 +215,8 @@ inline std::string regionBetween(const std::string &text,
 }
 
 // ANTS-4919 — the body of each `void appendToolSchemas<Part>(QJsonArray &tools)`
-// piece in `cc`, in text order, each preceded by '\n'. Every descriptor except
-// the inline `trace` one, and none of the branch's tail, whose lookup tables
+// piece in `cc`, in text order, each preceded by '\n'. Every descriptor, and
+// none of the branch's tail, whose lookup tables
 // name every tool: a scrape anchoring on one verb's descriptor reads this, so
 // its first match is that descriptor wherever the pieces' files sit in the list.
 inline std::string toolSchemaPiecesText(const std::string &cc) {
@@ -232,11 +232,10 @@ inline std::string toolSchemaPiecesText(const std::string &cc) {
 }
 
 // ANTS-4919 — every tools/list descriptor in ClaudeIntegration's text `cc`:
-// the tools/list..tools/call branch of handleMcpRequest (the piece calls, the
-// inline `trace` descriptor, and the tail that post-processes the array), then
-// the body of each `void appendToolSchemas<Part>(QJsonArray &tools)` piece in
-// text order (ANTS-1677 § 2.2 kind B). The branch comes first so the inline
-// descriptor is followed by a descriptor, as it was before the carve. Found by
+// the tools/list..tools/call branch of handleMcpRequest (the piece calls and
+// the tail that post-processes the array), then the body of each
+// `void appendToolSchemas<Part>(QJsonArray &tools)` piece in text order
+// (ANTS-1677 § 2.2 kind B). Found by
 // definition, not by file, so it holds when a piece moves to another file of
 // the class. "" when the branch is missing.
 inline std::string toolsListDescriptorText(const std::string &cc) {

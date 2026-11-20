@@ -107052,7 +107052,7 @@ worked after these.
   Source: review-readability-2026-10-22 L07.
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6175] **Move each MCP tool's descriptor out of the one tools/list branch into its own builder (L15-F1).**
+- ✅ [ANTS-6175] **Move each MCP tool's descriptor out of the one tools/list branch into its own builder (L15-F1).**
   L15-F1 (HIGH), queued from ANTS-6124 on 2026-10-23. Every tool
   descriptor is built inline in ClaudeIntegration's tools/list branch;
   roadmap_query's alone is over a thousand lines. Fix: one builder
@@ -107064,6 +107064,12 @@ worked after these.
   which anchors name the branch or a function body, then split one
   family at a time. Hot-reload note: descriptors as data files
   (design default) would also serve this.
+  Shipped 2026-11-20. ANTS-4919 had already carved every other
+  descriptor into six appendToolSchemas<Part> pieces; the last inline
+  one, trace, now sits in appendToolSchemasTrace
+  (src/claudeintegration_codenav.cpp), called only when the process
+  registered trace. tools/list's live response is byte-identical
+  (ANTS-1677 INV-6). The branch's post-processing tail is ANTS-6223's.
   **Layman:** Every tool's description is built in one huge block of code; give each tool its own small piece so a reader does not get lost.
   Kind: refactor.
   Source: review-readability-2026-10-22 L15.

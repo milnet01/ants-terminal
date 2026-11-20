@@ -2249,4 +2249,83 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 tools.append(aeTool);
 }
 
+void appendToolSchemasTrace(QJsonArray &tools) {
+                {
+                    QJsonObject t;
+                    t["name"] = "trace";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use instead of grep + Read to learn where a symbol is "
+                        "defined, who calls it, and which tests and documents "
+                        "name it.");
+                    t["description"] = QStringLiteral(
+                        "One call for a symbol: definitions with end_line, depth-1 "
+                        "callers, references by kind, tests, doc lines, spec "
+                        "invariants and roadmap items. path= traces a file instead. "
+                        "Syntactic; not_covered says what it missed. Refusals: "
+                        "bad_args, bad_path, no_project. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "One call for a symbol: definitions (file, line, end_line, "
+                        "signature, kind, scope, is_declaration), depth-1 callers "
+                        "with the calling line, every other reference by kind "
+                        "(import, code, comment, string_or_config, test, unparsed), "
+                        "the test files that hit it with ctest patterns, doc lines "
+                        "with their nearest heading, spec invariants and roadmap "
+                        "items naming it. With path instead of symbol: the tests, "
+                        "docs and config that name that file. Matching is syntactic "
+                        "(tree-sitter queries, no type resolution), so precision is "
+                        "\"syntactic\". not_covered lists languages with no "
+                        "grammar, files too large or timed out, an ambiguous "
+                        "basename, an unreadable roadmap or spec, and each "
+                        "language's limits. Rows page under max_bytes: pass "
+                        "next_offset back as offset. depth above 1 and "
+                        "include:[\"callees\"] refuse bad_args until ship 2. "
+                        "Refusals: bad_args, bad_path, no_project. caller_cwd "
+                        "Required. Spec: docs/specs/ANTS-5734-trace-verb.md.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    const auto str = [](const char *d) {
+                        return QJsonObject{{"type", "string"},
+                                           {"description", QString::fromUtf8(d)}};
+                    };
+                    props["caller_cwd"] = str("Your $PWD (required); picks the project.");
+                    props["symbol"] = str(
+                        "A name, or up to four joined by :: or . (Foo::bar); "
+                        "the leading parts narrow definitions, callers and references.");
+                    props["path"] = str(
+                        "A file to trace instead of a symbol: what tests, docs and "
+                        "config name it.");
+                    props["lang"] = str(
+                        "Parse only this language id (cpp, python, ...).");
+                    {
+                        QJsonArray members;
+                        for (const char *m : {"definitions", "callers", "references",
+                                              "tests", "docs", "spec_invariants",
+                                              "roadmap_items"})
+                            members.append(QString::fromLatin1(m));
+                        props["include"] = QJsonObject{
+                            {"type", "array"},
+                            {"items", QJsonObject{{"type", "string"}, {"enum", members}}},
+                            {"description", QStringLiteral(
+                                 "Only these sections; default all.")}};
+                    }
+                    props["depth"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 1}, {"maximum", 3},
+                        {"default", 1},
+                        {"description", QStringLiteral("Caller depth; only 1 is served yet.")}};
+                    props["max_bytes"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 1},
+                        {"description", QStringLiteral("Reply cap (default 512 KiB).")}};
+                    props["offset"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 0},
+                        {"description", QStringLiteral(
+                             "Row cursor: pass back next_offset.")}};
+                    schema["properties"] = props;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+}
+
 }  // namespace claudeintegrationdetail
