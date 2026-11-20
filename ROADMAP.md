@@ -79089,7 +79089,7 @@ against current source before filing.
   docs/roadmap/0.7.md at the 0.8.0 bump (§ 3.9, ANTS-5609), so nothing
   here can move before then. Close this when 3749 ships at that bump.
 
-- 📋 [ANTS-3859] **Measure roadmap_migrate's own end-to-end latency; add a budget invariant only if it warrants one.**
+- ✅ [ANTS-3859] **Measure roadmap_migrate's own end-to-end latency; add a budget invariant only if it warrants one.**
   ANTS-3855 § 4 states a 1 s/project ceiling INHERITED from ANTS-3765 § 4,
   whose 129 ms worst case (Ants_Terminal, 1,794 items) measured `load()`
   alone, through ONE Bulk connection shared across ten projects. The verb
@@ -79119,6 +79119,9 @@ against current source before filing.
   (mcp_trace duration), backup off. Over § 4's 1 s target. A real run adds
   the commit and the backup snapshot. Still to do: record the figure in
   ANTS-3855 § 4 and decide whether to add a latency invariant.
+  Decided (2026-11-20, user): record the figure, add no latency test.
+  Shipped 2026-11-20: ANTS-3855 § 4 carries the 2026-11-05 measurement
+  (about 1.7 s end to end) and says no latency invariant is added.
   **Layman:** We know how long the roadmap import takes once it's started, but not how long the whole command takes. Measure it properly before promising a number.
   Kind: perf.
   Source: in-session-2026-08-07, ANTS-3855 § 4.
@@ -79230,7 +79233,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
 
-- 💭 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
+- 📋 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
   Filed from the same loop-3 tail. `roadmap-format.md` § 3.2 tells a pre-1.0
   project to head its blocks `## P01 — Bootstrap` "since there's no real
   version to anchor to yet", but § 3.9 rotates only what sits under a
@@ -79472,6 +79475,15 @@ against current source before filing.
   Parked 2026-11-05 (session 217) on the user's 2026-10-10 decision
   above: the doc half landed (b26bea58); the migration half waits until
   a phase-only roadmap appears.
+  Unparked (2026-11-20, user): build the migration half now. The
+  2026-10-10 condition is met. Scan of every registered project's
+  ROADMAP.md on 2026-11-20 (`^## +P[0-9]+` against `^## +v?N.N`): two
+  are phase-only. kde-kwin has `P01` and `P02`. claude-config has `P02`
+  and `P03`, in a file of about 34,000 lines, nearly all under `P02`.
+  Games_Hub and Ants_Projects_Hub_Website still carry both shapes.
+  Next: read ANTS-3766 § 2.3 and roadmap-format.md §§ 3.2 and 3.9, then
+  build archiveNameRx, isPlaceableSourcePath, planFrom's prefix and the
+  render split, on a throwaway store.
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are

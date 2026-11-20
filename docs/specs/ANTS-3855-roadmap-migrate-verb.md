@@ -1283,21 +1283,26 @@ worst project is **Ants_Terminal at 129 ms** (1,794 items / 1,888 elements,
 **Two costs sit outside that figure and are stated rather than assumed.** That
 run drove `load()` through **one** `Bulk` connection shared across ten
 projects, so the per-call `mkpath` + `addDatabase` + `applyPragmas` +
-`createSchema` + three `setOwnerOnlyPerms` this verb pays is additive and
-unmeasured; so is `findRoadmaps()`' own read of the source files. Both are
+`createSchema` + three `setOwnerOnlyPerms` this verb pays is additive, and
+that run did not measure it; nor `findRoadmaps()`' own read of the source files. Both are
 bounded by a handful of syscalls and one 3 MB read, which is why the 1 s
 ceiling is kept rather than loosened — but the honest statement is that
 129 ms is the load's cost, not the verb's.
 
 **So the 1 s figure is a budget this spec does not assert, and says so rather
 than implying a contract.** No invariant carries a latency surface: asserting a
-wall-clock bound needs the verb's own measurement, which does not exist yet,
+wall-clock bound needs the verb's own measurement, given below,
 and an invariant whose number was borrowed from a different call shape is one
-that reds for the wrong reason. **The verb's end-to-end figure is measured at
-implementation and folded back here** (`/write-spec` Step 8); if it lands near
-the ceiling, a latency invariant is added with it, on ANTS-3793's
-`Inv3Latency` model. Until then the ceiling is the design target and the
-129 ms is its provenance.
+that reds for the wrong reason.
+
+**The verb's own figure, measured 2026-11-05 (ANTS-3859): about 1.7 s end to
+end.** Three dry runs on Ants_Terminal (4,041 items), machine load about 1,
+backup off, took 1.73, 1.68 and 1.70 s by `mcp_trace` duration. A real run adds
+the commit and the backup snapshot. That is over the 1 s design target, and the
+target stays a target: no latency invariant is added, because the verb runs
+once per project and a wall-clock test would guard nothing a user notices
+(user decision, 2026-11-20). To refute the figure, run
+`roadmap_migrate dry_run:true` on this project and read `mcp_trace`.
 
 **Build.** Two new `.cpp` files and one header in an existing library — the
 seam and the handler, split for the link-time reason § 2.1 records. No new
