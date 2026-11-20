@@ -741,6 +741,9 @@ private:
     // (no save). True when a value changed.
     bool foldClaimedPeersIntoConfig(const TokenUsageEngine::PeerUsage &dead);
     void onConfigFileChanged(const QString &path);
+    // Re-applies every live setting; the Settings dialog's Apply and
+    // onConfigFileChanged both call it (ANTS-6173).
+    void reapplyConfig();
     // Re-entrancy guard for onConfigFileChanged. Set true on entry, cleared
     // by a deferred singleShot that fires after Qt's event loop has had a
     // chance to drain any inotify events queued by save() calls inside the

@@ -43,6 +43,7 @@
 #include <QSplitter>
 #include "mcpprojection.h"   // ANTS-2085 — mcp::setTerseDefault
 #include "mcpspill.h"        // ANTS-2094 — mcp::setOffloadConfig / spillSweep
+#include "mcporientation.h"  // ANTS-1901 — reapplyConfig removes the hook
 #include "themedstylesheet.h"
 #include "claudeprojects.h"
 #include "claudetranscript.h"
@@ -2925,6 +2926,66 @@ void MainWindow::showDiffViewer() {
 
 // --- Hot-Reload Configuration ---
 
+// Everything a changed setting needs re-applied, whichever way it changed:
+// Apply in the Settings dialog, or a hand edit of config.json. The theme is
+// the caller's, because the two decide differently when to apply it.
+void MainWindow::reapplyConfig() {
+    // The MCP response settings (ANTS-2085 terse default, ANTS-3550 hint
+    // latch, ANTS-2094 result offload).
+    mcp::setTerseDefault(m_config.claudeMcpTerseResponses());
+    mcp::setHintLatchEnabled(m_config.claudeMcpHintLatch());
+    mcp::setOffloadConfig(m_config.claudeMcpOffloadLargeResults(),
+                          m_config.claudeMcpOffloadThresholdBytes(),
+                          m_config.claudeMcpOffloadHeadBytes());
+    if (m_claudeIntegration)
+        m_claudeIntegration->setContextWindowTokens(
+            m_config.claudeContextWindowTokens());
+
+    applyFontSizeToAll(m_config.fontSize());
+    const QString family = m_config.fontFamily();
+    for (auto *t : liveTerminals()) {
+        applyConfigToTerminal(t);
+        t->setHighlightRules(m_config.highlightRules());
+        t->setTriggerRules(m_config.triggerRules());
+        if (!family.isEmpty()) t->setFontFamily(family);
+    }
+
+    // Per-tab Claude glyph toggle lives in the paint-provider closure —
+    // repaint so the toggle change takes effect on the next frame.
+    // Also clear every tab tooltip so a stale "Claude: thinking…"
+    // doesn't linger on a tab after the user turned the feature off.
+    if (m_coloredTabBar) m_coloredTabBar->update();
+    if (m_tabWidget && !m_config.claudeTabStatusIndicator()) {
+        for (int i = 0; i < m_tabWidget->count(); ++i)
+            m_tabWidget->setTabToolTip(i, QString());
+    }
+
+    // Quake mode turns on live, hotkey included (ANTS-1738).
+    if (m_config.quakeMode() && !m_quakeMode) {
+        setupQuakeMode();
+        wireQuakeHotkey();
+    }
+
+    applyTabListPanelConfig();  // ANTS-5645
+    applyFixedWindowSize(false);  // ANTS-6742 — only if the size changed
+
+#ifdef ANTS_LUA_PLUGINS
+    // Let plugins react to settings changes. The payload is empty: a
+    // plugin reads what it needs through ants.settings.get.
+    if (m_pluginManager)
+        m_pluginManager->fireEvent(PluginEvent::WindowConfigReloaded, QString());
+#endif
+
+    // ANTS-1901 — the master MCP toggle, live. Off is honoured at once:
+    // the dispatcher refuses every verb and the orientation hook is
+    // removed. The socket is bound only at launch (setupClaudeMcpProviders),
+    // so turning the switch back on takes effect on the next start.
+    if (m_claudeIntegration)
+        m_claudeIntegration->setMcpEnabled(m_config.claudeMcpEnabled());
+    if (!m_config.claudeMcpEnabled())
+        ants::mcp_orientation::uninstall();
+}
+
 void MainWindow::onConfigFileChanged(const QString &path) {
     // Re-entrancy guard. The 0.7.31 attempt at loop prevention was
     // m_configWatcher->blockSignals(true/false) bracketing this slot, but
@@ -2972,22 +3033,6 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     const QString savedTheme = m_config.theme();
     m_config = Config();
 
-    // ANTS-2085 — re-publish the terse-by-default preference after an
-    // external config edit (the Settings dialog's own Apply re-publishes
-    // directly, since a self-write echo short-circuits above).
-    mcp::setTerseDefault(m_config.claudeMcpTerseResponses());
-    // ANTS-3550 — re-publish the advisory-hint latch after an external edit
-    // (live off-switch: flip claude.mcp_hint_latch to get the tips back).
-    mcp::setHintLatchEnabled(m_config.claudeMcpHintLatch());
-    // ANTS-2094 — re-publish result-offload config after an external edit.
-    mcp::setOffloadConfig(m_config.claudeMcpOffloadLargeResults(),
-                          m_config.claudeMcpOffloadThresholdBytes(),
-                          m_config.claudeMcpOffloadHeadBytes());
-    // The context meter's window, after a hand edit of config.json.
-    if (m_claudeIntegration)
-        m_claudeIntegration->setContextWindowTokens(
-            m_config.claudeContextWindowTokens());
-
     // The cached Settings dialog was constructed with `&m_config` and
     // populated its widgets from the then-current values. `m_config`'s
     // address is stable (value member), but its *contents* just got
@@ -3014,29 +3059,7 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     // another setting keeps an auto-profile's unsaved theme on screen.
     const QString newTheme = m_config.theme();
     if (newTheme != savedTheme && newTheme != m_currentTheme) applyTheme(newTheme);
-    applyFontSizeToAll(m_config.fontSize());
-
-    QList<TerminalWidget *> terminals = liveTerminals();
-    for (auto *t : terminals) {
-        applyConfigToTerminal(t);
-        t->setHighlightRules(m_config.highlightRules());
-        t->setTriggerRules(m_config.triggerRules());
-        QString family = m_config.fontFamily();
-        if (!family.isEmpty()) t->setFontFamily(family);
-    }
-
-    // Per-tab Claude glyph toggle lives in the paint-provider closure —
-    // repaint so the toggle change takes effect on the next frame.
-    // Also clear every tab tooltip so a stale "Claude: thinking…"
-    // doesn't linger on a tab after the user turned the feature off.
-    if (m_coloredTabBar) m_coloredTabBar->update();
-    if (m_tabWidget && !m_config.claudeTabStatusIndicator()) {
-        for (int i = 0; i < m_tabWidget->count(); ++i)
-            m_tabWidget->setTabToolTip(i, QString());
-    }
-
-    applyTabListPanelConfig();  // ANTS-5645
-    applyFixedWindowSize(false);  // ANTS-6742 — only if the size changed
+    reapplyConfig();
 
     showStatusMessage("Config reloaded from disk", 3000);
 

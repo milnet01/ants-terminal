@@ -32,8 +32,9 @@ item records the user's choice of a side panel over wrapping rows.
   do `tab_list_panel_sort` (INV-10) and `tab_list_panel_right` (default
   false, INV-14).
 - **INV-7 — live reload.** Both `onConfigFileChanged` and the Settings
-  dialog's `settingsChanged` handler call `applyTabListPanelConfig`, so a
-  change applies with no relaunch.
+  dialog's `settingsChanged` handler call `MainWindow::reapplyConfig`,
+  which calls `applyTabListPanelConfig`, so a change applies with no
+  relaunch.
 - **INV-8 — state as row colour (ANTS-5650).** A tab row's background is
   `ClaudeTabIndicator::color` of its glyph, or the panel background for
   `None`. At rest a state row's background is solid under the name, then

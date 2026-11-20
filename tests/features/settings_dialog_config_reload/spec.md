@@ -81,6 +81,21 @@ the dialog's setters are what wrote those values. The invalidation
 must live in the external-edit path only, or we'd needlessly
 destroy the dialog on every in-app config change.
 
+### Invariant 5 — one function re-applies the settings on both paths
+
+`onConfigFileChanged` and the Settings dialog's `settingsChanged`
+handler both call `MainWindow::reapplyConfig`. It republishes the MCP
+response settings, sets the context window, applies font, per-terminal
+config and rules, clears the Claude tab tooltips when the tab indicator
+is off, turns Quake mode on, applies the tab list panel and the fixed
+window size, fires the plugins' `WindowConfigReloaded` event, and sets
+the MCP master toggle. Neither caller writes one of those steps out
+itself, so a hand edit of `config.json` and Apply do the same things
+(user decision, 2026-11-20). Three differences stay in the callers: the
+hand-edit path discards the cached dialog (Invariants 1 to 4), applies
+the theme only when the saved theme changed, and shows its own status
+message.
+
 ## How this test anchors to reality
 
 AuditDialog and SettingsDialog are GUI-heavy Qt widgets; constructing

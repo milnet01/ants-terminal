@@ -106970,7 +106970,7 @@ worked after these.
   Source: review-readability-2026-10-22 L04.
   Lanes: mainwindow.
 
-- 📋 [ANTS-6173] **Fold the external-edit and Settings-Apply config reloads into one reapplyConfig (L04-F4).**
+- ✅ [ANTS-6173] **Fold the external-edit and Settings-Apply config reloads into one reapplyConfig (L04-F4).**
   L04-F4 (HIGH), queued from ANTS-6113 on 2026-10-23.
   onConfigFileChanged (hand edit of config.json) and the Settings
   dialog's settingsChanged lambda keep separate re-apply lists. Only
@@ -106983,6 +106983,15 @@ worked after these.
   intended, then the tab_list_panel spec amended.
   The 2026-11-06 reviews also found this: row 532
   `src/mainwindow.cpp:2893`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Decided (2026-11-20, user): both paths do everything. Three
+  differences stay because they must: a hand edit discards the cached
+  Settings dialog, applies the theme only when the saved theme changed
+  (ANTS-6489), and shows its own status message.
+  Shipped 2026-11-20: `MainWindow::reapplyConfig` holds the one list;
+  `onConfigFileChanged` and the `settingsChanged` handler call it. Specs
+  amended in the same commit: tab_list_panel INV-7, window_cell_size
+  INV-5, and settings_dialog_config_reload gains Invariant 5. Default
+  suite green.
   **Layman:** The two ways settings get reloaded are separate lists that disagree; make them one.
   Kind: refactor.
   Source: review-readability-2026-10-22 L04.

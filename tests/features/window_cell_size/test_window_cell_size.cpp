@@ -89,10 +89,13 @@ TEST(WindowCellSize, Inv5FixedSizeAppliesOnShowAndOnlyWhenChanged) {
     const std::string src = ants_test::slurpMainWindow();
     EXPECT_NE(body(src, "void MainWindow::showEvent(").find("applyFixedWindowSize(true)"),
               std::string::npos);
-    EXPECT_NE(body(src, "void MainWindow::onConfigFileChanged(").find("applyFixedWindowSize(false)"),
+    // Both reload paths run reapplyConfig, which applies it.
+    EXPECT_NE(body(src, "void MainWindow::reapplyConfig(").find("applyFixedWindowSize(false)"),
+              std::string::npos);
+    EXPECT_NE(body(src, "void MainWindow::onConfigFileChanged(").find("reapplyConfig()"),
               std::string::npos);
     EXPECT_NE(body(src, "&SettingsDialog::settingsChanged, this, [this]()")
-                  .find("applyFixedWindowSize(false)"),
+                  .find("reapplyConfig()"),
               std::string::npos);
     const std::string apply = body(src, "void MainWindow::applyFixedWindowSize(");
     ASSERT_FALSE(apply.empty());

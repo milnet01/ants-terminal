@@ -102,6 +102,33 @@ static int runMain() {
                           "m_settingsDialog (onConfigFileChanged), "
                           "found %1").arg(count));
 
+    // Invariant 5 (ANTS-6173) — one function re-applies the settings, and
+    // both reload paths call it.
+    const QString shared = extractFunctionBody(src,
+        QStringLiteral("void MainWindow::reapplyConfig"));
+    const QString applyBody = extractFunctionBody(src,
+        QStringLiteral("&SettingsDialog::settingsChanged, this, [this]()"));
+    expect(!shared.isEmpty() && !applyBody.isEmpty(),
+           "I5/bodies-located",
+           QStringLiteral("reapplyConfig or the settingsChanged handler not found"));
+    expect(onCfgBody.contains(QStringLiteral("reapplyConfig()"))
+               && applyBody.contains(QStringLiteral("reapplyConfig()")),
+           "I5/both-paths-call-reapplyConfig",
+           QStringLiteral("onConfigFileChanged and the settingsChanged "
+                          "handler must both call reapplyConfig()"));
+    for (const char *step : {"mcp::setHintLatchEnabled(", "setContextWindowTokens(",
+                             "applyFontSizeToAll(", "applyConfigToTerminal(",
+                             "setTabToolTip(", "wireQuakeHotkey()",
+                             "PluginEvent::WindowConfigReloaded", "setMcpEnabled(",
+                             "mcp_orientation::uninstall()"}) {
+        const QString needle = QString::fromLatin1(step);
+        expect(shared.contains(needle), "I5/reapplyConfig-step",
+               QStringLiteral("reapplyConfig lacks %1").arg(needle));
+        expect(!onCfgBody.contains(needle) && !applyBody.contains(needle),
+               "I5/step-not-repeated-in-a-caller",
+               QStringLiteral("%1 is written out in a caller again").arg(needle));
+    }
+
     // Sanity: the cached-dialog construction site is still at its
     // expected shape — if this shifts, the invariants above are
     // checking an obsolete pattern.

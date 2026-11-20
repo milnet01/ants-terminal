@@ -947,57 +947,8 @@ void MainWindow::setupSettingsMenu() {
         if (!m_settingsDialog) {
             m_settingsDialog = new SettingsDialog(&m_config, this);
             connect(m_settingsDialog, &SettingsDialog::settingsChanged, this, [this]() {
-                // Apply all changed settings
                 applyTheme(m_config.theme());
-                if (m_claudeIntegration)
-                    m_claudeIntegration->setContextWindowTokens(
-                        m_config.claudeContextWindowTokens());
-                applyFontSizeToAll(m_config.fontSize());
-
-                QList<TerminalWidget *> terminals = liveTerminals();
-                for (auto *t : terminals) {
-                    applyConfigToTerminal(t);
-                    t->setHighlightRules(m_config.highlightRules());
-                    t->setTriggerRules(m_config.triggerRules());
-                    QString family = m_config.fontFamily();
-                    if (!family.isEmpty()) t->setFontFamily(family);
-                }
-
-                // Opacity is now applied via per-pixel alpha in applyTheme() above
-
-                // Update quake mode. Wire the hotkey too — pre-ANTS-1738
-                // this site called only setupQuakeMode(), so enabling Quake
-                // via Preferences gave a drop-down with no working hotkey
-                // until the next restart.
-                if (m_config.quakeMode() && !m_quakeMode) {
-                    setupQuakeMode();
-                    wireQuakeHotkey();
-                }
-
-                applyTabListPanelConfig();  // ANTS-5645
-                applyFixedWindowSize(false);  // ANTS-6742 — only if the size changed
-
-#ifdef ANTS_LUA_PLUGINS
-                // 0.6.9 — let plugins react to settings changes (re-read their
-                // own settings, refresh status text, etc.). Payload is empty
-                // because the relevant config bits are accessed via
-                // ants.settings.get on demand.
-                if (m_pluginManager)
-                    m_pluginManager->fireEvent(PluginEvent::WindowConfigReloaded, QString());
-#endif
-
-                // ANTS-1901 — propagate the master MCP toggle live. Off is
-                // honoured immediately: the dispatcher refuses every verb
-                // (setMcpEnabled) and the orientation hook is removed so
-                // future Claude sessions don't show the cheat-sheet. The
-                // socket itself is bound/unbound only at launch (see
-                // setupStatusBarChrome), so turning the switch back ON takes
-                // effect on the next start.
-                if (m_claudeIntegration)
-                    m_claudeIntegration->setMcpEnabled(m_config.claudeMcpEnabled());
-                if (!m_config.claudeMcpEnabled())
-                    ants::mcp_orientation::uninstall();
-
+                reapplyConfig();
                 showStatusMessage("Settings applied", 3000);
             });
             connect(m_settingsDialog, &QDialog::finished, this, [this]() {

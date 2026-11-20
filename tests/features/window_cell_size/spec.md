@@ -20,9 +20,9 @@ either once from the View menu or as a fixed size every window opens at.
   It does nothing in quake mode.
 - **INV-5 — when the fixed size applies.** The first show applies it
   when `window_fixed_size` is set. The Settings dialog's
-  `settingsChanged` handler and `onConfigFileChanged` apply it only
-  when the fixed size changed, so another setting never resizes the
-  window.
+  `settingsChanged` handler and `onConfigFileChanged` both call
+  `MainWindow::reapplyConfig`, which applies it only when the fixed size
+  changed, so another setting never resizes the window.
 - **INV-6 — the controls.** View > "Resize Window..." asks for columns
   and rows, starting at the current terminal's, and resizes once. The
   Settings dialog's Appearance tab has the fixed-size switch and the two

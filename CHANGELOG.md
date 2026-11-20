@@ -238,6 +238,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **A hand edit of config.json and Apply in Preferences now do the same things.** (ANTS-6173)
+  A hand edit also turns Quake mode on, tells plugins the settings
+  changed and switches the Ants MCP master toggle, with no relaunch. Apply
+  also clears the Claude tab tooltips when the tab indicator is turned off.
+
 - **The pre-push gate skips the sanitized test run when the last green one already covers the tree.** (ANTS-6839)
   For contributors: a green run is recorded in `build-asan/.ants-asan-passed`;
   any change a sanitized run could read, a rebuilt program or a dirty tree

@@ -317,11 +317,15 @@ TEST(TabListPanel, Inv7BothReloadPathsApplyThePanel) {
     const std::string reload =
         ants_test::slurpFunctionBody(src, "void MainWindow::onConfigFileChanged(");
     ASSERT_FALSE(reload.empty());
-    EXPECT_NE(reload.find("applyTabListPanelConfig()"), std::string::npos);
+    EXPECT_NE(reload.find("reapplyConfig()"), std::string::npos);
     const std::string dialog =
         ants_test::slurpFunctionBody(src, "&SettingsDialog::settingsChanged, this, [this]()");
     ASSERT_FALSE(dialog.empty());
-    EXPECT_NE(dialog.find("applyTabListPanelConfig()"), std::string::npos);
+    EXPECT_NE(dialog.find("reapplyConfig()"), std::string::npos);
+    const std::string shared =
+        ants_test::slurpFunctionBody(src, "void MainWindow::reapplyConfig(");
+    ASSERT_FALSE(shared.empty());
+    EXPECT_NE(shared.find("applyTabListPanelConfig()"), std::string::npos);
 }
 
 // ---------------------------------------------------------------- INV-8 -----
