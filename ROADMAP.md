@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6843 -->
+<!-- ants-roadmap-id-high-water: ANTS=6844 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93107,6 +93107,18 @@ measured Ants adding about 5,250 tokens to every request.
   Source: RetroDB feedback 2026-11-15.
   Lanes: roadmap-write.
 
+- 📋 [ANTS-6844] **cc-job clean --mine, run from a Claude Code Bash call, once printed nothing and did not return.**
+  Reported 2026-11-20 08:10 (mail 2315, sent to claude-config by
+  mistake; cc-job is ours, packaging/cc-job/cc-job). The call was
+  `cc-job clean --mine 2>&1 | tail -3`. Two later runs the same day,
+  from this session, finished at once ("removed 3 of this session's
+  jobs", "removed 2 ..."). Find what made the first one wait: a
+  `tail`-read gate on an unread log, a lock, or a stdin read.
+  **Layman:** Cleaning up finished background jobs once hung with no output; find out why.
+  Kind: investigate.
+  Source: ants-terminal-session-2026-11-20.
+  Lanes: shell-surface.
+
 ### Ants MCP feedback from CC sessions (2026-11-15 triage)
 
 - ✅ [ANTS-6782] **source_scrapes extracts anchors from Python and shell tests, and can drop readers that only glob.**
@@ -102889,6 +102901,15 @@ a modern terminal" release.
   User (2026-10-15): the queue engages only when load is high or memory
   is low. It lets quick jobs through, and does not hold any session's
   job back too long (bounded wait, no starvation).
+  2026-11-20: a machine-wide quiet hold now exists (global CLAUDE.md
+  rule 17c; `quiet-machine hold|settle|release|check|wait`, state file
+  /mnt/Emulators/.claude/locks/quiet-hold; know_how quiet-machine-hold).
+  hooks/cc-job-guard.sh refuses a Claude session's new build, suite or
+  cc-job start while another project holds it. claude-config asks
+  whether `cc-job start` itself should wait on a hold from another
+  project (`quiet-machine check` exits 1 then), which would also cover
+  jobs a person or script starts. Recommended: yes, as `cc-job start
+  --after-hold` first, so nothing that runs today changes.
   **Layman:** Builds and big test runs wait in line instead of all starting at once and freezing the machine.
   Kind: feature.
   Source: user-request-2026-10-15.
