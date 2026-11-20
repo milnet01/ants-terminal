@@ -79233,7 +79233,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
 
-- 📋 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
+- 💭 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
   Filed from the same loop-3 tail. `roadmap-format.md` § 3.2 tells a pre-1.0
   project to head its blocks `## P01 — Bootstrap` "since there's no real
   version to anchor to yet", but § 3.9 rotates only what sits under a
@@ -79494,6 +79494,11 @@ against current source before filing.
   archive. LEFT: a store-migrated roadmap still cannot rotate a phase,
   because rotate_minor takes a minor only. kde-kwin and claude-config need
   that op before their phase blocks can rotate.
+  User decision 2026-11-20: PARK the rotation op. No project has a closed
+  phase (kde-kwin P01: 3 open; claude-config P02: 3 open). Build it when
+  one closes: teach rotate_minor, or a sibling op, to move a closed phase's
+  sections to docs/roadmap/<designator>.md and re-slug them with
+  RoadmapMigrate::parseArchiveName's prefix.
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
