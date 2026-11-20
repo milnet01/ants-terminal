@@ -99,9 +99,9 @@ phase number cannot answer that.
 
 **A phase block (`## P01 — Bootstrap`) stays available, and readers
 keep accepting it**, for a project that cannot yet place its items in a
-release. Choosing it costs rotation for now: § 3.9 defines phase
-rotation, but the migration does not yet read a phase archive, so
-§ 3.9 forbids rotating one until ANTS-4073 widens it. The designator is `P`
+release. On a store-migrated roadmap, choosing it costs rotation for
+now: § 3.9 defines phase rotation, but no store operation performs it
+yet. The designator is `P`
 followed by digits, optionally with a `.<sub>` for a phase inserted
 after the sequence was set (`P07.5`).
 § 3.9 names archives after it verbatim and § 3.5.4 step 2 selects
@@ -1082,18 +1082,17 @@ The convention:
   say which block each was raised against. Until moved they stay in
   `ROADMAP.md`.
 
-  **Do not rotate a phase block by hand until every reader
-  widens.** Two readers accept the phase name:
+  **Every reader accepts the phase name**:
   `RoadmapFoldIn::archivedIds` (`src/roadmapfoldin.cpp`), which answers
-  the query verb's `archived_ids`, and `parseArchiveFilename`
-  (`src/roadmapdialog.cpp`), the viewer. The migration does not:
-  `archiveNameRx()` (`src/roadmapmigrate.cpp`) and
-  `isPlaceableSourcePath` (`src/roadmapmigrateload.cpp`) still take
-  the version form only, so a `P01.md` never reaches the store, and
-  `planFrom()` builds only the `<M>-<N>` slug prefix.
-  Nor does `rotate_minor`'s `kMinorRx`
-  (`src/remotecontrol_roadmap_log_batch.cpp`). ANTS-4073 owns
-  widening them.
+  the query verb's `archived_ids`; `parseArchiveFilename`
+  (`src/roadmapdialog.cpp`), the viewer; and the migration, whose
+  discovery, `planFrom()` slug prefix and `isPlaceableSourcePath` all
+  read names through `RoadmapMigrate::parseArchiveName`
+  (`src/roadmapmigrate.cpp`). So a hand-authored roadmap may rotate a
+  closed phase by hand. **A store-migrated one cannot yet**:
+  `rotate_minor` takes a minor only (`kMinorRx`,
+  `src/remotecontrol_roadmap_log_batch.cpp`), and a hand snip is
+  discarded at the next render (below). ANTS-4073 owns that op.
 
   > Global `roadmap-format.md` § 3.9 said until 2026-08-13 that
   > phase roadmaps do not rotate and should promote to release
@@ -1120,8 +1119,8 @@ The convention:
   move is `roadmap_log op:"archive_section"` (ANTS-6737).
 
   Every reader of `docs/roadmap/` accepts the name: `archivedIds`,
-  `parseArchiveFilename`, the migration's discovery and
-  `isPlaceableSourcePath` (via `RoadmapMigrate::kUnversionedArchive`), and
+  `parseArchiveFilename`, the migration (via
+  `RoadmapMigrate::parseArchiveName`), and
   the id floor (`corpusHighWater`), which reads every `.md` there. Agreed
   with claude-config 2026-11-10.
 - **On a versioned roadmap** rotation happens at bump time on a

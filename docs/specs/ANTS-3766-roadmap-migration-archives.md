@@ -261,6 +261,9 @@ accepts. The compiler enforces it — there is no invariant here for a signature
 2. **Archives** under `<root>/docs/roadmap/`, each **regular file** whose name
    matches the case-sensitive regex **`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`**
    — stated here once and cited, never restated, everywhere else in this spec.
+   `roadmap-format.md` § 3.9 names two more archives: a phase archive
+   (`P07.5.md`) and `unversioned.md`. `RoadmapMigrate::parseArchiveName`
+   reads all three.
 
 **Neither rule is invented here, and they have different owners.** Rule 1 is
 ANTS-3757 § 2.2's, unchanged. Rule 2's *directory* and *sort* are
@@ -292,7 +295,8 @@ down.
 - **Order:** archives follow the live file, sorted by the `(major, minor)`
   integer tuple **descending** — § 3.9's stated contract, adopted rather than
   re-decided. Lexical sort is explicitly wrong there (`0.10` < `0.9`), and this
-  project will reach minor 10.
+  project will reach minor 10. Phase archives follow every version archive,
+  and `unversioned.md` comes last (§ 3.9).
 - **Why that regex is tighter than § 3.9's.** The standard's prose already says
   "no zero-padding" while its own stated regex `^[0-9]+\.[0-9]+\.md$` accepts
   `00.07.md` — which parses to the same `(0, 7)` tuple as `0.7.md`, making the
@@ -383,7 +387,8 @@ then, for an archive <M>.<N> only, the result is prefixed:
 
 **A phase archive (`P07.5.md`) is prefixed by the same rule, with
 `roadmap-format.md` § 3.9's phase prefix (`p07-5`) in place of `<M>-<N>`.**
-§ 3.9 is where that prefix is defined; ANTS-4073 builds it.
+§ 3.9 is where that prefix is defined; `RoadmapMigrate::parseArchiveName`
+builds it.
 
 **The `h<ordinal>` substitution is archive-only, and the live file keeps
 today's behaviour exactly.** This is not a detail: applying it at index 0 would

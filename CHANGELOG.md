@@ -238,6 +238,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_migrate reads a closed phase's archive (docs/roadmap/P01.md, P07.5.md) into the store, and a render writes it back.** (ANTS-4073)
+
 - **A hand edit of config.json and Apply in Preferences now do the same things.** (ANTS-6173)
   A hand edit also turns Quake mode on, tells plugins the settings
   changed and switches the Ants MCP master toggle, with no relaunch. Apply

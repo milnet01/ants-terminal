@@ -29,6 +29,7 @@
 #include <QFile>
 #include <QFileDevice>
 #include <QFileInfo>
+#include <QHash>
 #include <QStandardPaths>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -4219,4 +4220,71 @@ TEST(RoadmapWriteHalf, Ants6828BeforeIdOnTheFileRefuses) {
             << QJsonDocument(resp).toJson().toStdString();
     }
     EXPECT_EQ(readAll(root + QStringLiteral("/ROADMAP.md")), before);
+}
+
+// ANTS-4073 — roadmap-format.md § 3.9's phase archives (`P01.md`,
+// `P07.5.md`) survive a migration and a render. Discovery orders them after
+// every version archive and before `unversioned.md`; their slugs carry the
+// designator lower-cased with `.` as `-` (ANTS-3766 § 2.3); the load places
+// them; and a render writes each back with its item.
+TEST(RoadmapWriteHalf, Ants4073PhaseArchivesMigrateAndRender) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    const auto archive = [&](const char *name, const char *id) {
+        return writeFile(rawRoot + QStringLiteral("/docs/roadmap/")
+                             + QLatin1String(name),
+                         QByteArray("## Closed block\n\n- \xE2\x9C\x85 [") + id
+                             + "] **Old work.**\n  Layman: Old thing.\n"
+                               "  Kind: fix.\n  Source: seed.\n");
+    };
+    ASSERT_TRUE(archive("0.6.md", "DEMO-0101"));
+    ASSERT_TRUE(archive("P01.md", "DEMO-0102"));
+    ASSERT_TRUE(archive("P07.5.md", "DEMO-0103"));
+    ASSERT_TRUE(archive("unversioned.md", "DEMO-0104"));
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty()) << "the migration refused a phase archive";
+
+    {
+        QString err;
+        const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+        ASSERT_TRUE(disc.has_value()) << err.toStdString();
+        QStringList names;
+        for (const auto &s : disc->sources)
+            names << QFileInfo(s.path).fileName();
+        EXPECT_EQ(names, (QStringList{QStringLiteral("ROADMAP.md"),
+                                      QStringLiteral("0.6.md"),
+                                      QStringLiteral("P07.5.md"),
+                                      QStringLiteral("P01.md"),
+                                      QStringLiteral("unversioned.md")}))
+            << names.join(QLatin1Char(' ')).toStdString();
+    }
+
+    {
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        ASSERT_TRUE(store);
+        const auto sections = store->listSections(projectId);
+        ASSERT_TRUE(sections.has_value());
+        QHash<QString, QString> slugOf;
+        for (const auto &s : *sections)
+            if (s.sourcePath) slugOf.insert(*s.sourcePath, s.slug);
+        EXPECT_EQ(slugOf.value(QStringLiteral("docs/roadmap/P01.md")),
+                  QStringLiteral("p01-closed-block"));
+        EXPECT_EQ(slugOf.value(QStringLiteral("docs/roadmap/P07.5.md")),
+                  QStringLiteral("p07-5-closed-block"));
+    }
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("render");
+    const QJsonObject r = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_TRUE(readAll(root + QStringLiteral("/docs/roadmap/P01.md"))
+                    .contains("[DEMO-0102]"));
+    EXPECT_TRUE(readAll(root + QStringLiteral("/docs/roadmap/P07.5.md"))
+                    .contains("[DEMO-0103]"));
 }

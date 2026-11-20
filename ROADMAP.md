@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6840 -->
+<!-- ants-roadmap-id-high-water: ANTS=6841 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79484,6 +79484,16 @@ against current source before filing.
   Next: read ANTS-3766 § 2.3 and roadmap-format.md §§ 3.2 and 3.9, then
   build archiveNameRx, isPlaceableSourcePath, planFrom's prefix and the
   render split, on a throwaway store.
+  Progress (2026-11-20): the migration half is built. RoadmapMigrate::parseArchiveName
+  reads all three archive names (version, phase, unversioned.md); discovery,
+  planFrom()'s slug prefix (P01.md -> p01, P07.5.md -> p07-5) and
+  isPlaceableSourcePath all call it. The render already split by each
+  section's stored path, so it needed no change. Test:
+  RoadmapWriteHalf.Ants4073PhaseArchivesMigrateAndRender (temp store).
+  roadmap-format.md §§ 3.2 and 3.9 now say every reader accepts a phase
+  archive. LEFT: a store-migrated roadmap still cannot rotate a phase,
+  because rotate_minor takes a minor only. kde-kwin and claude-config need
+  that op before their phase blocks can rotate.
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -108687,6 +108697,18 @@ worked after these.
   Kind: audit-fix.
   Source: clang-tidy-2026-11-19.
   Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6841] **The tab_rename_pin spec's Invariant 3 names the one function that writes a tab's label.**
+  tests/features/tab_rename_pin/spec.md, Invariant 3, "Grep rule"
+  paragraph: it lists five allowed `m_tabWidget->setTabText(` sites
+  (setTabTitleForRemote, updateTabTitles, the titleChanged lambda,
+  newTabForRemote's "Shell", tab creation). The MainWindow sources now
+  hold one call, inside `MainWindow::setTabLabel` (src/mainwindow.cpp).
+  Rewrite the rule to name that function, and check the test's scrape
+  still matches what the paragraph says.
+  **Layman:** A test's description lists five places that may set a tab's title; the code now has only one, so the description misleads.
+  Kind: doc-fix.
+  Source: in-session-2026-11-20 (session 302 handoff).
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

@@ -285,8 +285,11 @@ belongs in that archive; `NULL` belongs in the live file. **That regex is
 re-decided** — it is tighter than `roadmap-format.md` § 3.9's stated one, which
 admits the zero-padded `00.07.md` its own prose forbids, and the two must be
 the same test on both sides of the store or a file discovery accepted would be
-a file the render cannot place. Nothing else matches: `0.6.1.md`, `00.07.md`
-and `v0.7.md` are not archives at either end.
+a file the render cannot place. `roadmap-format.md` § 3.9's phase archive
+(`P07.5.md`) and `unversioned.md` also belong, by ANTS-3766 § 2.2's same
+rule, and `RoadmapMigrate::parseArchiveName` is that one test at both ends.
+Nothing else matches: `0.6.1.md`, `00.07.md` and `v0.7.md` are not archives
+at either end.
 
 **No `isArchive` flag.** The path is the discriminator and the regex is the
 test — a boolean would be a second encoding of a fact the path already carries,

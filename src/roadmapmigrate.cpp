@@ -21,6 +21,7 @@
 #include <QStringDecoder>
 
 #include <algorithm>
+#include <tuple>
 #include <utility>
 
 namespace RoadmapMigrate {
@@ -479,8 +480,17 @@ const QRegularExpression &archiveNameRx() {
     return rx;
 }
 
+// roadmap-format.md § 3.9's phase archive name. The designator is copied
+// verbatim from the heading, zero-padding included, so `P01.md` and `P1.md`
+// are two names and two slug prefixes (`p01`, `p1`), never one.
+const QRegularExpression &phaseArchiveNameRx() {
+    static const QRegularExpression rx(
+        QStringLiteral("\\AP([0-9]+)(?:\\.([0-9]+))?\\.md\\z"));
+    return rx;
+}
+
 // ANTS-3766 § 2.3 — one source's slug namespace. `prefix` is empty for the
-// live roadmap and "<M>-<N>" for an archive.
+// live roadmap and parseArchiveName()'s slugPrefix for an archive.
 struct SourceCtx {
     int     index = 0;
     QString prefix;
@@ -698,7 +708,7 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
     const int sectionBase = plan.sections.size();
 
     // Content before the first heading belongs to a synthetic section. Its
-    // slug is "" for the live file and the bare "<M>-<N>" for an archive —
+    // slug is "" for the live file and the bare archive prefix ("0-6", "p01") —
     // it is not a heading, so it never enters `seenSlugs` (§ 2.3).
     {
         PlannedSection root;
@@ -979,6 +989,22 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
 
 }  // namespace
 
+std::optional<ArchiveName> parseArchiveName(const QString &fileName) {
+    if (fileName == QLatin1String(kUnversionedArchive))
+        return ArchiveName{0, 0, 0, QString::fromLatin1(kUnversionedSlugPrefix)};
+    if (const auto m = archiveNameRx().match(fileName); m.hasMatch())
+        return ArchiveName{2, m.captured(1).toInt(), m.captured(2).toInt(),
+                           m.captured(1) + QLatin1Char('-') + m.captured(2)};
+    if (const auto m = phaseArchiveNameRx().match(fileName); m.hasMatch()) {
+        // § 3.9: the designator lower-cased, with `.` written as `-`.
+        QString prefix = QLatin1Char('p') + m.captured(1);
+        if (!m.captured(2).isEmpty()) prefix += QLatin1Char('-') + m.captured(2);
+        return ArchiveName{1, m.captured(1).toInt(), m.captured(2).toInt(),
+                           prefix};
+    }
+    return std::nullopt;
+}
+
 std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error,
                                       qint64 maxSourceBytes) {
     const auto fail = [error](const char *code) -> std::optional<Discovery> {
@@ -1044,7 +1070,7 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
     // an oversized project costs stat calls rather than its bytes.
     qint64 sourceBytes = QFileInfo(hits.constFirst()).size();
     if (sourceBytes > maxSourceBytes) return fail("too_large");
-    QVector<QPair<QPair<int, int>, QString>> found;
+    QVector<QPair<std::tuple<int, int, int>, QString>> found;
 
     // 2. Archives under <root>/docs/roadmap/ — ANTS-3766 § 2.2. The directory,
     // the descending sort AND the name regex are roadmap-format.md § 3.9's,
@@ -1077,9 +1103,7 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
                                    QDir::Name);
             for (const QFileInfo &fi : archiveEntries) {
                 const QString name = fi.fileName();
-                const auto m = archiveNameRx().match(name);
-                const bool unversioned =
-                    name == QLatin1String(kUnversionedArchive);
+                const auto parsed = parseArchiveName(name);
                 // Regular files only, and symlinks are NOT followed. BOTH
                 // halves are written out because Qt will not give them for
                 // free: isFile() and a QDir::Files filter FOLLOW symlinks and
@@ -1087,25 +1111,22 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
                 // implementation loads it — and a symlink under docs/roadmap/
                 // can point outside the project root. A DIRECTORY named
                 // `0.7.md` matches the regex too.
-                if ((!m.hasMatch() && !unversioned) || !fi.isFile()
-                    || fi.isSymLink()) {
+                if (!parsed || !fi.isFile() || fi.isSymLink()) {
                     // Never a silent skip: a misnamed archive is exactly the
                     // shape whose silent loss this lane exists to prevent.
                     addNote(disc.notes, "archive_unrecognised", name, 0, -1);
                     continue;
                 }
-                // The unversioned archive sorts after every version (§ 3.9).
-                found.append({unversioned
-                                  ? qMakePair(-1, -1)
-                                  : qMakePair(m.captured(1).toInt(),
-                                              m.captured(2).toInt()),
+                found.append({std::make_tuple(parsed->rank, parsed->major,
+                                              parsed->minor),
                               fi.absoluteFilePath()});
             }
-            // Descending by the (major, minor) INTEGER tuple. Lexical sort is
-            // explicitly wrong here — "0.10" < "0.9" as strings — and this
-            // project will reach minor 10.
-            std::sort(found.begin(), found.end(),
-                      [](const auto &a, const auto &b) { return b.first < a.first; });
+            // Descending by the (class, major, minor) INTEGER tuple. Lexical
+            // sort is explicitly wrong here — "0.10" < "0.9" as strings — and
+            // this project will reach minor 10. Stable, so `P01.md` and
+            // `P1.md`, which share a key, keep the listing's name order.
+            std::stable_sort(found.begin(), found.end(),
+                             [](const auto &a, const auto &b) { return b.first < a.first; });
         }
     }
 
@@ -1199,14 +1220,16 @@ MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
         SourceCtx ctx;
         ctx.index = i;
         if (i >= 1) {
-            // "<M>-<N>" from the archive's own filename — § 2.3. Derived from
+            // The prefix from the archive's own filename — § 2.3. Derived from
             // the name alone, which is what makes an archive slug stable under
             // every edit to every other source (INV-4).
-            const QString name = QFileInfo(plan.sources.at(i).path).fileName();
-            const auto m = archiveNameRx().match(name);
-            ctx.prefix = m.hasMatch()
-                ? m.captured(1) + QLatin1Char('-') + m.captured(2)
-                : QString::fromLatin1(kUnversionedSlugPrefix);
+            const auto parsed = parseArchiveName(
+                QFileInfo(plan.sources.at(i).path).fileName());
+            // A name no class accepts reaches here only in a hand-built plan,
+            // which the load refuses as `source_unplaceable`. It still needs a
+            // non-empty prefix, or its root would take the live root's "".
+            ctx.prefix = parsed ? parsed->slugPrefix
+                                : QString::fromLatin1(kUnversionedSlugPrefix);
         }
         walkSource(plan.sources.at(i), ctx, plan, fmt);
     }

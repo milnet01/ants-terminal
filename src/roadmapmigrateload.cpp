@@ -82,15 +82,14 @@ QString relativeSourcePath(const QString &projectRoot, const QString &sourcePath
 }
 
 // ANTS-3782 § 2.5's membership test — what ANTS-3758 re-splits the render on.
-// The same regex ANTS-3766 § 2.2 discovers archives with, and it has to be:
-// a name discovery accepts that the render cannot place is a silently
+// The same name reader ANTS-3766 § 2.2 discovers archives with, and it has to
+// be: a name discovery accepts that the render cannot place is a silently
 // unplaceable section, which is the loss this whole lane exists to close.
+// parseArchiveName() anchors its patterns, so a deeper path fails it.
 bool isPlaceableSourcePath(const QString &rel) {
-    static const QRegularExpression rx(
-        QStringLiteral("\\Adocs/roadmap/(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.md\\z"));
-    return rx.match(rel).hasMatch()
-        || rel == QLatin1String("docs/roadmap/")
-                      + QLatin1String(RoadmapMigrate::kUnversionedArchive);
+    const QLatin1String dir("docs/roadmap/");
+    return rel.startsWith(dir)
+        && RoadmapMigrate::parseArchiveName(rel.mid(dir.size())).has_value();
 }
 
 // One field the plan is authoritative for, paired with what the store holds.

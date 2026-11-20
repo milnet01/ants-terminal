@@ -45,6 +45,22 @@ namespace RoadmapMigrate {
 inline constexpr char kUnversionedArchive[] = "unversioned.md";
 inline constexpr char kUnversionedSlugPrefix[] = "unversioned";
 
+// roadmap-format.md § 3.9's archive file names, read in one place: a version
+// archive (`0.6.md`), a phase archive (`P07.5.md`, ANTS-4073) or
+// `unversioned.md`. Discovery, planFrom() and the load's placement test all
+// read names through this, so the three cannot disagree on what is an archive.
+struct ArchiveName {
+    // Discovery sorts by (rank, major, minor) descending: every version
+    // archive, then every phase archive, then unversioned.md. A phase's
+    // (phase, sub) cannot share the version key space — P01.md and 1.0.md
+    // would both read (1, 0) — so the class leads the key.
+    int     rank  = 0;     // 2 version, 1 phase, 0 unversioned
+    int     major = 0;     // the phase number for a phase archive
+    int     minor = 0;     // the phase's .<sub>; an absent sub reads 0
+    QString slugPrefix;    // ANTS-3766 § 2.3: "0-6", "p07-5", "unversioned"
+};
+std::optional<ArchiveName> parseArchiveName(const QString &fileName);
+
 // One item as migration will file it. Field names follow
 // RoadmapStore::ItemWrite (ANTS-3756); § 2.1.1 accounts for every ItemWrite
 // field and every `item` column, including the ones left empty here.
