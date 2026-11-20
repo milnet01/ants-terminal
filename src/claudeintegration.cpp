@@ -1747,8 +1747,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // references, tests, documents, spec invariants and roadmap
                 // items in one call. Listed only by a process that registered
                 // it (INV-13): ants-mcpd does, the terminal cannot, since it
-                // does not link the parser. Every property below is read by
-                // trace::serve (ANTS-4621).
+                // does not link the parser. Every property the descriptor
+                // declares is read by trace::serve (ANTS-4621).
                 if (m_toolProviders.count(QStringLiteral("trace"))) {
                     appendToolSchemasTrace(tools);
                 }
