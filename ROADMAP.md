@@ -115124,6 +115124,10 @@ reports are asked for separately, each time.
     on return.
   - unused-includes: <climits> and <limits>. Check the build still
     compiles without each before removing it.
+  2026-11-20 (ANTS-6175 edit): clangd also shows
+  misc-use-anonymous-namespace on three file-static names:
+  s_rateLimitClock, tabSpecificAcceptsTabIndex and
+  writeMcpRequestError. Not new from that edit.
   **Layman:** Small speed and tidiness warnings a code checker raises in the Claude integration code.
   Kind: audit-fix.
   Source: in-session-2026-11-09 (ANTS-5243 clangd run).
