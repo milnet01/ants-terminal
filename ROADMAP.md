@@ -114897,9 +114897,13 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5431] **clang-tidy misc-use-anonymous-namespace: 176 sites in 104 files.**
+- ✅ [ANTS-5431] **clang-tidy misc-use-anonymous-namespace: 176 sites in 104 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Style only: fix or suppress as one class.
+  Closed 2026-11-21 by suppressing the check as a class in .clang-tidy.
+  The 2026-11-21 sweep found 234 hits: 232 `static` functions and 2 `static` variables.
+  `static` and an anonymous namespace give the same internal linkage,
+  and no project standard prefers one.
   **Layman:** File-private helpers written in an older style than the project's newer code.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

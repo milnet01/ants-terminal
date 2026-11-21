@@ -36,6 +36,7 @@ Checks: >
   -misc-non-private-member-variables-in-classes,
   -performance-implicit-conversion-in-loop,
   -bugprone-signed-bitwise,
+  -misc-use-anonymous-namespace,
   -cert-err33-c
 
 # Each exclusion above traces to a filed decision or a verified reason:
@@ -58,6 +59,9 @@ Checks: >
 #   bugprone-signed-bitwise              ANTS-5430 -- guards behaviour C++20
 #                                        defines (two's complement); the hits
 #                                        are flag and byte masks
+#   misc-use-anonymous-namespace         ANTS-5431 -- style: `static` and an
+#                                        anonymous namespace give the same
+#                                        internal linkage
 #   cert-err33-c                         verified as the stderr-logging idiom
 #                                        (debuglog.cpp, dialogshowtracer.cpp);
 #                                        ignoring an fprintf return there is
