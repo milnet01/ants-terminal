@@ -135,6 +135,10 @@ public:
     // Force grid size recalculation (call after session restore)
     void forceRecalcSize();
 
+    // ANTS-3456 — resize events this close together apply once, when they
+    // stop. A width change re-wraps the whole scrollback.
+    static constexpr int kResizeSettleMs = 150;
+
     // Get the shell's current working directory (via /proc/PID/cwd)
     QString shellCwd() const;
 
@@ -796,6 +800,10 @@ private:
     QPushButton *m_searchWordBtn = nullptr;
     bool m_searchVisible = false;
     bool m_searchRegexMode = false;
+    // ANTS-3456 — resizeEvent's settle window, and whether a resize arrived
+    // inside it and still waits to be applied.
+    QTimer m_resizeSettle;
+    bool m_resizePending = false;
     // ANTS-2000 — performSearch() regex-scans every scrollback line (50k by
     // default, 1M at the cap). Wired straight to textChanged it ran once per
     // KEYSTROKE, so typing into the search box froze the window for seconds.

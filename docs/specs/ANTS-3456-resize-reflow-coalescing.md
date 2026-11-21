@@ -144,7 +144,7 @@ columns until the drag settles.
 ## 4. Out of scope
 
 - Making one re-wrap of a very large scrollback cheaper, or moving it off
-  the GUI thread — deferred; not yet queued.
+  the GUI thread — tracked by ANTS-6851.
 - The blocking call to the parse worker on resize — tracked by ANTS-1781.
 
 ## 5. Tests
@@ -154,8 +154,9 @@ Feature test: `tests/features/resize_reflow_coalesced/`, with its own
 an offscreen `TerminalWidget`, as `tests/features/window_cell_size` does.
 Its bundle comes from `build_target_for`.
 
-INV-1 and INV-4 must be seen failing against the pre-fix `resizeEvent`.
-INV-2 and INV-3 pass before the fix and guard the fix's own mistakes.
+INV-1 must be seen failing against the pre-fix `resizeEvent`. INV-2, INV-3
+and INV-4 pass before the fix and guard the fix's own mistakes: the old code
+re-sized the grid, and placed the scroll bar, on every event.
 
 `tests/perf/bench_resize_reflow.cpp` calls `TerminalGrid::resize` directly,
 so its figure does not change. It stays the measure of one re-wrap's cost.

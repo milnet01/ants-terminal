@@ -238,6 +238,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Dragging a window edge re-wraps the scrollback once, when the drag settles** (ANTS-3456)
+  The first step of a resize applies at once, and the last applies 150 ms
+  after the events stop. The steps in between wait, so a drag costs at
+  most two re-wraps and two shell size changes.
+
 - **roadmap_migrate reads a closed phase's archive (docs/roadmap/P01.md, P07.5.md) into the store, and a render writes it back.** (ANTS-4073)
 
 - **A hand edit of config.json and Apply in Preferences now do the same things.** (ANTS-6173)

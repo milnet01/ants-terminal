@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6850 -->
+<!-- ants-roadmap-id-high-water: ANTS=6851 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71513,7 +71513,7 @@ dirty-region + frame pacing), not to add threads. This section indexes the full
 idea set from that sweep. Cross-refs: ANTS-1115 (SIMD/CSI/glyph-cache table,
 deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
 
-- 📋 [ANTS-3456] **Resize reflow — make TerminalGrid::resize soft-wrap reflow incremental / bounded for large scrollback.**
+- ✅ [ANTS-3456] **Resize reflow — make TerminalGrid::resize soft-wrap reflow incremental / bounded for large scrollback.**
   TerminalGrid::resize (terminalgrid.cpp:2491) joins + re-wraps the entire scrollback (default 50k, max 1M lines) on the GUI thread → seconds-class on large buffers. Combined with the resize BlockingQueuedConnection to the parse worker (terminalwidget.cpp:576,:3027 — ANTS-1781) this is the worst multi-second spike, and interactive window-drag fires it repeatedly. Options: chunk/defer the reflow, cap reflowed history, or compute off-thread. Pairs with the ANTS-1781 BlockingQueuedConnection removal.
   **Layman:** Resizing the window while there is a lot of scrollback can hang for seconds; this makes that reflow not block.
   Kind: perf.
@@ -71526,6 +71526,11 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   them, and trims trailing spaces from wrapped rows, which glues words
   together after any width change. Fix direction: apply the resize after
   resizing settles, and re-wrap lazily or off the GUI thread.
+  Shipped 2026-11-21: settle timer in TerminalWidget::resizeEvent
+  (leading + trailing edge, 150 ms). Spec
+  docs/specs/ANTS-3456-resize-reflow-coalescing.md; test
+  tests/features/resize_reflow_coalesced. One re-wrap's own cost:
+  ANTS-6851.
 
 - ✅ [ANTS-3458] **promptRegions iterated up to 3× per paint (O(#commands), unbounded by viewport) — cache/bound to visible range.**
   Command timestamps (terminalwidget.cpp:1186), sticky-command header (:1477) and the command-mark gutter (:1596) each loop ALL prompt regions every paint — grows with session length, not viewport. Bound the scan to regions intersecting the visible range, or cache the per-frame result.
@@ -71572,6 +71577,19 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   **Layman:** Make active typing during heavy output redraw only the lines that changed, not the whole screen — the deeper, riskier half of the dirty-row work.
   Kind: perf.
   Source: in-session-2026-07-09.
+
+- 💭 [ANTS-6851] **Resize reflow cost — one re-wrap of a very large scrollback still blocks the GUI thread.**
+  ANTS-3456 cut a drag to at most two re-wraps; it did not make one
+  cheaper. One re-wrap of a full 50k scrollback takes 131 ms
+  (bench_resize_reflow, 2026-11-21); the 1M case is not measured.
+  Options: a cheaper slow path in TerminalGrid::resize, or an off-thread
+  re-wrap (needs its own design: paint, search, selection, link spans
+  and the parse worker all read the scrollback). Considered until a
+  user hits it at the default size.
+  **Layman:** After a window resize, a terminal holding a huge scrollback can still pause once while its text re-wraps.
+  Kind: perf.
+  Source: ANTS-3456 spec § 4 (2026-11-21).
+  Lanes: terminal-grid.
 
 ### ⚡ Performance pass fold-in (user request 2026-09-11)
 

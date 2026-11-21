@@ -459,6 +459,15 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     searchLayout->addStretch();
     m_searchBar->hide();
 
+    // ANTS-3456 — the trailing edge of resizeEvent's settle window.
+    m_resizeSettle.setSingleShot(true);
+    m_resizeSettle.setInterval(kResizeSettleMs);
+    connect(&m_resizeSettle, &QTimer::timeout, this, [this]() {
+        if (!m_resizePending) return;
+        m_resizePending = false;
+        recalcGridSize();
+    });
+
     // ANTS-2000 — coalesce keystrokes. 120 ms is below the ~200 ms at which
     // a pause reads as lag, and above a fast typist's inter-key gap, so a
     // burst costs one scan instead of one per character.
@@ -2207,7 +2216,16 @@ void TerminalWidget::resizeEvent(QResizeEvent *event) {
     // hooks, child layout dispatch, accessibility size events).
     QWidget::resizeEvent(event);
     m_spanCacheDirty = true;
-    recalcGridSize();
+    // ANTS-3456 — a drag sends a stream of these, and a width change re-wraps
+    // the whole scrollback. Apply the first at once, then only the last, once
+    // they stop for kResizeSettleMs. The scroll bar follows every event.
+    if (m_resizeSettle.isActive()) {
+        m_resizePending = true;
+        positionScrollBar();
+    } else {
+        recalcGridSize();
+    }
+    m_resizeSettle.start();
     // Reposition the floating scroll-to-bottom button relative to the new
     // geometry. Without this, it stays pinned to its old (width()-52,
     // height()-52) coordinates and slides off the visible area when the
