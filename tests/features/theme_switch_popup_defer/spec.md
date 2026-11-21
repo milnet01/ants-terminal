@@ -39,6 +39,8 @@ move the deferral to the two theme-menu call-sites in `setupViewMenu`
 (the initial theme actions + the reload-themes rebuilt actions) — each
 `QAction::triggered` handler wraps `applyTheme(name)` in
 `QTimer::singleShot(0, this, …)` so it never runs inside the menu stack.
+Both call-sites build their actions through `MainWindow::addThemeActions`
+(ANTS-6186), which holds that one handler.
 The internal `activePopupWidget()` guard is kept as belt-and-suspenders.
 
 ## Invariants tested

@@ -126,6 +126,8 @@ private:
     void setupFileMenu();
     void setupEditMenu();
     void setupViewMenu();
+    // ANTS-6186 — the View → Themes actions; also rebuilt by Reload User Themes.
+    void addThemeActions(QMenu *themesMenu);
     void setupSplitMenu();
     void setupToolsMenu();
     void setupSettingsMenu();

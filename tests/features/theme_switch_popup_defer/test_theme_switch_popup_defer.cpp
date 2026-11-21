@@ -92,13 +92,12 @@ TEST(ThemeSwitchPopupDefer, Inv3EarlyReturnFirst) {
 // bypassed on Wayland: Qt dismisses the QMenu popup before QAction::triggered
 // fires, so activePopupWidget() is already null and the app-wide restyle runs
 // inside the menu's still-unwinding mouse-event stack → SIGSEGV (recurred
-// 2026-07-17). Every applyTheme(name) call in setupViewMenu — the initial
-// theme actions AND the reload-themes rebuilt actions — must be deferred via
+// 2026-07-17). Every applyTheme(name) call must be deferred via
 // QTimer::singleShot(0, ...) so it runs after the menu has torn down.
-TEST(ThemeSwitchPopupDefer, Inv4MenuHandlersDefer) {
-    const std::string body = setupViewMenuBody();
-    ASSERT_NE(body.find("applyTheme(name)"), std::string::npos)
-        << "setupViewMenu must wire the theme actions to applyTheme(name)";
+// ANTS-6186 — the handlers live in addThemeActions, which setupViewMenu calls
+// for the initial theme actions AND the reload-themes rebuild.
+namespace {
+int countDeferredSites(const std::string &body, const char *where) {
     int sites = 0;
     size_t i = 0;
     const std::string needle = "applyTheme(name)";
@@ -107,14 +106,27 @@ TEST(ThemeSwitchPopupDefer, Inv4MenuHandlersDefer) {
         const size_t windowStart = i < 160 ? 0 : i - 160;
         const std::string before = body.substr(windowStart, i - windowStart);
         EXPECT_NE(before.find("singleShot(0"), std::string::npos)
-            << "theme-action applyTheme(name) call #" << sites
+            << where << ": applyTheme(name) call #" << sites
             << " must be deferred via QTimer::singleShot(0, ...) — a "
                "synchronous call crashes inside the menu's event stack "
                "(ANTS-3556)";
         i += needle.size();
     }
-    EXPECT_GE(sites, 2)
-        << "both the initial theme actions and the reload-themes rebuilt "
-           "actions must defer applyTheme; found "
-        << sites;
+    return sites;
+}
+}  // namespace
+
+TEST(ThemeSwitchPopupDefer, Inv4MenuHandlersDefer) {
+    const std::string helper = ants_test::slurpFunctionBody(
+        ants_test::stripComments(ants_test::slurpMainWindow()),
+        "void MainWindow::addThemeActions(");
+    ASSERT_FALSE(helper.empty()) << "MainWindow::addThemeActions not found";
+    EXPECT_GE(countDeferredSites(helper, "addThemeActions"), 1)
+        << "addThemeActions must wire the theme actions to applyTheme(name)";
+
+    const std::string menu = setupViewMenuBody();
+    countDeferredSites(menu, "setupViewMenu");
+    EXPECT_GE(ants_test::countOccurrences(menu, "addThemeActions("), 2u)
+        << "both the initial theme actions and the reload-themes rebuild "
+           "must come from addThemeActions";
 }

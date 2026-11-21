@@ -191,17 +191,15 @@ void MainWindow::setupEditMenu() {
     });
 }
 
-void MainWindow::setupViewMenu() {
-    QMenu *viewMenu = m_menuBar->addMenu("&View");
-
-    // Themes submenu
-    QMenu *themesMenu = viewMenu->addMenu("&Themes");
-    m_themeGroup = new QActionGroup(this);
-    m_themeGroup->setExclusive(true);
+// ANTS-6186 — one checkable action per theme, added to `themesMenu` and
+// m_themeGroup. The theme on screen is checked: m_currentTheme, not the saved
+// m_config.theme(), which an auto-profile's unsaved theme leaves behind. At
+// start-up it is still empty; the constructor's applyTheme sets the mark.
+void MainWindow::addThemeActions(QMenu *themesMenu) {
     for (const QString &name : Themes::names()) {
         QAction *a = themesMenu->addAction(name);
         a->setCheckable(true);
-        a->setChecked(name == m_config.theme());
+        a->setChecked(name == m_currentTheme);
         m_themeGroup->addAction(a);
         connect(a, &QAction::triggered, this, [this, name]() {
             // ANTS-3556 — defer the app-wide restyle out of the QMenu's
@@ -217,6 +215,16 @@ void MainWindow::setupViewMenu() {
             QTimer::singleShot(0, this, [this, name]() { applyTheme(name); });
         });
     }
+}
+
+void MainWindow::setupViewMenu() {
+    QMenu *viewMenu = m_menuBar->addMenu("&View");
+
+    // Themes submenu
+    QMenu *themesMenu = viewMenu->addMenu("&Themes");
+    m_themeGroup = new QActionGroup(this);
+    m_themeGroup->setExclusive(true);
+    addThemeActions(themesMenu);
 
     viewMenu->addSeparator();
 
@@ -384,18 +392,7 @@ void MainWindow::setupViewMenu() {
         for (auto *a : m_themeGroup->actions())
             m_themeGroup->removeAction(a);
         themesMenu->clear();
-        for (const QString &name : Themes::names()) {
-            QAction *a = themesMenu->addAction(name);
-            a->setCheckable(true);
-            a->setChecked(name == m_currentTheme);
-            m_themeGroup->addAction(a);
-            connect(a, &QAction::triggered, this, [this, name]() {
-                // ANTS-3556 — same deferral as the initial theme actions
-                // above: never restyle synchronously inside the menu's
-                // triggered stack (freed-widget SIGSEGV).
-                QTimer::singleShot(0, this, [this, name]() { applyTheme(name); });
-            });
-        }
+        addThemeActions(themesMenu);
         showStatusMessage("Themes reloaded", 3000);
     });
 
