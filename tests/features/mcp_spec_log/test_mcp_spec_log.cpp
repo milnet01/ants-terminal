@@ -31,7 +31,7 @@ QString seedSpec(const QTemporaryDir &dir, const QString &id,
                  const QString &body) {
     const QString rel = "docs/specs";
     QDir(dir.path()).mkpath(rel);
-    const QString path = dir.path() + "/" + rel + "/" + id + ".md";
+    QString path = dir.path() + "/" + rel + "/" + id + ".md";
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
     f.write(body.toUtf8());

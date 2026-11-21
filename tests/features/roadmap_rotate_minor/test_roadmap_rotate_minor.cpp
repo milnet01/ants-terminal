@@ -155,7 +155,7 @@ QString seedMigrated(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
         return QString();
     // The store keys a project on its CANONICAL root (ANTS-3756 INV-8), and
     // /tmp is a symlink on some hosts.
-    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    QString root = QFileInfo(rawRoot).canonicalFilePath();
 
     auto store = openStore(RoadmapStore::Access::Bulk);
     if (!store) return QString();

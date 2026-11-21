@@ -2243,7 +2243,7 @@ bool RoadmapStore::fileItem(qint64 itemPk, qint64 sectionId, int position,
                       .arg(sectionId).arg(same.value(1).toLongLong());
     if (!refusal.isEmpty()) {
         if (error)
-            *error = refusal;
+            *error = std::move(refusal);
         return false;
     }
     // ANTS-6649 row 155 — ended before the write, so an autocommit call

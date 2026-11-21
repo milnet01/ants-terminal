@@ -4488,7 +4488,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
         return false;
     }
 
-    resolvedOut = candidate;
+    resolvedOut = std::move(candidate);
     return true;
 }
 
@@ -4545,7 +4545,7 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
             rel.clear();
         else if (rel.startsWith(rootCanonical + QLatin1Char('/')))
             rel = rel.mid(rootCanonical.size() + 1);
-        params.filePath = rel;
+        params.filePath = std::move(rel);
     }
 
     return QJsonDocument(

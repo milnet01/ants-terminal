@@ -104,8 +104,11 @@ const QString kLabelVerb = QStringLiteral("ants_owner_label");
 
 void registerLabel(ClaudeIntegration &ci, const QString &label) {
     const QString body = QStringLiteral("{\"label\":\"%1\"}").arg(label);
+    // The handler runs once per call, so it returns a copy; a move would
+    // empty `body` after the first call.
     ci.registerToolProvider(
         kLabelVerb, ClaudeIntegration::CallerCwdContract::Required,
+        // NOLINTNEXTLINE(performance-no-automatic-move)
         ClaudeIntegration::ToolHandler{[body](const QJsonObject &) { return body; }});
 }
 

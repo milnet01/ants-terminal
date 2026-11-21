@@ -313,7 +313,7 @@ std::string dump(const QJsonObject &o) {
 
 // Dry run, then apply its plan. Returns the apply's reply.
 QJsonObject dryRunThenApply(const Fixture &fx, QJsonObject *dryOut = nullptr) {
-    const QJsonObject dry = dryRun(fx);
+    QJsonObject dry = dryRun(fx);
     if (!dry.value(QStringLiteral("ok")).toBool()) {
         ADD_FAILURE() << "dry run: " << dump(dry);
         return dry;

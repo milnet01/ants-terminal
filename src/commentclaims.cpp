@@ -315,7 +315,7 @@ private:
     QString resolve(const QString &p) const {
         const QDir root(m_root);
         if (QFileInfo::exists(root.filePath(p))) return QDir::cleanPath(p);
-        const QString near = QDir::cleanPath(m_dir + QLatin1Char('/') + p);
+        QString near = QDir::cleanPath(m_dir + QLatin1Char('/') + p);
         if (!near.startsWith(QLatin1String("..")) && QFileInfo::exists(root.filePath(near))) return near;
         return QString();
     }

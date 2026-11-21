@@ -729,10 +729,10 @@ QString rlResolveCounterPrefix(const QString &idPrefixArg,
     // declaring project its declared prefix once it has migrated and a sniffed
     // one before — two id families in one project, which is the outcome § 2.3
     // exists to prevent.
-    const QString declared =
+    QString declared =
         ProjectSettings::idFormatFor(callerCanonical).prefix;
     if (!declared.isEmpty()) return declared;
-    const QString sniffed = rlDetectCounterPrefix(markdown);
+    QString sniffed = rlDetectCounterPrefix(markdown);
     if (!sniffed.isEmpty()) return sniffed;
     if (guessed) *guessed = true;
     return rlLeafDirPrefix(callerCanonical);
@@ -2193,7 +2193,7 @@ void applyGfmFlip(QStringList &lines,
     // Trim trailing whitespace before appending the anchor.
     while (!target.isEmpty() && target.back().isSpace()) target.chop(1);
     target += QLatin1Char(' ') + QStringLiteral("^") + anchorToInject;
-    lines[targetIdx] = target;
+    lines[targetIdx] = std::move(target);
 }
 
 
@@ -2293,7 +2293,7 @@ void applyAntsV1Flip(QStringList &lines, const AntsV1Bullet &b,
     if (oldEmoji.isEmpty()) return;  // the walker only yields status bullets
     line.remove(2, oldEmoji.size());
     line.insert(2, targetEmoji);
-    lines[b.firstLine] = line;
+    lines[b.firstLine] = std::move(line);
 }
 
 }  // namespace rcdetail

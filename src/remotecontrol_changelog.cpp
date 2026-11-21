@@ -145,7 +145,7 @@ ClTarget resolveChangelogTarget(const QJsonObject &req,
         env[QStringLiteral("error")] = QStringLiteral(
             "%1: path \"%2\" is not an existing file — `path` names a changelog "
             "to act on, it does not create one").arg(verb, pathArg);
-        out.err = env;
+        out.err = std::move(env);
         return out;
     }
     out.path = full;
@@ -1603,7 +1603,7 @@ static ClBatchEntryResult resolveClBatchEntry(
 
     r.ok       = true;
     r.id       = id;
-    r.category = category;
+    r.category = std::move(category);
     r.summary  = summary;
     r.body     = body;
     r.bullet   = ChangelogLog::formatBullet(summary, body, id);

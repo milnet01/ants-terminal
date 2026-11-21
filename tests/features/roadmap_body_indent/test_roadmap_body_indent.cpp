@@ -128,7 +128,7 @@ QString seedFile(ants_test::XdgGuard &guard, const QTemporaryDir &tmp) {
 // The same fixture, imported — so the two backends can be asked one question.
 QString seedMigrated(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
                      qint64 *projectId) {
-    const QString root = seedFile(guard, tmp);
+    QString root = seedFile(guard, tmp);
     if (root.isEmpty()) return QString();
 
     auto store = openStore(RoadmapStore::Access::Bulk);

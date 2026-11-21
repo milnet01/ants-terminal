@@ -950,7 +950,7 @@ void SettingsDialog::setupProfilesTab(QWidget *tab) {
         if (p.contains("scrollback_lines"))
             m_scrollbackLines->setValue(p["scrollback_lines"].toInt());
 
-        m_pendingActiveProfile = name;
+        m_pendingActiveProfile = std::move(name);
     });
 }
 

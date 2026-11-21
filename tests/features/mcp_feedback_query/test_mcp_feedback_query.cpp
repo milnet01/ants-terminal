@@ -32,7 +32,7 @@ const char *kCheck = "\xE2\x9C\x85";      // ✅
 
 QString writeFeedback(const QTemporaryDir &dir, const QString &name,
                       const QString &body) {
-    const QString path = dir.path() + "/" + name;
+    QString path = dir.path() + "/" + name;
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
     f.write(body.toUtf8());

@@ -79,7 +79,7 @@ QList<GateConfig> parseVerifyJson(const QByteArray &raw, bool *parseError) {
         GateConfig gc;
         gc.name    = g;
         gc.command = cmd;
-        gc.format  = fmt;
+        gc.format  = std::move(fmt);
         gates.append(gc);
     };
     readGate(QStringLiteral("build"), GateName::Build);

@@ -25,7 +25,7 @@ namespace {
 
 // Write a fixture .md and return its absolute path.
 QString writeSpec(const QTemporaryDir &d, const char *name, const QByteArray &body) {
-    const QString p = d.filePath(QLatin1String(name));
+    QString p = d.filePath(QLatin1String(name));
     QFile f(p);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
     f.write(body);

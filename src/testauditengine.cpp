@@ -1513,7 +1513,7 @@ PartitionResult partition(const PartitionRequest &req) {
             if (r.prePassFindingsByChunk.contains(c.id))
                 filtered.insert(c.id, r.prePassFindingsByChunk.value(c.id));
         }
-        r.prePassFindingsByChunk = filtered;
+        r.prePassFindingsByChunk = std::move(filtered);
         // ANTS-2096 — page 2+ omits the inline pre_pass map from the
         // ENVELOPE (the serializer honours prePassCached); the cached
         // result above keeps every chunk's findings for test_audit_brief.
@@ -1586,7 +1586,7 @@ BriefResult brief(const BriefRequest &req) {
     r.dimensions   = p->dimensionsActive;
     QJsonObject fc;
     fc["framework"] = p->framework;
-    r.frameworkContext = fc;
+    r.frameworkContext = std::move(fc);
     r.prePassFindings  = p->prePassFindingsByChunk.value(chunk->id);
     // ANTS-1457 — prior false-positive findings filtered by
     // review_kind=test-audit. lane filter is empty because

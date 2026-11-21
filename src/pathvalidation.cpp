@@ -303,7 +303,7 @@ Check validatePath(const QString &rawPath,
     if (form.startsWith(QLatin1Char('-'))) {
         form = QStringLiteral("./") + form;
     }
-    pc.argvForm = form;
+    pc.argvForm = std::move(form);
     return pc;
 }
 

@@ -4070,8 +4070,8 @@ QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out) {
 
     out->id        = id;
     out->field     = field;
-    out->stored    = stored;
-    out->display   = display;
+    out->stored    = std::move(stored);
+    out->display   = std::move(display);
     out->evNotPath = evNotPath;
     return {};
 }

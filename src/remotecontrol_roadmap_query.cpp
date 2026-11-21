@@ -1087,7 +1087,7 @@ RoadmapStore *RemoteControl::roadmapStoreOrNull(RoadmapSource::ReadError *why,
         if (why)
             *why = openWhy;
         if (error)
-            *error = openErr;
+            *error = std::move(openErr);
         return nullptr;
     }
     // ANTS-5141 — a QSqlDatabase connection may be used only on the thread
@@ -1803,7 +1803,7 @@ static QString rlColumnFormOf(const RlTrailerKey &k, QString value);
 // A raw `Kind:` value as the column stores it, by the migration's own mapper
 // (roadmap-data-model.md § 7.4); empty when nothing recognises it.
 static QString rlCanonicalKind(const QString &raw) {
-    const QString folded = raw.trimmed().toLower();
+    QString folded = raw.trimmed().toLower();
     if (RoadmapParse::canonicalKinds().contains(folded))
         return folded;
     return RoadmapParse::mappedKind(folded);
@@ -2174,7 +2174,7 @@ bool rcdetail::rlFlushHistory(RoadmapStore &store, HistoryContext &hist,
             QString seqErr;
             const auto stored = store.maxHistorySeq(r.itemPk, hist.changedAt, &seqErr);
             if (!seqErr.isEmpty()) {
-                if (error) *error = seqErr;
+                if (error) *error = std::move(seqErr);
                 return false;
             }
             nextSeq.insert(r.itemPk, stored.value_or(-1) + 1);
@@ -2275,7 +2275,7 @@ rcdetail::LocateOutcome rcdetail::rlLocateTarget(RoadmapStore &store, qint64 pro
         const auto pk = store.findItem(projectId, locId, &err);
         if (!pk && !err.isEmpty()) {
             out.code  = QStringLiteral("store_failed");
-            out.error = err;
+            out.error = std::move(err);
             return out;
         }
         if (pk) out.itemPk = *pk;
@@ -2283,7 +2283,7 @@ rcdetail::LocateOutcome rcdetail::rlLocateTarget(RoadmapStore &store, qint64 pro
         const auto refs = store.listItems(projectId, &err);
         if (!refs) {
             out.code  = QStringLiteral("store_failed");
-            out.error = err;
+            out.error = std::move(err);
             return out;
         }
         int hits = 0;
@@ -2307,7 +2307,7 @@ rcdetail::LocateOutcome rcdetail::rlLocateTarget(RoadmapStore &store, qint64 pro
         if (!item) {
             out.itemPk = 0;
             out.code   = QStringLiteral("store_failed");
-            out.error  = err;
+            out.error  = std::move(err);
             return out;
         }
         out.id       = item->id;
@@ -2375,7 +2375,7 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
     // has decided, and where they disagree the project is right and the row is
     // a stale artefact of a migration. An explicit id_prefix argument still
     // wins (INV-7) — it is documented to override everything.
-    const QString declared =
+    QString declared =
         ProjectSettings::idFormatFor(root).prefix;
     if (!declared.isEmpty())
         return declared;
@@ -2752,6 +2752,6 @@ bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
     }
     if (!body.isEmpty())
         provenance.insert(QStringLiteral("body"), QStringLiteral("asserted"));
-    w.provenance = provenance;
+    w.provenance = std::move(provenance);
     return true;
 }

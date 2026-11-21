@@ -127,7 +127,7 @@ bool extractBoldId(const QString &lineHead, QString *id) {
     if (captured.endsWith(QLatin1Char('.'))) captured.chop(1);
     captured = captured.trimmed();
     if (captured.isEmpty()) return false;
-    if (id) *id = captured;
+    if (id) *id = std::move(captured);
     return true;
 }
 
@@ -160,7 +160,7 @@ static void truncateEllipsis(QString &s, int maxChars) {
 static void assignHeadline(BulletRecord &rec, QString h, int headlineEnd) {
     rec.headlineFull = h;
     truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
-    rec.headline = h;
+    rec.headline = std::move(h);
     rec.headlineEnd = headlineEnd;
 }
 
@@ -1348,14 +1348,14 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
                                                                : m.captured(0);
                     cand = cand.trimmed();
                     if (!cand.isEmpty()) {
-                        declaredId   = cand;
+                        declaredId   = std::move(cand);
                         declaredRest = boldCand.mid(m.capturedEnd(0)).trimmed();
                         boldId       = boldCand;
                     }
                 }
             }
             if (declaredId.isEmpty() && !boldCand.endsWith(QLatin1Char(':')))
-                boldId = boldCand;
+                boldId = std::move(boldCand);
         }
     } else {
         // ANTS-1987 — extract a leading bold-ID token here too, not
@@ -1375,7 +1375,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         if (extractBoldId(head, &boldCand)) {
             static const QRegularExpression rxIdShaped(
                 QStringLiteral("^[A-Za-z][A-Za-z0-9_.-]*$"));
-            if (rxIdShaped.match(boldCand).hasMatch()) boldId = boldCand;
+            if (rxIdShaped.match(boldCand).hasMatch()) boldId = std::move(boldCand);
         }
     }
     rec.format = gfmHere ? QStringLiteral("github-task-list")
@@ -1450,7 +1450,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         rec.id = boldId;
     } else if (!bracketId.isEmpty()) {
         // ANTS-1987 — head-anchored bare-bracket id (`[Cl9]`).
-        rec.id = bracketId;
+        rec.id = std::move(bracketId);
     }
     // ANTS-1438 — surface the bold-ID on the record so the
     // envelope can emit a dedicated `bold_id` field. Keeps the
@@ -2574,7 +2574,7 @@ std::optional<BulletRecord> parseAntsV1Bullet(const QStringList &lines,
         return std::nullopt;   // no status marker — see the header comment
 
     BulletRecord rec;
-    rec.status = status;
+    rec.status = std::move(status);
     int i = 0;
     QString prose;
     const QString body = collectBulletBody(lines, i, head, &prose);
@@ -2582,7 +2582,7 @@ std::optional<BulletRecord> parseAntsV1Bullet(const QStringList &lines,
     // here by construction, so the declaration cannot reach the branch it
     // governs; that is the invariant, stated as code rather than as a promise.
     fillBulletRecord(rec, head, body, /*gfmHere=*/false, CompiledIdFormat(fmt));
-    rec.bodyProse = prose;   // ANTS-4557 — same field, same rule, store side
+    rec.bodyProse = std::move(prose);   // ANTS-4557 — same field, same rule, store side
     return rec;
 }
 }  // namespace RoadmapParse

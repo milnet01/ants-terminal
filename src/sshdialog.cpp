@@ -345,7 +345,7 @@ void SshDialog::onSave() {
     }
 
     if (m_currentIndex >= 0 && m_currentIndex < m_bookmarks.size()) {
-        m_bookmarks[m_currentIndex] = bm;
+        m_bookmarks[m_currentIndex] = std::move(bm);
     } else {
         m_bookmarks.append(bm);
     }
@@ -414,7 +414,7 @@ void SshDialog::onQuickConnect() {
             // a typo like `[2001:db8::1` still fall through to ssh,
             // which will fail with a sensible error rather than
             // silently parsing as host=`[2001` port=0.
-            bm.host = input;
+            bm.host = std::move(input);
         }
     } else {
         int colonIdx = input.indexOf(':');
@@ -423,7 +423,7 @@ void SshDialog::onQuickConnect() {
             bm.port = input.mid(colonIdx + 1).toInt();
             if (bm.port <= 0 || bm.port > 65535) bm.port = 22;
         } else {
-            bm.host = input;
+            bm.host = std::move(input);
         }
     }
 

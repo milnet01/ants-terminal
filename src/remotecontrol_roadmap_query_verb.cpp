@@ -1337,7 +1337,7 @@ void RemoteControl::RoadmapQueryCall::applyQueryFilter(QJsonArray &arr) {
         if (matcher.matchesBullet(v.toObject()))
             kept.append(v);
     }
-    arr = kept;
+    arr = std::move(kept);
 }
 
 auto RemoteControl::RoadmapQueryCall::parseKind() -> std::optional<QJsonDocument> {
@@ -1388,7 +1388,7 @@ void RemoteControl::RoadmapQueryCall::applyKindFilter(QJsonArray &arr) {
             == kindArg)
             kept.append(v);
     }
-    arr = kept;
+    arr = std::move(kept);
 }
 
 auto RemoteControl::RoadmapQueryCall::parseSource() -> std::optional<QJsonDocument> {
@@ -1465,7 +1465,7 @@ void RemoteControl::RoadmapQueryCall::applySourceFilter(QJsonArray &arr) {
             if (src.startsWith(pfx)) { hit = true; break; }
         if (hit) kept.append(v); else ++sourceFilteredOut;
     }
-    arr = kept;
+    arr = std::move(kept);
 }
 
 auto RemoteControl::RoadmapQueryCall::parseIdSelectors() -> std::optional<QJsonDocument> {
@@ -3122,7 +3122,7 @@ auto RemoteControl::RoadmapQueryCall::pruneAndFilter(QJsonArray &filtered) -> Li
     for (const auto &v : std::as_const(filtered)) {
         if (!shouldDropUnnumbered(v)) pruned.append(v);
     }
-    filtered = pruned;
+    filtered = std::move(pruned);
     n.idBearing = filtered.size();
     // ANTS-3391 — before pagination, so count / next_offset reflect the
     // narrowed set.
@@ -3933,7 +3933,7 @@ auto RemoteControl::RoadmapQueryCall::byIds() -> QJsonDocument {
                     trulyMissing.append(id);
                 }
             }
-            missingIds = trulyMissing;
+            missingIds = std::move(trulyMissing);
         }
     }
     out["ok"]          = true;
@@ -4244,7 +4244,7 @@ std::optional<RlPlan> rlTakePlan(const QJsonObject &req, QJsonObject *refusal) {
                                "\"%3\". Drop op, or dry-run the new request.")
                     .arg(id, planOp, op));
     }
-    const RlPlan plan = *it;
+    RlPlan plan = *it;
     plans.erase(it);
     return plan;
 }

@@ -121,7 +121,7 @@ QString seedMigrated(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
     const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
     if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), fixture()))
         return QString();
-    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    QString root = QFileInfo(rawRoot).canonicalFilePath();
 
     auto store = openStore(RoadmapStore::Access::Bulk);
     if (!store) return QString();
@@ -568,7 +568,7 @@ TEST(RoadmapRepairTrailers, Inv14RepeatWhoseRemovalChangesTheValueIsSkipped) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     qint64 projectId = 0;
-    const QString root = seedMigrated(guard, tmp, &projectId);
+    QString root = seedMigrated(guard, tmp, &projectId);
     ASSERT_FALSE(root.isEmpty());
     // The column is `fix`, the last declaration. Removing it would leave `test`.
     const QString body = QStringLiteral("Kind: test.\n") + QString::fromUtf8(kProse)
@@ -644,7 +644,7 @@ QString seedPlaceholder(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
     const QString rawRoot = QDir(tmp.path()).filePath(QString::fromLatin1(dir));
     if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), placeholderFixture(prefix)))
         return QString();
-    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    QString root = QFileInfo(rawRoot).canonicalFilePath();
 
     auto store = openStore(RoadmapStore::Access::Bulk);
     if (!store) return QString();
@@ -685,7 +685,7 @@ QJsonObject clearPlaceholders(RemoteControl &rc, const QString &root, bool dryRu
 // fixture that stops producing them fails here rather than passing vacuously.
 QString seedAndCheck(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
                      qint64 *projectId) {
-    const QString root = seedPlaceholder(guard, tmp, "ph", "PH", QStringLiteral("Ph"),
+    QString root = seedPlaceholder(guard, tmp, "ph", "PH", QStringLiteral("Ph"),
                                          projectId);
     if (root.isEmpty()) return root;
     if (!damage(*projectId, QStringLiteral("PH-0012"), QStringLiteral("created"),

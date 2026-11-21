@@ -35,7 +35,7 @@ namespace {
 std::optional<QString> validEntry(const QString &rootCanonical,
                                   const QJsonValue &v) {
     if (!v.isString()) return std::nullopt;          // null / number / etc.
-    const QString rel = v.toString().trimmed();
+    QString rel = v.toString().trimmed();
     if (rel.isEmpty()) return std::nullopt;          // empty / blank
     const QString candidate = rootCanonical + QLatin1Char('/') + rel;
     if (!PathValidation::isInsideProject(rootCanonical, candidate))
@@ -233,7 +233,7 @@ QString repoRootOf(const QString &dirCanonical) {
     const auto rel = load(dirCanonical).repoRoot;
     if (!rel) return dirCanonical;
     const QFileInfo fi(dirCanonical + QLatin1Char('/') + *rel);
-    const QString canonical = fi.canonicalFilePath();
+    QString canonical = fi.canonicalFilePath();
     if (canonical.isEmpty() || !fi.isDir()) return dirCanonical;
     return canonical;
 }

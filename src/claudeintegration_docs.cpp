@@ -2062,7 +2062,7 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                         entriesProp["description"] = QStringLiteral(
                             "Many findings in one write. Each takes fingerprint "
                             "or file+message; the rest fall back to the call's.");
-                    props = entryProps;
+                    props = std::move(entryProps);
                     props["entries"]     = entriesProp;
                     props["dry_run"]     = makeDryRunProp();
                     props["caller_cwd"]  = makeCallerCwdReadProp();

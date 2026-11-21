@@ -3496,7 +3496,7 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
 
     // Place image at cursor position
     InlineImage img;
-    img.image = image;
+    img.image = std::move(image);
     img.row = m_cursorRow;
     img.col = m_cursorCol;
     img.cellWidth = imgWidth;

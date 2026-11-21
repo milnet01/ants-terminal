@@ -40,7 +40,7 @@ int runImport(const QString &store, const QString &file, const QString &root,
     const int rc = RoadmapExport::runImportCommand(store, file, root, ts);
     ts.flush();
     if (printed)
-        *printed = text;  // a copy: `ts` still writes into `text`
+        *printed = std::move(text);  // a copy: `ts` still writes into `text`
     return rc;
 }
 

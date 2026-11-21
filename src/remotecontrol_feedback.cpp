@@ -897,7 +897,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                     if (ar.noteWritten) row[QStringLiteral("note_written")] = true;
                     applied.append(row);
                 }
-                *text = content;
+                *text = std::move(content);
                 return !applied.isEmpty();
             });
         // ANTS-4470's rule, kept: an all-failed batch is a refusal, not a
@@ -950,9 +950,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         FeedbackFile::AssignTarget tgt;
         tgt.heading     = heading;
         tgt.headingLine = req.value(QStringLiteral("heading_line")).toInt(-1);
-        tgt.value       = value;
+        tgt.value       = std::move(value);
         tgt.isClosure   = hasClosure;
-        tgt.note        = note;
+        tgt.note        = std::move(note);
         FeedbackFile::AssignResult ar;
         const FeedbackStore::Result r = FeedbackStore::write(
             *store, resolved, QString(), dryRun,
@@ -1050,7 +1050,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             }
             full += block;
             bytesAppended = (created ? skeleton + block : block).toUtf8().size();
-            *text = full;
+            *text = std::move(full);
             return true;
         });
     if (!r.code.isEmpty())
@@ -2285,7 +2285,7 @@ QString adParse(const QJsonObject &item, const QJsonObject &req, AdParsed *out) 
         out->computed = true;
     }
 
-    out->request.entry.fingerprint = fingerprint;
+    out->request.entry.fingerprint = std::move(fingerprint);
     out->request.entry.rule        = rule;
     out->request.entry.reason      = shared(QStringLiteral("reason")).toString();
     out->request.replaceReason =

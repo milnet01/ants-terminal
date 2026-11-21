@@ -52,7 +52,7 @@ QString fixtureMarkdown() {
 }
 
 QString writeRoadmap(const QTemporaryDir &dir, const QString &markdown) {
-    const QString path = dir.path() + QStringLiteral("/ROADMAP.md");
+    QString path = dir.path() + QStringLiteral("/ROADMAP.md");
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return {};
     QTextStream out(&f);

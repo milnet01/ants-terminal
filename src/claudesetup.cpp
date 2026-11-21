@@ -225,7 +225,7 @@ constexpr char kShEnd[]   = "# <<< ants-terminal shell integration <<<";
 }  // namespace
 
 QString claudeProgram() {
-    const QString onPath = QStandardPaths::findExecutable(QStringLiteral("claude"));
+    QString onPath = QStandardPaths::findExecutable(QStringLiteral("claude"));
     if (!onPath.isEmpty()) return onPath;
     // Anthropic's installer puts it here, which may not be on the PATH Ants
     // started with (spec § 2.4 Detection).
@@ -868,7 +868,7 @@ ShellPlan planShell(const QStringList &scriptDirs) {
 // reinstall never changes a working key (ANTS-6441).
 QByteArray existingKey(const ShellPlan &p) {
     static const QRegularExpression hex(QStringLiteral("^[0-9a-f]{64}$"));
-    const QByteArray inFile = readBytes(p.keyFile).trimmed();
+    QByteArray inFile = readBytes(p.keyFile).trimmed();
     if (hex.match(QString::fromUtf8(inFile)).hasMatch()) return inFile;
     static const QRegularExpression re(
         QStringLiteral(R"re(ANTS_OSC133_KEY="([0-9a-f]{64})")re"));

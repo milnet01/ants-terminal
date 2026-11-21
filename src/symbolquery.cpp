@@ -788,7 +788,7 @@ void recordDef(ScanState &st, const Anchors &an, const QString &rel,
         d.line = lineNo;
         d.signature = trimmed;
         d.lang = QString::fromLatin1(an.lang);
-        d.kind = kind;
+        d.kind = std::move(kind);
         bucket.append(d);
     }
 }

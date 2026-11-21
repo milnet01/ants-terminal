@@ -106,7 +106,7 @@ QString withStop(const QString &value) {
 // store keeps it.
 QString passBlockText(const RoadmapStore::ItemWrite &it) {
     const QString pass = PassHeadingWrite::designatorFromPassId(it.id);
-    const QString block = PassHeadingWrite::formatPassBlock(
+    QString block = PassHeadingWrite::formatPassBlock(
         pass, it.headline.simplified(),
         PassHeadingWrite::passStatusKeyword(it.status), it.body);
     // ANTS-4079 § 2.5 — the dialect's link lines, `- **Blocked-by**: …`,

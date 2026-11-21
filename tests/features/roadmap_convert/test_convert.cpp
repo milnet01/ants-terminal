@@ -231,7 +231,7 @@ QMap<QString, QString> itemRowsOf(const QString &root) {
 
 // The fixture migrated, with RetroDB's id_format declared.
 QString seedPassProject(ants_test::XdgGuard &guard, const QTemporaryDir &tmp) {
-    const QString root = seed(guard, tmp, passHeadingsRoadmap());
+    QString root = seed(guard, tmp, passHeadingsRoadmap());
     if (root.isEmpty() || !migrate(root)
         || !declareIdFormat(root, QStringLiteral("RDB"), passPattern()))
         return QString();

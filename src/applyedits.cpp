@@ -226,7 +226,7 @@ EditOutcome applyToContent(const QString &contents, const QString &oldStr,
         r.replacements = 1;
     }
     r.applied = true;
-    r.newContents = out;
+    r.newContents = std::move(out);
     return r;
 }
 

@@ -53,7 +53,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 QString writeFixture(QTemporaryDir &dir,
                      const QString &name,
                      const QStringList &lines) {
-    const QString path = dir.path() + "/" + name;
+    QString path = dir.path() + "/" + name;
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly)) return {};
     for (const QString &l : lines) {

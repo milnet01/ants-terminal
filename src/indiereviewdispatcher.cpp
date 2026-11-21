@@ -183,7 +183,7 @@ QString classifyReply(QNetworkReply *reply, const QByteArray &body,
         return {};
     }
     const QJsonObject root = doc.object();
-    const QString assistantText = extractAssistantText(root);
+    QString assistantText = extractAssistantText(root);
     if (assistantText.isEmpty()) {
         lr.status = QStringLiteral("http_error");
         lr.error  = QStringLiteral("no choices[0].message.content in response");

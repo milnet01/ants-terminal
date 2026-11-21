@@ -677,7 +677,7 @@ QString RoadmapDialog::projectRootFor(const QString &roadmapPath) {
     if (roadmapPath.isEmpty()) return {};
     const QString canonical = QFileInfo(roadmapPath).canonicalFilePath();
     if (canonical.isEmpty()) return {};
-    const QString startDir = QFileInfo(canonical).path();
+    QString startDir = QFileInfo(canonical).path();
     QString dir = startDir;
     for (int depth = 0; depth < 64 && !dir.isEmpty(); ++depth) {
         if (QFileInfo::exists(dir + QStringLiteral("/.git"))) return dir;
@@ -728,7 +728,7 @@ RoadmapDialog::roadmapBullets(RoadmapSource::RoadmapText &text,
         m_roadmapStore = RoadmapSource::storeFor(RoadmapStore::defaultPath(),
                                                  &openWhy, &openErr);
         if (openWhy != RoadmapSource::ReadError::None) {
-            m_sourceError = openErr;
+            m_sourceError = std::move(openErr);
             return {};
         }
     }
@@ -745,7 +745,7 @@ RoadmapDialog::roadmapBullets(RoadmapSource::RoadmapText &text,
         return *records;
     }
     if (why != RoadmapSource::ReadError::None) {
-        m_sourceError = err;
+        m_sourceError = std::move(err);
         return {};   // INV-1 — never the markdown behind the store's back
     }
     return RoadmapParse::parseBullets(text.full(), idFormat);
@@ -3266,7 +3266,7 @@ QString RoadmapDialog::archiveDirFor(const QString &roadmapPath) {
     if (!candidateInfo.exists()) return QString();
     if (!candidateInfo.isDir()) return QString(); // regular file shadowing
     if (!candidateInfo.isReadable()) return QString();
-    const QString resolved = candidateInfo.canonicalFilePath();
+    QString resolved = candidateInfo.canonicalFilePath();
     if (resolved.isEmpty()) return QString();    // archive dir is itself a cycle
     return resolved;
 }

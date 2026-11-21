@@ -120,7 +120,7 @@ QString seed(ants_test::XdgGuard &guard, const QTemporaryDir &tmp, bool migrate,
     const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
     if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), fixture()))
         return QString();
-    const QString root = canonicalRoot(tmp);
+    QString root = canonicalRoot(tmp);
     if (!migrate) return root;
 
     auto store = openStore(RoadmapStore::Access::Bulk);

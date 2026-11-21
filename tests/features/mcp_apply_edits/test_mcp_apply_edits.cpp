@@ -319,7 +319,7 @@ const char *kDoc =
     "epsilon\n";
 
 QString seedDoc(const QTemporaryDir &dir, const char *body = kDoc) {
-    const QString p = dir.path() + QStringLiteral("/doc.txt");
+    QString p = dir.path() + QStringLiteral("/doc.txt");
     QFile f(p);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
     f.write(body);

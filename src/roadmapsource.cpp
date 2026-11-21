@@ -441,7 +441,7 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
             if (why)
                 *why = ReadError::StoreFailed;
             if (error)
-                *error = sqlError;
+                *error = std::move(sqlError);
             return std::nullopt;
         }
         return std::nullopt;   // no project row — markdown, and not an error

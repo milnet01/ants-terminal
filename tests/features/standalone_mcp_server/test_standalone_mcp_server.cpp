@@ -105,7 +105,7 @@ QString seedMigratedProject(const QTemporaryDir &tmp) {
     QFile f(raw + QStringLiteral("/ROADMAP.md"));
     if (!f.open(QIODevice::WriteOnly) || f.write(md) != md.size()) return {};
     f.close();
-    const QString root = QFileInfo(raw).canonicalFilePath();
+    QString root = QFileInfo(raw).canonicalFilePath();
 
     RoadmapStore store(RoadmapStore::defaultPath(),
                        RoadmapStore::kDefaultHistoryCapBytes,

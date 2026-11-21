@@ -384,7 +384,7 @@ static EditResult appendTableRow(QStringList lines, int headerLine, int sepLine,
     r.content  = fromLines(lines, ewn);
     r.line     = insertAt + 1;   // 1-based
     r.rowShape = QStringLiteral("table");
-    r.rowOrder = rowOrder;
+    r.rowOrder = std::move(rowOrder);
     return r;
 }
 
@@ -456,7 +456,7 @@ static EditResult appendBulletRow(QStringList lines, int hdr, int loopEnd,
         r.content = fromLines(lines, ewn);
         r.line = (rowOrder == QStringLiteral("newest_first") ? at : at + 1) + 1;
         r.rowShape = QStringLiteral("heading");
-        r.rowOrder = rowOrder;
+        r.rowOrder = std::move(rowOrder);
         return r;
     }
 
@@ -491,7 +491,7 @@ static EditResult appendBulletRow(QStringList lines, int hdr, int loopEnd,
         r.content = fromLines(lines, ewn);
         r.line = firstRow + 1;   // 1-based
         r.rowShape = QStringLiteral("bullet");
-        r.rowOrder = rowOrder;
+        r.rowOrder = std::move(rowOrder);
         return r;
     }
 
@@ -501,7 +501,7 @@ static EditResult appendBulletRow(QStringList lines, int hdr, int loopEnd,
     r.content = ins.content;
     r.line = ins.line;
     r.rowShape = QStringLiteral("bullet");
-    r.rowOrder = rowOrder;
+    r.rowOrder = std::move(rowOrder);
     return r;
 }
 

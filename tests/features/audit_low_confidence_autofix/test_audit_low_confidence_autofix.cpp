@@ -31,7 +31,7 @@ QString readFile(const QString &p) {
 }
 
 QString writeTmp(QTemporaryDir &dir, const QString &name, const QString &body) {
-    const QString p = dir.path() + "/" + name;
+    QString p = dir.path() + "/" + name;
     QFile f(p);
     if (!f.open(QIODevice::WriteOnly)) return QStringLiteral("<open-fail>");
     f.write(body.toUtf8());

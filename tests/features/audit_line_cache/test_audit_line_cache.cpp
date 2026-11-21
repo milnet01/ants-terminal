@@ -9,7 +9,7 @@
 
 namespace {
 QString writeLines(const QTemporaryDir &dir, const QString &name, int lines, int width) {
-    const QString path = dir.filePath(name);
+    QString path = dir.filePath(name);
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly)) return {};
     const QByteArray line = QByteArray(width - 1, 'a') + '\n';

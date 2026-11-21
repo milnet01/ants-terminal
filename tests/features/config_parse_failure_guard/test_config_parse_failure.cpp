@@ -54,7 +54,7 @@ QString setupSandbox(QTemporaryDir &tmp, ants_test::XdgGuard &guard,
                      const char *content) {
     guard.setEnv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
 
-    const QString antsDir = tmp.path() + "/ants-terminal";
+    QString antsDir = tmp.path() + "/ants-terminal";
     QDir().mkpath(antsDir);
 
     if (content) {

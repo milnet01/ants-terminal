@@ -255,7 +255,7 @@ QJsonObject bodyArg(const QJsonValue &v, Fields *f) {
 
 QJsonObject tagsArg(const QJsonValue &v, Fields *f) {
     const QJsonArray arr = v.toArray();
-    const QJsonObject bad = refuse(
+    QJsonObject bad = refuse(
         "bad_args", QStringLiteral("`tags` must be an array of at most %1, each matching "
                                    "^[a-z0-9-]+$, at most %2 bytes")
                         .arg(KnowHowStore::kMaxTags).arg(KnowHowStore::kMaxTagBytes));

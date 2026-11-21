@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6864 -->
+<!-- ants-roadmap-id-high-water: ANTS=6865 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -114935,13 +114935,17 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5434] **clang-tidy performance-use-std-move: 87 sites in 39 files.**
+- ✅ [ANTS-5434] **clang-tidy performance-use-std-move: 87 sites in 39 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Fix or suppress as one class.
   2026-10-23: re-measured in src/mcporientation.cpp after ANTS-6169
   (which did not touch these): `w` in the two writeScriptFile failure
   branches of the install path, and `settingsWarn` in the uninstall
   path's ParseFail/WriteFail branch, could be moved into r.warning.
+  Shipped 2026-11-21: clang-tidy's own fix-it moves the last use at 76
+  sites (the 77th in the 2026-11-21 sweep is gone from the tree). Each
+  changed line differs only by `std::move(x)` for `x`. The check stays
+  on and reports 0 in those files.
   **Layman:** Values copied where they could simply be handed over.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -114954,9 +114958,15 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5436] **clang-tidy performance-no-automatic-move: 71 sites in 56 files.**
+- ✅ [ANTS-5436] **clang-tidy performance-no-automatic-move: 71 sites in 56 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Fix or suppress as one class.
+  Shipped 2026-11-21: 71 returned locals lose their `const`, so the
+  return moves; 3 more were second returns of a variable already fixed.
+  One site keeps its copy, with a NOLINTNEXTLINE and a reason:
+  test_shared_socket_listener.cpp's handler lambda returns a captured
+  value on every call, so a move would empty it. The check reports 0 in
+  those files.
   **Layman:** Return values that get copied because they were declared const.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115916,6 +115926,16 @@ reports are asked for separately, each time.
   **Layman:** An automatic end-to-end check failed once on GitHub for no code reason; make it reliable.
   Kind: fix.
   Source: ci-run-44927997673-2026-11-21.
+
+- 📋 [ANTS-6865] **GCC's -Wnull-dereference fires in speclog.cpp, inlined from SpecLog::loopLogPointer's `*targets.constBegin()`.**
+  Seen 2026-11-21 in the Release build: qhash.h node() via QSet
+  const_iterator::operator*, from `return targets.size() == 1 ?
+  *targets.constBegin() : QString();`. Present at HEAD 40a9d6c2 too
+  (compiled the unedited file with the same flags). Same class as
+  ANTS-6798 and ANTS-6818.
+  **Layman:** The build prints one warning from the spec-log code; clear it so real warnings stand out.
+  Kind: fix.
+  Source: build-warning-2026-11-21.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

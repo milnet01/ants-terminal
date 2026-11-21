@@ -234,7 +234,7 @@ void ClaudeIntegration::auditJobComplete(
     j.startedMs    = it.value().startedMs;
     j.startedMonoMs = it.value().startedMonoMs;
     j.root         = it.value().root;
-    it.value()     = j;
+    it.value()     = std::move(j);
 }
 
 QJsonObject ClaudeIntegration::auditJobPollEnvelope(
@@ -810,7 +810,7 @@ ClaudeIntegration::rateLimitTierFor(RateLimitClass cls) {
 // empty out (the "absent caller_cwd" bucket).
 QString ClaudeIntegration::canonicaliseCallerKey(const QString &callerCwd) {
     if (callerCwd.isEmpty()) return QString();
-    const QString resolved = QFileInfo(callerCwd).canonicalFilePath();
+    QString resolved = QFileInfo(callerCwd).canonicalFilePath();
     if (!resolved.isEmpty()) return resolved;
     return QDir::cleanPath(callerCwd);
 }

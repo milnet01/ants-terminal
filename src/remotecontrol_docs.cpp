@@ -61,7 +61,7 @@ QJsonDocument RemoteControl::cmdDocsIndex(const QJsonObject &req) {
             rel = rel.mid(rootCanonical.size()).startsWith(QLatin1Char('/'))
                       ? rel.mid(rootCanonical.size() + 1)
                       : rel.mid(rootCanonical.size());
-        params.docPath = rel;
+        params.docPath = std::move(rel);
     }
 
     return QJsonDocument(
@@ -671,7 +671,7 @@ static QStringList specLintRequiredSections(const QString &rootCanonical,
         }
         return QStringList();
     };
-    const QStringList local = tryRoot(QDir(rootCanonical), QString());
+    QStringList local = tryRoot(QDir(rootCanonical), QString());
     if (!local.isEmpty()) return local;
 
     const QString globalRoot =

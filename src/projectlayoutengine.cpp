@@ -254,7 +254,7 @@ void scanRoadmap(const QString &cwd, RoadmapInfo &out,
         return;
     }
     QFileInfo fi(full);
-    out.path      = rel;
+    out.path      = std::move(rel);
     out.sizeBytes = fi.size();
     out.mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
 

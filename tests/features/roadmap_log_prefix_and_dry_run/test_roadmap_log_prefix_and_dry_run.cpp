@@ -78,7 +78,7 @@ QString readRoadmap(const QString &dir) {
 QString makeProject(QTemporaryDir &base, const QString &roadmap,
                     qint64 counter) {
     if (!base.isValid()) return {};
-    const QString leaf =
+    QString leaf =
         base.path() + QStringLiteral("/DOOM_Fixture");
     if (!QDir().mkpath(leaf)) return {};
     if (!writeRoadmap(leaf, roadmap)) return {};

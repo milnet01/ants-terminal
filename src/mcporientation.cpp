@@ -526,7 +526,7 @@ Result installAt(const QString &homeDir) {
             if (onDisk != body) {
                 QString w;
                 if (!writeScriptFile(r.scriptPath, body, &w))
-                    r.warning = w;
+                    r.warning = std::move(w);
             }
         }
     } else {
@@ -535,7 +535,7 @@ Result installAt(const QString &homeDir) {
                                 .arg(runningVersion).toUtf8();
         QString w;
         if (!writeScriptFile(r.scriptPath, body, &w))
-            r.warning = w;
+            r.warning = std::move(w);
     }
 
     // Always attempt the settings merge — even if the script is
@@ -566,7 +566,7 @@ Result uninstallAt(const QString &homeDir) {
                                          /*add=*/false, &settingsWarn);
     if (outcome == MergeOutcome::ParseFail
         || outcome == MergeOutcome::WriteFail) {
-        r.warning = settingsWarn;
+        r.warning = std::move(settingsWarn);
         r.ok = false;
         return r;
     }

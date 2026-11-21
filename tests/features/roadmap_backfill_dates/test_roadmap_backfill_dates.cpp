@@ -160,7 +160,7 @@ QString seedRepo(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
         return QString();
     // The store keys a project on its CANONICAL root (ANTS-3756 INV-8), and
     // /tmp is a symlink on some hosts.
-    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    QString root = QFileInfo(rawRoot).canonicalFilePath();
 
     if (makeGitRepo) {
         if (!git(root, {QStringLiteral("init"), QStringLiteral("-q")})) return QString();
@@ -526,7 +526,7 @@ QString seedPassRepo(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
                  QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
     const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
     QDir().mkpath(rawRoot);
-    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    QString root = QFileInfo(rawRoot).canonicalFilePath();
     const QString file = root + QStringLiteral("/ROADMAP.md");
     const auto commit = [&](const QByteArray &body, const char *date) {
         return writeFile(file, body)

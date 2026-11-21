@@ -150,7 +150,7 @@ Launch registeredLaunch(const QString &claudeJsonPath) {
 }
 
 Launch locateLaunch(const QString &claudeJsonPath, const QString &appDir) {
-    const Launch reg = registeredLaunch(claudeJsonPath);
+    Launch reg = registeredLaunch(claudeJsonPath);
     if (isExecutableFile(reg.program)) return reg;
     // A fallback binary is not what was registered, so it runs with no args.
     return Launch{locateBinary(QString(), appDir), {}};

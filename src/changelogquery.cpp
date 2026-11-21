@@ -111,7 +111,7 @@ bool parseVersionHeading(const QString &line, QString &version, QString &date,
             rest = rest.mid(1).trimmed();
         }
     }
-    date = rest;
+    date = std::move(rest);
     unreleased = (version.compare(QStringLiteral("Unreleased"), Qt::CaseInsensitive) == 0);
     if (unreleased) version = QStringLiteral("Unreleased");
     return true;

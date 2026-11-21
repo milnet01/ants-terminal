@@ -63,7 +63,7 @@ int TerminalWidgetAccessible::cursorPosition() const {
 QString TerminalWidgetAccessible::textAtOffset(int offset,
         QAccessible::TextBoundaryType boundaryType,
         int *startOffset, int *endOffset) const {
-    const QString s = term() ? term()->accessibleText() : QString();
+    QString s = term() ? term()->accessibleText() : QString();
     if (boundaryType == QAccessible::NoBoundary) {
         *startOffset = 0; *endOffset = s.size(); return s;
     }

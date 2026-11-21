@@ -40,7 +40,7 @@ bool decodeUtf8(const QByteArray &bytes, QString *out) {
     QStringDecoder dec(QStringDecoder::Utf8, QStringDecoder::Flag::Stateless);
     QString s = dec(bytes);
     if (dec.hasError()) return false;
-    if (out) *out = s;
+    if (out) *out = std::move(s);
     return true;
 }
 

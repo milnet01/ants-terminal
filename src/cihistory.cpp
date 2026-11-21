@@ -50,7 +50,7 @@ public:
         if (m_calls + reserveCalls >= m_opts.callCap) why = QStringLiteral("call_cap");
         else if (m_clock.elapsed() + reserveMs >= m_opts.deadlineMs) why = QStringLiteral("deadline");
         if (why.isEmpty()) return false;
-        if (reason->isEmpty()) *reason = why;
+        if (reason->isEmpty()) *reason = std::move(why);
         return true;
     }
 

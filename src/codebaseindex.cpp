@@ -691,7 +691,7 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
                 Index loaded = fromJson(doc.object());
                 if (loaded.version == kIndexVersion
                     && loaded.rootCanonical == rootCanonical) {
-                    prev = loaded;
+                    prev = std::move(loaded);
                     haveValid = true;
                 }
             }
@@ -709,7 +709,7 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
                               &refreshed, ss, cands);
             needWrite = true;
         } else {
-            idx = prev;  // fully warm — no write, generated_at_ms preserved
+            idx = std::move(prev);  // fully warm — no write, generated_at_ms preserved
         }
     } else {
         idx = build(rootCanonical, nowMs, opts);

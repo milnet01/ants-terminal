@@ -75,7 +75,7 @@ bool isCanonicalId(const QString &id) {
 // "performance-2", "performance-3", ... — every walk that assigns section
 // slugs calls this in document order, so the slugs line up across them.
 QString uniqueSlug(QSet<QString> &seen, const QString &heading) {
-    const QString base = slugifyHeading(heading);
+    QString base = slugifyHeading(heading);
     if (base.isEmpty()) return base;
     if (!seen.contains(base)) {
         seen.insert(base);

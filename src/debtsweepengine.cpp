@@ -111,7 +111,7 @@ QString runGit(const QString &projectPath,
 // or `HEAD~10` if no tags exist. Returns the resolved ref.
 QString resolveSinceRef(const QString &projectPath, const QString &sinceRef) {
     if (!sinceRef.isEmpty()) return sinceRef;
-    const QString tag = runGit(
+    QString tag = runGit(
         projectPath,
         {QStringLiteral("describe"), QStringLiteral("--tags"),
          QStringLiteral("--abbrev=0")}).trimmed();

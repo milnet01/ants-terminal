@@ -111,7 +111,7 @@ TEST(McpFeedbackLog, CreatesSkeleton) {
 namespace {
 // Write a feedback file with a chosen version marker + minimal body.
 QString writeMarked(const QString &dir, const QString &basename, int ver) {
-    const QString p = dir + QLatin1Char('/') + basename;
+    QString p = dir + QLatin1Char('/') + basename;
     QFile f(p);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
     f.write(QStringLiteral("<!-- ants-mcp-feedback: %1 -->\n"

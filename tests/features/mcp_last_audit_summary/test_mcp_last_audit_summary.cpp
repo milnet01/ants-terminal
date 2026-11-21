@@ -883,7 +883,7 @@ static PickProbe pickForeign(const QDir &dir, const QString &glob) {
         if (c.name > best->name) best = &c;
     }
     if (!best) {
-        out.name  = newestName;
+        out.name  = std::move(newestName);
         out.basis = QStringLiteral("newest");
         return out;
     }

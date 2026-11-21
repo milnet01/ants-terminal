@@ -30,7 +30,7 @@ QString safeCanon(const QString &projectPath, const QString &rootCanon,
     const QString abs = QFileInfo(path).isAbsolute()
                             ? path
                             : projectPath + QChar('/') + path;
-    const QString canon = QFileInfo(abs).canonicalFilePath();
+    QString canon = QFileInfo(abs).canonicalFilePath();
     // The root itself is not a file to read.
     if (canon == rootCanon
         || !PathValidation::isInsideProject(projectPath, canon))

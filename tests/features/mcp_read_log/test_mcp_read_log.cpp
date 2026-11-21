@@ -46,7 +46,7 @@ bool has(const std::string &hay, const char *needle) {
 // Write `lines` (each gets a trailing \n) to a fresh file; return path.
 QString writeLog(const QTemporaryDir &dir, const QString &name,
                  const QStringList &lines) {
-    const QString path = dir.path() + "/" + name;
+    QString path = dir.path() + "/" + name;
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
     f.write(lines.join('\n').toUtf8());

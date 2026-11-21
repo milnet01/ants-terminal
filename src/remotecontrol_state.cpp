@@ -341,7 +341,7 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
                         .contains(nameFilter, Qt::CaseInsensitive))
                     filtered.append(v);
             }
-            lanesJson  = filtered;
+            lanesJson  = std::move(filtered);
             ok["name"] = nameFilter;
         }
         ok["lanes"]  = lanesJson;
@@ -644,7 +644,7 @@ static ForeignPick pickForeignReport(const QDir &cacheDir, const QString &glob) 
         // No candidate inside the window (only possible if the file
         // mtimes span > 24h AND only one file is the newest). Fall
         // back to the legacy newest.
-        out.name  = newestName;
+        out.name  = std::move(newestName);
         out.basis = QStringLiteral("newest");
         return out;
     }
@@ -2083,7 +2083,7 @@ bool isValidSpecId(const QString &id) {
 // existing file.
 QString resolveSpecRelForId(const QString &rootCanonical,
                             const QString &dirRel, const QString &id) {
-    const QString exactRel = dirRel + id + QStringLiteral(".md");
+    QString exactRel = dirRel + id + QStringLiteral(".md");
     if (QFileInfo::exists(rootCanonical + QLatin1Char('/') + exactRel))
         return exactRel;
     QDir dir(rootCanonical + QLatin1Char('/') + dirRel);

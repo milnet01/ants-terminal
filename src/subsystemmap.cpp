@@ -187,7 +187,7 @@ QString resolveSource(const QString &claudeMdPath) {
     // ANTS-1292: prefer the dedicated module-map file when present so the
     // catalogue stays out of the always-loaded CLAUDE.md.
     const QString root = QFileInfo(claudeMdPath).absolutePath();
-    const QString candidate =
+    QString candidate =
         root + QStringLiteral("/docs/subsystems.md");
     if (QFileInfo::exists(candidate)) return candidate;
     return claudeMdPath;

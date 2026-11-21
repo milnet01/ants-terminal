@@ -2446,7 +2446,7 @@ void TerminalWidget::harvestOutputDamage(bool scrolled, bool snapshotShown,
     m_damageCursorVisible = m_grid->cursorVisible();
     m_damageCursorShape = m_grid->cursorShape();
     m_damageImageCount = imageCount;
-    m_damagePromptMark = promptMark;
+    m_damagePromptMark = std::move(promptMark);
 }
 
 void TerminalWidget::issueOutputDamage() {

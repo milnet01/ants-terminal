@@ -42,7 +42,7 @@ int fail(const char *label, const char *why) {
 // Write a synthetic file under `dir` and return its absolute path.
 QString writeFile(const QString &dir, const QString &name,
                   const QByteArray &body) {
-    const QString p = dir + QStringLiteral("/") + name;
+    QString p = dir + QStringLiteral("/") + name;
     QFile f(p);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
     f.write(body);

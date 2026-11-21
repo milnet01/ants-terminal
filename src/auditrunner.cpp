@@ -2057,7 +2057,7 @@ void applyBaseline(const QString &canonProject, const RunRequest &req,
     saved[QStringLiteral("path")]           = path;
     saved[QStringLiteral("findings_count")] = findings.size();
     saved[QStringLiteral("tools")]          = QJsonArray::fromStringList(tools);
-    r.baselineSaved = saved;
+    r.baselineSaved = std::move(saved);
 }
 
 }  // namespace
@@ -2611,7 +2611,7 @@ RunResult runAudit(const RunRequest &req) {
         tr.parseFailureReasons = parsed.parseFailureReasons;  // ANTS-3706
         fullFindingsByTool[tool] = parsed.findings;           // ANTS-1870
         if (parsed.findingsTruncated) anyFindingsTruncated = true;
-        r.byTool[tool]      = tr;
+        r.byTool[tool]      = std::move(tr);
         --pending;
         if (pending <= 0) loop.quit();
     };
@@ -3040,7 +3040,7 @@ RunResult runAudit(const RunRequest &req) {
         // next since-last-run then reports no_prior_findings.
         AuditCache::recordRun(canonProject, lastRunJson, &prior,
                               mergedForRecord);
-        r.priorRun = prior;
+        r.priorRun = std::move(prior);
     }
 
     r.elapsedTotalMs = elapsed.elapsed();

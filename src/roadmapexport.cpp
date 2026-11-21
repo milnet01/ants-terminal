@@ -264,7 +264,7 @@ bool loadSections(QSqlDatabase &db, qint64 projectId, QList<SectionRef> *emitOrd
 
     // § 2.4 gives `element` a DIFFERENT section ordering — plain slug code-unit
     // order, with no parents-first term. Two orders, deliberately.
-    *slugOrder = rows;
+    *slugOrder = std::move(rows);
     std::sort(slugOrder->begin(), slugOrder->end(), [](const SectionRef &a, const SectionRef &b) {
         return cmpCodeUnit(a.slug, b.slug) < 0;
     });

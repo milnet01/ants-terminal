@@ -31,7 +31,7 @@ QString writeSpec(const QString &projectRoot, const QString &name,
                   qint64 mtimeMs) {
     const QString specsDir = projectRoot + QStringLiteral("/docs/specs");
     QDir().mkpath(specsDir);
-    const QString fullPath = specsDir + QChar('/') + name;
+    QString fullPath = specsDir + QChar('/') + name;
     QFile f(fullPath);
     // ANTS-1611 — ADD_FAILURE + early return, not EXPECT_TRUE: this is a
     // setup helper returning QString, so gtest's ASSERT_* (which expands

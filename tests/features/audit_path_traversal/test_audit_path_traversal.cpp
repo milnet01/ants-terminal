@@ -53,7 +53,7 @@ QString resolveProjectPathRef(const QString &projectPath,
     const QString candidate = QFileInfo(maybeRelative).isAbsolute()
         ? maybeRelative
         : (projectPath + QStringLiteral("/") + maybeRelative);
-    const QString canonCandidate = QFileInfo(candidate).canonicalFilePath();
+    QString canonCandidate = QFileInfo(candidate).canonicalFilePath();
     if (canonCandidate.isEmpty()) return {};
     const QString canonProject = QFileInfo(projectPath).canonicalFilePath();
     if (canonProject.isEmpty()) return {};

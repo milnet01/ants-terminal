@@ -531,7 +531,7 @@ QJsonObject Config::claudeAutoModel() const {
     auto rank = [](const QString &t) {
         return t == QLatin1String("opus") ? 2 : (t == QLatin1String("sonnet") ? 1 : 0);
     };
-    if (rank(home) < rank(floor)) home = floor;
+    if (rank(home) < rank(floor)) home = std::move(floor);
     out.insert("home_tier", home);
     // ANTS-1914 — composer-stale veto threshold (ms). -1 sentinel (default)
     // tells the gate to use kComposerStaleVetoMs (~5 min). Advanced users set
@@ -1448,7 +1448,7 @@ void Config::setShellCommand(const QString &cmd) {
 }
 
 QString Config::tabTitleFormat() const {
-    const QString fmt = m_data.value("tab_title_format").toString("title");
+    QString fmt = m_data.value("tab_title_format").toString("title");
     if (knownTabTitleFormats().contains(fmt)) return fmt;
     return QStringLiteral("title");
 }

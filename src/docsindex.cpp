@@ -53,7 +53,7 @@ QString resolveLink(const QString &relDir, const QString &rawTarget) {
         (relDir.isEmpty() || relDir == QLatin1String("."))
             ? t
             : relDir + QLatin1Char('/') + t;
-    const QString clean = QDir::cleanPath(combined);
+    QString clean = QDir::cleanPath(combined);
     if (clean.startsWith(QLatin1String("../")) || clean == QLatin1String(".."))
         return QString();                                    // escapes root
     return clean;
@@ -676,7 +676,7 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
                 Index loaded = fromJson(doc.object());
                 if (loaded.version == kIndexVersion
                     && loaded.rootCanonical == rootCanonical) {
-                    prev = loaded;
+                    prev = std::move(loaded);
                     haveValid = true;
                 }
             }
@@ -696,7 +696,7 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
                               docs, walkCut);
             needWrite = true;
         } else {
-            idx = prev;  // fully warm — no write, generated_at_ms preserved
+            idx = std::move(prev);  // fully warm — no write, generated_at_ms preserved
         }
     } else {
         idx = build(rootCanonical, nowMs, opts);

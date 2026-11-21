@@ -385,7 +385,7 @@ bool decodeChecked(const QByteArray &bytes, QString *out) {
     QStringDecoder dec(QStringDecoder::Utf8, QStringDecoder::Flag::Stateless);
     QString s = dec(bytes);
     if (dec.hasError()) return false;
-    if (out) *out = s;
+    if (out) *out = std::move(s);
     return true;
 }
 
@@ -1124,7 +1124,7 @@ static void dcQuotationPass(QJsonObject &out, const QString &rootCanonical,
         for (int j = i - 1; j >= 0; --j) {
             if (prefix.at(j).trimmed().isEmpty()) break;
             if (j < fence.size() && fence.at(j)) break;
-            const QStringList c = dcDocTokensIn(prefix.at(j));
+            QStringList c = dcDocTokensIn(prefix.at(j));
             if (!c.isEmpty()) return c;
             const QStringList bad = dcRejectedPathTokensIn(prefix.at(j));
             if (!bad.isEmpty()) {

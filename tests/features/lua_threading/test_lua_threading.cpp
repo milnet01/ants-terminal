@@ -49,7 +49,7 @@ namespace {
 QString writeTemp(const QString &dir, const QString &basename,
                   const QByteArray &bytes) {
     QDir().mkpath(dir);
-    const QString path = dir + QStringLiteral("/") + basename;
+    QString path = dir + QStringLiteral("/") + basename;
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         expect(false, "setup/writeTemp",
