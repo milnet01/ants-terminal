@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6851 -->
+<!-- ants-roadmap-id-high-water: ANTS=6852 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88366,7 +88366,7 @@ finish it and to make it the default rather than the alternative.
   Source: user-request-2026-09-07.
   Lanes: docs, standards.
 
-- 📋 [ANTS-4935] **128 specs and one owned standard still carry their loop log inline; 13 mirrored standards must be moved upstream instead.**
+- ✅ [ANTS-4935] **128 specs and one owned standard still carry their loop log inline; 13 mirrored standards must be moved upstream instead.**
   MEASURED 2026-09-07 by classifying every document under docs/ that carries a cold-eyes or loop-log heading into three states — an inline log, a pointer stub, or neither. Re-measure before starting; these are a snapshot.
 
     docs/specs        128 inline, 22 already stubbed
@@ -88385,11 +88385,35 @@ finish it and to make it the default rather than the alternative.
   DO NOT do this as one commit over 128 files. ANTS-3647 records why a bulk documentation rewrite is unreviewable, and its own exception is instructive: ANTS-4757 was allowed to sweep 32 files ONLY because the class was mechanically decidable and verifiable back to zero. A per-document judgement about what is history and what is live is not that.
 
   THE MOTIVATING REASON, which is not in the standards and is why this is worth doing: a cold review lane receives a gated document IN FULL, its loop log included. So a lane reviewing CLAUDE.md or a standard holds every dated row of prior findings and fixes — the contamination the cold read exists to avoid. Reported by the claude-config session 2026-09-07 and recorded in their ~/.claude/skills/_shared/cold-reader-contamination.md; UNVERIFIED from this side, so verify before citing it as the justification.
+  Shipped 2026-11-21 (1876a7f8, fb4b4b15..c8a92c91). Re-measured first:
+  the 13 mirrored standards were already pointers upstream, so none
+  needed moving. 149 documents moved (146 specs, 2 ADRs,
+  docs/plans/ANTS-4065), each checked line by line against its record;
+  ANTS-3456's empty table became a "No review ran" line. Left as they
+  are, with nothing to move: ANTS-1455 and ANTS-1457 (an unfilled "To be
+  filled" placeholder), ANTS-1555 § 7 (design notes, not a log), and
+  docs/plans/ANTS-1160 (history-only folder, top-level heading).
   **Layman:** Move the review history out of the documents that still hold it, leaving a pointer behind — but the copied-in standards have to be fixed in the place they are copied from.
   Kind: doc-fix.
   Source: user-request-2026-09-07.
   Lanes: docs, standards, specs.
   Blocked-by: ANTS-4934.
+
+- 📋 [ANTS-6852] **ANTS-3659's spec cites lines 1805 and 1829 of ANTS-3636's spec, which no longer hold the text it describes.**
+  Measured 2026-11-21 with ~/.claude/tools/check-doc.py: five citations in
+  docs/specs/ANTS-3659-examples-region-doc-scanners-honour.md name
+  ANTS-3636-doc-citations-resolve-doc-s.md:1805 and :1829. At 7d5e2916,
+  before ANTS-4935 moved ANTS-3636's loop log out, line 1805 already read
+  "lines, not the ~19.5k claimed…", not the src/claudeintegration.cpp
+  citation ANTS-3659 says it is. The move took the spec under 1805 lines,
+  so the checker now reports them. Fix: find the cited text (it may sit in
+  docs/reviews/ANTS-3636-doc-citations-resolve-doc-s-loop-log.md now) and
+  cite it by section or file:N:token, or mark the passage as a dated
+  measurement.
+  **Layman:** One spec points at line numbers in another spec, and those lines have moved, so the pointers lead to the wrong text.
+  Kind: doc-fix.
+  Source: ANTS-4935-2026-11-21.
+  Lanes: docs, specs.
 
 ### 🎨 UI polish (user request 2026-09-04)
 
