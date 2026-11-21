@@ -153,4 +153,4 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(SlicedCase{"oldestOnly", "tail\r\ntail\r\ntail\r\ntail", 5, "1/20"},
                       SlicedCase{"centreRow", "tail\r\ntail\r\nNEEDLE c\r\nNEEDLE d", 1,
                                  "21/22"}),
-    [](const ::testing::TestParamInfo<SlicedCase> &info) { return info.param.name; });
+    [](const ::testing::TestParamInfo<SlicedCase> &p) { return p.param.name; });
