@@ -154,6 +154,29 @@ TEST_F(AuditClaudeHandoff, ClangTidyKeepsOnlyDiagnostics) {
         << "INV-3";
 }
 
+TEST_F(AuditClaudeHandoff, ClangTidyCapCountsWarningsNotRawLines) {
+    // A compile database switches the lane's real command on; a stand-in
+    // clang-tidy prints 50 warnings, each with its snippet and caret line.
+    ASSERT_TRUE(writeFile(project.dir.filePath("build/compile_commands.json"), "[]\n"));
+    ASSERT_TRUE(writeFile(project.dir.filePath("fakebin/clang-tidy"),
+        "#!/bin/bash\n"
+        "for i in $(seq 1 50); do\n"
+        "  echo \"$PWD/src/settings.cpp:$i:1: warning: w$i [bugprone-x]\"\n"
+        "  echo \"   $i | code\"\n"
+        "  echo \"      | ^\"\n"
+        "done\n"));
+    ASSERT_TRUE(QFile::setPermissions(project.dir.filePath("fakebin/clang-tidy"),
+                                      QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    AuditDialog dlg(project.path(), nullptr, &cfg);
+    const AuditCheck *c = findCheck(dlg.checksForTest(), QStringLiteral("clang_tidy"));
+    ASSERT_NE(c, nullptr);
+    AuditCheck withFake = *c;
+    withFake.command = QStringLiteral("PATH=\"%1:$PATH\"; ")
+                           .arg(project.dir.filePath("fakebin")) + c->command;
+    EXPECT_EQ(runCheck(withFake, project.path()).size(), 50)
+        << "INV-8: padding lines used up the cap before the filter ran";
+}
+
 TEST_F(AuditClaudeHandoff, PublicKeysAreNotExposedKeyFiles) {
     AuditDialog dlg(project.path(), nullptr, &cfg);
     const QList<AuditCheck> checks = dlg.checksForTest();

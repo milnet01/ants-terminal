@@ -888,7 +888,7 @@ void AuditDialog::populateChecks() {
                       " | awk '/file not found/ {"
                       "     if (!banner) { print \"clang-tidy: headers not resolved "
                       "(regenerate compile_commands.json)\"; banner=1 } next }"
-                      "   { print }' | head -100")
+                      "   { print }'")
                       .arg(kFindExcl, tidyBuildDir);
         const QString tidyDesc = !hasClangTidy
             ? QString("(clang-tidy not installed)")
@@ -902,7 +902,8 @@ void AuditDialog::populateChecks() {
             // this lane's own `clang-tidy:` banners. The rest of clang-tidy's
             // output (code snippets, carets, notes, "N warnings generated.",
             // "Suppressed N warnings", "[1/1] Processing file") each became
-            // a finding.
+            // a finding. ANTS-6863 — the filter's cap of 100 is the only cap:
+            // a `head` in the command would count those padding lines.
             CheckType::CodeSmell, Severity::Minor,
             { {}, R"(^(?!\S+:\d+:\d+: (?:warning|error): |clang-tidy: ))", {}, 100 },
             false, hasClangTidy && !tidyBuildDir.isEmpty(), nullptr

@@ -74416,10 +74416,13 @@ suppression that survives line drift.
   Source: ANTS-6860 follow-up 2026-11-21.
   Lanes: auditdialog.
 
-- 📋 [ANTS-6863] **The clang-tidy audit lane caps the warnings it keeps, not the raw lines before filtering.**
+- ✅ [ANTS-6863] **The clang-tidy audit lane caps the warnings it keeps, not the raw lines before filtering.**
   The lane's shell pipeline ends `| head -100` before the OutputFilter
   runs, so snippet and caret lines (three per warning) use up the cap and
   real warnings past it are lost. ANTS-6857 filters after the cut.
+  Shipped 2026-11-21: the command has no `head -100`; the filter's cap
+  of 100 kept lines is the only cap. Contract
+  tests/features/audit_claude_handoff INV-8.
   **Layman:** The audit shows up to 100 real clang-tidy warnings, not fewer because of padding lines.
   Kind: fix.
   Source: ANTS-6857 follow-up 2026-11-21.
