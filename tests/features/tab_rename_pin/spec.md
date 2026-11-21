@@ -66,24 +66,18 @@ that carries the clear-pin semantics.
 
 ### Invariant 3 — `m_tabTitlePins` is the single source of truth
 
-Every tab-label-writing path in `mainwindow.cpp` outside the two
-intentional *consumers* (`setTabTitleForRemote` itself, the
-format-driven `updateTabTitles`, the OSC 0/2 `titleChanged` signal
-handler, `addShellTab`'s `"Shell"` initializer, the close path) MUST either (a) consult
-`m_tabTitlePins.contains(...)` before writing, or (b) populate
-`m_tabTitlePins` when writing. A future rename-like feature that
-directly mutates tab text without either check regresses this
-contract.
+The MainWindow sources write a tab's label in one place,
+`MainWindow::setTabLabel`, the only `m_tabWidget->setTabText(` call.
+Every caller of `setTabLabel` MUST (a) consult
+`m_tabTitlePins.contains(...)` before writing, (b) set or clear the
+pin as it writes, or (c) write a restored tab that has no saved pin.
+A future rename-like feature that writes a label without one of these
+regresses this contract. The right-click rename handler is not a
+caller: it routes via `setTabTitleForRemote`, which sets the pin.
 
-Grep rule: every bare `m_tabWidget->setTabText(` call site in
-`mainwindow.cpp` is either (a) inside `setTabTitleForRemote`, (b)
-inside `updateTabTitles` (which has already consulted the pin),
-(c) inside the `titleChanged` lambda (which has already consulted
-the pin), (d) inside `newTabForRemote` with the literal
-`"Shell"`, or (e) inside a tab-creation code path where no pin
-could yet exist. The right-click rename handler is explicitly
-excluded — it must NOT appear on this list because it routes via
-`setTabTitleForRemote`.
+Grep rule: the `titleChanged` handler and `updateTabTitles`, the two
+callers that run on every shell title and every 2 s tick, both
+consult `m_tabTitlePins.contains(`.
 
 ### Invariant 4 — rename dialog still offers Enter-to-commit UX
 
