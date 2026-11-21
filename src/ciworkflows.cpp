@@ -69,6 +69,18 @@ private:
         return from;
     }
     void fail() { m_ok = false; m_i = int(m_l.size()); }
+    // ANTS-6866 — every recursion passes through node() or value(), and the
+    // file is the checked-out repository's, so its nesting is capped: a real
+    // workflow nests a few levels; one long `[[[[` line would overflow the
+    // stack.
+    static constexpr int kMaxDepth = 64;
+    struct Descend {
+        int &depth;
+        explicit Descend(int &d) : depth(++d) {}
+        ~Descend() { --depth; }
+        Descend(const Descend &) = delete;
+        Descend &operator=(const Descend &) = delete;
+    };
     static bool isDash(const QString &t) {
         return t == QLatin1String("-") || t.startsWith(QLatin1String("- "));
     }
@@ -155,6 +167,8 @@ private:
         return after.isEmpty() || after.startsWith(QLatin1Char('#')) ? rest.left(close + 1) : rest;
     }
     QVariant value(const QString &rest) {
+        const Descend in(m_depth);
+        if (m_depth > kMaxDepth) { fail(); return {}; }
         if (rest.startsWith(QLatin1Char('*'))) { fail(); return {}; }  // an alias
         if (rest.startsWith(QLatin1Char('"')) || rest.startsWith(QLatin1Char('\'')))
             return quoted(rest);
@@ -220,6 +234,8 @@ private:
     }
 
     QVariant node(int indent) {
+        const Descend in(m_depth);
+        if (m_depth > kMaxDepth) { fail(); return {}; }
         const int i = next(m_i);
         if (i >= m_l.size()) return QString();
         if (m_l[i].tabIndent) { fail(); return {}; }
@@ -306,6 +322,7 @@ private:
     QVector<Line> m_l;
     int m_i = 0;
     bool m_ok = true;
+    int m_depth = 0;  // node() and value() frames now open
 };
 
 bool isBlock(const QVariant &v) { return v.userType() == qMetaTypeId<BlockText>(); }

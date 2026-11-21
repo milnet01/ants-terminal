@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6865 -->
+<!-- ants-roadmap-id-high-water: ANTS=6866 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -115992,6 +115992,22 @@ reports are asked for separately, each time.
   **Layman:** The build prints one warning from the spec-log code; clear it so real warnings stand out.
   Kind: fix.
   Source: build-warning-2026-11-21.
+
+- ✅ [ANTS-6866] **ci_report's workflow parser caps nesting depth, so a hostile workflow file cannot overflow the stack.**
+  src/ciworkflows.cpp Parser: value() recurses once per flow-collection
+  level and node()/map()/list() once per indent level, with no depth
+  counter and no size cap. The input is .github/workflows of the project
+  ci_report reads, or a git blob of it, so one long `[[[[...` line could
+  overflow the stack of the process serving ci_report.
+  2026-11-21: Parser counts node() and value() frames and fails the
+  parse past kMaxDepth = 64, so the file is listed unread. Proof:
+  McpCiReport.Ants6866DeepNestingIsUnread failed before (1000-level flow
+  list and `- - -` items parsed), and the test binary segfaulted under a
+  256 KB stack while a control test passed; after, all 61 McpCiReport
+  tests pass at 256 KB.
+  **Layman:** A specially written CI file in a project could crash the tool that reads it; the reader now stops at a sane nesting depth and reports the file as unreadable.
+  Kind: security.
+  Source: ANTS-5444 misc-no-recursion review 2026-11-21.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

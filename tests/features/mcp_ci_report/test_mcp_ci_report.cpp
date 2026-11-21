@@ -725,6 +725,23 @@ TEST(McpCiReport, Ants6402ReaderEdgeCases) {
     EXPECT_EQ(ofCheck(CiReport::analyse(QJsonObject(), group, kNow, 30), "runner_latest").size(), 1);
 }
 
+// ANTS-6866 — nesting far past any real workflow is unread, not followed
+// until the stack overflows. Both recursions: flow collections, and list
+// items nested on one line.
+TEST(McpCiReport, Ants6866DeepNestingIsUnread) {
+    const int deep = 1000;
+    const CiWorkflows::Result flow = workflow(QStringLiteral("name: CI\njobs:\n  a:\n    x: ")
+        + QString(deep, QLatin1Char('[')) + QString(deep, QLatin1Char(']')) + QLatin1Char('\n'));
+    EXPECT_TRUE(flow.workflows.isEmpty());
+    ASSERT_EQ(flow.unread.size(), 1);
+    EXPECT_EQ(flow.unread.at(0).toObject().value("field").toString(), QStringLiteral("file"));
+    const CiWorkflows::Result items = workflow(QStringLiteral("name: CI\njobs:\n  a:\n    steps:\n      ")
+        + QStringLiteral("- ").repeated(deep) + QStringLiteral("x\n"));
+    EXPECT_TRUE(items.workflows.isEmpty());
+    ASSERT_EQ(items.unread.size(), 1);
+    EXPECT_EQ(items.unread.at(0).toObject().value("field").toString(), QStringLiteral("file"));
+}
+
 TEST(McpCiReport, Ants6402LogKeepsHeadAndTail) {
     Env env;
     FakeGh gh;
