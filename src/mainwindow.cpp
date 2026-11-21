@@ -1406,14 +1406,9 @@ void MainWindow::setupPlugins() {
             return out;
         });
 
-    // The connects below come after this load. Engine signals reach this
-    // window as queued calls, so they normally arrive after the constructor;
-    // a permission prompt's exec() inside the load can deliver them early,
-    // with nothing connected yet (ANTS-6846).
-    m_pluginManager->scanAndLoad(m_config.enabledPlugins());
-
-    // Manifest v2: register plugin keybindings. Rescan on pluginsReloaded so
-    // hot-reload picks up newly-added or changed shortcuts without restart.
+    // Manifest v2: register plugin keybindings on every pluginsReloaded, the
+    // first load's included, so hot-reload picks up newly-added or changed
+    // shortcuts without restart.
     auto registerPluginKeybindings = [this]() {
         // Drop any previously-registered plugin shortcuts
         for (auto *sc : m_pluginShortcuts) sc->deleteLater();
@@ -1445,7 +1440,6 @@ void MainWindow::setupPlugins() {
             }
         }
     };
-    registerPluginKeybindings();
     connect(m_pluginManager, &PluginManager::pluginsReloaded, this, registerPluginKeybindings);
     connect(m_pluginManager, &PluginManager::sendToTerminal, this, [this](const QString &text) {
         if (auto *t = focusedTerminal()) t->writeCommand(text);
@@ -1493,17 +1487,20 @@ void MainWindow::setupPlugins() {
     // appends one entry and rebuilds the Ctrl+Shift+P list.
     connect(m_pluginManager, &PluginManager::paletteEntryRegistered, this,
             &MainWindow::onPluginPaletteRegistered);
-    // Drop every plugin palette entry on a reload, or each reload would
-    // register every entry twice. scanAndLoad() emits pluginsReloaded as it
-    // returns, having only queued each init.lua on its plugin's worker; the
-    // entries those scripts register arrive later as queued calls, so this
-    // clear runs first, unless a permission prompt inside the load ran the
-    // event loop early (ANTS-6846).
-    connect(m_pluginManager, &PluginManager::pluginsReloaded, this, [this]() {
+    // Drop every plugin palette entry as a load starts, or each reload would
+    // register every entry twice. Not on pluginsReloaded: a permission
+    // prompt's exec() inside the load can deliver this load's first entries
+    // before it ends (ANTS-6846).
+    connect(m_pluginManager, &PluginManager::pluginsAboutToLoad, this, [this]() {
         for (const auto &e : m_pluginPaletteEntries) e.release();
         m_pluginPaletteEntries.clear();
         rebuildCommandPalette();
     });
+
+    // Last, so every connect above is in place should a permission prompt's
+    // exec() deliver a plugin's signals inside the load (ANTS-6846). Its
+    // pluginsReloaded registers the keybindings.
+    m_pluginManager->scanAndLoad(m_config.enabledPlugins());
 #endif
 }
 

@@ -115,6 +115,11 @@ signals:
     void settingsGetRequested(const QString &pluginName, const QString &key, QString &out);
     void settingsSetRequested(const QString &pluginName, const QString &key, const QString &value,
                               QString &error);
+    // ANTS-6846 — scanAndLoad() is starting: no plugin of this load has
+    // run yet. A receiver drops what the last load registered here, not on
+    // pluginsReloaded, which a permission prompt's nested event loop can
+    // follow with entries this load already sent.
+    void pluginsAboutToLoad();
     void pluginsReloaded();
     // 0.6.9 — ants.palette.register() forward. MainWindow rebuilds the
     // Ctrl+Shift+P palette + (when hotkey is non-empty) wires a QShortcut

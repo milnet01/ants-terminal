@@ -37,6 +37,11 @@ responsive no matter what a plugin does.
   - `Ants5107WedgedWorkersShareOneDeadline`: two workers stuck in one
     uninterruptible `string.find` are both detached in under 2.7 s, not
     2 s each.
+- **R6 (ANTS-6846) — a load announces itself before any plugin runs.**
+  `Ants6846EntryDeliveredDuringAPromptSurvivesTheLoad`: a permission
+  prompt that pumps the event loop delivers an earlier plugin's palette
+  entry inside `scanAndLoad()`. The receiver sees `pluginsAboutToLoad`,
+  then the entry, then `pluginsReloaded`.
 
 ## Structural invariants (source)
 
@@ -76,6 +81,10 @@ fails on pre-fix source (none of the symbols exist yet).
 - **S8 (ANTS-6535) — plugins unload before the window's members die.**
   `~MainWindow` deletes `m_pluginManager` in its own body, so a plugin's
   unload `settings.set` (R3) reaches a live `Config`.
+- **S9 (ANTS-6846) — the window is wired before plugins load.**
+  `MainWindow::setupPlugins` calls `scanAndLoad()` after its last
+  `connect(m_pluginManager, …)`, and drops its palette entries on
+  `pluginsAboutToLoad` (R6).
 
 ## Out of scope
 

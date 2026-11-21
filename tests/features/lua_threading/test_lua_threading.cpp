@@ -779,3 +779,61 @@ TEST(LuaThreading, Ants6535MainWindowDeletesPluginManagerFirst) {
     EXPECT_NE(body.find("delete m_pluginManager;"), std::string::npos)
         << "~MainWindow must delete m_pluginManager while m_config lives";
 }
+
+// ANTS-6846 — a permission prompt runs a nested event loop inside
+// scanAndLoad(), which delivers an earlier plugin's palette entry before the
+// load ends, so before pluginsReloaded. A clear on pluginsReloaded, as
+// MainWindow had, loses it; pluginsAboutToLoad fires before any of it.
+TEST(LuaThreading, Ants6846EntryDeliveredDuringAPromptSurvivesTheLoad) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("a_menu"),
+              "ants.on('load', function()\n"
+              "  ants.palette.register({title = 'Early', action = 'a'})\n"
+              "end)\n");
+    addPlugin(dir, QStringLiteral("b_asker"), "", /*settingsPermission=*/true);
+    QStringList order;
+    bool prompted = false;
+    {
+        PluginManager pm;
+        pm.setGrantStore([](const QString &) { return QStringList{}; },
+                         [](const QString &, const QStringList &) {});
+        pm.setPermissionPrompt([&prompted](const PluginInfo &,
+                                           const QStringList &requested) {
+            prompted = true;
+            pump(500);   // QDialog::exec()'s nested loop
+            return requested;
+        });
+        QObject::connect(&pm, &PluginManager::pluginsAboutToLoad,
+                         [&order]() { order << QStringLiteral("about-to-load"); });
+        QObject::connect(&pm, &PluginManager::pluginsReloaded,
+                         [&order]() { order << QStringLiteral("reloaded"); });
+        QObject::connect(&pm, &PluginManager::paletteEntryRegistered,
+                         [&order](const QString &, const QString &title,
+                                  const QString &, const QString &) { order << title; });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad({QStringLiteral("a_menu"), QStringLiteral("b_asker")});
+        pump(300);
+    }
+    QDir(dir).removeRecursively();
+    ASSERT_TRUE(prompted) << "b_asker's load did not prompt";
+    EXPECT_EQ(order, (QStringList{QStringLiteral("about-to-load"),
+                                  QStringLiteral("Early"),
+                                  QStringLiteral("reloaded")}))
+        << qPrintable(order.join(QStringLiteral(", ")));
+}
+
+// ANTS-6846 — MainWindow::setupPlugins connects every PluginManager signal
+// before scanAndLoad(), and clears its palette entries on pluginsAboutToLoad.
+// Source scrape: a MainWindow cannot be built headless in this bundle.
+TEST(LuaThreading, Ants6846SetupPluginsConnectsBeforeItLoads) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpMainWindow(), "void MainWindow::setupPlugins()");
+    ASSERT_FALSE(body.empty()) << "setupPlugins not found";
+    const size_t load = body.find("m_pluginManager->scanAndLoad(");
+    const size_t lastConnect = body.rfind("connect(m_pluginManager,");
+    ASSERT_NE(load, std::string::npos);
+    ASSERT_NE(lastConnect, std::string::npos);
+    EXPECT_GT(load, lastConnect) << "a connect runs after scanAndLoad()";
+    EXPECT_NE(body.find("&PluginManager::pluginsAboutToLoad"), std::string::npos)
+        << "the palette clear is not on pluginsAboutToLoad";
+}

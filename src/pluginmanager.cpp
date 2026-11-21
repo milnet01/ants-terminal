@@ -448,6 +448,7 @@ static void readManifestInto(PluginInfo &info, const QString &manifestPath) {
 }
 
 void PluginManager::scanAndLoad(const QStringList &enabledList) {
+    emit pluginsAboutToLoad();   // ANTS-6846 — before any plugin can run
     unloadAll();
     m_plugins.clear();
     m_watchedEnabled = enabledList;  // remembered for hot-reload
