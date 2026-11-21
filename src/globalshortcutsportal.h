@@ -105,6 +105,8 @@ private:
     void flushPending();
     QString predictRequestPath(const QString &handleToken) const;
     void detachResponseSlots(const QString &requestPath);
+    // ANTS-6190 — the one way any step of the handshake fails.
+    void failPermanently(const QString &reason);
 
     QDBusConnection m_bus;
     QString m_sessionHandle;                // empty until the handshake completes
@@ -114,8 +116,8 @@ private:
     // would otherwise leave the session pending and queue every bind.
     static constexpr int kCreateSessionTimeoutMs = 30000;
     QTimer m_createSessionTimer;
-    // ANTS-1152 — terminal-failure latch, set on every failed portal
-    // response or DBus reply error. Once latched, every
+    // ANTS-1152 — terminal-failure latch, set by failPermanently() on
+    // every failed portal response or DBus reply error. Once latched, every
     // subsequent bindShortcut() call early-returns with a
     // sessionFailed signal — the failure is treated as
     // process-permanent. Today's only caller (MainWindow's

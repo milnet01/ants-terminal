@@ -4,8 +4,7 @@
 
 **INV-1 — a BindShortcuts error reply fails the session.** The
 `BindShortcuts` call is watched with a `QDBusPendingCallWatcher`; an error
-reply drains the pending binds, clears the session handle, marks the portal
-permanently failed and emits `sessionFailed`.
+reply calls `failPermanently` (INV-6).
 
 **INV-2 — an on-demand portal counts as available.**
 `GlobalShortcutsPortal::isAvailable()` returns true when the portal service is
@@ -16,14 +15,19 @@ registered or listed in `activatableServiceNames()`.
 
 **INV-4 — CreateSession times out.** `createSession` starts
 `m_createSessionTimer`. When it fires with the session still pending, the
-portal detaches the Response slot, marks itself permanently failed and emits
-`sessionFailed`. `onCreateSessionResponse` and the error-reply path stop the
+portal detaches the Response slot and calls `failPermanently` (INV-6). `onCreateSessionResponse` and the error-reply path stop the
 timer.
 
 **INV-5 — each BindShortcuts Response detaches its own request path.**
 `onBindShortcutsResponse` takes the `QDBusMessage` and detaches
 `message.path()`. No member holds a single BindShortcuts request path, so a
 second flush cannot overwrite the first request's path.
+
+**INV-6 — every failure cleans up one way.** Only
+`GlobalShortcutsPortal::failPermanently` sets `m_permanentlyFailed`. It
+drops the pending binds, sets the latch and emits `sessionFailed(reason)`.
+No failure clears `m_sessionHandle`, so the destructor still closes a
+session that was created (`portal_session_close`).
 
 ## Rationale
 
@@ -42,6 +46,11 @@ first was in flight overwrote it, so the first Response detached the second
 request's slot, the second Response was lost, and the first slot stayed
 connected.
 
+The failure paths each cleaned up differently. Two cleared the session
+handle, so the destructor skipped the `Session.Close` that
+`portal_session_close` requires. The latch, not the cleared handle, is what
+stops a later bind retrying.
+
 ## Test surface
 
 `test_portal_failure_paths.cpp` reads `src/globalshortcutsportal.cpp`, found
@@ -50,3 +59,4 @@ beside `SRC_MAINWINDOW_CPP_PATH`, and checks the text.
 ## Regression history
 
 - **ANTS-5081:** the defects above. Locked by this spec.
+- **ANTS-6190:** the failure paths' differing clean-up. Locked by INV-6.

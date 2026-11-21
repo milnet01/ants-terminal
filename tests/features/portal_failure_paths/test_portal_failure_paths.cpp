@@ -48,7 +48,7 @@ TEST(PortalFailurePaths, BindShortcutsReplyIsWatched) {
     const QString after = src.mid(call, 1600);
     EXPECT_TRUE(after.contains(QStringLiteral("QDBusPendingCallWatcher")))
         << "the BindShortcuts reply is discarded, so an error never fails the session";
-    EXPECT_TRUE(after.contains(QStringLiteral("emit sessionFailed(")));
+    EXPECT_TRUE(after.contains(QStringLiteral("failPermanently(")));  // INV-6
     // Scoped to flushPending: the destructor's Session.Close is a deliberate
     // fire-and-forget asyncCall (portal_session_close).
     const QString flush = functionBody(src,
@@ -94,8 +94,7 @@ TEST(PortalFailurePaths, CreateSessionTimesOut) {
     const int timeout = ctor.indexOf(QStringLiteral("&QTimer::timeout"));
     ASSERT_GE(timeout, 0) << "nothing handles the CreateSession timeout";
     const QString handler = ctor.mid(timeout);
-    EXPECT_TRUE(handler.contains(QStringLiteral("m_permanentlyFailed = true;")));
-    EXPECT_TRUE(handler.contains(QStringLiteral("emit sessionFailed(")));
+    EXPECT_TRUE(handler.contains(QStringLiteral("failPermanently(")));  // INV-6
 
     const QString response = functionBody(src,
         QStringLiteral("void GlobalShortcutsPortal::onCreateSessionResponse("));
@@ -113,4 +112,20 @@ TEST(PortalFailurePaths, EachBindResponseDetachesItsOwnPath) {
     EXPECT_FALSE(readSrc(QStringLiteral("globalshortcutsportal.h"))
                      .contains(QStringLiteral("m_bindShortcutsReqPath")))
         << "one member still holds the BindShortcuts request path, so a second flush overwrites it";
+}
+
+// INV-6
+TEST(PortalFailurePaths, EveryFailureCleansUpOneWay) {
+    const QString src = portalSource();
+    const QString fail = functionBody(src,
+        QStringLiteral("void GlobalShortcutsPortal::failPermanently("));
+    ASSERT_FALSE(fail.isEmpty()) << "failPermanently not found";
+    EXPECT_TRUE(fail.contains(QStringLiteral("m_pending.clear();")))
+        << "a failed portal keeps binds it will never send";
+    EXPECT_TRUE(fail.contains(QStringLiteral("emit sessionFailed(reason);")));
+    EXPECT_EQ(src.count(QStringLiteral("m_permanentlyFailed = true;")), 1)
+        << "a failure path sets the latch itself instead of calling failPermanently";
+    EXPECT_TRUE(fail.contains(QStringLiteral("m_permanentlyFailed = true;")));
+    EXPECT_FALSE(src.contains(QStringLiteral("m_sessionHandle.clear()")))
+        << "a failure drops the session handle, so the destructor never closes the session";
 }
