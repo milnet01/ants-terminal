@@ -108836,7 +108836,7 @@ worked after these.
   Source: ants-terminal-session-2026-11-20 (found in ANTS-6184).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6847] **tools/split-motion-check.py reports mainwindow piece-marker failures at HEAD: mainwindow_tablist.cpp has no marker and the others say n/8 where the list has 9.**
+- ✅ [ANTS-6847] **tools/split-motion-check.py reports mainwindow piece-marker failures at HEAD: mainwindow_tablist.cpp has no marker and the others say n/8 where the list has 9.**
   Seen running `split-motion-check.py --pre HEAD~2 --post HEAD~1 --stem
   mainwindow` (parent of ANTS-6184): eight marker FAIL lines before any
   ANTS-6184 change. ANTS_MAINWINDOW_SOURCES_REL gained
@@ -108845,6 +108845,9 @@ worked after these.
   whether a feature file added to the list is a 'piece' (renumber every
   marker) or the checker should skip files that are not cuts.
   Hot reload: none needed; a tool fix.
+  Shipped: ANTS-1677 INV-7 numbers every listed file, so the markers
+  were renumbered (tablist 8/9, repo 9/9); the checker is unchanged and
+  HOLDS on the commit.
   **Layman:** A checker that proves code was only moved, not changed, fails on files added later without its numbering line, so every future move check starts red.
   Kind: fix.
   Source: ants-terminal-session-2026-11-20 (found in ANTS-6184).
