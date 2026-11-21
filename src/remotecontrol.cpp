@@ -1471,7 +1471,7 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames,
                        "(?:\\A|\\n)[ \\t]*<[a-z][a-z0-9_-]*\\s*>[^\\s`<>]*\\s*\\z"),
         QRegularExpression::CaseInsensitiveOption);
     for (;;) {
-        const QString before = text;
+        const QString before = text;  // NOLINT(performance-unnecessary-copy-initialization): text changes below
         removeCounting(reEdgeTag);
         removeCounting(reEdgeOpenScalarLine);
         if (text == before) break;

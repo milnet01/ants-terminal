@@ -585,7 +585,7 @@ bool LuaEngine::fireEvent(PluginEvent event, const QString &data) {
     // A handler may call ants.on(), which can rehash m_handlers (new event ->
     // every value relocates) or reallocate this vector (same event); either
     // dangles the range-for's cached begin/end. Iterate a copy (ANTS-4441).
-    const std::vector<int> handlers = it.value();
+    const std::vector<int> handlers = it.value();  // NOLINT(performance-unnecessary-copy-initialization)
 
     bool allow = true;
     QByteArray dataUtf8 = data.toUtf8();
@@ -1503,11 +1503,9 @@ LuaEngine::QueryResult LuaEngine::runQueryThreaded(const QString &code, const QS
     // it must NOT write into a stack local. `code`/`root` are copied into
     // the worker's functor (each thread owns its QString refs).
     auto *slot = new QueryResult();
-    const QString codeCopy = code;
-    const QString rootCopy = root;
-    QThread *worker = QThread::create([slot, codeCopy, rootCopy, timeoutMs, resultCapBytes]() {
+    QThread *worker = QThread::create([slot, code, root, timeoutMs, resultCapBytes]() {
         LuaEngine eng;  // QObject affinity = this worker thread
-        *slot = eng.runQuery(codeCopy, rootCopy, timeoutMs, resultCapBytes);
+        *slot = eng.runQuery(code, root, timeoutMs, resultCapBytes);
     });
     worker->setObjectName(QStringLiteral("ants-project-query"));
     worker->setStackSize(kWorkerStackBytes);

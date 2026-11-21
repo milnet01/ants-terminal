@@ -1531,14 +1531,14 @@ static ClBatchEntryResult resolveClBatchEntry(
     const QString reqCategory =
         e.value(QStringLiteral("category")).toString();
     QString body = e.value(QStringLiteral("body")).toString();
-    QString summary, category, id = id0;
+    QString summary, category;
 
     if (!summary0.isEmpty()) {
         summary = summary0;
         // ANTS-4629 — same guard as op:"add", as a per-entry skip. The live
         // malformed entries this was filed for went in as a batch, so refusing
         // the whole call would be the wrong shape.
-        const QString why = ChangelogLog::preRenderedSummaryReason(summary, id);
+        const QString why = ChangelogLog::preRenderedSummaryReason(summary, id0);
         if (!why.isEmpty()) {
             r.code  = QStringLiteral("bad_summary");
             r.error = why;
@@ -1602,11 +1602,11 @@ static ClBatchEntryResult resolveClBatchEntry(
     rcScrubLeakedToolXml(body, scrubbed);
 
     r.ok       = true;
-    r.id       = id;
+    r.id       = id0;
     r.category = std::move(category);
     r.summary  = summary;
     r.body     = body;
-    r.bullet   = ChangelogLog::formatBullet(summary, body, id);
+    r.bullet   = ChangelogLog::formatBullet(summary, body, id0);
     return r;
 }
 }  // namespace rcdetail

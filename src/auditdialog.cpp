@@ -813,7 +813,7 @@ void AuditDialog::startQueuedBlame() {
         // could not tie the node to the isEmpty() check.
         const auto next = m_blameQueue.constBegin();
         if (next == m_blameQueue.constEnd()) break;
-        const QString file = next.key();
+        const QString file = next.key();  // NOLINT(performance-unnecessary-copy-initialization): erased below
         QList<int> lines = next.value().values();
         m_blameQueue.erase(next);
         std::sort(lines.begin(), lines.end());

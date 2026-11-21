@@ -570,7 +570,7 @@ TEST(RoadmapSourceWitness, Ants5382HeaderOnlyDriftIsFlaggedAndSampled) {
         return l.contains(QStringLiteral("Generated from the Ants Terminal roadmap store"));
     });
     ASSERT_NE(banner, lines.end());
-    const QString bannerText = *banner;
+    const QString bannerText = *banner;  // NOLINT(performance-unnecessary-copy-initialization): erased below
     lines.erase(banner);
     ASSERT_TRUE(writeFile(path, lines.join(QLatin1Char('\n')).toUtf8()));
 

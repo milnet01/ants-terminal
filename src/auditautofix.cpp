@@ -37,7 +37,7 @@ std::optional<Repair> planRepair(const Finding &f,
     if (f.line < 1 || absPath.isEmpty()) return std::nullopt;
     const QStringList lines = fileContents.split('\n');
     if (f.line > lines.size()) return std::nullopt;
-    const QString line = lines.at(f.line - 1);
+    const QString& line = lines.at(f.line - 1);
 
     auto make = [&](const QString &rule, const QString &fixed,
                     bool remove) -> std::optional<Repair> {

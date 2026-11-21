@@ -178,7 +178,7 @@ TEST(list_downshift, Inv3RepagesFromOffset) {
 // ─── Engine INV-4: input never mutated; downshifted defaults false ───────────
 TEST(list_downshift, Inv4NoInputMutationAndDefault) {
     auto full = makeFatBullets(500, 200);
-    const QJsonArray before = full;
+    const QJsonArray before = full;  // NOLINT(performance-unnecessary-copy-initialization): the purity witness
     const auto r = PaginationEngine::pageBullets(full, 0, -1, headlineProj);
     EXPECT_TRUE(r.downshifted);
     EXPECT_TRUE(full == before);        // caller's array untouched (copy proj)

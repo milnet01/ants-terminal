@@ -1085,38 +1085,14 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     QJsonObject bulletItem;
                     bulletItem["type"] = "object";
                     QJsonObject bulletItemProps;
-                    {
-                        QJsonObject p = headlineProp;
-                        bulletItemProps["headline"] = p;
-                    }
-                    {
-                        QJsonObject p = statusProp;
-                        bulletItemProps["status"] = p;
-                    }
-                    {
-                        QJsonObject p = kindProp;
-                        bulletItemProps["kind"] = p;
-                    }
-                    {
-                        QJsonObject p = sourceProp;
-                        bulletItemProps["source"] = p;
-                    }
-                    {
-                        QJsonObject p = bodyProp;
-                        bulletItemProps["body"] = p;
-                    }
-                    {
-                        QJsonObject p = laymanProp;
-                        bulletItemProps["layman"] = p;
-                    }
-                    {
-                        QJsonObject p = lanesProp;
-                        bulletItemProps["lanes"] = p;
-                    }
-                    {
-                        QJsonObject p = evidenceProp;  // ANTS-3382
-                        bulletItemProps["evidence"] = p;
-                    }
+                    bulletItemProps["headline"] = headlineProp;
+                    bulletItemProps["status"] = statusProp;
+                    bulletItemProps["kind"] = kindProp;
+                    bulletItemProps["source"] = sourceProp;
+                    bulletItemProps["body"] = bodyProp;
+                    bulletItemProps["layman"] = laymanProp;
+                    bulletItemProps["lanes"] = lanesProp;
+                    bulletItemProps["evidence"] = evidenceProp;  // ANTS-3382
                     {
                         QJsonObject p = idHintProp;
                         p["description"] = QStringLiteral(

@@ -1963,8 +1963,7 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
     // a project without src/+tests/ warms 0 files and costs nothing.
     if (!m_prewarmedRoots.contains(rootCanonical)) {
         m_prewarmedRoots.insert(rootCanonical);
-        const QString warmRoot = rootCanonical;
-        QThread *warm = QThread::create([warmRoot]() {
+        QThread *warm = QThread::create([warmRoot = rootCanonical]() {
             FindSources::prewarm(warmRoot);
         });
         connect(warm, &QThread::finished, warm, &QObject::deleteLater);

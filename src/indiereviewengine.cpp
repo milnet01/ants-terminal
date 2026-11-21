@@ -1116,7 +1116,7 @@ QList<CorroboratedFinding> corroboratedFindings(
     const QHash<QString, QString> basenames = buildBasenameIndex(projectPath);
 
     for (auto it = reports.constBegin(); it != reports.constEnd(); ++it) {
-        const QString lane = it.key();
+        const QString& lane = it.key();
         const auto cites = extractFileLineCitations(
             projectPath, it.value(), &basenames, stats);
         for (const Citation &c : cites) {

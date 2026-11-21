@@ -37,7 +37,7 @@ bool has(const QString &hay, const char *needle) {
 
 // INV-1
 TEST(AuditExclusionSet, CanonicalNamesPresentBuildExcluded) {
-    const QStringList names = AuditEngine::excludedDirNames();
+    const QStringList& names = AuditEngine::excludedDirNames();
     for (const char *d : {"node_modules", "vendor", ".audit_cache",
                           "__pycache__", "Testing", ".git", ".venv"}) {
         EXPECT_TRUE(names.contains(QLatin1String(d)))

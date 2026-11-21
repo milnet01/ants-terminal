@@ -194,7 +194,7 @@ TEST(McpLikelyFix, ResolveHeadersEquivalence) {
                    .toUtf8()
                    .constData());
         if (present) {
-            const QString got = it.value();
+            const QString& got = it.value();
             const bool eq = (got == single);
             expect(eq,
                    (QStringLiteral("resolveHeaders('") + sym +

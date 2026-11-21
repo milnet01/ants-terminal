@@ -335,7 +335,7 @@ TEST(FeedbackV2Delta, FenceOpenerIsSpaceIndentOnly) {
 // INV-10 — parse() is pure: the input string is unchanged.
 TEST(FeedbackV2Delta, ReadPurity) {
     const QString in = v2();
-    const QString copy = in;
+    const QString copy = in;  // NOLINT(performance-unnecessary-copy-initialization): the purity witness
     (void)FeedbackFile::parse(in);
     EXPECT_EQ(in, copy);
 }

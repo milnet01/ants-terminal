@@ -114992,9 +114992,17 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5438] **clang-tidy performance-unnecessary-copy-initialization: 53 sites in 27 files.**
+- ✅ [ANTS-5438] **clang-tidy performance-unnecessary-copy-initialization: 53 sites in 27 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Fix or suppress as one class.
+  2026-11-21: fixed by clang-tidy -fix, then every hunk read. Six of its
+  fixes were wrong and are kept as copies with a NOLINT: a value erased
+  on the next line (auditdialog.cpp, test_roadmap_source_witness.cpp), a
+  snapshot of a string the loop changes (remotecontrol.cpp), the
+  ANTS-4441 handler copy (luaengine.cpp), and two purity tests whose
+  witness would alias the input. Capture-only locals moved into the
+  lambda captures; the eight copy-then-store blocks in
+  claudeintegration_store.cpp fold to one line each.
   **Layman:** Local copies of values that are only read.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.

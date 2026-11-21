@@ -1234,7 +1234,7 @@ std::optional<AuditSummary> summariseClangTidyText(
         // Skip clang-tidy "<N> warnings/errors generated." trailers.
         if (file.contains(QLatin1Char(' '))) continue;
 
-        QString sarifLevel = sev;          // warning/error/note → SARIF 1:1
+        const QString& sarifLevel = sev;          // warning/error/note → SARIF 1:1
         QString sevTier;
         if (sev == QLatin1String("error"))       sevTier = QStringLiteral("MAJOR");
         else if (sev == QLatin1String("warning")) sevTier = QStringLiteral("MAJOR");

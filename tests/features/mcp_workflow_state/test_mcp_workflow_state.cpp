@@ -41,7 +41,7 @@ TEST(McpWorkflowState, Inv4TtlLogicPresent) {
     const QByteArray fSrc =
         QByteArray::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(fSrc.isEmpty());
-    const QByteArray txt = fSrc;
+    const QByteArray& txt = fSrc;
     EXPECT_TRUE(txt.contains("kTtlMs") || txt.contains("259200000"))
         << "72h TTL constant (kTtlMs) missing in cmdWorkflowState";
     EXPECT_TRUE(txt.contains("updated_at_ms"))
@@ -54,7 +54,7 @@ TEST(McpWorkflowState, Inv7SkillNameRegex) {
     const QByteArray fSrc =
         QByteArray::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(fSrc.isEmpty());
-    const QByteArray txt = fSrc;
+    const QByteArray& txt = fSrc;
     EXPECT_TRUE(txt.contains("A-Za-z0-9_-") && txt.contains("32"))
         << "skill name regex ^[A-Za-z0-9_-]{1,32}$ missing";
 }
@@ -87,7 +87,7 @@ TEST(McpWorkflowState, Inv9PayloadCap) {
     const QByteArray fSrc =
         QByteArray::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(fSrc.isEmpty());
-    const QByteArray txt = fSrc;
+    const QByteArray& txt = fSrc;
     EXPECT_TRUE(txt.contains("payload_too_large"))
         << "payload_too_large refusal code missing";
 }
@@ -98,7 +98,7 @@ TEST(McpWorkflowState, Inv10DotPrefixNotSlash) {
     const QByteArray fSrc =
         QByteArray::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(fSrc.isEmpty());
-    const QByteArray txt = fSrc;
+    const QByteArray& txt = fSrc;
     EXPECT_FALSE(txt.contains("\"wf/\""))
         << "slash separator must not be used (not valid in key charset)";
     EXPECT_TRUE(txt.contains("\"wf.\"") || txt.contains("wf."))
