@@ -560,6 +560,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Every tab shows the same mouse pointer over the terminal text: the I-beam, or the pointing hand over a link.** (ANTS-6853)
+  A new tab, and a tab whose program takes the mouse (htop, or vim
+  with mouse on), now show the I-beam too.
+
 - **`token_usage` with `fields`, `compact` or `encoding` reports the calling session's own figures.** (ANTS-6850)
 
 - **cc-job keeps a job's output until something has actually shown it** (ANTS-6845)

@@ -2560,6 +2560,8 @@ if(ANTS_TESTS)
                 # URL / highlight / search / quick-select spans land on the
                 # cells that hold them after non-BMP or combining characters.
                 tests/features/span_cell_columns/test_span_cell_columns.cpp
+                # ANTS-6853 — one pointer shape over the terminal text.
+                tests/features/terminal_pointer_shape/test_terminal_pointer_shape.cpp
                 tests/features/search_matches_follow_scrollback/test_search_matches_follow_scrollback.cpp
                 # ANTS-2119 M2 — OSC 8 phishing classifier (static; needs the full
                 # TerminalWidget link set, same as terminal_a11y above).

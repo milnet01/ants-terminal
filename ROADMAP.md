@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6852 -->
+<!-- ants-roadmap-id-high-water: ANTS=6853 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -75035,6 +75035,22 @@ indie-review finding.
   Kind: fix.
   Source: in-session-2026-11-21 (measuring ANTS-1403).
   Lanes: mcp.
+
+- ✅ [ANTS-6853] **Every terminal tab shows the same mouse pointer: the text I-beam, or the pointing hand over a link.**
+  Reported by the user 2026-11-21. Located: TerminalWidget sets the
+  pointer only at the end of mouseMoveEvent. Nothing sets a starting
+  shape, so a tab starts with Qt's arrow, and the mouse-reporting branch
+  returns before the setCursor line. A tab kept whichever shape it last
+  had. Fix: start with the I-beam and keep it while mouse reporting is
+  on.
+  Shipped 2026-11-21. The widget sets the I-beam in its constructor, and
+  the mouse-reporting branch of mouseMoveEvent sets it before returning.
+  Locked by tests/features/terminal_pointer_shape (INV-1 to INV-4): red
+  before the fix, green after, and each fix line's removal caught.
+  **Layman:** Some tabs showed an arrow pointer and others the text pointer; now every tab shows the text pointer.
+  Kind: fix.
+  Source: user-request-2026-11-21.
+  Lanes: terminalwidget.
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 

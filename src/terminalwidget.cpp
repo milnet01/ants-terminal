@@ -406,6 +406,8 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
 
     setMinimumSize(m_cellWidth * 20 + m_padding * 2, m_cellHeight * 5 + m_padding * 2);
     setMouseTracking(true);
+    // ANTS-6853 — every tab starts with the text pointer, not Qt's arrow.
+    setCursor(Qt::IBeamCursor);
 
     // Search bar (hidden by default)
     m_searchBar = new QWidget(this);
@@ -4063,6 +4065,9 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
                 sendMouseEvent(event, false, false);
             }
         }
+        // ANTS-6853 — links are not clickable while the program takes the
+        // mouse, so a hand left from an earlier hover goes back to the I-beam.
+        setCursor(Qt::IBeamCursor);
         return;
     }
 
