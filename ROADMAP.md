@@ -113002,13 +113002,16 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: in-session-2026-10-26.
   Lanes: build.
 
-- 📋 [ANTS-6287] **roadmap_log's to_status schema lists only the canonical words, though flip and flip_batch accept done/wip/todo, and both refuse a capitalised canonical word ("Shipped") while accepting "DONE".**
+- ✅ [ANTS-6287] **roadmap_log's to_status schema lists only the canonical words, though flip and flip_batch accept done/wip/todo, and both refuse a capitalised canonical word ("Shipped") while accepting "DONE".**
   rlCanonicalToStatus (src/remotecontrol_roadmap_query.cpp) lowercases only the
   synonyms and returns any other word unchanged, so the canonical check is
   case-sensitive on every flip path. The to_status enum (lifecycleEnum,
   src/claudeintegration.cpp) omits the synonyms, so a schema-validating client
   refuses them first. Raised as an open decision in PR #1; predates it.
   Decide: widen the enum, or name the synonyms in the description only.
+  Shipped e0461b24: canonical words resolve in any case. The enum stays
+  canonical-only, as the flip path's ANTS-1932/2126 comment already
+  decided: synonyms are accepted, not advertised.
   **Layman:** Claude may refuse to send 'done' as a roadmap status even though the tool accepts it, and 'Shipped' with a capital S is refused while 'DONE' works.
   Kind: review-fix.
   Source: code-review-2026-10-29.
