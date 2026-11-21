@@ -739,6 +739,10 @@ TEST_F(McpResultOffload, Inv9BaseEnvelopeNeverExceedsBody) {
     EXPECT_FALSE(o.value("offloaded").toBool());
     // The core INV-9 predicate holds unconditionally: output ≤ body bytes.
     EXPECT_LE(env.toUtf8().size(), body.toUtf8().size());
+    // ANTS-6289 — and the declined body was never written, so it neither
+    // sits orphaned in the spill dir nor evicted a live handle for its room.
+    EXPECT_TRUE(QDir(m_tmp.path()).entryList(QDir::Files).isEmpty())
+        << QDir(m_tmp.path()).entryList(QDir::Files).join(' ').toStdString();
 }
 
 // INV-14 (ANTS-3545) — read_spill row-paging: mcp::readSpillRows pages the
@@ -999,7 +1003,10 @@ TEST_F(McpResultOffload, Ants4397ShapeSummaryForLongRows) {
     for (int i = 0; i < shape.size(); ++i) {
         const QJsonObject r = shape.at(i).toObject();
         EXPECT_EQ(r.value("index").toInt(), i);
-        EXPECT_GT(r.value("bytes").toInt(), 1900);
+        // ANTS-6289 — the row's own compact JSON, not its sizing wrapper.
+        EXPECT_EQ(r.value("bytes").toInt(),
+                  QJsonDocument(QJsonArray{arr.at(i)})
+                      .toJson(QJsonDocument::Compact).size() - 2);
         EXPECT_LT(r.value("head").toString().size(), 100)
             << "the head is a SAMPLE, not the row — duplicating the row "
                "is the defect being fixed";

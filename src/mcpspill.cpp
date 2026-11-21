@@ -360,10 +360,10 @@ QString spillHint(const QString &toolName, const QString &handle,
 // (a preview, not a near-copy) and at total - S0 - 1, which keeps the
 // envelope strictly smaller than the body (INV-9). Returns the rows added.
 int addHeadRows(QJsonObject &o, const QJsonArray &fullArr, const QString &domKey,
-                int domCount, qint64 total) {
+                qint64 total) {
     QJsonObject probe = o;
     probe[QStringLiteral("head_rows_key")]       = domKey;
-    probe[QStringLiteral("row_count")]           = domCount;
+    probe[QStringLiteral("row_count")]           = int(fullArr.size());
     probe[QStringLiteral("head_rows_truncated")] = false;
     probe[QStringLiteral("head_rows")]           = QJsonArray();
     const qint64 s0 = QJsonDocument(probe).toJson(QJsonDocument::Compact).size();
@@ -384,7 +384,7 @@ int addHeadRows(QJsonObject &o, const QJsonArray &fullArr, const QString &domKey
     if (!headRows.isEmpty()) {
         o[QStringLiteral("head_rows_key")] = domKey;
         o[QStringLiteral("head_rows")]     = headRows;
-        o[QStringLiteral("head_rows_truncated")] = headRows.size() < domCount;
+        o[QStringLiteral("head_rows_truncated")] = headRows.size() < fullArr.size();
     }
     return int(headRows.size());
 }
@@ -398,7 +398,7 @@ int addHeadRows(QJsonObject &o, const QJsonArray &fullArr, const QString &domKey
 // omitted, with a hint, because a list of row lengths says no more than
 // `row_count` + `bytes` (ANTS-4519).
 void addRowsPreview(QJsonObject &o, const QJsonArray &fullArr, const QString &domKey,
-                    int domCount, qint64 total) {
+                    qint64 total) {
     const qint64 usedSoFar = QJsonDocument(o).toJson(QJsonDocument::Compact).size();
     const qint64 shapeBudget =
         qMin<qint64>(offloadHeadBytes() * 2, total - usedSoFar - 1);
@@ -424,7 +424,8 @@ void addRowsPreview(QJsonObject &o, const QJsonArray &fullArr, const QString &do
             const QByteArray &elBytes = elBytesByRow.at(i);
             QJsonObject r;
             r[QStringLiteral("index")] = i;
-            r[QStringLiteral("bytes")] = static_cast<int>(elBytes.size());
+            // ANTS-6289 — less the 6-byte {"v":…} sizing wrapper.
+            r[QStringLiteral("bytes")] = static_cast<int>(elBytes.size() - 6);
             if (headChars > 0) {
                 // ANTS-5153 — elBytes is the {"v":row} wrapper built for
                 // sizing, so sample the row's own JSON.
@@ -481,7 +482,7 @@ void addRowsPreview(QJsonObject &o, const QJsonArray &fullArr, const QString &do
     } else if (!shape.isEmpty()) {
         o[QStringLiteral("rows_preview_key")] = domKey;
         o[QStringLiteral("rows_preview")]     = shape;
-        o[QStringLiteral("rows_preview_truncated")] = shape.size() < domCount;
+        o[QStringLiteral("rows_preview_truncated")] = shape.size() < fullArr.size();
         // ANTS-4474 — only on the narrowed arm, where it explains why a head
         // is shorter than usual.
         if (headChars < kHeadLadder[0])
@@ -529,22 +530,6 @@ QString offloadBody(const QString &toolName, const QString &body,
         QString::fromLatin1(QCryptographicHash::hash(
             utf8, QCryptographicHash::Sha256).toHex());
 
-    // Write the full body to the content-addressed cache. Any failure is
-    // fail-open: return the original body unchanged (INV-11).
-    if (!ensurePrivateDir(spillDir())) return body;
-    const QString path = spillPath(handle);
-    {
-        QSaveFile f(path);
-        if (!f.open(QIODevice::WriteOnly)) return body;
-        if (f.write(utf8) != utf8.size()) { f.cancelWriting(); return body; }
-        if (!f.commit()) return body;   // commit-or-nothing: no orphan temp
-    }
-    // 0600 on the final path, post-commit. ANTS-5104 — the spill holds the
-    // response body, so one that cannot be made owner-only is removed and
-    // the call fails open (INV-11) rather than leaving it readable.
-    if (!setOwnerOnlyPerms(path)) { QFile::remove(path); return body; }
-    evict(handle);
-
     // Build the head+pointer envelope. The head guard (offload only fires
     // when total > offloadHeadBytes()) makes the head a strict prefix, so
     // head_truncated is always true here (INV-2).
@@ -586,8 +571,8 @@ QString offloadBody(const QString &toolName, const QString &body,
     if (domCount > 0) {
         o[QStringLiteral("row_count")] = domCount;
         const QJsonArray fullArr = root.value(domKey).toArray();
-        if (addHeadRows(o, fullArr, domKey, domCount, total) < domCount)
-            addRowsPreview(o, fullArr, domKey, domCount, total);
+        if (addHeadRows(o, fullArr, domKey, total) < domCount)
+            addRowsPreview(o, fullArr, domKey, total);
     }
     // INV-9 (ANTS-3540) — the offload must be a strict net saving. The base
     // head+pointer envelope's fixed overhead (handle + hint + keys: a few hundred bytes)
@@ -597,9 +582,26 @@ QString offloadBody(const QString &toolName, const QString &body,
     // Fail open when the finished envelope is not strictly smaller than the
     // body: the untrimmed body is both correct and smaller (same posture as the
     // INV-11 write-failure fail-open). Guarantees out_bytes < bytes for every
-    // offloaded envelope, at every config.
+    // offloaded envelope, at every config. ANTS-6289 — checked before the
+    // write, so a declined body leaves no spill and evicts nothing.
     const QByteArray envelope = QJsonDocument(o).toJson(QJsonDocument::Compact);
     if (envelope.size() >= total) return body;
+
+    // Write the full body to the content-addressed cache. Any failure is
+    // fail-open: return the original body unchanged (INV-11).
+    if (!ensurePrivateDir(spillDir())) return body;
+    const QString path = spillPath(handle);
+    {
+        QSaveFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) return body;
+        if (f.write(utf8) != utf8.size()) { f.cancelWriting(); return body; }
+        if (!f.commit()) return body;   // commit-or-nothing: no orphan temp
+    }
+    // 0600 on the final path, post-commit. ANTS-5104 — the spill holds the
+    // response body, so one that cannot be made owner-only is removed and
+    // the call fails open (INV-11) rather than leaving it readable.
+    if (!setOwnerOnlyPerms(path)) { QFile::remove(path); return body; }
+    evict(handle);
     return QString::fromUtf8(envelope);
 }
 
