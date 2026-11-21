@@ -108796,7 +108796,7 @@ worked after these.
   Source: clang-tidy-2026-11-19.
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6841] **The tab_rename_pin spec's Invariant 3 names the one function that writes a tab's label.**
+- ✅ [ANTS-6841] **The tab_rename_pin spec's Invariant 3 names the one function that writes a tab's label.**
   tests/features/tab_rename_pin/spec.md, Invariant 3, "Grep rule"
   paragraph: it lists five allowed `m_tabWidget->setTabText(` sites
   (setTabTitleForRemote, updateTabTitles, the titleChanged lambda,
@@ -108804,6 +108804,8 @@ worked after these.
   hold one call, inside `MainWindow::setTabLabel` (src/mainwindow.cpp).
   Rewrite the rule to name that function, and check the test's scrape
   still matches what the paragraph says.
+  Shipped: Invariant 3 names setTabLabel; its grep rule names the two
+  checks the test runs.
   **Layman:** A test's description lists five places that may set a tab's title; the code now has only one, so the description misleads.
   Kind: doc-fix.
   Source: in-session-2026-11-20 (session 302 handoff).
