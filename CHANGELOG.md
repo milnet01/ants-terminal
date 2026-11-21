@@ -544,6 +544,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`token_usage` with `fields`, `compact` or `encoding` reports the calling session's own figures.** (ANTS-6850)
+
 - **cc-job keeps a job's output until something has actually shown it** (ANTS-6845)
   `cc-job wait --grep` counts as reading the log only when it printed
   matching lines, so `cc-job clean` no longer deletes output nobody saw.

@@ -74972,7 +74972,7 @@ indie-review finding.
   Source: in-session-2026-11-14 (split from ANTS-5730).
   Lanes: verifytrust.
 
-- 🚧 [ANTS-6850] **token_usage with fields= or compact returns the terminal's session, not the caller's.**
+- ✅ [ANTS-6850] **token_usage with fields= or compact returns the terminal's session, not the caller's.**
   Reproduced 2026-11-21 through ants-mcpd. Plain token_usage listed this
   session's roadmap_query x6, session_message and session_orient, with
   total_wrap_bytes 419. fields:[calls,total_wrap_bytes,mcpd] listed only
@@ -74986,6 +74986,11 @@ indie-review finding.
 
   Fix: ants-mcpd forwards token_usage without fields, compact and encoding
   (compact:false). It overlays its session, then narrows the reply itself.
+  Shipped e5b1815b. TokenUsageEngine::wholeReportRequest and narrowForCaller;
+  mcp::wantsCompact shared with the dispatcher. ANTS-5311 INV-12, proved red
+  against pass-through stubs. Live: a fresh ants-mcpd over stdio listed its
+  own read_region x2 under fields= and compact:true. Reaches a session on
+  its next /mcp reconnect.
   **Layman:** Asking the token report for only some of its fields shows the wrong session's numbers.
   Kind: fix.
   Source: in-session-2026-11-21 (measuring ANTS-1403).
