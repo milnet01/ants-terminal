@@ -101,7 +101,7 @@ bool wrapNextProbeMatches(const std::string &input,
 
 int runCase(const std::string &caseName, const std::string &input,
             int rows = 24, int cols = 80,
-            std::function<void(TerminalGrid &)> seed = {}) {
+            const std::function<void(TerminalGrid &)> &seed = {}) {
     TerminalGrid gBulk(rows, cols);
     TerminalGrid gScalar(rows, cols);
     if (seed) {

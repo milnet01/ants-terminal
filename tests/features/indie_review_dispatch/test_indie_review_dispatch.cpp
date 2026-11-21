@@ -349,7 +349,7 @@ TEST(IndieReviewDispatch, G16_ResponseBodyRedaction) {
     // (cold-eyes M-new-1: redact-then-truncate ordering).
     const std::string redactFn =
         ants_test::slurpFunctionBody(eng,
-            "redactAndTruncate(QByteArray body");
+            "QString redactAndTruncate(");
     ASSERT_FALSE(redactFn.empty());
     const auto replacePos  = redactFn.find("text.replace(apiKey");
     const auto truncatePos = redactFn.find("utf8.truncate(");

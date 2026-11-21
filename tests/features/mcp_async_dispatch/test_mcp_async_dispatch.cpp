@@ -424,7 +424,7 @@ TEST(McpAsyncDispatch, Inv15DeferredReplyIsWrittenOnceWithoutBlocking) {
         QStringLiteral("ants_deferred_probe"),
         ClaudeIntegration::CallerCwdContract::Required,
         ClaudeIntegration::DeferredToolHandler{
-            [](const QJsonObject &, std::function<void(QString)> reply) {
+            [](const QJsonObject &, const std::function<void(QString)> &reply) {
                 QTimer::singleShot(200, [reply]() {
                     reply(QStringLiteral("{\"ok\":true,\"reply\":\"first\"}"));
                     reply(QStringLiteral("{\"ok\":true,\"reply\":\"second\"}"));

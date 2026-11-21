@@ -40,7 +40,7 @@ TEST(TestAuditPatternDrift, Inv1DimensionsMatchEngine) {
     ASSERT_FALSE(root.isEmpty()) << "could not load/parse "
                                  << TEST_AUDIT_PATTERNS_JSON;
     const QJsonArray dims = root.value(QStringLiteral("dimensions")).toArray();
-    const QStringList& engine = TestAuditEngine::kDimensions();
+    const QStringList &engine = TestAuditEngine::kDimensions();
     ASSERT_EQ(dims.size(), engine.size())
         << "JSON dimensions count != kDimensions() count";
     for (int i = 0; i < engine.size(); ++i) {
@@ -122,9 +122,9 @@ TEST(TestAuditPatternDrift, Ants4111DefaultDimensionsMatchEngine) {
 
     // Internal consistency: default + style partitions the full taxonomy, and
     // the style five are still ACCEPTED — only no longer default.
-    const QStringList& all = TestAuditEngine::kDimensions();
-    const QStringList& def = TestAuditEngine::kDefaultDimensions();
-    const QStringList& sty = TestAuditEngine::kStyleDimensions();
+    const QStringList &all = TestAuditEngine::kDimensions();
+    const QStringList &def = TestAuditEngine::kDefaultDimensions();
+    const QStringList &sty = TestAuditEngine::kStyleDimensions();
     EXPECT_EQ(def.size() + sty.size(), all.size());
     for (const QString &d : sty) {
         EXPECT_TRUE(all.contains(d)) << d.toStdString() << " must stay accepted";

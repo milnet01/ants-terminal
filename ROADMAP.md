@@ -115007,9 +115007,16 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5439] **clang-tidy performance-unnecessary-value-param: 29 sites in 13 files.**
+- ✅ [ANTS-5439] **clang-tidy performance-unnecessary-value-param: 29 sites in 13 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Fix or suppress as one class.
+  2026-11-21: fixed by clang-tidy -fix, then every hunk read. Two stay
+  by value with a NOLINT: TerminalWidget::onVtBatch
+  (tests/features/vtbatch_zero_copy and sync_output_snapshot name the
+  signature; one refcount bump per batch) and
+  registerProjectScopedVerbs' RegistryHost (once per process; ANTS-4932
+  quotes it). test_indie_review_dispatch now anchors on the function
+  name, not its parameter list.
   **Layman:** Functions that take a copy of an argument they only read.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.

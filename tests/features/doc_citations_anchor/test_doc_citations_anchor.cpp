@@ -80,7 +80,7 @@ const Row kRows[] = {
      "`parse` (`src/gone.cpp:1`) absent\n", "int parse(int x);\n", false, "", false},
 };
 
-QJsonObject runRow(const Row &r, DocCitations::Options opts = {}) {
+QJsonObject runRow(const Row &r, const DocCitations::Options &opts = {}) {
     Fixture fx;
     fx.write(QStringLiteral("src/a.cpp"), r.target);
     const QString docPath = fx.doc(r.docLine);

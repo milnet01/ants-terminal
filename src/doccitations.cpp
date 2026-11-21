@@ -1215,7 +1215,7 @@ static void dcQuotationPass(QJsonObject &out, const QString &rootCanonical,
                    && lineStarts.at(k + 1) <= m.capturedStart(0))
                 ++k;
             const int qLineIdx  = i + k;
-            const QString& qLine = prefix.at(qLineIdx);
+            const QString &qLine = prefix.at(qLineIdx);
 
             // ANTS-4637 — historical by design. Counted rather than
             // silently dropped: a suppressed quotation that is merely

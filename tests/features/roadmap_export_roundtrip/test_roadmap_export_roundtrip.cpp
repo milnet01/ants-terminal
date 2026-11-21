@@ -173,7 +173,7 @@ TEST(RoadmapExportCanonical, Inv19KeysSortByUtf16CodeUnit) {
 
 namespace {
 
-void sqlExec(QSqlDatabase db, const QString &sql, const QVariantList &binds = {}) {
+void sqlExec(const QSqlDatabase &db, const QString &sql, const QVariantList &binds = {}) {
     QSqlQuery q(db);
     ASSERT_TRUE(q.prepare(sql)) << q.lastError().text().toStdString() << " :: "
                                 << sql.toStdString();
@@ -182,7 +182,7 @@ void sqlExec(QSqlDatabase db, const QString &sql, const QVariantList &binds = {}
     ASSERT_TRUE(q.exec()) << q.lastError().text().toStdString() << " :: " << sql.toStdString();
 }
 
-QStringList sqlRows(QSqlDatabase db, const QString &sql) {
+QStringList sqlRows(const QSqlDatabase &db, const QString &sql) {
     QStringList out;
     QSqlQuery q(db);
     EXPECT_TRUE(q.exec(sql)) << q.lastError().text().toStdString() << " :: " << sql.toStdString();
@@ -521,7 +521,7 @@ QHash<QString, QString> inv2Substitutions() {
     };
 }
 
-QStringList pragmaColumns(QSqlDatabase db, const QString &table) {
+QStringList pragmaColumns(const QSqlDatabase &db, const QString &table) {
     QStringList out;
     QSqlQuery q(db);
     if (!q.exec(QStringLiteral("PRAGMA table_info(%1)").arg(table)))
@@ -531,7 +531,7 @@ QStringList pragmaColumns(QSqlDatabase db, const QString &table) {
     return out;
 }
 
-QSet<QString> pragmaForeignKeyColumns(QSqlDatabase db, const QString &table) {
+QSet<QString> pragmaForeignKeyColumns(const QSqlDatabase &db, const QString &table) {
     QSet<QString> out;
     QSqlQuery q(db);
     if (!q.exec(QStringLiteral("PRAGMA foreign_key_list(%1)").arg(table)))
@@ -545,7 +545,7 @@ QSet<QString> pragmaForeignKeyColumns(QSqlDatabase db, const QString &table) {
 // True when the two stores agree on every table. On disagreement `why` names
 // the table and the reason, and the caller decides whether that is a pass
 // (INV-3) or a failure (INV-2).
-bool inv2Diff(QSqlDatabase live, QSqlDatabase rebuilt, const QHash<QString, QString> &subs,
+bool inv2Diff(const QSqlDatabase &live, const QSqlDatabase &rebuilt, const QHash<QString, QString> &subs,
               QString *why) {
     const auto no = [&](const QString &msg) {
         *why = msg;
@@ -856,7 +856,7 @@ qint64 buildOrderFixture(RoadmapStore &s, const QString &rootDir) {
     return p;
 }
 
-qint64 projectIdOf(QSqlDatabase db, const QString &exportSlug) {
+qint64 projectIdOf(const QSqlDatabase &db, const QString &exportSlug) {
     QSqlQuery q(db);
     q.prepare(QStringLiteral("SELECT project_id FROM project WHERE export_slug = ?"));
     q.addBindValue(exportSlug);

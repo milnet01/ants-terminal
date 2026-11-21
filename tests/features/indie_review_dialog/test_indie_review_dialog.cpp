@@ -216,7 +216,7 @@ TEST(IndieReviewDialog, INV5_SynthesisViaDispatchOneNoReentry) {
     buildProject(tmp.path());
     Dlg dlg(tmp.path(), nullptr, nullptr);
     dlg.setJobRunner([](const LlmJob &,
-                        std::function<void(const LlmResult &)> done) {
+                        const std::function<void(const LlmResult &)> &done) {
         LlmResult r;
         r.ok = true;
         r.text = QStringLiteral("SYNTH-SUMMARY");

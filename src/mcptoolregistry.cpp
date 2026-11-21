@@ -101,7 +101,7 @@ const QVector<QString> &terminalScopedVerbNames() {
 }
 
 void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
-                                RegistryHost host) {
+                                RegistryHost host) {  // NOLINT(performance-unnecessary-value-param): once per process
 
     // ANTS-1636 — find_sources. Project-scoped topic-to-files
     // discovery; reads under <caller_cwd>/src + <caller_cwd>/tests.
@@ -239,7 +239,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // sweep on the GUI thread (ANTS-5035).
     sink.registerToolProvider("audit_run",
         ClaudeIntegration::CallerCwdContract::Required,
-        [=](const QJsonObject &args, std::function<void(QString)> reply) {
+        [=](const QJsonObject &args, const std::function<void(QString)> &reply) {
             const QString callerCwd = args.value(
                 QStringLiteral("caller_cwd")).toString();
             // ANTS-1833 — reject a non-existent root before it can

@@ -111,7 +111,7 @@ TEST(ReviewDialogBase, INV13_AllocateFoldInIdsCounterFailure) {
 TEST(ReviewDialogBase, INV15_DispatchOneBypassesBatchComplete) {
     TestReviewDialog dlg(QString(), nullptr, nullptr);
     dlg.setJobRunner([](const LlmJob &,
-                        std::function<void(const LlmResult &)> done) {
+                        const std::function<void(const LlmResult &)> &done) {
         LlmResult r;
         r.ok = true;
         r.text = QStringLiteral("synth-result");
@@ -138,7 +138,7 @@ TEST(ReviewDialogBase, INV16_SetLanesPreservesSurvivingReports) {
     TestReviewDialog dlg(QString(), nullptr, nullptr);
     // Synchronous runner so redispatch fills reports() before it returns.
     dlg.setJobRunner([](const LlmJob &job,
-                        std::function<void(const LlmResult &)> done) {
+                        const std::function<void(const LlmResult &)> &done) {
         LlmResult r; r.ok = true;
         r.text = QStringLiteral("R:") + job.id;
         done(r);
@@ -232,7 +232,7 @@ TEST(ReviewDialogBase, INV20_FailedJobNotStoredStatusNamesFailure) {
     TestReviewDialog dlg(QString(), nullptr, nullptr);
     bool bravoSucceeds = false;
     dlg.setJobRunner([&](const LlmJob &job,
-                        std::function<void(const LlmResult &)> done) {
+                        const std::function<void(const LlmResult &)> &done) {
         LlmResult r;
         if (job.id == QStringLiteral("lane-alpha")) {
             r.ok = true;
@@ -320,7 +320,7 @@ TEST(ReviewDialogBase, INV22_StartDispatchNoLanesStartsNoRound) {
     Config cfg;
     cfg.setAiEndpoint(QStringLiteral("http://127.0.0.1:9/v1/chat/completions"));
     TestReviewDialog dlg(QString(), nullptr, &cfg);
-    dlg.setJobRunner([](const LlmJob &, std::function<void(const LlmResult &)>) {
+    dlg.setJobRunner([](const LlmJob &, const std::function<void(const LlmResult &)>&) {
         FAIL() << "no lane means no job should ever be run";
     });
     // No setLanes call: m_lanes stays empty.
@@ -340,7 +340,7 @@ namespace {
 // cases below. Records how many jobs it ran so a test can assert the
 // round still executed despite (or without) the warning.
 LlmDispatcher::JobRunner countingOkRunner(int *calls) {
-    return [calls](const LlmJob &, std::function<void(const LlmResult &)> done) {
+    return [calls](const LlmJob &, const std::function<void(const LlmResult &)> &done) {
         ++*calls;
         LlmResult r;
         r.ok = true;

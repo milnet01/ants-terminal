@@ -89,10 +89,10 @@ private slots:
     // request path; binds can overlap.
     void onBindShortcutsResponse(uint response, const QVariantMap &results,
                                  const QDBusMessage &message);
-    void onActivatedSignal(QDBusObjectPath sessionHandle,
-                           QString shortcutId,
+    void onActivatedSignal(const QDBusObjectPath &sessionHandle,
+                           const QString &shortcutId,
                            qulonglong timestamp,
-                           QVariantMap options);
+                           const QVariantMap &options);
 
 private:
     struct PendingBind {

@@ -50,7 +50,7 @@ std::atomic<int> g_inFlightCount{0};
 
 // ANTS-1352 INV-21 — redact-then-truncate. Order matters; see
 // docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md § 3.5.
-QString redactAndTruncate(QByteArray body, const QString &apiKey,
+QString redactAndTruncate(const QByteArray &body, const QString &apiKey,
                           int maxBytes) {
     QString text = QString::fromUtf8(body);
     if (!apiKey.isEmpty()) {

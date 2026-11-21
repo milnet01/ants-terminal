@@ -24,7 +24,7 @@ void writeFile(const QString &path, const QByteArray &bytes) {
     f.write(bytes);
 }
 
-QJsonObject call(const QTemporaryDir &dir, QJsonObject args = {}) {
+QJsonObject call(const QTemporaryDir &dir, const QJsonObject &args = {}) {
     return FunctionSizes::run(QFileInfo(dir.path()).canonicalFilePath(), args);
 }
 

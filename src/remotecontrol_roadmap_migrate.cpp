@@ -83,7 +83,7 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // diverge, step 6's re-run detection would miss, every re-run would attempt
     // a new project row, and INV-7's idempotency would fail. One canonicaliser,
     // named — run() takes an already-canonical root and does not redo it.
-    const QString& root = cwd;
+    const QString &root = cwd;
     const QString leaf = QDir(root).dirName();
 
     // 0b — ANTS-4600. The store is MACHINE-GLOBAL, so a root registered from

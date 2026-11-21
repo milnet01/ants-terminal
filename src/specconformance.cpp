@@ -257,8 +257,8 @@ QJsonObject run(const QString &absPath, const Options &opt) {
             if (c.size() < 2) continue;
             const int rowLine = row + 1;   // 1-based
 
-            const QString& rawInput    = c.at(0);
-            const QString& rawExpected = c.at(1);
+            const QString &rawInput    = c.at(0);
+            const QString &rawExpected = c.at(1);
             if (rawExpected.isEmpty()) {
                 QJsonObject cd;
                 cd[QStringLiteral("kind")] =

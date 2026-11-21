@@ -429,7 +429,7 @@ TEST(McpReadRegion, Ants4700PerLineClipMakesRoomForMoreLines) {
            "index into four";
     // The marker is the one workspace_search uses, and the clipped line still
     // carries its identity — the row label a caller recognises.
-    const QString& first = got.at(0);
+    const QString &first = got.at(0);
     EXPECT_TRUE(first.startsWith(QStringLiteral("FAT0 ")))
         << "got: " << first.toStdString();
     EXPECT_TRUE(first.endsWith(QChar(0x2026)))

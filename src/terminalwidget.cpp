@@ -2472,7 +2472,7 @@ QRegion TerminalWidget::takeOutputDamageForTest() {
     return out;
 }
 
-void TerminalWidget::onVtBatch(VtBatchPtr batch) {
+void TerminalWidget::onVtBatch(VtBatchPtr batch) {  // NOLINT(performance-unnecessary-value-param): tests/features/vtbatch_zero_copy names it
     // The parse work is already done on the worker (VtStream). Apply the
     // pre-built VtAction stream to the grid, then run the GUI-side
     // side-effects.

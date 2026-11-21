@@ -61,7 +61,7 @@ TEST(TriggerLineDispatch, Inv2SignalPayload) {
     feed(w, "build failed\n");
 
     ASSERT_EQ(spy.count(), 1);
-    const QList<QVariant>& args = spy.at(0);
+    const QList<QVariant> &args = spy.at(0);
     EXPECT_EQ(args.at(1).toString(), QStringLiteral("command"));
     EXPECT_EQ(args.at(2).toString(), QStringLiteral("rebuild.sh"));
 }

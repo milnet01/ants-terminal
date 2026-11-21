@@ -343,10 +343,10 @@ void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,
 // the single-line form silenced the first parameter and left shortcutId --
 // the one this comment is actually about -- still reported.
 // cppcheck-suppress-begin passedByValue
-void GlobalShortcutsPortal::onActivatedSignal(QDBusObjectPath sessionHandle,
-                                              QString shortcutId,
+void GlobalShortcutsPortal::onActivatedSignal(const QDBusObjectPath &sessionHandle,
+                                              const QString &shortcutId,
                                               qulonglong timestamp,
-                                              QVariantMap options) {
+                                              const QVariantMap &options) {
     // cppcheck-suppress-end passedByValue
     Q_UNUSED(sessionHandle);
     Q_UNUSED(timestamp);

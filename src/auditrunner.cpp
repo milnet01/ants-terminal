@@ -2388,7 +2388,7 @@ RunResult runAudit(const RunRequest &req) {
             r.changedFilesCount = static_cast<int>(sources.size());
             for (auto it = toolAbsPath.constBegin();
                  it != toolAbsPath.constEnd(); ++it) {
-                const QString& tool = it.key();
+                const QString &tool = it.key();
                 if (!AuditScope::isFileScopedTool(tool)) {
                     perToolPaths[tool] = req.paths;  // gitleaks/trivy: full repo
                     continue;
@@ -2445,7 +2445,7 @@ RunResult runAudit(const RunRequest &req) {
             QStringList toDrop;
             for (auto it = toolAbsPath.constBegin();
                  it != toolAbsPath.constEnd(); ++it) {
-                const QString& tool = it.key();
+                const QString &tool = it.key();
                 if (!AuditScope::isFileScopedTool(tool)) {
                     r.toolsSkipped.append({tool,
                         QStringLiteral("not_file_scoped")});
@@ -2618,7 +2618,7 @@ RunResult runAudit(const RunRequest &req) {
 
     for (auto it = toolAbsPath.constBegin();
          it != toolAbsPath.constEnd(); ++it) {
-        const QString& tool = it.key();
+        const QString &tool = it.key();
         auto owned = std::make_shared<QProcess>();
         // ANTS-3847 — the callbacks capture this plain pointer. Capturing the
         // shared_ptr made each QProcess own the connections and timers that
