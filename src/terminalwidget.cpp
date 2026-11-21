@@ -477,6 +477,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_searchDebounce.setInterval(120);
     connect(&m_searchDebounce, &QTimer::timeout, this,
             &TerminalWidget::performSearch);
+    m_searchScanTimer.setSingleShot(true);
+    m_searchScanTimer.setInterval(0);
+    connect(&m_searchScanTimer, &QTimer::timeout, this,
+            &TerminalWidget::continueSearchScan);
     connect(m_searchInput, &QLineEdit::textChanged, this, [this](const QString &) {
         m_searchDebounce.start();
     });
@@ -2575,7 +2579,7 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     const qint64 droppedFromFront =
         static_cast<qint64>(m_grid->scrollbackPushed() - pushedBefore)
         - (m_grid->scrollbackSize() - sbSizeBefore);
-    if (droppedFromFront > 0 && !m_searchMatches.empty())
+    if (droppedFromFront > 0 && (!m_searchMatches.empty() || m_searchScanNext >= 0))
         shiftSearchMatches(static_cast<int>(
             std::min<qint64>(droppedFromFront, std::numeric_limits<int>::max())));
     // ANTS-6767 — the batch could change only the lines that were on screen
@@ -4997,6 +5001,9 @@ void TerminalWidget::showSearchBar() {
 void TerminalWidget::hideSearchBar() {
     m_searchVisible = false;
     m_searchBar->hide();
+    m_searchScanTimer.stop();
+    m_searchScanNext = -1;
+    m_searchPickPending = false;
     m_searchMatches.clear();
     m_searchMatchesCapped = false;
     m_searchRe.reset();
@@ -5007,7 +5014,8 @@ void TerminalWidget::hideSearchBar() {
     update();
 }
 
-void TerminalWidget::appendLineMatches(const QRegularExpression &re, int gl) {
+void TerminalWidget::appendLineMatches(const QRegularExpression &re, int gl,
+                                       std::vector<SearchMatch> &out) {
     QString text = lineText(gl);
     // ANTS-2000 — search ignores the blanks that pad a line to the grid
     // width, so a query of spaces does not match every empty cell (user
@@ -5033,12 +5041,15 @@ void TerminalWidget::appendLineMatches(const QRegularExpression &re, int gl) {
         if (!textCols) textCols = lineColumns(gl);
         const int startCol = textCols->columnAt(m.capturedStart());
         const int lastCol = textCols->lastColumnBefore(m.capturedEnd());
-        m_searchMatches.push_back({gl, startCol, lastCol - startCol + 1});
+        out.push_back({gl, startCol, lastCol - startCol + 1});
     }
 }
 
 void TerminalWidget::performSearch() {
     m_searchText = m_searchInput->text();
+    m_searchScanTimer.stop();
+    m_searchScanNext = -1;
+    m_searchPickPending = false;
     m_searchMatches.clear();
     m_searchMatchesCapped = false;
     m_searchRe.reset();
@@ -5061,9 +5072,6 @@ void TerminalWidget::performSearch() {
         update();
         return;
     }
-
-    int scrollbackSize = m_grid->scrollbackSize();
-    int totalLines = scrollbackSize + m_grid->rows();
 
     // Build the effective pattern. Non-regex mode → escape user input; whole-word wraps in \b.
     QString effectivePattern = m_searchRegexMode
@@ -5096,39 +5104,71 @@ void TerminalWidget::performSearch() {
     m_searchLabel->setToolTip(QString());
     applyInputStyle(false);
 
-    // ANTS-6494 — scan newest first and stop at the cap, so a capped search
-    // keeps the matches nearest the screen; then restore line order.
-    int gl = totalLines - 1;
-    for (; gl >= 0 && m_searchMatches.size() < kMaxSearchMatches; --gl)
-        appendLineMatches(re, gl);
-    m_searchMatchesCapped = gl >= 0;
-    std::sort(m_searchMatches.begin(), m_searchMatches.end(),
-              [](const SearchMatch &a, const SearchMatch &b) {
-                  return a.globalLine != b.globalLine ? a.globalLine < b.globalLine
-                                                      : a.col < b.col;
-              });
-    capSearchMatches();
     m_searchRe = re;
+    m_searchScanNext = m_grid->scrollbackSize() + m_grid->rows() - 1;
+    m_searchPickPending = true;
+    continueSearchScan();
+}
 
-    if (!m_searchMatches.empty()) {
-        int viewCenter = scrollbackSize - m_scrollOffset + m_grid->rows() / 2;
-        m_currentMatchIdx = 0;
-        for (int i = 0; i < static_cast<int>(m_searchMatches.size()); ++i) {
-            if (m_searchMatches[i].globalLine >= viewCenter) {
-                m_currentMatchIdx = i;
-                break;
-            }
-        }
-        scrollToMatch();
+void TerminalWidget::continueSearchScan() {
+    if (!m_searchRe) return;
+    // Output between slices can shrink the grid; never read past its end.
+    const int totalLines = m_grid->scrollbackSize() + m_grid->rows();
+    m_searchScanNext = std::min(m_searchScanNext, totalLines - 1);
+
+    // ANTS-6494 — scan newest first and stop at the cap, so a capped search
+    // keeps the matches nearest the screen. Each slice's lines are all older
+    // than the matches already kept, so the slice, put in line order, goes
+    // in front of them.
+    const int sliceLines = std::max(1, m_searchSliceCells / std::max(1, m_grid->cols()));
+    const int sliceEnd = std::max(-1, m_searchScanNext - sliceLines);
+    std::vector<SearchMatch> slice;
+    int gl = m_searchScanNext;
+    for (; gl > sliceEnd && m_searchMatches.size() + slice.size() < kMaxSearchMatches; --gl)
+        appendLineMatches(*m_searchRe, gl, slice);
+    std::sort(slice.begin(), slice.end(), [](const SearchMatch &a, const SearchMatch &b) {
+        return a.globalLine != b.globalLine ? a.globalLine < b.globalLine : a.col < b.col;
+    });
+    m_searchMatches.insert(m_searchMatches.begin(), slice.begin(), slice.end());
+    if (m_currentMatchIdx >= 0) m_currentMatchIdx += static_cast<int>(slice.size());
+    m_searchScanNext = gl;
+    if (m_searchMatches.size() >= kMaxSearchMatches) {
+        if (gl >= 0) m_searchMatchesCapped = true;
+        m_searchScanNext = -1;
     }
+    capSearchMatches();
 
+    pickPendingCurrentMatch();
     updateSearchCounter();
     update();
+    if (m_searchScanNext >= 0) m_searchScanTimer.start();
+}
+
+void TerminalWidget::pickPendingCurrentMatch() {
+    if (!m_searchPickPending) return;
+    const int viewCenter = m_grid->scrollbackSize() - m_scrollOffset + m_grid->rows() / 2;
+    const bool done = m_searchScanNext < 0;
+    // A line at or below the centre not yet scanned could hold the match.
+    if (!done && m_searchScanNext >= viewCenter) return;
+    const auto at = std::lower_bound(
+        m_searchMatches.begin(), m_searchMatches.end(), viewCenter,
+        [](const SearchMatch &m, int line) { return m.globalLine < line; });
+    if (at != m_searchMatches.end()) {
+        m_currentMatchIdx = static_cast<int>(at - m_searchMatches.begin());
+    } else if (!done) {
+        return;  // none below the centre: the oldest match wins, once known
+    } else if (!m_searchMatches.empty()) {
+        m_currentMatchIdx = 0;
+    }
+    m_searchPickPending = false;
+    scrollToMatch();
 }
 
 void TerminalWidget::updateSearchCounter() {
     QString total = QString::number(m_searchMatches.size());
     if (m_searchMatchesCapped) total += QLatin1Char('+');
+    // ANTS-5418 — the total is still growing while the scan runs.
+    if (m_searchScanNext >= 0) total += QChar(0x2026);  // …
     m_searchLabel->setText(QString("%1/%2")
         .arg(m_searchMatches.empty() ? 0 : m_currentMatchIdx + 1)
         .arg(total));
@@ -5153,6 +5193,9 @@ void TerminalWidget::shiftSearchMatches(int dropped) {
     const int gone = static_cast<int>(firstKept - m_searchMatches.begin());
     m_searchMatches.erase(m_searchMatches.begin(), firstKept);
     for (SearchMatch &m : m_searchMatches) m.globalLine -= dropped;
+    // A scan still running moves with its lines; one whose lines are all
+    // gone is done, and its queued slice finishes it.
+    if (m_searchScanNext >= 0) m_searchScanNext = std::max(-1, m_searchScanNext - dropped);
     if (m_searchMatches.empty())
         m_currentMatchIdx = -1;
     else if (m_currentMatchIdx >= 0)
@@ -5170,18 +5213,23 @@ void TerminalWidget::rescanSearchFrom(int firstLine) {
         std::lower_bound(m_searchMatches.begin(), m_searchMatches.end(), firstLine,
                          [](const SearchMatch &m, int line) { return m.globalLine < line; }),
         m_searchMatches.end());
+    // ANTS-5418 — a running scan has not reached the lines above its next
+    // one; those this rescan covers are scanned here, and the scan resumes
+    // above them.
+    if (m_searchScanNext >= firstLine) m_searchScanNext = firstLine - 1;
     // ANTS-6494 — trimming at twice the cap keeps memory bounded while the
     // erase from the front stays rare.
     for (int gl = firstLine; gl < totalLines; ++gl) {
-        appendLineMatches(*m_searchRe, gl);
+        appendLineMatches(*m_searchRe, gl, m_searchMatches);
         if (m_searchMatches.size() >= 2 * kMaxSearchMatches) capSearchMatches();
     }
     capSearchMatches();
 
     // The same match stays current; if output rewrote it, the next one after
-    // it does. With no current match the first match becomes current.
+    // it does. With no current match the first match becomes current, unless
+    // a running scan has yet to choose one.
     m_currentMatchIdx = -1;
-    if (!m_searchMatches.empty()) {
+    if (!m_searchMatches.empty() && (current || !m_searchPickPending)) {
         m_currentMatchIdx = 0;
         if (current) {
             const auto at = std::lower_bound(
@@ -5211,6 +5259,7 @@ void TerminalWidget::scrollToMatch() {
 
 void TerminalWidget::searchNext() {
     if (m_searchMatches.empty()) return;
+    m_searchPickPending = false;  // the user's choice outranks the scan's
     m_currentMatchIdx = (m_currentMatchIdx + 1) % static_cast<int>(m_searchMatches.size());
     scrollToMatch();
     updateSearchCounter();
@@ -5219,6 +5268,7 @@ void TerminalWidget::searchNext() {
 
 void TerminalWidget::searchPrev() {
     if (m_searchMatches.empty()) return;
+    m_searchPickPending = false;  // the user's choice outranks the scan's
     m_currentMatchIdx = (m_currentMatchIdx - 1 + static_cast<int>(m_searchMatches.size()))
                         % static_cast<int>(m_searchMatches.size());
     scrollToMatch();

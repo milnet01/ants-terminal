@@ -8,7 +8,8 @@
 //
 // performSearch() is private. It is reached the way a user reaches it: text in
 // the search bar's line edit, then the regex toggle, whose handler cancels the
-// keystroke debounce and scans at once. Each toggle is one full scan.
+// keystroke debounce and starts a scan. Each toggle is one full scan, timed
+// until its last slice.
 //
 // Cases vary what plausibly costs, so a regression says WHERE:
 //
@@ -32,6 +33,7 @@
 #include "vtparser.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -81,6 +83,12 @@ long matchCount(const QLabel *label) {
     if (slash < 0) return -1;
     if (t.endsWith(QLatin1Char('+'))) t.chop(1);
     return t.mid(slash + 1).toLong();
+}
+
+// ANTS-5418 — a long search runs in slices between event-loop turns, and
+// the label's total ends in "…" until the last one. Time the whole scan.
+void drainScan(const QLabel *label) {
+    while (label->text().endsWith(QChar(0x2026))) QCoreApplication::processEvents();
 }
 
 }  // namespace
@@ -149,7 +157,9 @@ int main(int argc, char **argv) {
         const auto t0 = std::chrono::steady_clock::now();
         for (int i = 0; i < scans; ++i) {
             regexBtn->toggle();   // off: scans the escaped literal
+            drainScan(label);
             regexBtn->toggle();   // on:  scans the pattern
+            drainScan(label);
         }
         const auto t1 = std::chrono::steady_clock::now();
 

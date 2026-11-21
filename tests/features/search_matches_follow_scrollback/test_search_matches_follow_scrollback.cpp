@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <QCoreApplication>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMetaObject>
@@ -227,3 +228,45 @@ TEST(SearchMatchesFollowScrollback, NewOutputPastTheCapDropsTheOldest) {
     EXPECT_FALSE(h.w.searchMatchColumnsForTest(h.totalLines() - 2).empty())
         << "INV-6: the newest line lost its matches";
 }
+
+// INV-7 (ANTS-5418) — output while a sliced search runs leaves it matching
+// every line that holds the pattern, and nothing else.
+// One line per slice: the output lands on lines the scan has not reached.
+// Fifty: it lands below the scan, which then meets the shifted lines.
+namespace {
+class OutputDuringASlicedSearch : public ::testing::TestWithParam<int> {};
+}  // namespace
+
+TEST_P(OutputDuringASlicedSearch, MatchesEndEqualToTheGrid) {
+    Harness h;
+    ASSERT_TRUE(h.ready()) << "search bar widgets not found";
+    std::string before;
+    // 1202 lines leave needle 1200 on screen, where the output lands.
+    for (int i = 0; i < 1202; ++i)
+        before += (i % 10 == 0 ? "NEEDLE " : "row") + std::to_string(i) + "\r\n";
+    h.feed(before);
+    ASSERT_EQ(h.w.grid()->scrollbackSize(), kCap);
+
+    h.w.setSearchSliceCellsForTest(40 * GetParam());
+    h.search(QStringLiteral("NEEDLE"));
+    const auto running = [&h] { return h.counterText().endsWith(QChar(0x2026)); };
+    ASSERT_TRUE(running()) << "the search finished in one slice";
+    if (GetParam() > 1) QCoreApplication::processEvents();
+    // Drops 30 lines off the front, three of them needles, and prints two
+    // more. Any 30 lines hold three needles, so a scan that lost its place
+    // by the drop would count some twice.
+    h.feed(lines(5000, 10) + "NEEDLE new1\r\n" + lines(5010, 8) + "NEEDLE new2\r\n" +
+           lines(5020, 10));
+    for (int i = 0; i < 10000 && running(); ++i) QCoreApplication::processEvents();
+    ASSERT_FALSE(running()) << "the search never finished";
+
+    const std::vector<int> at = linesStarting(h.w, "NEEDLE");
+    ASSERT_GT(at.size(), 2u);
+    EXPECT_EQ(h.matchedLines(), at) << "INV-7: matches differ from the grid";
+    const QString counter = h.counterText();
+    EXPECT_TRUE(counter.endsWith(QStringLiteral("/") + QString::number(at.size())))
+        << "INV-7: the counter " << counter.toStdString();
+}
+
+INSTANTIATE_TEST_SUITE_P(SearchMatchesFollowScrollback, OutputDuringASlicedSearch,
+                         ::testing::Values(1, 50));

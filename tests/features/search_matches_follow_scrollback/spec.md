@@ -33,6 +33,11 @@ active.
 - **INV-6 — new output past the cap drops the oldest matches** (ANTS-6494).
   A search capped at 100000 matches, then more matching output, keeps the
   total at `100000+` and matches the newest line.
+- **INV-7 — output during a running search** (ANTS-5418). A search scans in
+  slices between event-loop turns. Output that drops lines off the front and
+  prints new matches while it runs leaves it, once finished, matching exactly
+  the lines that hold the pattern. This holds whether the output lands on
+  lines the scan has reached or on lines it has not.
 
 ## Test
 
@@ -41,4 +46,4 @@ real widget takes its lines through the real parser, the last of them as a
 `VtBatch` handed to `onVtBatch`. The expected line is found by reading the
 grid for the cells that spell the needle. Each test fails against the code
 before the change it locks: INV-1 and INV-2 before ANTS-5686, INV-3 to
-INV-5 before ANTS-6767, INV-6 before ANTS-6494.
+INV-5 before ANTS-6767, INV-6 before ANTS-6494, INV-7 before ANTS-5418.

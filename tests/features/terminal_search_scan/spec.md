@@ -5,7 +5,7 @@ each line's text, built from the grid's cells. Making that build faster must
 not change what a search finds. This contract pins what it finds.
 
 The test drives the real widget the way a user does: text in the search bar,
-then the regex toggle, which scans at once. It reads the match total from the
+then the regex toggle, which starts the scan at once. It reads the match total from the
 bar's `current/total` label.
 
 ## Invariants
@@ -39,6 +39,12 @@ bar's `current/total` label.
   counter's total reads `100000+`. 600 lines of 200 `a`s searched for `a`
   read `99801/100000+`: the current match is the first on the view's centre
   row, the second-to-last line printed.
+- **INV-9 — a long search yields, and ends where a whole one does**
+  (ANTS-5418). A search scans a bounded number of cells, newest lines first,
+  then returns to the event loop and goes on in the next turn. While it runs
+  the counter's total ends in `…`. A search run in five-line slices first
+  shows `…`, then ends on the same counter and view as the same search in one
+  slice.
 
 ## Test
 

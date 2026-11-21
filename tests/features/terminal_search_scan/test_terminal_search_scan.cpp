@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <QCoreApplication>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -102,3 +103,54 @@ TEST(TerminalSearchScan, MatchListIsCappedKeepingTheNewest) {
     // first match is the 99801st of the newest 100000.
     EXPECT_EQ(h.label->text().toStdString(), "99801/100000+");
 }
+
+// INV-9 (ANTS-5418) — a search longer than one slice yields, then ends where a
+// one-slice search does. Each case is 200 lines with a needle on every tenth,
+// then the screen's four rows, and is searched whole and in slices.
+namespace {
+struct SlicedCase {
+    const char *name;
+    const char *screen;   // the four screen rows
+    int sliceLines;
+    const char *whole;    // the whole search's counter
+};
+
+class SlicedSearch : public ::testing::TestWithParam<SlicedCase> {};
+}  // namespace
+
+TEST_P(SlicedSearch, YieldsAndMatchesAWholeOne) {
+    const SlicedCase &c = GetParam();
+    auto fill = [&c](Harness &x) {
+        for (int i = 0; i < 200; ++i) x.feed(i % 10 == 0 ? "NEEDLE\r\n" : "filler\r\n");
+        x.feed(c.screen);
+    };
+    Harness one;
+    ASSERT_TRUE(one.ready()) << "search bar widgets not found";
+    fill(one);
+    ASSERT_GT(one.w.grid()->scrollbackSize(), 150);
+    one.count(QStringLiteral("NEEDLE"));
+    const std::string whole = one.label->text().toStdString();
+    const int wholeOffset = one.w.scrollOffset();
+    ASSERT_EQ(whole, c.whole);
+
+    Harness h;
+    fill(h);
+    h.w.setSearchSliceCellsForTest(c.sliceLines * 20);
+    h.count(QStringLiteral("NEEDLE"));
+    EXPECT_TRUE(h.label->text().endsWith(QChar(0x2026)))
+        << "INV-9: the search did not yield; label " << h.label->text().toStdString();
+    for (int i = 0; i < 10000 && h.label->text().endsWith(QChar(0x2026)); ++i)
+        QCoreApplication::processEvents();
+    EXPECT_EQ(h.label->text().toStdString(), whole) << "INV-9: the sliced result differs";
+    EXPECT_EQ(h.w.scrollOffset(), wholeOffset) << "INV-9: the view landed elsewhere";
+}
+
+// oldestOnly: no needle at or below the view's centre (row 2), so the current
+// match is the oldest, which only the last slice finds. centreRow: needles on
+// rows 2 and 3; the first one-line slice finds row 3's, but row 2's is current.
+INSTANTIATE_TEST_SUITE_P(
+    TerminalSearchScan, SlicedSearch,
+    ::testing::Values(SlicedCase{"oldestOnly", "tail\r\ntail\r\ntail\r\ntail", 5, "1/20"},
+                      SlicedCase{"centreRow", "tail\r\ntail\r\nNEEDLE c\r\nNEEDLE d", 1,
+                                 "21/22"}),
+    [](const ::testing::TestParamInfo<SlicedCase> &info) { return info.param.name; });

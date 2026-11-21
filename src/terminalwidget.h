@@ -568,6 +568,7 @@ public:
     // of a line's URL/file-path spans and of every search match on a line.
     std::vector<std::pair<int, int>> urlSpanColumnsForTest(int globalLine) const;
     std::vector<std::pair<int, int>> searchMatchColumnsForTest(int globalLine) const;
+    void setSearchSliceCellsForTest(int cells) { m_searchSliceCells = cells; }
     // ANTS-3464 — the output path's damage since the last call, a full repaint
     // as rect(). Issues what is pending first, as the pacer's tick would.
     QRegion takeOutputDamageForTest();
@@ -605,8 +606,15 @@ private:
     // ANTS-6767 — re-matches lines `firstLine` to the end after output
     // changed them, keeping the current match and never scrolling.
     void rescanSearchFrom(int firstLine);
-    // Appends the matches `re` finds on one line, in column order.
-    void appendLineMatches(const QRegularExpression &re, int globalLine);
+    // Appends to `out` the matches `re` finds on one line, in column order.
+    void appendLineMatches(const QRegularExpression &re, int globalLine,
+                           std::vector<SearchMatch> &out);
+    // ANTS-5418 — scans one slice of the search, newest lines first, then
+    // queues the next slice, so the window repaints and takes input between.
+    void continueSearchScan();
+    // ANTS-5418 — makes the first match at or below the view's centre current,
+    // once every line from there down has been scanned.
+    void pickPendingCurrentMatch();
     // ANTS-6494 — the most matches a search keeps. Past it the newest are
     // kept, nearest the screen, and the counter's total reads "N+".
     static constexpr size_t kMaxSearchMatches = 100000;
@@ -822,6 +830,15 @@ private:
     std::optional<QRegularExpression> m_searchRe;
     std::vector<SearchMatch> m_searchMatches;
     bool m_searchMatchesCapped = false;  // ANTS-6494
+    // ANTS-5418 — a search scans at most this many cells per slice (about
+    // 10 ms at the 180M cells/s bench_widget_search measured on 2026-11-21),
+    // then yields to the event loop.
+    int m_searchSliceCells = 2'000'000;
+    // The next global line the search scans, counting down; -1 once done.
+    int m_searchScanNext = -1;
+    // True until the search has chosen its first current match.
+    bool m_searchPickPending = false;
+    QTimer m_searchScanTimer;
     int m_currentMatchIdx = -1;
     QColor m_searchHighlightBg{0xF9, 0xE2, 0xAF};
     QColor m_searchHighlightFg{0x1E, 0x1E, 0x2E};

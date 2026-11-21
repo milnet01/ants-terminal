@@ -74032,11 +74032,17 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (review-code lane dim 11; draft by retroarch-1c).
   Lanes: file-content-cache.
 
-- 📋 [ANTS-5418] **Scrollback search runs off the GUI thread or yields, so a million-line search cannot freeze the window.**
+- ✅ [ANTS-5418] **Scrollback search runs off the GUI thread or yields, so a million-line search cannot freeze the window.**
   TerminalWidget::performSearch (terminalwidget.cpp ~4687) scans every
   scrollback line on the GUI thread; at the 1M-line scrollback maximum
   that freezes every tab until it finishes. Options: an incremental scan
   that yields between batches, or a worker over a snapshot of the lines.
+  Shipped 2026-11-21: performSearch hands the scan to
+  continueSearchScan, which scans at most m_searchSliceCells cells per
+  slice and queues the next on a 0 ms timer. Specs: terminal_search_scan
+  INV-9, search_matches_follow_scrollback INV-7. Measured first: about
+  1.5M lines/s, so 1M lines was about 0.7 s per search; slices are about
+  10 ms.
   **Layman:** Searching a very long scrollback should not lock up the terminal.
   Kind: perf.
   Source: code-audit-2026-09-26 (review-code RC-11).

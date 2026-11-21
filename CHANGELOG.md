@@ -238,6 +238,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Searching a very long scrollback keeps the window responsive** (ANTS-5418)
+  The search scans in short slices, newest lines first, and the window
+  repaints and takes input between them. While it runs, the counter's
+  total ends in "…". Output that arrives mid-search is matched as usual.
+
 - **The specs half of the contract-doc drift audit no longer reports names from a spec's Problem, Out of scope, Open questions or Rejected sections, or from superseded specs** (ANTS-4994)
   Those sections describe old or unbuilt designs, so a name there is not
   expected to exist in the code. Names a spec states as fact still report.
