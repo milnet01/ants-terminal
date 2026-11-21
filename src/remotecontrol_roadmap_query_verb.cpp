@@ -988,6 +988,9 @@ struct RemoteControl::RoadmapQueryCall {
     qint64 nowMs = 0;
     bool fresh = false;        // the cache already holds this file
     std::optional<RoadmapSource::RoadmapText> textHolder;
+    // run() calls openTextAndCheckSync(), which fills textHolder, before
+    // every method that reads it.
+    RoadmapSource::RoadmapText &loadedText() { return *textHolder; }  // NOLINT(bugprone-unchecked-optional-access)
 
     // --- One method per mode or path; each returns the finished reply.
     auto sectionIndex() -> QJsonDocument;
@@ -2567,7 +2570,7 @@ auto RemoteControl::RoadmapQueryCall::readFailed() -> QJsonDocument {
 }
 
 auto RemoteControl::RoadmapQueryCall::refillCache() -> std::optional<QJsonDocument> {
-    auto &text = *textHolder;
+    auto &text = loadedText();
     if (text.openFailed())
         return readFailed();
     // ANTS-1287-INV-5: stale cache → wipe both bullet caches AND
@@ -2679,7 +2682,7 @@ auto RemoteControl::RoadmapQueryCall::refillCache() -> std::optional<QJsonDocume
 // A file that will not open leaves the cache empty; the format check after
 // it answers for that.
 auto RemoteControl::RoadmapQueryCall::fillBulletsIfCold() -> std::optional<QJsonDocument> {
-    auto &text = *textHolder;
+    auto &text = loadedText();
     if (rc.m_roadmapCacheBullets.isEmpty() && (rc.m_roadmapCachePath == path) &&
         (rc.m_roadmapCacheMtimeMs == mtime)) {
         // ANTS-3863 — a pure dispatch site; no body read on the store path.
@@ -2706,7 +2709,7 @@ auto RemoteControl::RoadmapQueryCall::fillBulletsIfCold() -> std::optional<QJson
 // populated lazily here if cold so the count tally has every
 // bullet to look at.
 auto RemoteControl::RoadmapQueryCall::sectionIndex() -> QJsonDocument {
-    auto &text = *textHolder;
+    auto &text = loadedText();
     if (auto r = fillBulletsIfCold()) return *r;
     // Lazy-fill the index — same shape as the section-mode branch.
     // ANTS-4433 — through the shared provider, so a call that already
@@ -3305,7 +3308,7 @@ void RemoteControl::RoadmapQueryCall::emitBulletPage(QJsonArray &filtered, const
 
 // ANTS-1287 — section branch. ANTS-5315 — `version` arrives here too.
 auto RemoteControl::RoadmapQueryCall::sectionOrVersion() -> QJsonDocument {
-    auto &text = *textHolder;
+    auto &text = loadedText();
     // INV-9: ensure we have an index even on a cache HIT taken
     // earlier in section-less mode (and vice versa).
     if (rc.m_roadmapIndex.isEmpty()) {
@@ -3614,7 +3617,7 @@ auto RemoteControl::RoadmapQueryCall::sectionOrVersion() -> QJsonDocument {
 }
 
 auto RemoteControl::RoadmapQueryCall::refuseUnrecognisedFormat() -> std::optional<QJsonDocument> {
-    auto &text = *textHolder;
+    auto &text = loadedText();
     // ANTS-1429 — unrecognised_format gate. After cache fill /
     // lazy fill, if the parsed bullet count is zero AND the file
     // is larger than the conservative stub threshold, return a
@@ -3676,7 +3679,7 @@ auto RemoteControl::RoadmapQueryCall::refuseUnrecognisedFormat() -> std::optiona
 // queries never carry it, to keep survey rows lean. A markdown-backed
 // project has no rows, so nothing is attached there.
 void RemoteControl::RoadmapQueryCall::attachLinks(QJsonArray &arr) {
-    auto &text = *textHolder;
+    auto &text = loadedText();
     if (callerCanonical.isEmpty() || arr.isEmpty())
         return;
     RoadmapSource::ReadError linkWhy = RoadmapSource::ReadError::None;
@@ -3970,7 +3973,7 @@ auto RemoteControl::RoadmapQueryCall::byIds() -> QJsonDocument {
 }
 
 auto RemoteControl::RoadmapQueryCall::list() -> QJsonDocument {
-    auto &text = *textHolder;
+    auto &text = loadedText();
     // ANTS-1247-INV-2/3: filter the cached array post-cache.
     // "active" → 📋+🚧 (planned + in-progress);
     // "shipped" → ✅ only; "all" → pass-through. Anchor: filter switch.

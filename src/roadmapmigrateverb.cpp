@@ -734,7 +734,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     std::optional<RoadmapStore> opened;
     if (QJsonObject refusal = openBulkStore(opened, storePath); !refusal.isEmpty())
         return refusal;
-    RoadmapStore &store = *opened;
+    RoadmapStore &store = *opened;  // NOLINT(bugprone-unchecked-optional-access): openBulkStore always emplaces
 
     // 6 — collision and re-run-identity guards, ahead of the transaction.
     //
@@ -1170,7 +1170,7 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
     std::optional<RoadmapStore> opened;
     if (QJsonObject refusal = openBulkStore(opened, storePath); !refusal.isEmpty())
         return refusal;
-    RoadmapStore &store = *opened;
+    RoadmapStore &store = *opened;  // NOLINT(bugprone-unchecked-optional-access): openBulkStore always emplaces
     QString err;
 
     // Both lookups check their ERROR out-param and not just their optional, for
@@ -1292,7 +1292,7 @@ QJsonObject RoadmapMigrateVerb::reroot(const QString &storePath, const RerootReq
     std::optional<RoadmapStore> opened;
     if (QJsonObject refusal = openBulkStore(opened, storePath); !refusal.isEmpty())
         return refusal;
-    RoadmapStore &store = *opened;
+    RoadmapStore &store = *opened;  // NOLINT(bugprone-unchecked-optional-access): openBulkStore always emplaces
     QString err;
 
     const auto row = store.readProjectBySlug(req.exportSlug, &err);

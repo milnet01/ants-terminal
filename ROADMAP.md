@@ -115059,9 +115059,15 @@ reports are asked for separately, each time.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5443] **clang-tidy bugprone-unchecked-optional-access: 12 sites in 3 files.**
+- ✅ [ANTS-5443] **clang-tidy bugprone-unchecked-optional-access: 12 sites in 3 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   ANTS-4783 holds the 354 in tests; this is the tree run's 12. Check each.
+  2026-11-21: all 12 src hits checked; none reads an empty optional.
+  terminalwidget.cpp's two search loops bind *m_searchRe once after the
+  check. RoadmapQueryCall's seven readers go through loadedText(), which
+  states that run() fills textHolder first (one NOLINT).
+  roadmapmigrateverb.cpp's three `*opened` carry a NOLINT: openBulkStore
+  always emplaces. The 596 hits under tests/ stay with ANTS-4783.
   **Layman:** Reading an optional value without checking it is there.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.

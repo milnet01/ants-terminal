@@ -5112,6 +5112,7 @@ void TerminalWidget::performSearch() {
 
 void TerminalWidget::continueSearchScan() {
     if (!m_searchRe) return;
+    const QRegularExpression &re = *m_searchRe;
     // Output between slices can shrink the grid; never read past its end.
     const int totalLines = m_grid->scrollbackSize() + m_grid->rows();
     m_searchScanNext = std::min(m_searchScanNext, totalLines - 1);
@@ -5125,7 +5126,7 @@ void TerminalWidget::continueSearchScan() {
     std::vector<SearchMatch> slice;
     int gl = m_searchScanNext;
     for (; gl > sliceEnd && m_searchMatches.size() + slice.size() < kMaxSearchMatches; --gl)
-        appendLineMatches(*m_searchRe, gl, slice);
+        appendLineMatches(re, gl, slice);
     std::sort(slice.begin(), slice.end(), [](const SearchMatch &a, const SearchMatch &b) {
         return a.globalLine != b.globalLine ? a.globalLine < b.globalLine : a.col < b.col;
     });
@@ -5205,6 +5206,7 @@ void TerminalWidget::shiftSearchMatches(int dropped) {
 
 void TerminalWidget::rescanSearchFrom(int firstLine) {
     if (!m_searchRe) return;
+    const QRegularExpression &re = *m_searchRe;
     const int totalLines = m_grid->scrollbackSize() + m_grid->rows();
     firstLine = std::clamp(firstLine, 0, totalLines);
     std::optional<SearchMatch> current;
@@ -5220,7 +5222,7 @@ void TerminalWidget::rescanSearchFrom(int firstLine) {
     // ANTS-6494 — trimming at twice the cap keeps memory bounded while the
     // erase from the front stays rare.
     for (int gl = firstLine; gl < totalLines; ++gl) {
-        appendLineMatches(*m_searchRe, gl, m_searchMatches);
+        appendLineMatches(re, gl, m_searchMatches);
         if (m_searchMatches.size() >= 2 * kMaxSearchMatches) capSearchMatches();
     }
     capSearchMatches();
