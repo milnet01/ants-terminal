@@ -123,9 +123,11 @@ lane_resize() {
     # PTY still live after the reflow. Arithmetic makes the needle something
     # only execution can print (ANTS-5013).
     send_cmd resize 'echo AFTER_RESIZE_$((40+2))'
-    has "$(wait_text resize 'AFTER_RESIZE_42')" 'AFTER_RESIZE_42' \
+    local t; t=$(wait_text resize 'AFTER_RESIZE_42')
+    # ANTS-6864 — on a failure, show the end of the get-text reply.
+    has "$t" 'AFTER_RESIZE_42' \
         && pass "resize: PTY echoes after reflow" \
-        || fail "resize: PTY silent after reflow"
+        || fail "resize: PTY silent after reflow; reply ends: ${t:$(( ${#t} > 400 ? ${#t} - 400 : 0 ))}"
 }
 
 # ── Lane: theme (restyle liveness / stress) ───────────────────────────────

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6863 -->
+<!-- ants-roadmap-id-high-water: ANTS=6864 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -115881,6 +115881,21 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: split from ANTS-4994, 2026-11-21.
   Lanes: auditengine.
+
+- 📋 [ANTS-6864] **The e2e resize lane sees the shell's echo after a shrink to the minimum window on every run.**
+  tools/e2e/cases.sh lane_resize: "resize: PTY silent after reflow"
+  failed on CI run 44927997673 (a275b414, first attempt), green on rerun
+  and 5/5 locally. The needle waits 15 s (E2E_TEXT_WAIT_S). Suspects, not
+  verified: get-text (recentOutput) returns one row per screen line, so a
+  needle soft-wrapped in a narrow window is split; or typed input lands
+  while the shell redraws after SIGWINCH. Next: capture the get-text reply
+  on a failure.
+  2026-11-21: the failure message now ends with the last 400 characters
+  of the get-text reply, so the next CI failure shows what the screen
+  held. The flake itself stays open.
+  **Layman:** An automatic end-to-end check failed once on GitHub for no code reason; make it reliable.
+  Kind: fix.
+  Source: ci-run-44927997673-2026-11-21.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
