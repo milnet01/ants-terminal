@@ -1,4 +1,4 @@
-// ANTS-1677 mainwindow piece 4/8 — session persistence
+// ANTS-1677 mainwindow piece 4/9 — session persistence
 #include "mainwindow.h"
 #include "mainwindow_internal.h"
 #include "claudestatuswidgets.h"

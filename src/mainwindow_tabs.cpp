@@ -1,4 +1,4 @@
-// ANTS-1677 mainwindow piece 3/8 — tabs, panes and remote tab control
+// ANTS-1677 mainwindow piece 3/9 — tabs, panes and remote tab control
 #include "mainwindow.h"
 #include "mainwindow_internal.h"
 #include "guithread.h"       // ANTS-4682 — ants::onGuiThread in inline verbs

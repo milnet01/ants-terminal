@@ -1,4 +1,4 @@
-// ANTS-1677 mainwindow piece 7/8 — tab colours
+// ANTS-1677 mainwindow piece 7/9 — tab colours
 #include "mainwindow.h"
 #include "mainwindow_internal.h"
 #include "coloredtabbar.h"

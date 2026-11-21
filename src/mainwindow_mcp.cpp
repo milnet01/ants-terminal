@@ -1,4 +1,4 @@
-// ANTS-1677 mainwindow piece 5/8 — the MCP providers
+// ANTS-1677 mainwindow piece 5/9 — the MCP providers
 #include "mainwindow.h"
 #include "mainwindow_internal.h"
 #include "claudesetup.h"        // ANTS-5236 — refreshStatusHookScript

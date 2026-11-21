@@ -1,3 +1,4 @@
+// ANTS-1677 mainwindow piece 8/9 — the side tab list panel
 // ANTS-5645 — the side tab list panel: a list of every open tab by its
 // full name, beside the tab widget. Contract:
 // tests/features/tab_list_panel/spec.md. Reload: applyTabListPanelConfig()

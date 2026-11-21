@@ -1,4 +1,4 @@
-// ANTS-1677 mainwindow piece 6/8 — quake mode
+// ANTS-1677 mainwindow piece 6/9 — quake mode
 #include "mainwindow.h"
 #include "mainwindow_internal.h"
 #include "terminalwidget.h"

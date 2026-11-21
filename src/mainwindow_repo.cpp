@@ -1,4 +1,4 @@
-// ANTS-1677 mainwindow piece 8/8 — repository state and updates
+// ANTS-1677 mainwindow piece 9/9 — repository state and updates
 #include "mainwindow.h"
 #include "antsversion.h"
 #include "gitorigin.h"          // ANTS-6720 — shared with session_message

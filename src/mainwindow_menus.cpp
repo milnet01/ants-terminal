@@ -1,4 +1,4 @@
-// ANTS-1677 mainwindow piece 2/8 — the menu bar
+// ANTS-1677 mainwindow piece 2/9 — the menu bar
 #include "mainwindow.h"
 #include "mainwindow_internal.h"
 #include "coloredtabbar.h"
