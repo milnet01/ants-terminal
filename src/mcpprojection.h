@@ -36,6 +36,10 @@ bool isDefaultCompactExemptCall(const QString &toolName, const QJsonObject &args
 // An EXPLICIT compact:true / compact:false is honoured on every verb
 // (ANTS-4659). Only the default above is per verb: a default nobody asked for
 // folded away spec_lint's flag saying a check had never run (ANTS-4673).
+//
+// wantsCompact is that whole decision for one call: the explicit arg when it
+// is a bool, else the per-verb default under mcp::terseDefault().
+bool wantsCompact(const QString &toolName, const QJsonObject &args);
 
 // ANTS-2094 — the read verbs whose bodies are large enough to be worth
 // spilling to a content-addressed cache file + returning a head+pointer

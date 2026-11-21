@@ -157,6 +157,14 @@ bool isDefaultCompactExemptCall(const QString &toolName, const QJsonObject &args
         && args.value(QStringLiteral("mode")).toString() == QLatin1String("lint");
 }
 
+bool wantsCompact(const QString &toolName, const QJsonObject &args) {
+    const QJsonValue compactArg = args.value(QStringLiteral("compact"));
+    if (compactArg.isBool()) return compactArg.toBool();
+    return isDefaultCompactTool(toolName)
+        && !isDefaultCompactExemptCall(toolName, args)
+        && terseDefault();
+}
+
 // ANTS-2094 — offload-eligible read verbs (see header).
 bool isOffloadEligible(const QString &toolName) {
     return toolName == QStringLiteral("get_scrollback")

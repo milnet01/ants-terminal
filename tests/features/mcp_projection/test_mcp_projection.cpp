@@ -315,11 +315,19 @@ TEST(McpProjection, Inv11CompactArgAndDefaultAreSeparate) {
 }
 
 // ANTS-4524 — and the dispatcher must consult the new answer, not the old one.
+// ANTS-6850 — the decision lives in mcp::wantsCompact, which ants-mcpd shares.
 TEST(McpProjection, Ants4524DispatchGatesTheDefaultSeparately) {
         const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
-    EXPECT_TRUE(s.contains("mcp::isDefaultCompactTool(toolName)"))
-        << "the terseDefault fallback must be gated on the compaction answer, "
-           "not on the `fields=` allowlist it used to share";
+    EXPECT_TRUE(s.contains("mcp::wantsCompact(toolName, argsObj)"))
+        << "the dispatcher must take its compact decision from mcp::wantsCompact";
+    mcp::setTerseDefault(true);
+    EXPECT_TRUE(mcp::wantsCompact(QStringLiteral("changelog_query"), QJsonObject{}));
+    for (const char *t : kNoDefaultCompactTools) {
+        EXPECT_FALSE(mcp::wantsCompact(QString::fromUtf8(t), QJsonObject{}))
+            << t << ": the terseDefault fallback must be gated on the compaction "
+                    "answer, not on the `fields=` allowlist it used to share";
+    }
+    mcp::setTerseDefault(false);   // restore module default for siblings
 }
 
 // ANTS-5585 — INV-12. changelog_query is compacted by default, and its lint
@@ -350,9 +358,12 @@ TEST(McpProjection, Ants5585LintCallIsNotCompactedByDefault) {
 
 // ...and the dispatcher must consult it, beside the per-verb answer.
 TEST(McpProjection, Ants5585DispatchConsultsTheCallExemption) {
-        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
-    EXPECT_TRUE(s.contains("!mcp::isDefaultCompactExemptCall(toolName, argsObj)"))
+    mcp::setTerseDefault(true);
+    const QString cq = QStringLiteral("changelog_query");
+    EXPECT_FALSE(mcp::wantsCompact(cq, QJsonObject{{QStringLiteral("mode"), QStringLiteral("lint")}}))
         << "the terseDefault fallback must skip a call the exemption names";
+    EXPECT_TRUE(mcp::wantsCompact(cq, QJsonObject{{QStringLiteral("mode"), QStringLiteral("entries")}}));
+    mcp::setTerseDefault(false);   // restore module default for siblings
 }
 
 // INV-9 — dispatch ordering: projectFields is called after
@@ -873,13 +884,20 @@ TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
     const int comp = s.indexOf("mcp::compactEnvelope(");
     ASSERT_GT(comp, 0) << "compactEnvelope dispatch call site not found";
     EXPECT_LT(proj, comp) << "compaction must run after fields= projection";
-    EXPECT_TRUE(s.contains("argsObj.value(QStringLiteral(\"compact\"))"))
+    EXPECT_TRUE(s.contains("mcp::wantsCompact(toolName, argsObj)"))
+        << "compaction must be decided by mcp::wantsCompact";
+    // An explicit compact wins either way, on any verb (ANTS-4659).
+    EXPECT_TRUE(mcp::wantsCompact(QStringLiteral("get_scrollback"),
+                                  QJsonObject{{QStringLiteral("compact"), true}}))
         << "compaction must read the compact arg";
+    mcp::setTerseDefault(true);
+    EXPECT_FALSE(mcp::wantsCompact(QStringLiteral("changelog_query"),
+                                   QJsonObject{{QStringLiteral("compact"), false}}));
+    mcp::setTerseDefault(false);   // restore module default for siblings
     // ANTS-2085 — when the compact arg is absent the dispatcher falls back
     // to the session/user terse default.
-    EXPECT_TRUE(s.contains("mcp::terseDefault()"))
-        << "compaction must fall back to mcp::terseDefault() when compact "
-           "is absent";
+    EXPECT_FALSE(mcp::wantsCompact(QStringLiteral("changelog_query"), QJsonObject{}))
+        << "an absent compact falls back to mcp::terseDefault()";
     // ANTS-4657 — one `compact` schema declaration per verb that honours the
     // argument. The count is derived from kCompactArgTools, so a declaration
     // outside that list fails here; Ants4657EveryCompactArgToolDeclaresIt

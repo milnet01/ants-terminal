@@ -210,4 +210,16 @@ QJsonObject sessionFieldsJson(const Snapshot &snap);
 QByteArray overlaySessionOnReply(const QByteArray &replyLine,
                                  const Snapshot &local);
 
+// ANTS-6850 — the terminal narrows a reply before ants-mcpd sees it, and a
+// narrowed reply hides the fields the overlay replaces. So ants-mcpd forwards
+// token_usage as this request line: `fields` and `encoding` removed, and
+// compact:false.
+QByteArray wholeReportRequest(const QByteArray &requestLine);
+
+// ANTS-6850 — then applies the caller's `fields`, `compact` and `encoding`
+// to the overlaid reply, in the dispatcher's order. Any line that is not a
+// tool result is returned unchanged.
+QByteArray narrowForCaller(const QByteArray &replyLine,
+                           const QJsonObject &callerArgs);
+
 }  // namespace TokenUsageEngine

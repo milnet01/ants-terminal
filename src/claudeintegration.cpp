@@ -1047,14 +1047,7 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
     // shipped ANTS-4673, so isDefaultCompactTool still answers for an
     // absent one.
     if (toolHandled && !etagUnchanged) {
-        const QJsonValue compactArg =
-            argsObj.value(QStringLiteral("compact"));
-        const bool wantCompact = compactArg.isBool()
-            ? compactArg.toBool()
-            : (mcp::isDefaultCompactTool(toolName)
-               && !mcp::isDefaultCompactExemptCall(toolName, argsObj)
-               && mcp::terseDefault());
-        if (wantCompact)
+        if (mcp::wantsCompact(toolName, argsObj))
             responseText = mcp::compactEnvelope(responseText);
     }
     // ANTS-2081 / ANTS-2086 — append etag-reuse + leaner-mode

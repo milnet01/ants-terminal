@@ -2,6 +2,8 @@
 
 #include "tokenusageengine.h"
 
+#include "mcpprojection.h"
+
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -656,6 +658,42 @@ QByteArray overlaySessionOnReply(const QByteArray &replyLine,
 
     text[QStringLiteral("text")] =
         QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+    content[0] = text;
+    result[QStringLiteral("content")] = content;
+    rpc[QStringLiteral("result")] = result;
+    return QJsonDocument(rpc).toJson(QJsonDocument::Compact) + '\n';
+}
+
+QByteArray wholeReportRequest(const QByteArray &requestLine) {
+    QJsonObject rpc = QJsonDocument::fromJson(requestLine).object();
+    QJsonObject params = rpc.value(QStringLiteral("params")).toObject();
+    if (params.isEmpty()) return requestLine;
+    QJsonObject args = params.value(QStringLiteral("arguments")).toObject();
+    args.remove(QStringLiteral("fields"));
+    args.remove(QStringLiteral("encoding"));
+    args[QStringLiteral("compact")] = false;
+    params[QStringLiteral("arguments")] = args;
+    rpc[QStringLiteral("params")] = params;
+    return QJsonDocument(rpc).toJson(QJsonDocument::Compact) + '\n';
+}
+
+QByteArray narrowForCaller(const QByteArray &replyLine, const QJsonObject &callerArgs) {
+    QJsonObject rpc = QJsonDocument::fromJson(replyLine).object();
+    QJsonObject result = rpc.value(QStringLiteral("result")).toObject();
+    QJsonArray content = result.value(QStringLiteral("content")).toArray();
+    QJsonObject text = content.at(0).toObject();
+    if (!text.value(QStringLiteral("text")).isString()) return replyLine;
+
+    // ClaudeIntegration::transformReply's order: fields, compact, encoding.
+    QString body = text.value(QStringLiteral("text")).toString();
+    const QJsonValue fields = callerArgs.value(QStringLiteral("fields"));
+    if (fields.isArray()) body = mcp::projectFields(body, fields.toArray());
+    if (mcp::wantsCompact(QStringLiteral("token_usage"), callerArgs))
+        body = mcp::compactEnvelope(body);
+    if (callerArgs.value(QStringLiteral("encoding")).toString() == QLatin1String("tabular"))
+        body = mcp::tabularize(body);
+
+    text[QStringLiteral("text")] = body;
     content[0] = text;
     result[QStringLiteral("content")] = content;
     rpc[QStringLiteral("result")] = result;

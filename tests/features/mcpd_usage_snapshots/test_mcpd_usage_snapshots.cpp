@@ -9,6 +9,7 @@
 #include "../../_support/xdg_guard.h"
 
 #include "claudeintegration.h"
+#include "mcpprojection.h"
 #include "remotecontrol.h"
 #include "tokenusageengine.h"
 
@@ -431,6 +432,111 @@ TEST(McpdUsageSnapshots, Ants5262OtherRepliesPassUnchanged) {
     EXPECT_EQ(overlaySessionOnReply(junk, localSession()), junk);
     EXPECT_EQ(overlaySessionOnReply(QByteArray("not json\n"), localSession()),
               QByteArray("not json\n"));
+}
+
+// INV-12 (ANTS-6850) — a caller's fields, compact and encoding narrow its own
+// session, not the terminal's. The terminal narrows before ants-mcpd sees the
+// reply, so ants-mcpd forwards the request whole and narrows after the overlay.
+namespace {
+QByteArray usageRequest(const QJsonObject &args) {
+    QJsonObject params;
+    params["name"] = QStringLiteral("token_usage");
+    params["arguments"] = args;
+    QJsonObject rpc;
+    rpc["jsonrpc"] = QStringLiteral("2.0");
+    rpc["id"] = 7;
+    rpc["method"] = QStringLiteral("tools/call");
+    rpc["params"] = params;
+    return QJsonDocument(rpc).toJson(QJsonDocument::Compact) + '\n';
+}
+// The terminal's dispatcher, as far as token_usage goes: it narrows its own
+// envelope by the forwarded request's fields and compact.
+QByteArray terminalAnswers(const QByteArray &request, const QJsonObject &env) {
+    const QJsonObject args = QJsonDocument::fromJson(request).object()
+        .value(QStringLiteral("params")).toObject()
+        .value(QStringLiteral("arguments")).toObject();
+    QString text = QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+    if (args.value(QStringLiteral("fields")).isArray())
+        text = mcp::projectFields(text, args.value(QStringLiteral("fields")).toArray());
+    if (args.value(QStringLiteral("compact")).toBool())
+        text = mcp::compactEnvelope(text);
+    return replyLine(QJsonDocument::fromJson(text.toUtf8()).object());
+}
+QJsonObject throughMcpd(const QJsonObject &callerArgs, const Snapshot &terminal) {
+    QJsonObject env = sessionFieldsJson(terminal);
+    env["ok"] = true;
+    env["mcpd"] = QJsonObject{{QStringLiteral("calls"), 38}};
+    env["snapshots_skipped"] = QJsonArray{};  // empty, so compaction drops it
+    Snapshot local = localSession();
+    local.totalWrapBytes = 419;
+    // tabularize packs only an array it shrinks, which one row does not.
+    for (const char *tool : {"trace", "spec_query"}) {
+        ToolReport r;
+        r.tool = QString::fromUtf8(tool);
+        local.calls.append(r);
+    }
+    const QByteArray forwarded = wholeReportRequest(usageRequest(callerArgs));
+    return envOf(narrowForCaller(
+        overlaySessionOnReply(terminalAnswers(forwarded, env), local), callerArgs));
+}
+QString firstTool(const QJsonObject &env) {
+    return env.value(QStringLiteral("calls")).toArray().at(0).toObject()
+        .value(QStringLiteral("tool")).toString();
+}
+}  // namespace
+
+TEST(McpdUsageSnapshots, Ants6850NarrowingKeepsCallerSession) {
+    Snapshot terminal;
+    ToolReport t;
+    t.tool = QStringLiteral("token_usage");
+    terminal.calls.append(t);
+
+    const QJsonObject projected = throughMcpd(
+        QJsonObject{{QStringLiteral("fields"),
+                     QJsonArray{QStringLiteral("calls"), QStringLiteral("total_wrap_bytes"),
+                                QStringLiteral("mcpd")}}},
+        terminal);
+    EXPECT_EQ(firstTool(projected), QStringLiteral("read_region"));
+    EXPECT_EQ(projected.value(QStringLiteral("total_wrap_bytes")).toInteger(), 419);
+    EXPECT_EQ(projected.value(QStringLiteral("mcpd")).toObject()
+                  .value(QStringLiteral("calls")).toInt(), 38);
+    EXPECT_FALSE(projected.contains(QStringLiteral("since"))) << "fields= was not applied";
+
+    // compact drops the terminal's empty calls[]; the caller's is not empty.
+    const QJsonObject compacted = throughMcpd(
+        QJsonObject{{QStringLiteral("compact"), true}}, Snapshot{});
+    EXPECT_EQ(firstTool(compacted), QStringLiteral("read_region"));
+    EXPECT_FALSE(compacted.contains(QStringLiteral("snapshots_skipped")))
+        << "compact was not applied";
+
+    const QJsonObject tabular = throughMcpd(
+        QJsonObject{{QStringLiteral("encoding"), QStringLiteral("tabular")}}, terminal);
+    EXPECT_TRUE(tabular.value(QStringLiteral("calls")).toObject()
+                    .contains(QStringLiteral("__rows__")));
+}
+
+TEST(McpdUsageSnapshots, Ants6850ForwardsTheWholeReport) {
+    const QJsonObject args{{QStringLiteral("fields"), QJsonArray{QStringLiteral("calls")}},
+                           {QStringLiteral("compact"), true},
+                           {QStringLiteral("encoding"), QStringLiteral("tabular")},
+                           {QStringLiteral("reset"), true},
+                           {QStringLiteral("include_zero"), true}};
+    const QJsonObject rpc = QJsonDocument::fromJson(
+        wholeReportRequest(usageRequest(args))).object();
+    EXPECT_EQ(rpc.value(QStringLiteral("id")).toInt(), 7);
+    const QJsonObject params = rpc.value(QStringLiteral("params")).toObject();
+    EXPECT_EQ(params.value(QStringLiteral("name")).toString(), QStringLiteral("token_usage"));
+    const QJsonObject sent = params.value(QStringLiteral("arguments")).toObject();
+    EXPECT_FALSE(sent.contains(QStringLiteral("fields")));
+    EXPECT_FALSE(sent.contains(QStringLiteral("encoding")));
+    ASSERT_TRUE(sent.value(QStringLiteral("compact")).isBool());
+    EXPECT_FALSE(sent.value(QStringLiteral("compact")).toBool());
+    EXPECT_TRUE(sent.value(QStringLiteral("reset")).toBool());
+    EXPECT_TRUE(sent.value(QStringLiteral("include_zero")).toBool());
+    // Not a tool call: unchanged, as is a reply that is not a tool result.
+    const QByteArray junk("not json\n");
+    EXPECT_EQ(wholeReportRequest(junk), junk);
+    EXPECT_EQ(narrowForCaller(junk, args), junk);
 }
 
 // ANTS-6378 — wrap_bytes is the frame alone. The scrub replaces each open

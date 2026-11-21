@@ -246,20 +246,26 @@ int main(int argc, char **argv) {
             // ANTS-5262 — the terminal counts only its own calls, so its
             // token_usage reply gets this session's figures (INV-11). The
             // snapshot is taken now; a reset waits for the terminal's answer.
+            // ANTS-6850 — the terminal answers whole and the narrowing is
+            // done here, after the overlay (INV-12).
             const QJsonObject params = QJsonDocument::fromJson(line).object()
                                            .value(QStringLiteral("params")).toObject();
-            if (params.value(QStringLiteral("name")).toString() == QLatin1String("token_usage")) {
-                const QJsonObject args = params.value(QStringLiteral("arguments")).toObject();
-                const bool reset = args.value(QStringLiteral("reset")).toBool();
-                onReply = [inner = std::move(onReply), &pipeline, reset,
-                           mine = pipeline.tokenUsageReport(
-                               args.value(QStringLiteral("include_zero")).toBool())](
-                              const QByteArray &reply) {
-                    if (reset) pipeline.resetTokenUsage();
-                    inner(TokenUsageEngine::overlaySessionOnReply(reply, mine));
-                };
+            if (params.value(QStringLiteral("name")).toString() != QLatin1String("token_usage")) {
+                forwarder.forward(line, std::move(onReply), std::move(onFail));
+                return;
             }
-            forwarder.forward(line, std::move(onReply), std::move(onFail));
+            const QJsonObject args = params.value(QStringLiteral("arguments")).toObject();
+            const bool reset = args.value(QStringLiteral("reset")).toBool();
+            onReply = [inner = std::move(onReply), &pipeline, reset, args,
+                       mine = pipeline.tokenUsageReport(
+                           args.value(QStringLiteral("include_zero")).toBool())](
+                          const QByteArray &reply) {
+                if (reset) pipeline.resetTokenUsage();
+                inner(TokenUsageEngine::narrowForCaller(
+                    TokenUsageEngine::overlaySessionOnReply(reply, mine), args));
+            };
+            forwarder.forward(TokenUsageEngine::wholeReportRequest(line),
+                              std::move(onReply), std::move(onFail));
         });
 
     // ANTS-5311 § 2.4 — this process's usage snapshot, so the terminal's
