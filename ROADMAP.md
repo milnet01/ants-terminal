@@ -107308,7 +107308,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L05-F3).
   Lanes: chrome-widgets.
 
-- 📋 [ANTS-6191] **One isFindingVisible(f) for the audit results pane, the Fold actionable list and Triage visible.**
+- ✅ [ANTS-6191] **One isFindingVisible(f) for the audit results pane, the Fold actionable list and Triage visible.**
   From ANTS-6116 (L07 MEDIUM F3). actionableFindings, visibleUntriagedKeys
   (auditdialog_triage.cpp) and renderResults' row loop each copy the
   suppressed / since-baseline / new-only / severity-pill / text filter.
@@ -107320,6 +107320,9 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 586
   `src/auditdialog.cpp:1213`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped d478164e: AuditDialog::isFindingVisible, with inBaselineView
+  as its baseline half; the summary counts apply that half alone and say
+  why.
   **Layman:** Three places in the audit window decide which findings are on screen, each with its own copy of the rule; a new filter would make their counts disagree.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F3).
