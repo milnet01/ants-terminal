@@ -107233,7 +107233,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L04-F14).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6185] **Move the get_scrollback MCP provider lambda into a named MainWindow method.**
+- ✅ [ANTS-6185] **Move the get_scrollback MCP provider lambda into a named MainWindow method.**
   From ANTS-6113 (L04 MEDIUM F16). setupClaudeMcpProviders holds a
   100-line inline lambda for get_scrollback's since_cursor protocol,
   with two nested lambdas. Not done in the lane pass:
@@ -107242,6 +107242,9 @@ worked after these.
   registerToolProvider( and expects the redaction switch there, so the
   test's slice must move with the code.
   Hot reload: none needed; a refactor with no new running state.
+  Shipped e7eda4d8: MainWindow::mcpGetScrollback holds the body; the
+  three scrapes share ants_test::scrollbackProviderBody(), which returns
+  it only when the registration calls it.
   **Layman:** One tool's code is a hundred-line block buried in a list of registrations; giving it its own function makes it findable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L04-F16).
