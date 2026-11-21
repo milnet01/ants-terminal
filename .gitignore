@@ -92,6 +92,7 @@ ants-audit-*.html
 # and the line numbers it cites change between runs, and it carries
 # no signal worth versioning.
 audit_rule_quality.json
+audit_rule_quality.json.lock
 audit_rule_quality.jsonl
 # Prose-grain false-positive ledger written by the four AI-reviewer
 # sweep skills (/audit, /cold-eyes, /indie-review, /test-audit). Per

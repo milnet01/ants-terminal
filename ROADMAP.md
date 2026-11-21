@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6854 -->
+<!-- ants-roadmap-id-high-water: ANTS=6862 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74322,6 +74322,83 @@ suppression that survives line drift.
   Source: split from ANTS-1706 (2026-11-17).
   Lanes: auditrunner, auditengine, auditdialog.
   Splits-from: ANTS-1706.
+
+- 🚧 [ANTS-6855] **The audit hand-off starts on the findings, not a full build and test run.**
+  plainTextResults' PHASE 1 told the session to run the whole suite and
+  record build warnings, and PHASE 5 to re-run it. On this project that
+  is over 10 minutes before any finding is read (user, 2026-11-21).
+  **Layman:** A Claude session handed an audit starts fixing at once instead of spending ten minutes rebuilding.
+  Kind: fix.
+  Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
+  Lanes: auditdialog.
+
+- 🚧 [ANTS-6856] **The audit hand-off names the project's standards files instead of pasting them in.**
+  appendDocIfPresent pasted CLAUDE.md, CONTRIBUTING.md and four
+  standards files: about 190 KB of the 759 KB report of 2026-11-21.
+  **Layman:** The audit report stops carrying whole copies of documents the session can open itself.
+  Kind: fix.
+  Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
+  Lanes: auditdialog.
+
+- 🚧 [ANTS-6857] **The clang-tidy audit lane reports only clang-tidy diagnostics, not its progress and summary lines.**
+  Its OutputFilter is empty, so code snippets, `N warnings generated.`,
+  `Suppressed N warnings` and `[1/1] Processing file` lines each became
+  a finding (62 lines on 2026-11-21, most of them noise).
+  **Layman:** The clang-tidy part of the audit lists real warnings only.
+  Kind: fix.
+  Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
+  Lanes: auditdialog.
+
+- 🚧 [ANTS-6858] **The audit's secret and key rules skip public keys, settings reads and source files named for secrets.**
+  2026-11-21 report: env_files (BLOCKER) and git_sensitive flagged
+  packaging/update-signing/ants-update.pub.pem; git_sensitive flagged
+  src/secretredact.h by name; secrets_scan flagged
+  `req.apiKey = m_config->aiApiKey();` in reviewdialogbase.cpp.
+  **Layman:** The audit stops raising security alarms over the public update key and the secret-hiding code.
+  Kind: fix.
+  Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
+  Lanes: auditdialog.
+
+- 🚧 [ANTS-6859] **The command-injection rule skips QRandomGenerator::system() and the reviewed shell exec in ptyhandler.cpp.**
+  `\bsystem\s*\(` matched `QRandomGenerator::system()->generate(` in
+  claudesetup.cpp; the exec family's `, nullptr)` drop marker misses
+  ptyhandler.cpp's execle, whose nullptr is on the next line.
+  **Layman:** The audit stops calling a random-number call and the terminal's own shell launch command injection.
+  Kind: fix.
+  Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
+  Lanes: auditdialog.
+
+- ✅ [ANTS-6860] **An audit run leaves no untracked audit_rule_quality.json.lock in the project.**
+  RuleQualityTracker::save takes ConfigWriteLock, whose sibling
+  `<path>.lock` persists by design; .gitignore lists the json but not
+  the lock, and the push gate refuses an untracked file.
+  Shipped 2026-11-21: .gitignore lists audit_rule_quality.json.lock
+  beside the json. Other audited projects still get both files in their
+  root; that is a separate item.
+  **Layman:** Running an audit no longer leaves a stray file that blocks pushing.
+  Kind: fix.
+  Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
+  Lanes: auditdialog.
+
+- 📋 [ANTS-6861] **Four sources compile only through the precompiled header: they include the Qt classes they use.**
+  clang-tidy with the PCH stripped (2026-11-21): mainwindow_tabs.cpp
+  (QStatusBar, QPushButton), auditdialog_debtsweep.cpp (QTabWidget,
+  QWidget), remotecontrol_docs.cpp and
+  tests/features/mcp_ci_report/test_mcp_ci_report.cpp (QElapsedTimer).
+  **Layman:** The code builds even when the shared precompiled header is turned off.
+  Kind: fix.
+  Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
+  Lanes: auditdialog.
+
+- 💭 [ANTS-6862] **The audit keeps its rule-quality history out of the audited project's root, or in a folder that ignores itself.**
+  RuleQualityTracker writes <project>/audit_rule_quality.json and its
+  ConfigWriteLock sibling <project>/audit_rule_quality.json.lock. Only
+  this repo's .gitignore lists them (ANTS-6860), so every other audited
+  project shows two untracked files. .audit_cache/ is the obvious home.
+  **Layman:** Auditing someone else's project would leave no untracked files in it.
+  Kind: fix.
+  Source: ANTS-6860 follow-up 2026-11-21.
+  Lanes: auditdialog.
 
 ### ⚡ Other improvements (performance, security, optimisations)
 
