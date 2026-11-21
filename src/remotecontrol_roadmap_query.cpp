@@ -39,8 +39,10 @@ using namespace rcdetail;  // ANTS-3833
 // a caller reaches for first (done/wip/todo/maybe …) onto the canonical
 // roadmap_log status. Extracted (ANTS-2126) so the GFM flip path and the
 // pass-headings flip path share one map instead of duplicating it.
+// ANTS-6287 — any other word comes back lowercased, so "Shipped" resolves
+// as "DONE" does.
 QString rcdetail::rlCanonicalToStatus(const QString &toStatus) {
-    const QString lo = toStatus.toLower();
+    QString lo = toStatus.toLower();
     if (lo == QLatin1String("done")     || lo == QLatin1String("complete") ||
         lo == QLatin1String("completed"))
         return QStringLiteral("shipped");
@@ -50,7 +52,7 @@ QString rcdetail::rlCanonicalToStatus(const QString &toStatus) {
         return QStringLiteral("planned");
     if (lo == QLatin1String("maybe")    || lo == QLatin1String("idea"))
         return QStringLiteral("considered");
-    return toStatus;
+    return lo;
 }
 
 // ============================ ANTS-2126 ============================

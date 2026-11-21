@@ -44,7 +44,8 @@ per-locator `note` and `no_anchor`.
   synonyms as `op:"flip"`, through the same map (`rlCanonicalToStatus`:
   done/complete/completed → shipped, wip/in_progress → in-progress,
   todo/open → planned, maybe/idea → considered), besides the canonical
-  words and emoji. Any other word is still `bad_status`.
+  words and emoji. Words match in any letter case (ANTS-6287). Any other
+  word is still `bad_status`.
 
 ## Test
 `tests/features/roadmap_log_flip_batch/` (label `features;fast`), driving

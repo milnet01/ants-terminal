@@ -397,6 +397,32 @@ TEST(roadmap_log_flip_batch, Inv9StatusSynonyms) {
         << "the only locator failed bad_status, so the call carries that code";
 }
 
+// INV-9 — ANTS-6287: a canonical word in capitals resolves, as a capitalised
+// synonym already did.
+TEST(roadmap_log_flip_batch, Inv9CanonicalWordsIgnoreCase) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+    RemoteControl rc(nullptr);
+
+    QJsonObject wip = locId(QStringLiteral("ANTS-0043"));
+    wip[QStringLiteral("to_status")] = QStringLiteral("In-Progress");
+    QJsonArray locs;
+    locs.append(locId(QStringLiteral("ANTS-0042")));
+    locs.append(wip);
+    const QJsonObject resp = rc.cmdRoadmapLogFlipBatchForTest(
+        batchReq(tmp.path(), QStringLiteral("Shipped"), locs)).object();
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 0);
+
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md, "- \xE2\x9C\x85 [ANTS-0042] **First bullet.**"))
+        << "Shipped -> shipped";
+    EXPECT_TRUE(contains(md, "- \xF0\x9F\x9A\xA7 [ANTS-0043] **Second bullet.**"))
+        << "In-Progress -> in-progress";
+}
+
 // ANTS-2136 — dry_run preview: flip / flip_batch / create_section resolve
 // the locator/target and return the would-be edit WITHOUT mutating the file.
 TEST(roadmap_log_flip_batch, Inv8DryRunWritesNothing) {
