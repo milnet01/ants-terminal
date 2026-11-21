@@ -1196,27 +1196,30 @@ bool AuditDialog::sinceBaselineVisible(const Finding &f) const {
     return visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints);
 }
 
-// ANTS-1257 v2 — currently-visible findings (same filter as the results
-// pane) that are actionable: aiVerdict == TRUE_POSITIVE OR confidence >= 70.
+bool AuditDialog::inBaselineView(const Finding &f) const {
+    if (m_sinceBaseline) return sinceBaselineVisible(f);
+    return !(m_showNewOnly && m_hasBaseline
+             && m_baselineFingerprints.contains(f.dedupKey));
+}
+
+bool AuditDialog::isFindingVisible(const Finding &f) const {
+    if (isSuppressed(f)) return false;
+    if (!inBaselineView(f)) return false;
+    if (!m_activeSeverities.contains(static_cast<int>(f.severity))) return false;
+    if (m_textFilter.isEmpty()) return true;
+    const QString hay = (f.file + " " + f.message + " " +
+                         f.checkId + " " + f.blameAuthor).toLower();
+    return hay.contains(m_textFilter);
+}
+
+// ANTS-1257 v2 — the visible findings that are actionable:
+// aiVerdict == TRUE_POSITIVE OR confidence >= 70.
 QList<Finding> AuditDialog::actionableFindings() const {
     QList<Finding> out;
     for (const auto &r : m_completedResults) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (isSuppressed(f)) continue;
-            if (m_sinceBaseline) {
-                if (!sinceBaselineVisible(f))
-                    continue;
-            } else if (m_showNewOnly && m_hasBaseline
-                       && m_baselineFingerprints.contains(f.dedupKey)) {
-                continue;
-            }
-            if (!m_activeSeverities.contains(static_cast<int>(f.severity))) continue;
-            if (!m_textFilter.isEmpty()) {
-                const QString hay = (f.file + " " + f.message + " " +
-                                     f.checkId + " " + f.blameAuthor).toLower();
-                if (!hay.contains(m_textFilter)) continue;
-            }
+            if (!isFindingVisible(f)) continue;
             const bool actionable =
                 f.aiVerdict == QStringLiteral("TRUE_POSITIVE") || f.confidence >= 70;
             if (actionable) out.append(f);
@@ -3221,7 +3224,10 @@ void AuditDialog::renderResults() {
         return false;
     };
 
-    // Counts by severity.
+    // Counts by severity. Only isFindingVisible's suppression and baseline
+    // halves apply: a severity pill hidden would zero its own count, and the
+    // trend snapshot written below must not depend on the pills or the text
+    // filter.
     int bySev[5] = {0, 0, 0, 0, 0};
     int totalFindings = 0;
     int totalNew = 0;
@@ -3230,12 +3236,7 @@ void AuditDialog::renderResults() {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
             if (isSuppressed(f)) { ++totalSuppressed; continue; }
-            if (m_sinceBaseline) {
-                if (!sinceBaselineVisible(f))
-                    continue;
-            } else if (m_showNewOnly && !findingIsNew(f)) {
-                continue;
-            }
+            if (!inBaselineView(f)) continue;
             ++bySev[static_cast<int>(f.severity)];
             ++totalFindings;
             if (findingIsNew(f)) ++totalNew;
@@ -3476,19 +3477,7 @@ void AuditDialog::renderResults() {
         QStringList parts;
         for (const Finding *pf : sortedFindings) {
             const Finding &f = *pf;
-            if (isSuppressed(f)) continue;
-            if (m_sinceBaseline) {
-                if (!sinceBaselineVisible(f))
-                    continue;
-            } else if (m_showNewOnly && !findingIsNew(f)) {
-                continue;
-            }
-            if (!m_activeSeverities.contains(static_cast<int>(f.severity))) continue;
-            if (!m_textFilter.isEmpty()) {
-                const QString hay = (f.file + " " + f.message + " " +
-                                     f.checkId + " " + f.blameAuthor).toLower();
-                if (!hay.contains(m_textFilter)) continue;
-            }
+            if (!isFindingVisible(f)) continue;
             const bool isNew = m_hasBaseline && findingIsNew(f);
             const QString loc = f.file.isEmpty()
                               ? QString()

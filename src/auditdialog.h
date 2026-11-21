@@ -197,6 +197,13 @@ protected:
     // ANTS-5084 — visibleSinceBaseline over this run's sets, keeping only its
     //   baseline half while m_recentScopeError says the sets are unknown.
     bool sinceBaselineVisible(const Finding &f) const;
+    // ANTS-6191 — the results pane's row filter, shared by the pane, the
+    //   Fold actionable list and Triage visible: not suppressed, inside the
+    //   baseline view, an active severity pill, and matching the text filter.
+    bool isFindingVisible(const Finding &f) const;
+    // inBaselineView — isFindingVisible's Since baseline / New since
+    //   baseline half; the summary counts apply it alone.
+    bool inBaselineView(const Finding &f) const;
 
     // ANTS-1259 — Debt Sweep tab orchestration (testable seams; the
     // QTextBrowser anchors + buttons are thin wrappers over these).

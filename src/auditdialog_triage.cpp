@@ -287,26 +287,10 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
 
 QStringList AuditDialog::visibleUntriagedKeys() const {
     QStringList out;
-    auto findingIsNew = [this](const Finding &f) {
-        if (!m_hasBaseline) return true;
-        return !m_baselineFingerprints.contains(f.dedupKey);
-    };
     for (const auto &r : m_completedResults) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (isSuppressed(f)) continue;
-            if (m_sinceBaseline) {
-                if (!sinceBaselineVisible(f))
-                    continue;
-            } else if (m_showNewOnly && !findingIsNew(f)) {
-                continue;
-            }
-            if (!m_activeSeverities.contains(static_cast<int>(f.severity))) continue;
-            if (!m_textFilter.isEmpty()) {
-                const QString hay = (f.file + " " + f.message + " " +
-                                     f.checkId + " " + f.blameAuthor).toLower();
-                if (!hay.contains(m_textFilter)) continue;
-            }
+            if (!isFindingVisible(f)) continue;
             if (!f.aiVerdict.isEmpty()) continue;    // already triaged
             out.append(f.dedupKey);
         }

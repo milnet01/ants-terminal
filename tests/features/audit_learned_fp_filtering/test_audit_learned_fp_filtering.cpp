@@ -98,8 +98,12 @@ TEST(AuditLearnedFpFiltering, Inv3FiltersTakeTheWholeFinding) {
     expect(!contains(elsewhere, "if (isSuppressed(f.dedupKey))"),
            "INV-3: no filter passes a bare dedupKey; the ledger would be "
            "invisible to it");
-    expect(countOccurrences(cpp, "if (isSuppressed(f))") >= 7,
+    expect(countOccurrences(cpp, "if (isSuppressed(f))") >= 6,
            "INV-3: the render and export paths filter on the whole Finding");
+    // ANTS-6191 — the results rows, Fold actionable and Triage visible take
+    // that filter through one isFindingVisible(f).
+    expect(countOccurrences(cpp, "if (!isFindingVisible(f)) continue;") >= 3,
+           "INV-3: a visible-findings path filters without isFindingVisible");
 
     // INV-4 — but the parse-time cache keeps the key form. It runs BEFORE
     // applyLearnedFpSuppressions, so the Finding overload would hash for
