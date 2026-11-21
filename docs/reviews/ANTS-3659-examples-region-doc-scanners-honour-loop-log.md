@@ -1,0 +1,12 @@
+# ANTS-3659 — an examples region the doc scanners honour — review loop log
+
+Record for [`../specs/ANTS-3659-examples-region-doc-scanners-honour.md`](../specs/ANTS-3659-examples-region-doc-scanners-honour.md) § Cold-eyes loop log.
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | C | H | M | L | I | Outcome |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 2026-07-27 | surface (depth); invariants+tests; cross-doc | 2 | 4 | 6 | 6 | 0 | 18 verified, all fixed; 7 dismissed separately. Both CRITICALs self-inflicted: INV-49/52's fixture used a token that is not a scan-layer `unparsed[]` entry, and § 1's headline claimed 6 real citations where 1 is. Dismissed: no id collision with ANTS-3654; `\r` already stripped at `src/doccitations.cpp:299`; empty region, zero-line input and null out-param all follow the `fenceMask` precedent. |
+| 2 | 2026-07-27 | surface; invariants+tests; cross-doc (all depth) | 1 | 10 | 8 | 9 | 0 | 28 verified, all fixed; 1 dismissed separately (`CMakeLists.txt:2024` is the source line, not the comment). CRITICAL: INV-50's fixture had to be a `begin` with no `end`, or a fence-blind implementation passes it. Recurring class — four invariants named a wrong implementation their fixture did not defeat. Cross-doc: `specs.md` § 5.5 forbids the INV-8 widening § 7 proposed (now an annotation); the new JSON keys sit outside ANTS-3636 INV-28's scoped list until § 2.1 names them; `Blocker for: ANTS-3661` contradicted that bullet's report-only design. |
+| 3 | 2026-07-27 | surface; invariants+tests; cross-doc (all depth) | 1 | 6 | 12 | 9 | 0 | 28 verified, all fixed. Design finding, reached independently by two lanes: § 7's `unparsed_total:0` target forced regions around live invariant prose, a historical loop log, and two grammar false-positives that are not illustrations at all — dissolving § 1's positional argument. Acceptance now targets stale *citations* only, with the false-positive residue enumerated and scoped out in § 5. CRITICAL: § 2.3's `docLine`-not-span-line pin had no fixture. The per-invariant "what this defeats" prose — the class every loop found holes in — is deduplicated into § 6.1, where it is one table checked against the mutation run rather than seven prose proofs. |
+| impl | 2026-11-01 | ANTS-5469 amendment; no reviewer dispatched | 0 | 0 | 0 | 0 | 0 | Amended from roadmap item ANTS-5469: INV-56 adds a path after "not" as an unmarked specimen. The item's other candidate, skipping a path whose first directory is absent, was not taken: that hides real rot after a directory is renamed. |
