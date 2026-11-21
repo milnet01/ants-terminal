@@ -107288,7 +107288,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L04-F18).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6190] **One failPermanently(reason) for the global-shortcuts portal's six failure paths, with one clean-up rule.**
+- ✅ [ANTS-6190] **One failPermanently(reason) for the global-shortcuts portal's six failure paths, with one clean-up rule.**
   From ANTS-6114 (L05 MEDIUM F3). globalshortcutsportal.cpp writes the
   "fail permanently" sequence six times, and the copies differ: the two
   BindShortcuts copies clear m_pending and m_sessionHandle, the timeout
@@ -107300,6 +107300,9 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 564
   `src/globalshortcutsportal.cpp:325`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped e34bea2f: failPermanently drops queued binds, latches, emits;
+  the session handle is kept so the destructor closes the session.
+  portal_failure_paths INV-6 locks it.
   **Layman:** When the desktop's global-shortcut service fails, six places each clean up slightly differently; one shared routine would make them agree.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L05-F3).
