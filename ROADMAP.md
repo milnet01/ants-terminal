@@ -113031,7 +113031,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: review-fix.
   Source: code-review-2026-10-29.
 
-- 📋 [ANTS-6289] **mcpspill's INV-9 fail-open returns the body inline after the spill was written and evict() ran, and rows_preview's per-row bytes count the 6-byte {"v":…} sizing wrapper.**
+- ✅ [ANTS-6289] **mcpspill's INV-9 fail-open returns the body inline after the spill was written and evict() ran, and rows_preview's per-row bytes count the 6-byte {"v":…} sizing wrapper.**
   src/mcpspill.cpp: the envelope.size() >= total check comes after the
   QSaveFile commit and evict(handle), so the orphan file stays and live
   handles may have been evicted for it. Move the check before the write, or
@@ -113039,6 +113039,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   the wrapper's size; ANTS-5153 fixed head for the same wrapper. The helpers
   addHeadRows and addRowsPreview also take domCount, which is always
   fullArr.size().
+  Shipped: INV-9's check runs before the spill write; rows_preview bytes
+  exclude the sizing wrapper; the helpers drop domCount.
   **Layman:** A large MCP reply that ends up sent in full can still leave an unused copy on disk and push out older saved replies; one size figure reads slightly high.
   Kind: review-fix.
   Source: code-review-2026-10-29.
