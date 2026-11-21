@@ -71892,6 +71892,19 @@ extends an existing item, that item carries it instead.
   writes moved to the GUI-thread completion, or keep it on the GUI thread
   and cache the per-round work (one ROADMAP split, one DocIntegrity pass)
   so each brief is cheap. The second is smaller and may be enough.
+  2026-11-21: measured through the cold_eyes_brief verb (the dialog's
+  manifest engine; the dialog then inlines bodies and slices the
+  cross-reference docs per lane, so its cost is higher). This repo,
+  `contracts` lane: 1.40 s cold, 0.22 s warm; `standards` lane: 0.05 s.
+  Mapped the three composeBrief overrides: the dominant cost is
+  lane-dependent (DocIntegrity, heading index, cited-code hashing over
+  the lane's own docs), so a per-round cache (option B) leaves it.
+  Decision: option A, compose on a worker. It must move ColdEyesDialog's
+  m_staleByLane write and TestAuditDialog's m_token rewrite (briefFor ->
+  runEnginePartition) into the GUI-thread completion, and cancel or join
+  the worker in each dialog's destructor. The shared per-round parts
+  (ROADMAP split, ledger, standards bodies) can be cached as a
+  follow-up.
   **Layman:** Stop the window freezing briefly while an AI review prepares each part of its work.
   Kind: perf.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines), split from ANTS-5101.
