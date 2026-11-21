@@ -183,9 +183,7 @@ pick up the key and the source line takes effect in a new shell.
 
 ## 12. Cold-eyes loop log
 
-| Date | Loop | Result |
-|---|---|---|
-| 2026-11-07 | none | Not reviewed: the user's 2026-11-06 decision on ANTS-6441 sets no `review-contract` gate unless the spec proves expensive. Its contract is one path, one format and one precedence rule, each cheap to change. |
+Rows live in [`../reviews/ANTS-6441-osc133-key-file-loop-log.md`](../reviews/ANTS-6441-osc133-key-file-loop-log.md).
 
 ## 13. Reload
 

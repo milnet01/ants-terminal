@@ -1,0 +1,10 @@
+# ANTS-4977 — publish `dropped` roadmap items with a 🚫 marker — review loop log
+
+Record for [`../specs/ANTS-4977-dropped-status.md`](../specs/ANTS-4977-dropped-status.md) § Cold-eyes loop log.
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|---|---|---|---|---|---|---|---|
+| 1 | 2026-09-19 | 3, cold, identical shared packet | 3 | 2 | 1 | 0 | Verified 6, fixed 6, dismissed 0. All three lanes independently found that `won't fix` can never match the pass-headings keyword capture (it stops at the apostrophe): dropped. Also fixed: `renderLegend` skips a key the stored legend lacks, so a default `🚫 Dropped (closed, not done)` row is now specified; the GFM reader's `tryStrip` chain and `applyGfmFlip`'s prefix list were wrongly called already-capable; § 7.3.1's and ANTS-3757 § 2.7's word tables and § 3.11's mixing anti-pattern were missing from § 2.9; the reader's bare-glyph map (found resolving a lane's open question). Four other open questions resolved clean (`closed` is migration-only; `isOpen` callers; task-list parse goes through `stripInlineEmoji`). |
+| 2 | 2026-09-19 | 3, cold, identical brief; packet gained windows on the rotate_minor isOpen call and current_state | 0 | 3 | 0 | 1 | Verified 4, fixed 4, dismissed 0. CAP REACHED (2, spec): ships to implementation. Fixed: the legend default was said to be "never written to project.legend", but migration's legend parse stores it on the next re-migration (now stated, with when the row appears); the report's period `closed` counts ship dates only, beside § 1's "counted as closed"; INV-3 could not observe provenance (all three lanes), so a `planFrom()` leg was added; the dialog's current-match lets a 🚫 bullet into the Current preset (found resolving a lane's open question). Calm cap: 2 of 4 final-loop findings landed on text this run wrote (the loop-1 legend and INV-3 fixes), refinements not reversals. Gated span is the whole new document, so all 10 of the run's findings fall inside it. Cap sweep over every touched subject: 0 further. |
