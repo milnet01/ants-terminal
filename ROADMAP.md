@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6848 -->
+<!-- ants-roadmap-id-high-water: ANTS=6849 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -108810,7 +108810,7 @@ worked after these.
   Kind: doc-fix.
   Source: in-session-2026-11-20 (session 302 handoff).
 
-- 📋 [ANTS-6846] **Connect MainWindow's plugin slots before scanAndLoad(), so a permission prompt at start-up cannot drop another plugin's palette entries or status text.**
+- ✅ [ANTS-6846] **Connect MainWindow's plugin slots before scanAndLoad(), so a permission prompt at start-up cannot drop another plugin's palette entries or status text.**
   MainWindow::setupPlugins() calls m_pluginManager->scanAndLoad() and only
   then connects paletteEntryRegistered, statusMessage, sendToTerminal and
   the rest. That is normally safe: engine signals reach the GUI thread as
@@ -108828,6 +108828,9 @@ worked after these.
   Proof needs a nested event loop inside scanAndLoad (a test seam on the
   prompt), which is why it was not fixed inside the ANTS-6184 refactor.
   Hot reload: none needed; a fix.
+  Shipped: connects before scanAndLoad(); palette clear on the new
+  pluginsAboutToLoad. The status-text half needs the label to exist
+  first: ANTS-6849.
   **Layman:** If a plugin asks for permissions the first time the terminal starts, another plugin's menu entries or status text can silently go missing.
   Kind: fix.
   Source: ants-terminal-session-2026-11-20 (found in ANTS-6184).
@@ -108861,6 +108864,22 @@ worked after these.
   Kind: investigate.
   Source: ants-terminal-session-2026-11-20 (found in ANTS-6184).
   Lanes: statusbar.
+
+- 📋 [ANTS-6849] **Keep a plugin's status text sent during a start-up permission prompt, which arrives before the status label exists.**
+  ANTS-6846 connected setupPlugins' slots before scanAndLoad(), so a
+  permission prompt's nested event loop now delivers an earlier plugin's
+  statusMessage to MainWindow::showStatusMessage. That is start-up step 2;
+  m_statusMessage is created in step 5 (setupStatusWidgets), and
+  showStatusMessage returns early while it is null, so the text is still
+  dropped. The same guard drops applyTheme's and newTab's start-up
+  messages by design, so holding every early message would change what
+  start-up shows. Decide the narrower fix: hold only plugin status text
+  until the label exists, or create the label before setupPlugins.
+  Hot reload: none needed; a fix.
+  **Layman:** If a plugin asks for permissions the first time the terminal starts, another plugin's status-bar text can still go missing.
+  Kind: fix.
+  Source: ants-terminal-session-2026-11-21 (split from ANTS-6846).
+  Lanes: mainwindow, statusbar.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
