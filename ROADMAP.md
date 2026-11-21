@@ -107347,7 +107347,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L07-F4).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6193] **One saveReportPrivately helper for the audit dialog's SARIF and HTML exports.**
+- ✅ [ANTS-6193] **One saveReportPrivately helper for the audit dialog's SARIF and HTML exports.**
   From ANTS-6116 (L07 MEDIUM F6). The Export SARIF and Export HTML
   lambdas in AuditDialog's constructor are one behaviour (ANTS-5084,
   5085, 5151 each touched both). Not done in the lane pass:
@@ -107355,6 +107355,8 @@ worked after these.
   and two `"HTML save failed: "` literals, so the fold moves its test
   contract.
   Hot reload: none needed; no new running state.
+  Shipped: AuditDialog::saveReportPrivately in auditdialog_export.cpp;
+  audit_dialog_lows INV-5 reads its body.
   **Layman:** The two report-export buttons repeat the same private-file save code, so a privacy fix could reach one and miss the other.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F6).
