@@ -113016,7 +113016,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: review-fix.
   Source: code-review-2026-10-29.
 
-- 📋 [ANTS-6288] **TokenUsageEngine narrows a peer snapshot's n_calls to int without an upper bound, and counterField's switch can drift from kCounterKeys.**
+- ✅ [ANTS-6288] **TokenUsageEngine narrows a peer snapshot's n_calls to int without an upper bound, and counterField's switch can drift from kCounterKeys.**
   snapshotFromJson (src/tokenusageengine.cpp) checks only v < 0 before
   int(v), so n_calls above INT_MAX wraps negative and subtracts from the
   totals. The loops are bounded by kCounterCount, but counterField is a
@@ -113024,6 +113024,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   case is dereferenced. One {key, member} table would remove the drift.
   The ToolCounter comment (src/tokenusageengine.h) also omits recordCall,
   ToolReport and RemoteControl::cmdTokenUsage from its list of places to update.
+  Shipped 68825867: n_calls bounded to int; kCounterKeys is one {key,
+  field} table; the ToolCounter comment names sessionFieldsJson (where
+  cmdTokenUsage's field list now lives).
   **Layman:** A corrupt usage file could make the token-savings totals go negative, and adding a new counter later could crash the MCP server.
   Kind: review-fix.
   Source: code-review-2026-10-29.
