@@ -35,6 +35,7 @@ Checks: >
   -misc-const-correctness,
   -misc-non-private-member-variables-in-classes,
   -performance-implicit-conversion-in-loop,
+  -bugprone-signed-bitwise,
   -cert-err33-c
 
 # Each exclusion above traces to a filed decision or a verified reason:
@@ -54,6 +55,9 @@ Checks: >
 #                                        QJsonValueConstRef, is not in Qt 6.2
 #                                        (the CI floor), and the copy is a
 #                                        reference-count bump
+#   bugprone-signed-bitwise              ANTS-5430 -- guards behaviour C++20
+#                                        defines (two's complement); the hits
+#                                        are flag and byte masks
 #   cert-err33-c                         verified as the stderr-logging idiom
 #                                        (debuglog.cpp, dialogshowtracer.cpp);
 #                                        ignoring an fprintf return there is

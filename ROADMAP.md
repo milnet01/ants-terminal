@@ -114886,9 +114886,13 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5430] **clang-tidy bugprone-signed-bitwise: 198 sites in 42 files.**
+- ✅ [ANTS-5430] **clang-tidy bugprone-signed-bitwise: 198 sites in 42 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Likely Qt flag enums: spot-check, then fix or suppress as one class.
+  Closed 2026-11-21 by suppressing the check as a class in .clang-tidy.
+  The 2026-11-21 sweep found 217 hits, all flag and byte masks. The
+  check guards behaviour older C++ left to the implementation; C++20
+  (CMAKE_CXX_STANDARD 20) defines it.
   **Layman:** Bit operations done on signed numbers, which C++ treats loosely.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
