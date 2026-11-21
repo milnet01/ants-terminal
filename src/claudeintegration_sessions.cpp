@@ -1273,6 +1273,7 @@ QString ClaudeIntegration::decodeProjectPath(const QString &encoded) {
     for (int i = 1; i < tokens.size(); ++i) {
         const QString withSep = path + QLatin1Char('/') + tokens[i];
         const QString withHyphen = path + QLatin1Char('-') + tokens[i];
+        // NOLINTNEXTLINE(bugprone-branch-clone): deliberate
         if (QFileInfo::exists(withSep))      path = withSep;
         else if (QFileInfo::exists(withHyphen)) path = withHyphen;
         else                                 path = withSep;

@@ -434,11 +434,9 @@ QList<Finding> detectOrphanQUnused(
                 QStringLiteral(R"(\b[A-Z][A-Za-z_0-9]*\s*[*&]?\s*\b%1\b\s*[;,)=])").arg(QRegularExpression::escape(v)));
             const QRegularExpression lambdaCap(
                 QStringLiteral(R"(\[[^\]]*\b%1\b[^\]]*\])").arg(QRegularExpression::escape(v)));
-            bool declared = false;
-            if (typedDecl.match(body).hasMatch()) declared = true;
-            else if (typedCustom.match(body).hasMatch()) declared = true;
-            else if (lambdaCap.match(body).hasMatch()) declared = true;
-            if (declared) continue;
+            if (typedDecl.match(body).hasMatch() || typedCustom.match(body).hasMatch()
+                || lambdaCap.match(body).hasMatch())
+                continue;  // declared
 
             Finding fnd;
             fnd.category    = QStringLiteral("code_drift");

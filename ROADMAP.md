@@ -115045,9 +115045,16 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5442] **clang-tidy bugprone-branch-clone: 20 sites in 13 files.**
+- ✅ [ANTS-5442] **clang-tidy bugprone-branch-clone: 20 sites in 13 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   An identical branch is sometimes a copy-paste bug: read each one.
+  2026-11-21: all 15 current hits read; none is a copy-paste bug. Four
+  folded into one condition (auditengine.cpp severity tier,
+  debtsweepengine.cpp declared test, indiereviewengine.cpp roadmap
+  slice, terminalgrid.cpp SGR 53/55). The other eleven are deliberate
+  per-case tables, documented fallbacks or branches split for a comment,
+  and carry NOLINT(bugprone-branch-clone). The check stays enabled;
+  clang-tidy reports 0.
   **Layman:** If/else or switch branches that do exactly the same thing.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.

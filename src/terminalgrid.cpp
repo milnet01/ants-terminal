@@ -1187,6 +1187,7 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
              semi != std::string::npos &&
              payload.compare(semi + 1, std::string::npos, "?") == 0) {
         QColor c;
+        // NOLINTNEXTLINE(bugprone-branch-clone): deliberate
         if (oscNum == "10")      c = m_defaultFg;
         else if (oscNum == "11") c = m_defaultBg;
         else                     c = m_defaultFg;  // OSC 12: fall back to fg (grid has no separate cursor color)
@@ -1711,8 +1712,7 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
         // attr) so Claude Code / other TUI apps using them don't get their
         // codes reinterpreted by `default:` fall-through. If future demand
         // surfaces we'll add an UnderlineStyle::Overline or separate flag.
-        case 53: break;
-        case 55: break;
+        case 53: case 55: break;
 
         // Underline color: CSI 58;2;r;g;b m or CSI 58;5;idx m
         //

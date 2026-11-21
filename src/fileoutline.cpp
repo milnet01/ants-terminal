@@ -730,12 +730,14 @@ const char *modeToLanguageString(Mode m) {
 
 QString headerCommentMarker(Mode m) {
     switch (m) {
+        // NOLINTNEXTLINE(bugprone-branch-clone): deliberate
         case Mode::Cpp:     return QStringLiteral("//");
         case Mode::Generic: return QStringLiteral("//");  // brace family (ANTS-2150)
         case Mode::Html:    return QStringLiteral("<!--"); // ANTS-4361
         case Mode::Glsl:    return QStringLiteral("//");  // ANTS-3800
         case Mode::Sh:      return QStringLiteral("#");   // ANTS-4826
         case Mode::Asm:     return QStringLiteral(";");   // ANTS-6801
+        // NOLINTNEXTLINE(bugprone-branch-clone): deliberate
         case Mode::Cmake:   return QStringLiteral("#");
         case Mode::Yaml:    return QStringLiteral("#");
         case Mode::Py:      return QStringLiteral("#");
@@ -1247,7 +1249,7 @@ struct HtmlScanner {
             QRegularExpressionMatch m = rxGenericDecl().match(line);
             if (m.hasMatch()) {
                 out.offer(lineNo, "func", m.captured(2), line);
-            } else if ((m = rxGenericMethod().match(line)).hasMatch()) {
+            } else if ((m = rxGenericMethod().match(line)).hasMatch()) {  // NOLINT(bugprone-branch-clone): deliberate
                 out.offer(lineNo, "func", m.captured(1), line);
             } else if ((m = rxGenericArrow().match(line)).hasMatch()) {
                 out.offer(lineNo, "func", m.captured(1), line);
@@ -1271,6 +1273,7 @@ struct HtmlScanner {
 // versions and directories are declared.
 void scanShLine(const QString &line, int lineNo, SymbolSink &out) {
     QRegularExpressionMatch m = rxShFunc().match(line);
+    // NOLINTNEXTLINE(bugprone-branch-clone): deliberate
     if (m.hasMatch()) {
         out.offer(lineNo, "func", m.captured(1), line);
     } else if ((m = rxShFuncKeyword().match(line)).hasMatch()) {
@@ -1299,6 +1302,7 @@ void scanAsmLine(const QString &line, int lineNo, SymbolSink &out) {
     static const QRegularExpression label =
         landmark(R"(^([A-Za-z_?@$][\w$#@~?.]*):)", false);
     QRegularExpressionMatch m;
+    // NOLINTNEXTLINE(bugprone-branch-clone): deliberate
     if ((m = macro.match(line)).hasMatch())      out.offer(lineNo, "func", m.captured(1), line);
     else if ((m = equ.match(line)).hasMatch())   out.offer(lineNo, "const", m.captured(1), line);
     else if ((m = label.match(line)).hasMatch()) out.offer(lineNo, "func", m.captured(1), line);
@@ -1330,6 +1334,7 @@ void scanYamlLine(const QString &line, int lineNo, SymbolSink &out) {
 // the name rather than which rule fires.
 void scanGenericLine(const QString &line, int lineNo, SymbolSink &out) {
     QRegularExpressionMatch m = rxGenericFunctionTyped().match(line);
+    // NOLINTNEXTLINE(bugprone-branch-clone): deliberate
     if (m.hasMatch()) {
         out.offer(lineNo, "func", m.captured(1), line);
     } else if ((m = rxGenericDecl().match(line)).hasMatch()) {

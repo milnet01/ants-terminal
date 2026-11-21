@@ -136,6 +136,7 @@ void VtParser::feedByte(uint8_t byte) {
             if (m_utf8Remaining == 0) {
                 // Reject overlong encodings and surrogates
                 bool valid = true;
+                // NOLINTNEXTLINE(bugprone-branch-clone): deliberate
                 if (m_utf8Accum < 0x80) valid = false;                    // overlong 2-byte
                 else if (m_utf8Accum < 0x800 && m_utf8ExpectedLen >= 3) valid = false;  // overlong 3-byte
                 else if (m_utf8Accum < 0x10000 && m_utf8ExpectedLen >= 4) valid = false; // overlong 4-byte

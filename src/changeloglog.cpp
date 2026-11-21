@@ -293,7 +293,7 @@ int firstFeatureGroupedTopicLine(const QStringList &lines,
                 return -1;  // a real category heading → not feature-grouped
             if (isDatedTopicHeading(t)) ++datedCount;
             if (firstTopic < 0) firstTopic = i + 1;  // 1-based, for humans
-        } else if (t.startsWith(QStringLiteral("**"))) {
+        } else if (t.startsWith(QStringLiteral("**"))) {  // NOLINT(bugprone-branch-clone): deliberate
             sawBoldRun = true;
         } else if (t.startsWith(QStringLiteral("- **")) ||
                    t.startsWith(QStringLiteral("* **"))) {

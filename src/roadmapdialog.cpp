@@ -972,6 +972,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     auto passesFilter = [&](const BulletRecord &rec) -> bool {
         // Status filter
         bool statusOk = false;
+        // NOLINTNEXTLINE(bugprone-branch-clone): deliberate
         if (rec.status == QStringLiteral("✅") && wantDone) statusOk = true;
         else if (rec.status == QStringLiteral("📋") && wantPlanned) statusOk = true;
         else if (rec.status == QStringLiteral("🚧") && wantInProgress) statusOk = true;

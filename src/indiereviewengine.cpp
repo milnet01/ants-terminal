@@ -907,12 +907,11 @@ QString assembleBriefForDispatch(const QString &projectPath,
         const QStringList lines = roadmap.split(QChar('\n'));
         const QString needle = lane.name;
         for (const QString &line : lines) {
-            if (line.contains(QStringLiteral("Lanes:"), Qt::CaseInsensitive)
-                && line.contains(needle, Qt::CaseInsensitive)) {
-                out += line;
-                out += QChar('\n');
-            } else if (line.contains(QStringLiteral("`")
-                                     + needle + QStringLiteral("`"))) {
+            const bool lanesLine =
+                line.contains(QStringLiteral("Lanes:"), Qt::CaseInsensitive)
+                && line.contains(needle, Qt::CaseInsensitive);
+            if (lanesLine
+                || line.contains(QStringLiteral("`") + needle + QStringLiteral("`"))) {
                 out += line;
                 out += QChar('\n');
             }

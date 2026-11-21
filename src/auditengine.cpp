@@ -1235,10 +1235,9 @@ std::optional<AuditSummary> summariseClangTidyText(
         if (file.contains(QLatin1Char(' '))) continue;
 
         const QString &sarifLevel = sev;          // warning/error/note → SARIF 1:1
-        QString sevTier;
-        if (sev == QLatin1String("error"))       sevTier = QStringLiteral("MAJOR");
-        else if (sev == QLatin1String("warning")) sevTier = QStringLiteral("MAJOR");
-        else                                       sevTier = QStringLiteral("INFO");
+        const QString sevTier =
+            (sev == QLatin1String("error") || sev == QLatin1String("warning"))
+                ? QStringLiteral("MAJOR") : QStringLiteral("INFO");
 
         const int ord = levelOrdinal(sarifLevel);
         tallyLevel(s, ord);
