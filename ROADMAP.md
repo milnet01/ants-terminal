@@ -71759,6 +71759,9 @@ extends an existing item, that item carries it instead.
   working directory live inside the compressed session data, and the
   shell needs the directory before it starts. It would need a spec.
   Reopen if a slow start is reported with large scrollback histories.
+  2026-11-21: re-measured ~/.local/share/ants-terminal/sessions: 36
+  files, 34818 bytes in total, largest 5732 bytes. The user kept it
+  parked.
   **Layman:** Ants reads every saved tab's history when it starts, even tabs you never open.
   Kind: perf.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a), split from ANTS-5079.
