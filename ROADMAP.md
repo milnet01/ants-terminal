@@ -114870,9 +114870,13 @@ reports are asked for separately, each time.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #1; ledger TL-14).
   Lanes: roadmap.
 
-- 📋 [ANTS-5429] **clang-tidy performance-implicit-conversion-in-loop: 230 sites in 75 files.**
+- ✅ [ANTS-5429] **clang-tidy performance-implicit-conversion-in-loop: 230 sites in 75 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Large class, mostly noise: spot-check, then fix or suppress as one class.
+  Closed 2026-11-21 by suppressing the check as a class in .clang-tidy.
+  The 2026-11-21 sweep found 280 hits, every one `const QJsonValue &`
+  over a QJsonArray. QJsonValueConstRef, the type the check asks for, is
+  not in Qt 6.2 (the CI floor), and the copy is a reference-count bump.
   **Layman:** Loops that quietly copy each item instead of looking at it in place.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

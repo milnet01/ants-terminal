@@ -34,6 +34,7 @@ Checks: >
   -misc-include-cleaner,
   -misc-const-correctness,
   -misc-non-private-member-variables-in-classes,
+  -performance-implicit-conversion-in-loop,
   -cert-err33-c
 
 # Each exclusion above traces to a filed decision or a verified reason:
@@ -47,6 +48,12 @@ Checks: >
 #   bugprone-easily-swappable-parameters advisory API-shape opinion; fires on
 #                                        ordinary Qt signatures
 #   misc-non-private-member-variables    style, not correctness
+#   performance-implicit-conversion-     ANTS-5429 -- every hit is
+#     in-loop                            `const QJsonValue &` over a
+#                                        QJsonArray; the type it asks for,
+#                                        QJsonValueConstRef, is not in Qt 6.2
+#                                        (the CI floor), and the copy is a
+#                                        reference-count bump
 #   cert-err33-c                         verified as the stderr-logging idiom
 #                                        (debuglog.cpp, dialogshowtracer.cpp);
 #                                        ignoring an fprintf return there is
