@@ -204,7 +204,7 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     connect(&m_paintPacer, &QTimer::timeout, this, [this]() {
         if (m_coalescedUpdatePending) {
             m_coalescedUpdatePending = false;
-            update();
+            issueOutputDamage();
             m_paintPacer.start();  // keep pacing while output keeps arriving
         }
         // else: output settled — let the pacer stay idle so the next
@@ -1006,6 +1006,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     f.viewStart = f.scrollbackSize - m_scrollOffset;
 
     f.bracket = (m_scrollOffset == 0) ? findMatchingBracket() : BracketPair{-1,-1,-1,-1};
+    m_paintedBracket = f.bracket;  // ANTS-3464 — the next harvest clears these rows
     // A scrolled-up paint skips the lookup but still clears m_spanCacheDirty
     // below, so the cached pair cannot tell what changed meanwhile.
     if (m_scrollOffset != 0) m_cachedBracketCursorRow = -1;
@@ -2373,8 +2374,96 @@ void TerminalWidget::scheduleCoalescedUpdate() {
         m_coalescedUpdatePending = true;
         return;
     }
-    update();
+    issueOutputDamage();
     m_paintPacer.start();
+}
+
+// ANTS-3464 — a screen row's full-width pixel band at scroll offset 0.
+QRect TerminalWidget::rowBand(int row) const {
+    return QRect(0, m_padding + row * m_cellHeight, width(), m_cellHeight);
+}
+
+// ANTS-3464 — the rows this batch changed, read from the grid's dirty bits
+// without clearing them, plus what changes pixels and sets no bit. Anything
+// a row band cannot describe is a full repaint (spec § 2.1, F1 to F8).
+// Damage accumulates until issueOutputDamage, so a paint in between (a
+// cursor blink clears every dirty bit) loses nothing.
+void TerminalWidget::harvestOutputDamage(bool scrolled, bool snapshotShown,
+                                         bool selectionCleared) {
+    const int rows = m_grid->rows();
+    const int cursorRow = effectiveCursorRow();
+    const size_t imageCount = m_grid->inlineImages().size();
+    const auto &regions = m_grid->promptRegions();
+    decltype(m_damagePromptMark) promptMark{regions.size(), 0, 0, 0, 0, false, 0};
+    if (!regions.empty()) {
+        const PromptRegion &r = regions.back();
+        promptMark = {regions.size(), r.id, r.endLine, r.commandEndMs, r.exitCode,
+                      r.hasOutput, r.outputStartLine};
+    }
+
+    int dirtyRows = 0;
+    for (int r = 0; r < rows; ++r)
+        if (m_grid->screenLineDirty(r)) ++dirtyRows;
+
+    const bool full =
+        m_scrollOffset != 0                                            // F1
+        || snapshotShown || !m_frozenScreenRows.empty()                // F2
+        || scrolled                                                    // F3
+        || dirtyRows == rows                                           // F4
+        || m_grid->cursorVisible() != m_damageCursorVisible            // F5
+        || m_grid->cursorShape() != m_damageCursorShape
+        || imageCount != 0 || m_damageImageCount != 0                  // F6
+        || promptMark != m_damagePromptMark                            // F7
+        || m_showPerfOverlay || m_urlQuickSelectActive                 // F8
+        || selectionCleared;                                           // F9
+
+    if (full) {
+        m_outputDamageFull = true;
+    } else {
+        for (int r = 0; r < rows; ++r)
+            if (m_grid->screenLineDirty(r)) m_outputDamage += rowBand(r);
+        // The cursor draws a glow 4 px outside its cell (blinkCursor's kGlow).
+        constexpr int kGlow = 4;
+        for (int r : {m_damageCursorRow, cursorRow})
+            if (r >= 0 && r < rows)
+                m_outputDamage += rowBand(r).adjusted(0, -kGlow, 0, kGlow);
+        // The bracket pair the last paint drew, and the pair it will draw.
+        const int base = m_grid->scrollbackSize();
+        const BracketPair now = findMatchingBracket();
+        for (int line : {m_paintedBracket.line1, m_paintedBracket.line2,
+                         now.line1, now.line2})
+            if (line >= base && line < base + rows)
+                m_outputDamage += rowBand(line - base);
+    }
+
+    m_damageCursorRow = cursorRow;
+    m_damageCursorVisible = m_grid->cursorVisible();
+    m_damageCursorShape = m_grid->cursorShape();
+    m_damageImageCount = imageCount;
+    m_damagePromptMark = promptMark;
+}
+
+void TerminalWidget::issueOutputDamage() {
+    if (m_outputDamageFull) {
+        m_outputDamageIssued += rect();
+        update();
+    } else if (!m_outputDamage.isEmpty()) {
+        m_outputDamageIssued += m_outputDamage;
+        update(m_outputDamage);
+    }
+    m_outputDamage = QRegion();
+    m_outputDamageFull = false;
+}
+
+// Plays the pacer's next tick first, so each call is one frame's damage.
+QRegion TerminalWidget::takeOutputDamageForTest() {
+    if (m_coalescedUpdatePending) {
+        m_coalescedUpdatePending = false;
+        issueOutputDamage();
+    }
+    QRegion out = m_outputDamageIssued;
+    m_outputDamageIssued = QRegion();
+    return out;
 }
 
 void TerminalWidget::onVtBatch(VtBatchPtr batch) {
@@ -2412,6 +2501,8 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
         if (!m_pluginOutputTimer->isActive()) m_pluginOutputTimer->start();
     }
 
+    // ANTS-3464 — clearSelection requests no repaint; the harvest repaints all.
+    const bool selectionCleared = batch->clearSelectionHint && m_hasSelection;
     if (batch->clearSelectionHint) {
         clearSelection();
     }
@@ -2610,9 +2701,14 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
         // predicate that covers both — and would no-op on (iii) —
         // is "snapshot exists AND scroll-up isn't holding it" (drops
         // the prior `wasSync &&` gate that left (ii) stranded).
+        // ANTS-3464 — a snapshot was on screen, so the live grid's dirty
+        // bits say nothing about what changed: repaint everything.
+        const bool snapshotShown = wasSync || !m_frozenScreenRows.empty();
         if (m_scrollOffset == 0 && !m_frozenScreenRows.empty()) {
             clearScreenSnapshot();
         }
+        harvestOutputDamage(m_grid->scrollbackPushed() != pushedBefore, snapshotShown,
+                            selectionCleared);
         // ANTS-3451 — pace this output-driven repaint to ~60 fps instead
         // of painting once per VT batch. Coalescing a burst of batches
         // into one frame is what stops the event loop from starving
@@ -6346,8 +6442,9 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
     // dirty flag, so rows written later in the batch kept stale URL and
     // highlight spans. applyRowAttrs and addRowHyperlink mark their rows
     // dirty, so the next paint still drops those rows' cached spans.
+    // ANTS-3464 — no update() here: those dirty rows are in the batch's
+    // harvested damage, which the paint pacer issues.
     m_spanCacheDirty = true;
-    update();
 }
 
 // --- History / Autocomplete ---

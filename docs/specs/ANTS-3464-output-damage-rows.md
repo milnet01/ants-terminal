@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # ANTS-3464 — Output redraws only the rows it changed
 
-**Status:** accepted (2026-11-21). No review gate: not a contract, cheap to reverse (rule 14).
+**Status:** implemented (2026-11-21). No review gate: not a contract, cheap to reverse (rule 14).
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-3464 (in-session-2026-07-09).
 **Pairs with:** ANTS-3454, ANTS-3451.
@@ -68,6 +68,8 @@ It sets `m_outputDamageFull` instead when any of these holds:
   last region's `id`, `endLine`, `commandEndMs`, `exitCode`, `hasOutput` or
   `outputStartLine`.
 - **F8** `m_showPerfOverlay` or `m_urlQuickSelectActive`.
+- **F9** the batch's `clearSelectionHint` cleared a selection.
+  `clearSelection` requests no repaint of its own.
 
 ### 2.2 Issuing it
 
@@ -86,9 +88,10 @@ so the batch's harvest covers them.
 
 ### 2.4 Test seam
 
-`QRegion takeOutputDamageForTest()` returns the union of every region
-issued since the last call, plus what is still pending, with a full
-update as `rect()`. It changes no pending state.
+`QRegion takeOutputDamageForTest()` first issues what is pending, as the
+pacer's next tick would, then returns the union of every region issued
+since the last call, with a full update as `rect()`. So each call is one
+frame's damage: a test runs no event loop, and the pacer never fires.
 
 ## 3. Invariants
 
@@ -105,7 +108,7 @@ update as `rect()`. It changes no pending state.
   taller than the cursor row's band. *Test:*
   `OutputDamageRows.Inv2OneCharacterDamagesOneRow`. *Breaks when:* the
   harvest falls back to full, or adds rows nothing changed.
-- **INV-3** — Each of F1 to F8 issues a full update. *Test:*
+- **INV-3** — Each of F1 to F9 issues a full update. *Test:*
   `OutputDamageRows.Inv3FallbacksRepaintEverything`, one case per
   condition. *Breaks when:* a fallback check is dropped or reads the wrong
   state.
@@ -125,10 +128,11 @@ update as `rect()`. It changes no pending state.
 ## 5. Tests
 
 Feature test `tests/features/output_damage_rows/`, covering INV-1..4,
-label `features;fast`. INV-1, INV-2 and INV-4 must fail against the
-pre-change source: with a full `update()`, INV-1's canvas matches
-trivially, so INV-2 is the red check for the narrowing and INV-1 for its
-correctness.
+label `features;fast`. INV-2 and INV-4 fail against the pre-change
+source, which repainted everything. INV-1 and INV-3 pass there by
+construction, so each is shown to fail against a deliberately broken
+harvest instead: one that drops a fallback, the old cursor row, the
+dirty rows or a bracket row.
 
 ## 6. Reload
 

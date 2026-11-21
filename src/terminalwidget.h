@@ -568,6 +568,10 @@ public:
     // of a line's URL/file-path spans and of every search match on a line.
     std::vector<std::pair<int, int>> urlSpanColumnsForTest(int globalLine) const;
     std::vector<std::pair<int, int>> searchMatchColumnsForTest(int globalLine) const;
+    // ANTS-3464 — the output path's damage since the last call, a full repaint
+    // as rect(). Issues what is pending first, as the pacer's tick would.
+    QRegion takeOutputDamageForTest();
+    int cellHeightForTest() const { return m_cellHeight; }
     // ANTS-2119 M2 — OSC 8 phishing classification, split out of openHyperlink so
     // the policy is unit-testable without the modal dialog. Pure: no widget state.
     enum class HyperlinkWarning : quint8 {
@@ -939,6 +943,23 @@ private:
     // directly so they stay immediate.
     QTimer m_paintPacer;
     bool m_coalescedUpdatePending = false;
+    // ANTS-3464 — the output path's repaint. harvestOutputDamage() collects
+    // the rows a batch changed; issueOutputDamage() is what
+    // scheduleCoalescedUpdate and the pacer call in place of update().
+    // Contract: docs/specs/ANTS-3464-output-damage-rows.md.
+    void harvestOutputDamage(bool scrolled, bool snapshotShown, bool selectionCleared);
+    void issueOutputDamage();
+    QRect rowBand(int row) const;
+    QRegion m_outputDamage;
+    bool m_outputDamageFull = false;
+    QRegion m_outputDamageIssued;  // since the last takeOutputDamageForTest
+    // What the last harvest saw, so the next can tell what changed.
+    int m_damageCursorRow = -1;
+    bool m_damageCursorVisible = true;
+    CursorShape m_damageCursorShape = CursorShape::BlinkBlock;
+    size_t m_damageImageCount = 0;
+    std::tuple<size_t, quint64, int, qint64, int, bool, int> m_damagePromptMark{};
+    BracketPair m_paintedBracket{-1, -1, -1, -1};  // written by paintEvent
     void scheduleCoalescedUpdate();
 
     // ANTS-3453 — shaped-run cache. Supersedes the ANTS-1149 single-layout

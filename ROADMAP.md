@@ -71548,7 +71548,7 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Dropped 2026-11-05 (session 217): closes the 2026-07-13 won't-fix
   finding above, so it leaves the open queue.
 
-- 📋 [ANTS-3464] **Output-path dirty-row repaint — narrow onVtBatch update() to changed rows + cursor damage (ANTS-3454 follow-up).**
+- ✅ [ANTS-3464] **Output-path dirty-row repaint — narrow onVtBatch update() to changed rows + cursor damage (ANTS-3454 follow-up).**
   ANTS-3454 shipped the safe half (paintEvent honours event->rect()), but
   the output path (onVtBatch -> scheduleCoalescedUpdate -> update() FULL)
   still repaints the whole grid on every batch, so active typing during
@@ -71577,6 +71577,14 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   **Layman:** Make active typing during heavy output redraw only the lines that changed, not the whole screen — the deeper, riskier half of the dirty-row work.
   Kind: perf.
   Source: in-session-2026-07-09.
+  Shipped 2026-11-21 per docs/specs/ANTS-3464-output-damage-rows.md. The
+  widget harvests each batch's dirty rows, old and new cursor rows and
+  bracket rows into its own region (so a blink paint clearing the grid's
+  bits loses nothing), with nine full-repaint fallbacks.
+  onGridLineCompleted's own update() is gone, so trigger rules no longer
+  bypass the pacer. One typed character now repaints a 27 px band of a
+  240 px test widget. Scrolling output is still a full repaint (out of
+  scope).
 
 - ✅ [ANTS-6851] **Resize reflow cost — one re-wrap of a very large scrollback still blocks the GUI thread.**
   ANTS-3456 cut a drag to at most two re-wraps; it did not make one

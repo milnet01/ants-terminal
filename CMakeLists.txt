@@ -2485,6 +2485,8 @@ if(ANTS_TESTS)
                 tests/features/window_cell_size/test_window_cell_size.cpp
                 # ANTS-3456 — a window drag re-sizes the grid once it settles.
                 tests/features/resize_reflow_coalesced/test_resize_reflow_coalesced.cpp
+                # ANTS-3464 — output redraws only the rows it changed.
+                tests/features/output_damage_rows/test_output_damage_rows.cpp
                 # ANTS-5646 — go to a tab by typing its name.
                 tests/features/tab_switcher/test_tab_switcher.cpp
                 # ANTS-6146 — one table of default keyboard shortcuts.

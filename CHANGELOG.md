@@ -238,6 +238,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **When a program changes a line or two, the terminal now redraws only those lines.** (ANTS-3464)
+  Typing at a prompt or a spinner rewriting its line repaints the rows
+  that changed plus the cursor's rows, instead of the whole window. Output
+  that scrolls, and a few cases the narrowed repaint cannot describe,
+  still repaint everything (docs/specs/ANTS-3464-output-damage-rows.md).
+
 - **Re-wrapping a large scrollback after a resize is about 2.5 times faster.** (ANTS-6851)
   Each re-wrapped row is now built once at its final size. On a full
   50,000-line scrollback one re-wrap fell from about 86 ms to about 35 ms
