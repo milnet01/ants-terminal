@@ -111,9 +111,7 @@ TEST(McpPromptInjectionHint, Inv3EveryVerbReports) {
         EXPECT_TRUE(has(body, "addInjectionWarning(")) << verb;
     }
 
-    const std::string mw = ants_test::stripComments(ants_test::slurpMainWindow());
-    const std::string sb = between(mw, "registerToolProvider(\"get_scrollback\"",
-                                   "registerToolProvider(");
+    const std::string sb = ants_test::scrollbackProviderBody();
     ASSERT_FALSE(sb.empty());
     EXPECT_TRUE(has(sb, "<possible prompt injection: %1>"));
     EXPECT_TRUE(has(sb, "addInjectionWarning(env"));

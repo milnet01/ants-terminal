@@ -16,15 +16,6 @@
 
 namespace {
 
-std::string between(const std::string &s, const std::string &from,
-                    const std::string &to) {
-    const std::size_t a = s.find(from);
-    if (a == std::string::npos) return {};
-    const std::size_t b = s.find(to, a + from.size());
-    if (b == std::string::npos) return {};
-    return s.substr(a, b - a);
-}
-
 std::string squash(const std::string &s) {
     std::string out;
     for (char c : s)
@@ -40,13 +31,7 @@ std::size_t count(const std::string &hay, const std::string &needle) {
     return n;
 }
 
-// The get_scrollback provider, comments stripped: from its registration to the
-// next provider's.
-std::string provider() {
-    const std::string mw = ants_test::stripComments(ants_test::slurpMainWindow());
-    return between(mw, "registerToolProvider(\"get_scrollback\"",
-                   "registerToolProvider(");
-}
+std::string provider() { return ants_test::scrollbackProviderBody(); }
 
 }  // namespace
 

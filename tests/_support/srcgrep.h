@@ -368,4 +368,20 @@ inline std::string squashWhitespace(const std::string &s) {
     return out;
 }
 
+// ANTS-6185 — the get_scrollback provider's body, comments stripped: the
+// MainWindow::mcpGetScrollback method. Empty unless the get_scrollback
+// registration calls it, so a scrape cannot pass on code the verb never runs.
+#if defined(ANTS_MAINWINDOW_SOURCES)
+inline std::string scrollbackProviderBody() {
+    const std::string mw = stripComments(slurpMainWindow());
+    const std::string kReg = "registerToolProvider(\"get_scrollback\"";
+    const std::size_t reg = mw.find(kReg);
+    if (reg == std::string::npos) return {};
+    const std::size_t next = mw.find("registerToolProvider(", reg + kReg.size());
+    if (mw.substr(reg, next - reg).find("mcpGetScrollback(args)") == std::string::npos)
+        return {};
+    return slurpFunctionBody(mw, "QString MainWindow::mcpGetScrollback(");
+}
+#endif
+
 }  // namespace ants_test

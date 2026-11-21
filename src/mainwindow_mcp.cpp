@@ -135,112 +135,7 @@ void MainWindow::setupClaudeMcpProviders() {
 
     m_claudeIntegration->registerToolProvider("get_scrollback",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
-        [this](const QJsonObject &args) -> QString {
-            const int lines = args.value("lines").toInt(50);
-            // ANTS-1392 — caller_cwd routes to the caller's tab when
-            // present; falls back to focusedTerminal() otherwise.
-            const QString callerCwd =
-                args.value("caller_cwd").toString();
-            auto *t = terminalForCaller(callerCwd);
-            if (!t) return {};
-            // ANTS-5219 — at most RemoteControl::kGetTextMaxLines lines,
-            // trimmed to get_text's byte cap. docs/specs/ANTS-5219-scrollback-line-cap.md.
-            const int available = t->grid()->scrollbackSize() + t->grid()->rows();
-            // ANTS-1500 — since_cursor incremental-fetch mode. Cursor
-            // encodes the grid's monotonic scrollbackPushed counter at
-            // the time of issue. On a follow-up call the server
-            // computes the delta and only emits new content, or flips
-            // cursor_stale:true when the gap exceeds ring capacity
-            // (terminal restart, ring wrap). Absent since_cursor →
-            // legacy raw-text response (current contract).
-            const QString sinceStr =
-                args.value(QStringLiteral("since_cursor")).toString();
-            // ANTS-5169 — secrets are redacted before the trim, so the
-            // byte cap bounds what is sent.
-            const bool redact = Config().claudeMcpRedactSecrets();
-            if (sinceStr.isEmpty()) {
-                const auto req = RemoteControl::capScrollbackRequest(lines, available, 0);
-                const auto clean = RemoteControl::redactForClaude(
-                    t->recentOutput(req.lines), redact);
-                const auto trim = RemoteControl::trimScrollbackForGetText(
-                    clean.text, RemoteControl::kGetTextDefaultBytesCap);
-                QString head;
-                if (clean.redacted > 0)
-                    head = QStringLiteral("<redacted %1 secrets>\n").arg(clean.redacted);
-                // ANTS-5184 — instruction-like text in what was read.
-                if (!clean.injection.isEmpty())
-                    head += QStringLiteral("<possible prompt injection: %1>\n")
-                                .arg(clean.injection.join(QStringLiteral(", ")));
-                if (req.linesCapped > 0)
-                    head += QStringLiteral("<capped at %1 of %2 requested lines>\n")
-                                .arg(req.lines).arg(lines);
-                return head + trim.text;
-            }
-            const uint64_t currentPushed =
-                t->grid()->scrollbackPushed();
-            const int  ringCap = t->grid()->maxScrollback();
-            const int  screenRows = t->grid()->rows();
-            QJsonObject env;
-            env[QStringLiteral("ok")]     = true;
-            env[QStringLiteral("cursor")] =
-                QString::number(currentPushed);
-            // The since_cursor reply reports a cut through truncated /
-            // lines_dropped / bytes_dropped, never with the cap line: its
-            // requested count is one the caller never sent.
-            auto setContent = [&](int requestedLines) {
-                const auto req =
-                    RemoteControl::capScrollbackRequest(requestedLines, available, 0);
-                const auto clean = RemoteControl::redactForClaude(
-                    t->recentOutput(req.lines), redact);
-                const auto trim = RemoteControl::trimScrollbackForGetText(
-                    clean.text, RemoteControl::kGetTextDefaultBytesCap);
-                env[QStringLiteral("content")] = trim.text;
-                if (clean.redacted > 0)
-                    env[QStringLiteral("redacted")] = clean.redacted;
-                RemoteControl::addInjectionWarning(env, clean.injection);
-                const bool truncated = req.linesCapped > 0 || trim.truncated;
-                env[QStringLiteral("truncated")] = truncated;
-                if (truncated) {
-                    env[QStringLiteral("lines_dropped")] =
-                        static_cast<qint64>(req.linesCapped) + trim.linesDropped;
-                    env[QStringLiteral("bytes_dropped")] = trim.bytesDropped;
-                }
-            };
-            bool parsedOk = false;
-            const uint64_t since =
-                sinceStr.toULongLong(&parsedOk);
-            auto emitFullWindow = [&](const QString &reason) {
-                env[QStringLiteral("cursor_stale")] = true;
-                env[QStringLiteral("stale_reason")] = reason;
-                setContent(lines);
-                return QString::fromUtf8(QJsonDocument(env)
-                    .toJson(QJsonDocument::Compact));
-            };
-            if (!parsedOk) {
-                return emitFullWindow(QStringLiteral("malformed_cursor"));
-            }
-            if (since > currentPushed) {
-                // Counter went backwards — terminal restart or unrelated
-                // session. Stale fallback returns the current window.
-                return emitFullWindow(
-                    QStringLiteral("counter_regressed"));
-            }
-            const uint64_t added = currentPushed - since;
-            if (added > static_cast<uint64_t>(ringCap)) {
-                // Lines lost beyond what the ring can replay.
-                return emitFullWindow(QStringLiteral("ring_wrapped"));
-            }
-            // Up-to-date case: emit the delta lines + current screen so
-            // the caller sees both newly-scrolled content and the live
-            // viewport. content == "" only when nothing happened AND
-            // the screen is empty.
-            const int deltaPlusScreen =
-                static_cast<int>(added) + screenRows;
-            env[QStringLiteral("cursor_stale")] = false;
-            setContent(deltaPlusScreen);
-            return QString::fromUtf8(QJsonDocument(env)
-                .toJson(QJsonDocument::Compact));
-        });
+        [this](const QJsonObject &args) { return mcpGetScrollback(args); });
     m_claudeIntegration->registerToolProvider("get_cwd",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         [this](const QJsonObject &args) -> QString {
@@ -416,4 +311,113 @@ void MainWindow::setupClaudeMcpProviders() {
                 ClaudeIntegration::defaultHookSocketPath().toLocal8Bit());
     else
         qunsetenv("ANTS_CLAUDE_HOOK_SOCKET");
+}
+
+// ANTS-6185 — get_scrollback's provider: the plain reply, or the
+// since_cursor envelope (ANTS-1500). Registered in setupClaudeMcpProviders.
+QString MainWindow::mcpGetScrollback(const QJsonObject &args) {
+    const int lines = args.value("lines").toInt(50);
+    // ANTS-1392 — caller_cwd routes to the caller's tab when
+    // present; falls back to focusedTerminal() otherwise.
+    const QString callerCwd =
+        args.value("caller_cwd").toString();
+    auto *t = terminalForCaller(callerCwd);
+    if (!t) return {};
+    // ANTS-5219 — at most RemoteControl::kGetTextMaxLines lines,
+    // trimmed to get_text's byte cap. docs/specs/ANTS-5219-scrollback-line-cap.md.
+    const int available = t->grid()->scrollbackSize() + t->grid()->rows();
+    // ANTS-1500 — since_cursor incremental-fetch mode. Cursor
+    // encodes the grid's monotonic scrollbackPushed counter at
+    // the time of issue. On a follow-up call the server
+    // computes the delta and only emits new content, or flips
+    // cursor_stale:true when the gap exceeds ring capacity
+    // (terminal restart, ring wrap). Absent since_cursor →
+    // legacy raw-text response (current contract).
+    const QString sinceStr =
+        args.value(QStringLiteral("since_cursor")).toString();
+    // ANTS-5169 — secrets are redacted before the trim, so the
+    // byte cap bounds what is sent.
+    const bool redact = Config().claudeMcpRedactSecrets();
+    if (sinceStr.isEmpty()) {
+        const auto req = RemoteControl::capScrollbackRequest(lines, available, 0);
+        const auto clean = RemoteControl::redactForClaude(
+            t->recentOutput(req.lines), redact);
+        const auto trim = RemoteControl::trimScrollbackForGetText(
+            clean.text, RemoteControl::kGetTextDefaultBytesCap);
+        QString head;
+        if (clean.redacted > 0)
+            head = QStringLiteral("<redacted %1 secrets>\n").arg(clean.redacted);
+        // ANTS-5184 — instruction-like text in what was read.
+        if (!clean.injection.isEmpty())
+            head += QStringLiteral("<possible prompt injection: %1>\n")
+                        .arg(clean.injection.join(QStringLiteral(", ")));
+        if (req.linesCapped > 0)
+            head += QStringLiteral("<capped at %1 of %2 requested lines>\n")
+                        .arg(req.lines).arg(lines);
+        return head + trim.text;
+    }
+    const uint64_t currentPushed =
+        t->grid()->scrollbackPushed();
+    const int  ringCap = t->grid()->maxScrollback();
+    const int  screenRows = t->grid()->rows();
+    QJsonObject env;
+    env[QStringLiteral("ok")]     = true;
+    env[QStringLiteral("cursor")] =
+        QString::number(currentPushed);
+    // The since_cursor reply reports a cut through truncated /
+    // lines_dropped / bytes_dropped, never with the cap line: its
+    // requested count is one the caller never sent.
+    auto setContent = [&](int requestedLines) {
+        const auto req =
+            RemoteControl::capScrollbackRequest(requestedLines, available, 0);
+        const auto clean = RemoteControl::redactForClaude(
+            t->recentOutput(req.lines), redact);
+        const auto trim = RemoteControl::trimScrollbackForGetText(
+            clean.text, RemoteControl::kGetTextDefaultBytesCap);
+        env[QStringLiteral("content")] = trim.text;
+        if (clean.redacted > 0)
+            env[QStringLiteral("redacted")] = clean.redacted;
+        RemoteControl::addInjectionWarning(env, clean.injection);
+        const bool truncated = req.linesCapped > 0 || trim.truncated;
+        env[QStringLiteral("truncated")] = truncated;
+        if (truncated) {
+            env[QStringLiteral("lines_dropped")] =
+                static_cast<qint64>(req.linesCapped) + trim.linesDropped;
+            env[QStringLiteral("bytes_dropped")] = trim.bytesDropped;
+        }
+    };
+    bool parsedOk = false;
+    const uint64_t since =
+        sinceStr.toULongLong(&parsedOk);
+    auto emitFullWindow = [&](const QString &reason) {
+        env[QStringLiteral("cursor_stale")] = true;
+        env[QStringLiteral("stale_reason")] = reason;
+        setContent(lines);
+        return QString::fromUtf8(QJsonDocument(env)
+            .toJson(QJsonDocument::Compact));
+    };
+    if (!parsedOk) {
+        return emitFullWindow(QStringLiteral("malformed_cursor"));
+    }
+    if (since > currentPushed) {
+        // Counter went backwards — terminal restart or unrelated
+        // session. Stale fallback returns the current window.
+        return emitFullWindow(
+            QStringLiteral("counter_regressed"));
+    }
+    const uint64_t added = currentPushed - since;
+    if (added > static_cast<uint64_t>(ringCap)) {
+        // Lines lost beyond what the ring can replay.
+        return emitFullWindow(QStringLiteral("ring_wrapped"));
+    }
+    // Up-to-date case: emit the delta lines + current screen so
+    // the caller sees both newly-scrolled content and the live
+    // viewport. content == "" only when nothing happened AND
+    // the screen is empty.
+    const int deltaPlusScreen =
+        static_cast<int>(added) + screenRows;
+    env[QStringLiteral("cursor_stale")] = false;
+    setContent(deltaPlusScreen);
+    return QString::fromUtf8(QJsonDocument(env)
+        .toJson(QJsonDocument::Compact));
 }

@@ -54,12 +54,6 @@ std::string verbBody(const std::string &name) {
                    "\nQJsonDocument RemoteControl::");
 }
 
-std::string scrollbackProvider() {
-    const std::string mw = ants_test::stripComments(ants_test::slurpMainWindow());
-    return between(mw, "registerToolProvider(\"get_scrollback\"",
-                   "registerToolProvider(");
-}
-
 constexpr const char *kSwitch = "Config().claudeMcpRedactSecrets()";
 
 }  // namespace
@@ -99,7 +93,7 @@ TEST(McpSecretRedaction, Inv3EveryVerbRedacts) {
         EXPECT_TRUE(has(body, "\"redacted\"")) << verb;
     }
 
-    const std::string sb = scrollbackProvider();
+    const std::string sb = ants_test::scrollbackProviderBody();
     ASSERT_FALSE(sb.empty());
     EXPECT_TRUE(has(sb, kSwitch));
     EXPECT_TRUE(before(sb, "redactForClaude(", "trimScrollbackForGetText("));

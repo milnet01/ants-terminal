@@ -621,6 +621,8 @@ private:
     // providers + startHookServer). Split from setupClaudeIntegration
     // because it's not status-bar chrome.
     void setupClaudeMcpProviders();
+    // ANTS-6185 — the get_scrollback MCP provider, registered there.
+    QString mcpGetScrollback(const QJsonObject &args);
     void showDiffViewer();
     // Re-check git diff state and enable/disable the Review Changes
     // button accordingly. Async (QProcess) so it never blocks the UI
