@@ -24,6 +24,8 @@
 #include <QRegularExpression>
 #include <QTemporaryDir>
 
+#include <limits>
+
 #include <fcntl.h>
 #include <sys/file.h>
 #include <unistd.h>
@@ -466,4 +468,23 @@ TEST(McpdUsageSnapshots, Ants6378NegativeWrapBytesKeepsTheFile) {
     EXPECT_EQ(t.value(QStringLiteral("spec_query")).wrapBytes, 0);
     EXPECT_EQ(t.value(QStringLiteral("spec_query")).nCalls, 1);
     EXPECT_EQ(t.value(QStringLiteral("read_region")).nCalls, 4);
+}
+
+// ANTS-6288 — an n_calls too large for an int marks the file corrupt rather
+// than wrapping negative and subtracting from the totals.
+TEST(McpdUsageSnapshots, Ants6288OversizedCallCountIsCorrupt) {
+    QJsonObject o = snapshotToJson({{QStringLiteral("spec_query"), counter(1, 2, 3)}},
+                                   {}, 9, 10, 11);
+    QJsonObject tools = o.value(QStringLiteral("tools")).toObject();
+    QJsonObject bad = tools.value(QStringLiteral("spec_query")).toObject();
+    bad[QStringLiteral("n_calls")] = double(qint64{std::numeric_limits<int>::max()} + 1);
+    tools[QStringLiteral("spec_query")] = bad;
+    o[QStringLiteral("tools")] = tools;
+
+    QHash<QString, ToolCounter> t;
+    QHash<QString, qint64> r;
+    QString why;
+    EXPECT_FALSE(snapshotFromJson(o, &t, &r, &why))
+        << "n_calls read as " << t.value(QStringLiteral("spec_query")).nCalls;
+    EXPECT_TRUE(why.contains(QStringLiteral("n_calls"))) << why.toStdString();
 }

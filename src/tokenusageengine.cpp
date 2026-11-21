@@ -22,7 +22,7 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <iterator>
+#include <limits>
 
 namespace TokenUsageEngine {
 
@@ -300,27 +300,20 @@ constexpr qint64 kMaxSnapshotBytes = qint64{256} * 1024;   // § 2.6
 constexpr qint64 kLoneLockAgeSecs  = 60;           // § 2.5
 constexpr int    kSnapshotFormat   = 1;
 
-const char *const kCounterKeys[] = {
-    "n_calls", "bytes_in", "bytes_out", "wrap_bytes", "duration_us_min",
-    "duration_us_max", "duration_us_sum", "failed_calls", "failed_bytes_in",
-    "failed_bytes_out"};
-constexpr int kCounterCount = int(std::size(kCounterKeys));
-
-qint64 *counterField(ToolCounter &c, int i) {
-    switch (i) {
-    case 0: return nullptr;   // nCalls is an int; handled by the caller
-    case 1: return &c.bytesIn;
-    case 2: return &c.bytesOut;
-    case 3: return &c.wrapBytes;
-    case 4: return &c.durationUsMin;
-    case 5: return &c.durationUsMax;
-    case 6: return &c.durationUsSum;
-    case 7: return &c.failedCalls;
-    case 8: return &c.failedBytesIn;
-    case 9: return &c.failedBytesOut;
-    default: return nullptr;
-    }
-}
+// The snapshot format: n_calls (an int) and then each qint64 counter, keyed
+// beside the field it names so the two cannot drift.
+constexpr const char *kNCallsKey = "n_calls";
+struct CounterKey { const char *key; qint64 ToolCounter::*field; };
+constexpr CounterKey kCounterKeys[] = {
+    {"bytes_in",         &ToolCounter::bytesIn},
+    {"bytes_out",        &ToolCounter::bytesOut},
+    {"wrap_bytes",       &ToolCounter::wrapBytes},
+    {"duration_us_min",  &ToolCounter::durationUsMin},
+    {"duration_us_max",  &ToolCounter::durationUsMax},
+    {"duration_us_sum",  &ToolCounter::durationUsSum},
+    {"failed_calls",     &ToolCounter::failedCalls},
+    {"failed_bytes_in",  &ToolCounter::failedBytesIn},
+    {"failed_bytes_out", &ToolCounter::failedBytesOut}};
 
 // One snapshot's own figures (§ 2.3): derived from that file alone.
 void addSnapshotTo(PeerUsage &u, const QString &stem,
@@ -398,11 +391,11 @@ QJsonObject snapshotToJson(const QHash<QString, ToolCounter> &tools,
                            qint64 pid, qint64 startedMs, qint64 updatedMs) {
     QJsonObject t;
     for (auto it = tools.cbegin(); it != tools.cend(); ++it) {
-        ToolCounter c = it.value();
+        const ToolCounter &c = it.value();
         QJsonObject o;
-        o[QLatin1String(kCounterKeys[0])] = c.nCalls;
-        for (int i = 1; i < kCounterCount; ++i)
-            o[QLatin1String(kCounterKeys[i])] = double(*counterField(c, i));
+        o[QLatin1String(kNCallsKey)] = c.nCalls;
+        for (const CounterKey &k : kCounterKeys)
+            o[QLatin1String(k.key)] = double(c.*k.field);
         t[it.key()] = o;
     }
     QJsonObject roots;
@@ -439,20 +432,25 @@ bool snapshotFromJson(const QJsonObject &o, QHash<QString, ToolCounter> *tools,
     for (auto it = t.constBegin(); it != t.constEnd(); ++it) {
         const QJsonObject c = it.value().toObject();
         ToolCounter tc;
-        for (int i = 0; i < kCounterCount; ++i) {
-            qint64 v = c.value(QLatin1String(kCounterKeys[i])).toInteger();
+        const qint64 n = c.value(QLatin1String(kNCallsKey)).toInteger();
+        if (n < 0 || n > std::numeric_limits<int>::max()) {   // ANTS-6288
+            *why = QStringLiteral("n_calls out of range for %1").arg(it.key());
+            return false;
+        }
+        tc.nCalls = int(n);
+        for (const CounterKey &k : kCounterKeys) {
+            qint64 v = c.value(QLatin1String(k.key)).toInteger();
             // ANTS-6378 — builds before the fix could record a negative
             // wrap_bytes. It reads as 0 so the file's other counts survive;
             // any other negative counter still marks the file corrupt.
-            if (v < 0 && QLatin1String(kCounterKeys[i]) == QLatin1String("wrap_bytes"))
+            if (v < 0 && k.field == &ToolCounter::wrapBytes)
                 v = 0;
             if (v < 0) {
                 *why = QStringLiteral("negative %1 for %2")
-                           .arg(QLatin1String(kCounterKeys[i]), it.key());
+                           .arg(QLatin1String(k.key), it.key());
                 return false;
             }
-            if (i == 0) tc.nCalls = int(v);
-            else        *counterField(tc, i) = v;
+            tc.*k.field = v;
         }
         tools->insert(it.key(), tc);
     }

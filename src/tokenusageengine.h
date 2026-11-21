@@ -16,9 +16,10 @@
 
 namespace TokenUsageEngine {
 
-// Adding a field means updating every list of them in tokenusageengine.cpp:
-// kCounterKeys and counterField (the snapshot format), addCounters (the mcpd
-// accumulator) and the ToolReport copy in buildReport.
+// Adding a field means updating ToolReport below and every list of the
+// fields in tokenusageengine.cpp: Tracker::recordCall (the accumulator),
+// kCounterKeys (the snapshot format), addCounters (the mcpd accumulator),
+// buildReport's ToolReport copy and sessionFieldsJson (the token_usage reply).
 struct ToolCounter {
     int    nCalls         = 0;
     qint64 bytesIn        = 0;
