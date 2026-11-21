@@ -238,6 +238,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Review with Claude starts on the audit's findings** (ANTS-6855)
+  The hand-off no longer asks the session to rebuild and run the whole
+  test suite first; it runs the tests covering each fix instead.
+
+- **The Review with Claude report names the project's standards files instead of copying them in** (ANTS-6856)
+
 - **Searching a very long scrollback keeps the window responsive** (ANTS-5418)
   The search scans in short slices, newest lines first, and the window
   repaints and takes input between them. While it runs, the counter's
@@ -572,6 +578,12 @@ for security-relevant changes.
 - **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
+
+- **The audit's clang-tidy section lists only clang-tidy's warnings and errors** (ANTS-6857)
+
+- **The audit's secret and key-file checks pass public keys, keys read from settings, and source files named for secrets** (ANTS-6858)
+
+- **The audit's command-injection check passes QRandomGenerator::system() and Ants Terminal's own shell launch** (ANTS-6859)
 
 - **Every tab shows the same mouse pointer over the terminal text: the I-beam, or the pointing hand over a link.** (ANTS-6853)
   A new tab, and a tab whose program takes the mouse (htop, or vim

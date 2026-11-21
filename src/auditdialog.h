@@ -49,6 +49,9 @@ public:
     // ANTS-1677 INV-5 — the check catalogue, for the case comparing the
     // audit_fixture_coverage command's rule ids with audit_self_test.sh's.
     QList<AuditCheck> checksForTest() const;
+    // ANTS-6855 — the Review-with-Claude text for `results`, which replace
+    // the completed results.
+    QString plainTextResultsForTest(const QList<CheckResult> &results);
 
     // ANTS-5084 — the changed files, and with includeLines the changed lines,
     // of the last `commits` commits, read from git. Touches no dialog state,
@@ -469,10 +472,6 @@ private:
     // false in runAudit(); flipped to true on the first authoritative
     // render in renderResults().
     bool m_snapshotPersisted = false;
-
-    // Project context docs to attach to the Claude-review handoff. Loaded
-    // lazily when "Review with Claude" is pressed.
-    QString readProjectDoc(const QString &name) const;
 
     // Filter findings whose source location lives inside a comment or string
     // literal (per-file state-machine scan). Reference-tool-proven #1 source

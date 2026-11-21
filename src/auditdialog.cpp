@@ -264,6 +264,11 @@ QList<AuditCheck> AuditDialog::checksForTest() const {
     return m_checks;
 }
 
+QString AuditDialog::plainTextResultsForTest(const QList<CheckResult> &results) {
+    m_completedResults = results;
+    return plainTextResults();
+}
+
 // Returns false when the project lives on a filesystem that doesn't enforce
 // POSIX permission bits (FAT/NTFS/FUSE/SMB/9p). On those mounts the kernel
 // typically maps every file to u=rwx,g=rwx,o=rwx, so permission-based
@@ -2411,20 +2416,6 @@ void AuditDialog::buildUI() {
 
     // ANTS-1259 — Debt Sweep tab.
     buildDebtSweepTab();
-}
-
-// ---------------------------------------------------------------------------
-// Project documentation helpers — used by the Claude-review handoff to
-// attach documented standards so Claude can weigh findings against project
-// rules when suggesting fixes.
-// ---------------------------------------------------------------------------
-
-QString AuditDialog::readProjectDoc(const QString &name) const {
-    QFile f(m_projectPath + "/" + name);
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    const QByteArray bytes = f.read(64 * 1024);  // Cap at 64 KB per doc
-    f.close();
-    return QString::fromUtf8(bytes).trimmed();
 }
 
 // ---------------------------------------------------------------------------

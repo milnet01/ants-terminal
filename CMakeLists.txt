@@ -4128,6 +4128,8 @@ if(ANTS_TESTS)
                 tests/features/audit_state_file_caps/test_audit_state_file_caps.cpp
                 # ANTS-6446 — audit lanes that run project code start off.
                 tests/features/audit_project_code_lanes_off/test_audit_project_code_lanes_off.cpp
+                # ANTS-6855..6859 — the audit's Claude hand-off starts on real findings.
+                tests/features/audit_claude_handoff/test_audit_claude_handoff.cpp
                 # ANTS-6539 — closing the audit dialog mid-check.
                 tests/features/audit_dialog_close_mid_check/test_audit_dialog_close_mid_check.cpp
                 # ANTS-5084 — git history is read off the GUI thread.

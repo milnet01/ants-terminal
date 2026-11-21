@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6862 -->
+<!-- ants-roadmap-id-high-water: ANTS=6863 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74323,46 +74323,60 @@ suppression that survives line drift.
   Lanes: auditrunner, auditengine, auditdialog.
   Splits-from: ANTS-1706.
 
-- 🚧 [ANTS-6855] **The audit hand-off starts on the findings, not a full build and test run.**
+- ✅ [ANTS-6855] **The audit hand-off starts on the findings, not a full build and test run.**
   plainTextResults' PHASE 1 told the session to run the whole suite and
   record build warnings, and PHASE 5 to re-run it. On this project that
   is over 10 minutes before any finding is read (user, 2026-11-21).
+  Shipped 2026-11-21: PHASE 1 asks for git status and a recorded result
+  only; PHASE 5 runs the covering tests and the pre-commit check.
+  Contract tests/features/audit_claude_handoff INV-1.
   **Layman:** A Claude session handed an audit starts fixing at once instead of spending ten minutes rebuilding.
   Kind: fix.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
   Lanes: auditdialog.
 
-- 🚧 [ANTS-6856] **The audit hand-off names the project's standards files instead of pasting them in.**
+- ✅ [ANTS-6856] **The audit hand-off names the project's standards files instead of pasting them in.**
   appendDocIfPresent pasted CLAUDE.md, CONTRIBUTING.md and four
   standards files: about 190 KB of the 759 KB report of 2026-11-21.
+  Shipped 2026-11-21: a `=== Project rules ===` list of the standards
+  files that exist; readProjectDoc removed. INV-2.
   **Layman:** The audit report stops carrying whole copies of documents the session can open itself.
   Kind: fix.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
   Lanes: auditdialog.
 
-- 🚧 [ANTS-6857] **The clang-tidy audit lane reports only clang-tidy diagnostics, not its progress and summary lines.**
+- ✅ [ANTS-6857] **The clang-tidy audit lane reports only clang-tidy diagnostics, not its progress and summary lines.**
   Its OutputFilter is empty, so code snippets, `N warnings generated.`,
   `Suppressed N warnings` and `[1/1] Processing file` lines each became
   a finding (62 lines on 2026-11-21, most of them noise).
+  Shipped 2026-11-21: dropIfMatches keeps only path:line:col:
+  warning|error: lines and `clang-tidy:` banners. INV-3. The raw head
+  -100 cap is ANTS-6863.
   **Layman:** The clang-tidy part of the audit lists real warnings only.
   Kind: fix.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
   Lanes: auditdialog.
 
-- 🚧 [ANTS-6858] **The audit's secret and key rules skip public keys, settings reads and source files named for secrets.**
+- ✅ [ANTS-6858] **The audit's secret and key rules skip public keys, settings reads and source files named for secrets.**
   2026-11-21 report: env_files (BLOCKER) and git_sensitive flagged
   packaging/update-signing/ants-update.pub.pem; git_sensitive flagged
   src/secretredact.h by name; secrets_scan flagged
   `req.apiKey = m_config->aiApiKey();` in reviewdialogbase.cpp.
+  Shipped 2026-11-21: env_files and git_sensitive count a .pem only if
+  it holds PRIVATE KEY; git_sensitive drops source-code names;
+  secrets_scan's unquoted arm runs to end of line and excludes ( ) ;.
+  INV-4 to INV-6.
   **Layman:** The audit stops raising security alarms over the public update key and the secret-hiding code.
   Kind: fix.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
   Lanes: auditdialog.
 
-- 🚧 [ANTS-6859] **The command-injection rule skips QRandomGenerator::system() and the reviewed shell exec in ptyhandler.cpp.**
+- ✅ [ANTS-6859] **The command-injection rule skips QRandomGenerator::system() and the reviewed shell exec in ptyhandler.cpp.**
   `\bsystem\s*\(` matched `QRandomGenerator::system()->generate(` in
   claudesetup.cpp; the exec family's `, nullptr)` drop marker misses
   ptyhandler.cpp's execle, whose nullptr is on the next line.
+  Shipped 2026-11-21: `system()` joins the drop list; ptyhandler.cpp's
+  execle carries ants-audit: disable-next-line=cmd_injection. INV-7.
   **Layman:** The audit stops calling a random-number call and the terminal's own shell launch command injection.
   Kind: fix.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
@@ -74398,6 +74412,15 @@ suppression that survives line drift.
   **Layman:** Auditing someone else's project would leave no untracked files in it.
   Kind: fix.
   Source: ANTS-6860 follow-up 2026-11-21.
+  Lanes: auditdialog.
+
+- 📋 [ANTS-6863] **The clang-tidy audit lane caps the warnings it keeps, not the raw lines before filtering.**
+  The lane's shell pipeline ends `| head -100` before the OutputFilter
+  runs, so snippet and caret lines (three per warning) use up the cap and
+  real warnings past it are lost. ANTS-6857 filters after the cut.
+  **Layman:** The audit shows up to 100 real clang-tidy warnings, not fewer because of padding lines.
+  Kind: fix.
+  Source: ANTS-6857 follow-up 2026-11-21.
   Lanes: auditdialog.
 
 ### ⚡ Other improvements (performance, security, optimisations)

@@ -398,7 +398,9 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         // (no separate validation step; same-UID trust per ADR-0004).
         // childEnvp was built pre-fork in the parent; readable
         // here via fork's COW semantics until execle replaces
-        // the address space.
+        // the address space. It runs the user's own shell with no command
+        // string, so the audit's cmd_injection rule does not apply (ANTS-6859).
+        // ants-audit: disable-next-line=cmd_injection
         ::execle(shellCStr, argv0,
                  static_cast<const char *>(nullptr),
                  const_cast<char *const *>(childEnvp.data()));

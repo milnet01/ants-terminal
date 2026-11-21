@@ -553,36 +553,46 @@ QString AuditDialog::plainTextResults() const {
         "        that many of the findings in that check carry the ★.\n";
     header += "---\n\n";
 
-    // Attach the project's own standards docs when present. Gives the
-    // Claude-review handoff enough context to weigh findings against
-    // documented project rules rather than generic best practice.
-    auto appendDocIfPresent = [this, &header](const QString &name, const QString &label) {
-        const QString doc = readProjectDoc(name);
-        if (doc.isEmpty()) return;
-        header += QString("=== %1 (%2) ===\n").arg(label, name);
-        header += doc;
-        header += "\n\n";
+    // Name the project's own standards docs, so the Claude-review handoff
+    // weighs findings against documented project rules rather than generic
+    // best practice. ANTS-6856 — named, not pasted: the session can open
+    // them, and pasted they were about a quarter of the report.
+    static const std::pair<const char *, const char *> kProjectDocs[] = {
+        {"CLAUDE.md",                       "Project conventions"},
+        {"docs/standards/coding.md",        "Coding standards"},
+        {"docs/standards/testing.md",       "Testing standards"},
+        {"docs/standards/commits.md",       "Commit standards"},
+        {"docs/standards/documentation.md", "Documentation standards"},
+        {"CONTRIBUTING.md",                 "Contributing guidelines"},
     };
-    appendDocIfPresent("CLAUDE.md",                       "Project conventions");
-    appendDocIfPresent("docs/standards/coding.md",        "Coding standards");
-    appendDocIfPresent("docs/standards/testing.md",       "Testing standards");
-    appendDocIfPresent("docs/standards/commits.md",       "Commit standards");
-    appendDocIfPresent("docs/standards/documentation.md", "Documentation standards");
-    appendDocIfPresent("CONTRIBUTING.md",                 "Contributing guidelines");
+    QString docList;
+    for (const auto &[name, label] : kProjectDocs) {
+        if (QFileInfo::exists(m_projectPath + "/" + name))
+            docList += QString("  %1 — %2\n").arg(QLatin1String(name), QLatin1String(label));
+    }
+    if (!docList.isEmpty()) {
+        header += "=== Project rules ===\n"
+                  "Open the one a finding turns on; they are not copied here.\n"
+                  + docList + "\n";
+    }
 
     // 5-phase workflow scaffold for the downstream Claude session. Gives the
     // consumer a verification + approval gate rather than letting it plunge
     // straight into fixes — a common failure mode where regex false positives
     // get "fixed" into real bugs because nothing proved they were real first.
+    // ANTS-6855 — the baseline stays cheap: "run the existing test suite"
+    // kept a session on this project's build warnings for over 10 minutes.
     header +=
         "=== How to process this report ===\n"
         "\n"
         "Follow these five phases in order. Don't jump to fixes.\n"
         "\n"
         "PHASE 1 — BASELINE\n"
-        "  Run the existing test suite. Record pass/fail counts, build warnings,\n"
-        "  lint output. If anything is broken before you start, surface that\n"
-        "  first — don't proceed until the user acknowledges.\n"
+        "  Note what is already broken, cheaply: `git status`, and the last\n"
+        "  build or test result if the project records one. Do not rebuild or\n"
+        "  run the whole suite first: on a large project that takes many\n"
+        "  minutes and tells you nothing about these findings. If something is\n"
+        "  broken before you start, surface it first.\n"
         "\n"
         "PHASE 2 — VERIFY\n"
         "  For every BLOCKER, CRITICAL, and MAJOR finding, mark it VERIFIED,\n"
@@ -623,15 +633,14 @@ QString AuditDialog::plainTextResults() const {
         "  Every behavioural fix gets a regression test — a fix without a\n"
         "  test will come back. Keep edits scoped to each finding; no\n"
         "  drive-by refactoring of surrounding code.\n"
-        "  After fixes, re-run the full suite and include a pre/post diff of\n"
-        "  tests passed/failed/skipped, build warnings, and finding counts\n"
-        "  by severity.\n"
+        "  After each fix, run the tests that cover what it changed; at the\n"
+        "  end, run the project's own pre-commit check.\n"
         "\n"
         "DELIVERABLE\n"
         "  (1) Findings list with VERIFIED / UNCONFIRMED / FALSE-POSITIVE tags\n"
         "  (2) Changes made — files touched, why, test evidence\n"
         "  (3) Deferred items — why deferred, what would unblock them\n"
-        "  (4) Baseline comparison — tests / warnings / findings before vs after\n"
+        "  (4) Before vs after — the tests you ran, and findings by severity\n"
         "\n"
         "Be terse and concrete. Skip categories with no findings rather than\n"
         "writing \"none found\" filler for each.\n\n";

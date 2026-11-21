@@ -530,7 +530,9 @@ void AuditDialog::populateChecks() {
                  "Security",
                  "'(api[_-]?key|password|secret[_-]?key|auth[_-]?token|credentials)"
                  "\\s*[:=]\\s*(\"[^\"]{16,}\"|'\\''[^'\\'']{16,}'\\''"
-                 "|[^[:space:]\"'\\''#,]{16,})'",
+                 // ANTS-6858 — the unquoted arm is a whole value to the end of
+                 // the line, as in YAML or .env; no call or statement can be one.
+                 "|[^[:space:]\"'\\''#,();]{16,}[[:space:]]*(#.*)?$)'",
                  CheckType::Hotspot, Severity::Critical, true,
                  { /*dropIfContains*/ {"EchoMode", "setPlaceholder",
                                        "// example", "# example",
@@ -613,7 +615,10 @@ void AuditDialog::populateChecks() {
                  { /*dropIfContains*/ {".exec(", "app.exec", "menu.exec",
                                        "dialog.exec", "QApplication",
                                        "QProcess", "forkpty", "setArguments",
-                                       ", nullptr)", ", NULL)"},
+                                       ", nullptr)", ", NULL)",
+                                       // ANTS-6859 — empty parentheses pass
+                                       // no command (QRandomGenerator::system()).
+                                       "system()"},
                    "", {}, 30 });
 
     // Python/JS subprocess patterns — separate check
@@ -712,10 +717,13 @@ void AuditDialog::populateChecks() {
 
     addFindCheck("env_files", "Exposed Environment Files",
                  ".env, credentials, key files in repo", "Security",
+                 // ANTS-6858 — a .pem counts only if it holds a private key;
+                 // a public key or certificate is meant to be published.
                  "-type f \\( -name '.env' -o -name '.env.*' -o -name 'credentials'"
-                 " -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx'"
+                 " -o \\( -name '*.pem' -exec grep -q 'PRIVATE KEY' {} \\; \\)"
+                 " -o -name '*.key' -o -name '*.p12' -o -name '*.pfx'"
                  " -o -name 'id_rsa' -o -name 'id_ed25519' -o -name '*.keystore' \\)"
-                 " | head -20",
+                 " -print | head -20",
                  CheckType::Vulnerability, Severity::Blocker, true);
 
     addFindCheck("temp_files", "Temporary/Backup Files",
@@ -795,11 +803,18 @@ void AuditDialog::populateChecks() {
         m_checks.append({
             "git_sensitive", "Sensitive Files in Git",
             "Private keys / secrets ever tracked", "Git",
+            // ANTS-6858 — as env_files, a .pem counts only if it holds a
+            // private key. Source code named for secrets (secretredact.h) is
+            // dropped: its contents are secrets_scan's to judge.
             "git ls-files 2>/dev/null | grep -iE "
-            "'(id_rsa|id_ed25519|\\.pem|\\.key|\\.env|credentials|secret|password)'",
+            "'(id_rsa|id_ed25519|\\.pem|\\.key|\\.env|credentials|secret|password)'"
+            " | while IFS= read -r f; do case \"$f\" in *.pem)"
+            " grep -q 'PRIVATE KEY' \"$f\" 2>/dev/null || continue;; esac;"
+            " printf '%s\\n' \"$f\"; done",
             CheckType::Vulnerability, Severity::Critical,
             { {"example", "template", "sample", "test", "mock", "lock", "CLAUDE.md",
-               "settings.local.json" /* Claude Code perms, not secrets */}, "", {}, 20 },
+               "settings.local.json" /* Claude Code perms, not secrets */},
+              R"(\.(c|cc|cpp|cxx|h|hh|hpp|hxx|py|js|ts|go|rs|lua|java|sh|md)$)", {}, 20 },
             false, true, nullptr
         });
     }
@@ -883,7 +898,13 @@ void AuditDialog::populateChecks() {
         m_checks.append({
             "clang_tidy", "clang-tidy Analysis", tidyDesc, "C/C++",
             tidyCmd,
-            CheckType::CodeSmell, Severity::Minor, { {}, "", {}, 100 },
+            // ANTS-6857 — keep only `path:line:col: warning|error:` lines and
+            // this lane's own `clang-tidy:` banners. The rest of clang-tidy's
+            // output (code snippets, carets, notes, "N warnings generated.",
+            // "Suppressed N warnings", "[1/1] Processing file") each became
+            // a finding.
+            CheckType::CodeSmell, Severity::Minor,
+            { {}, R"(^(?!\S+:\d+:\d+: (?:warning|error): |clang-tidy: ))", {}, 100 },
             false, hasClangTidy && !tidyBuildDir.isEmpty(), nullptr
         });
 
