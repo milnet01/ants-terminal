@@ -71578,7 +71578,7 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Kind: perf.
   Source: in-session-2026-07-09.
 
-- 💭 [ANTS-6851] **Resize reflow cost — one re-wrap of a very large scrollback still blocks the GUI thread.**
+- ✅ [ANTS-6851] **Resize reflow cost — one re-wrap of a very large scrollback still blocks the GUI thread.**
   ANTS-3456 cut a drag to at most two re-wraps; it did not make one
   cheaper. One re-wrap of a full 50k scrollback takes 131 ms
   (bench_resize_reflow, 2026-11-21); the 1M case is not measured.
@@ -71586,6 +71586,20 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   re-wrap (needs its own design: paint, search, selection, link spans
   and the parse worker all read the scrollback). Considered until a
   user hits it at the default size.
+  Picked by the user 2026-11-21. Re-measured 2026-11-21:
+  bench_resize_reflow scrollback_50k 85.94 ms mean per re-wrap (every
+  line soft-wrapped, the slow path). First step: a cheaper slow path
+  that copies each cell fewer times; measure before any off-thread
+  design.
+  Shipped 2026-11-21: the cheaper slow path. TerminalGrid::resize builds
+  each re-wrapped row once at its final size (no full-width fill then
+  trim copy) and sizes the join once. bench_resize_reflow
+  scrollback_50k: old 97-180 ms vs new 38-66 ms alternating on a loaded
+  host (load ~8); 85.9 -> ~34 ms in sequential runs. An equivalence
+  probe dumped every cell, link and combining mark over nine resizes and
+  matched byte for byte. NOT done: the off-thread re-wrap, and the 1M
+  case is still unmeasured; a re-wrap still blocks the GUI thread for
+  ~35 ms at 50k.
   **Layman:** After a window resize, a terminal holding a huge scrollback can still pause once while its text re-wraps.
   Kind: perf.
   Source: ANTS-3456 spec § 4 (2026-11-21).

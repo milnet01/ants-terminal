@@ -238,6 +238,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Re-wrapping a large scrollback after a resize is about 2.5 times faster.** (ANTS-6851)
+  Each re-wrapped row is now built once at its final size. On a full
+  50,000-line scrollback one re-wrap fell from about 86 ms to about 35 ms
+  (bench_resize_reflow, 2026-11-21).
+
 - **Dragging a window edge re-wraps the scrollback once, when the drag settles** (ANTS-3456)
   The first step of a resize applies at once, and the last applies 150 ms
   after the events stop. The steps in between wait, so a drag costs at

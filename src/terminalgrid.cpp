@@ -146,19 +146,21 @@ void TerminalGrid::returnCellsRow(std::vector<Cell> &&cells) {
     }
 }
 
+// A plain blank draws exactly like a cell past the row's end, so a scrollback
+// row may drop it from its tail.
+static bool isPlainBlank(const Cell &c, CellColor defaultBg) {
+    const CellAttrs &a = c.attrs;
+    return c.codepoint == ' ' && !c.isWideChar && !c.isWideCont
+        && !a.underline && !a.inverse && !a.strikethrough
+        && (!a.bg.isValid() || a.bg == defaultBg);
+}
+
 TermLine TerminalGrid::trimmedForScrollback(TermLine &&line) {
     if (line.softWrapped) return std::move(line);
     const CellColor defaultBg(m_defaultBg);
-    // A plain blank draws exactly like a cell past the row's end.
-    auto plainBlank = [&defaultBg](const Cell &c) {
-        const CellAttrs &a = c.attrs;
-        return c.codepoint == ' ' && !c.isWideChar && !c.isWideCont
-            && !a.underline && !a.inverse && !a.strikethrough
-            && (!a.bg.isValid() || a.bg == defaultBg);
-    };
     const int size = static_cast<int>(line.cells.size());
     int keep = size;
-    while (keep > 0 && plainBlank(line.cells[keep - 1])) --keep;
+    while (keep > 0 && isPlainBlank(line.cells[keep - 1], defaultBg)) --keep;
     for (const auto &kv : line.combining)
         keep = std::max(keep, std::min(size, kv.first + 1));
     if (keep >= size) return std::move(line);
@@ -2725,7 +2727,17 @@ void TerminalGrid::resize(int rows, int cols) {
     auto joinLogical = [](auto &lines) {
         std::vector<LogicalLine> out;
         LogicalLine cur;
-        for (auto &sl : lines) {
+        for (size_t i = 0; i < lines.size(); ++i) {
+            auto &sl = lines[i];
+            // ANTS-6851 — size the join once, so it is never re-copied as it grows.
+            if (cur.cells.empty()) {
+                size_t total = 0;
+                for (size_t j = i; j < lines.size(); ++j) {
+                    total += lines[j].cells.size();
+                    if (!lines[j].softWrapped) break;
+                }
+                cur.cells.reserve(total);
+            }
             auto &cells = sl.cells;
             int len = static_cast<int>(cells.size());
             // ANTS-5076 — trim only the row that ends a logical line. A
@@ -2760,10 +2772,20 @@ void TerminalGrid::resize(int rows, int cols) {
         return out;
     };
 
-    auto rewrap = [cols, this](LogicalLine &logical, std::vector<TermLine> &out) {
+    // ANTS-6851 — each row is built once at its final size: the chunk's cells,
+    // then default blanks out to `cols`. With `forScrollback`, the row ending
+    // a logical line stops where trimmedForScrollback would cut it, so it is
+    // never allocated full width only to be copied again shorter.
+    Cell blank;
+    blank.attrs.fg = m_defaultFg;
+    blank.attrs.bg = m_defaultBg;
+    const CellColor defaultBg(m_defaultBg);
+    auto rewrap = [cols, this, &blank, defaultBg](LogicalLine &logical,
+                                                  std::vector<TermLine> &out,
+                                                  bool forScrollback) {
         if (logical.cells.empty()) {
             TermLine tl;
-            tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+            if (!forScrollback) tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
             out.push_back(std::move(tl));
             return;
         }
@@ -2785,13 +2807,24 @@ void TerminalGrid::resize(int rows, int cols) {
                 --chunk;
             }
             TermLine tl;
-            tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
-            for (int i = 0; i < chunk; ++i) tl.cells[i] = logical.cells[pos + i];
             // Redistribute combining entries that fall in [pos, pos+chunk).
+            int lastCombining = -1;
             for (auto &kv : logical.combining) {
-                if (kv.first >= pos && kv.first < pos + chunk)
+                if (kv.first >= pos && kv.first < pos + chunk) {
                     tl.combining[kv.first - pos] = kv.second;
+                    lastCombining = std::max(lastCombining, kv.first - pos);
+                }
             }
+            const auto first = logical.cells.begin() + pos;
+            int width = cols;
+            if (forScrollback && pos + chunk == total) {
+                int keep = chunk;
+                while (keep > 0 && isPlainBlank(first[keep - 1], defaultBg)) --keep;
+                width = std::max(keep, lastCombining + 1);  // never past chunk
+            }
+            tl.cells.reserve(width);
+            tl.cells.insert(tl.cells.end(), first, first + std::min(chunk, width));
+            tl.cells.resize(width, blank);
             // A span split by the wrap keeps one piece per row.
             for (const HyperlinkSpan &sp : logical.spans) {
                 if (sp.endCol < pos || sp.startCol >= pos + chunk) continue;
@@ -2834,7 +2867,7 @@ void TerminalGrid::resize(int rows, int cols) {
             if (pending.empty()) return;
             auto logicals = joinLogical(pending);
             std::vector<TermLine> reflowed;
-            for (auto &L : logicals) rewrap(L, reflowed);
+            for (auto &L : logicals) rewrap(L, reflowed, /*forScrollback=*/true);
             for (auto &tl : reflowed)
                 newScrollback.push_back(trimmedForScrollback(std::move(tl)));  // INV-3
             pending.clear();
@@ -2937,7 +2970,7 @@ void TerminalGrid::resize(int rows, int cols) {
         auto logicals = joinLogical(lines);
         std::vector<TermLine> reflowed;
         for (auto &logical : logicals)
-            rewrap(logical, reflowed);
+            rewrap(logical, reflowed, /*forScrollback=*/false);
 
         // Skip entirely-blank overflow lines — pushing them just pollutes
         // scrollback with empty rows the user sees as "scrollable blank lines
