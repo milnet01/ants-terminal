@@ -270,8 +270,4 @@ Wire in `test_claude` bundle (same place as
 
 ## 9. Cold-eyes review log
 
-- **Loop 0** (initial draft, 2026-05-13).
-- **Loop 1** pending: re-read against current
-  `indiereviewengine.{h,cpp}` corroborate path + remotecontrol's
-  `cmdIndieReviewCorroborate` to verify the schema-rejection
-  shape matches existing error envelopes. Findings appended.
+Rows live in [`../reviews/ANTS-1282-indie-review-corroborate-accepts-loop-log.md`](../reviews/ANTS-1282-indie-review-corroborate-accepts-loop-log.md).
