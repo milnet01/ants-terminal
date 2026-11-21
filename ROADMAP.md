@@ -107250,7 +107250,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L04-F16).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6186] **One theme-action builder for the View → Themes menu and its Reload User Themes rebuild.**
+- ✅ [ANTS-6186] **One theme-action builder for the View → Themes menu and its Reload User Themes rebuild.**
   From ANTS-6113 (L04 MEDIUM F17). setupViewMenu builds the theme
   actions twice; the copies compare the check mark against
   m_config.theme() and m_currentTheme respectively. Not done in the lane
@@ -107259,6 +107259,10 @@ worked after these.
   theme-menu call-sites", so the spec needs amending (rule 14) before a
   helper can hold them. Decide which current-theme source is right.
   Hot reload: none needed; a refactor with no new running state.
+  Shipped 741f5879: MainWindow::addThemeActions, called by setupViewMenu
+  and the reload rebuild. The check mark follows m_currentTheme (the
+  theme on screen); theme_switch_popup_defer INV-4 and its spec moved
+  with it.
   **Layman:** The theme menu is built by two copies of the same code that have started to differ; one copy would keep them the same.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L04-F17).
