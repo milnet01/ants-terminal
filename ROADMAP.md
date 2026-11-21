@@ -105057,7 +105057,7 @@ here.)
   Source: in-session-2026-08-28, closing ANTS-4406/4410/4430.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-4988] **roadmap_query serialises a bullet in five places, so adding a field silently ships it on some paths and not others.**
+- ✅ [ANTS-4988] **roadmap_query serialises a bullet in five places, so adding a field silently ships it on some paths and not others.**
   `src/remotecontrol_roadmap_query.cpp` builds a bullet's JSON object at FIVE
   separate places — the emitters carrying `o["kind"] = b.kind;`. They are
   near-identical and hand-maintained.
@@ -105086,6 +105086,12 @@ here.)
 
   Related: the same shape ANTS-4404 closed for fence predicates and ANTS-3603
   closed for markdown scanning — a rule copied N times drifts at N-1 of them.
+  Shipped by ANTS-6129: e4232b99 (2026-10-22) made the three cache fills
+  call rcBuildBulletCacheArray, and a6b2265f (2026-11-17) moved section=
+  rows onto it. Checked 2026-11-21: `o["kind"] = b.kind` now appears
+  once, in that builder; section_index INV-7 asserts every fill calls
+  it. The bundles member object (buildRoadmapBundlesEnvelope) is a
+  different, deliberately smaller shape, not a bullet row.
   **Layman:** The code that turns a roadmap item into a reply is copy-pasted five times, so a new detail can appear in some answers and be missing from others.
   Kind: refactor.
   Source: in-session-2026-09-09 (hit while building ANTS-4985).
