@@ -680,6 +680,7 @@ void TerminalGrid::handleExecute(char ch) {
     case '\x0E':
     case '\x0F':
         break;
+    default: break;  // unhandled: ignored, as xterm does
     }
 }
 
@@ -878,6 +879,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 2004: m_bracketedPaste = true; break;
                 case 2026: m_synchronizedOutput = true; break;
                 case 2031: m_colorSchemeNotify = true; break;
+                default: break;  // unhandled: ignored, as xterm does
                 }
             }
         }
@@ -903,6 +905,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 2004: m_bracketedPaste = false; break;
                 case 2026: m_synchronizedOutput = false; break;
                 case 2031: m_colorSchemeNotify = false; break;
+                default: break;  // unhandled: ignored, as xterm does
                 }
             }
         }
@@ -1029,9 +1032,11 @@ void TerminalGrid::handleCsi(const VtAction &a) {
             case 1: m_kittyKeyFlags = flags; break;           // set
             case 2: m_kittyKeyFlags |= flags; break;          // or
             case 3: m_kittyKeyFlags &= ~flags; break;         // not
+            default: break;  // unhandled: ignored, as xterm does
             }
         }
         break;
+    default: break;  // unhandled: ignored, as xterm does
     }
     // SECURITY: CSI 20t/21t (XTWINOPS title reporting) intentionally NOT
     // implemented. Reporting the window title allows escape-sequence
@@ -1125,6 +1130,7 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             setMaxScrollbackMib(cfgScrollbackMib);
             break;
         }
+        default: break;  // unhandled: ignored, as xterm does
         }
     }
 }
@@ -1426,6 +1432,7 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
                 m_commandFinishedCallback(m_lastExitCode, durationMs);
             break;
         }
+        default: break;  // unhandled: ignored, as xterm does
         }
         // ANTS-4272 — after the state change, so a plugin sees the marker the
         // grid has already applied. A forged marker returned above.
@@ -1783,6 +1790,7 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
         case 104: case 105: case 106: case 107:
             m_currentAttrs.bg = s_palette256[code - 100 + 8];
             break;
+        default: break;  // unhandled: ignored, as xterm does
         }
     }
 }
@@ -1919,6 +1927,7 @@ void TerminalGrid::eraseInDisplay(int mode) {
             m_scrollbackHlBase = 0;
         }
         break;
+    default: break;  // unhandled: ignored, as xterm does
     }
 
     // Record the mode-2 time so a follow-up mode-3 in the same byte-burst
@@ -1950,6 +1959,7 @@ void TerminalGrid::eraseInLine(int mode) {
     case 0: clearRow(m_cursorRow, m_cursorCol, m_cols); break;
     case 1: clearRow(m_cursorRow, 0, m_cursorCol + 1); break;
     case 2: clearRow(m_cursorRow); break;
+    default: break;  // unhandled: ignored, as xterm does
     }
 }
 

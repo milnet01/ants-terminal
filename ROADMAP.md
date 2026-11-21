@@ -115079,9 +115079,16 @@ reports are asked for separately, each time.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5445] **clang-tidy bugprone-switch-missing-default-case (and unhandled-code-paths): 11 sites in 2 files.**
+- ✅ [ANTS-5445] **clang-tidy bugprone-switch-missing-default-case (and unhandled-code-paths): 11 sites in 2 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   bugprone-unhandled-code-paths flags 9 of the same 11; one item covers both.
+  2026-11-21: each switch now ends in an explicit `default: break;` with
+  its reason. The ten in terminalgrid.cpp dispatch control codes, final
+  bytes, modes and SGR codes, where an unknown one is ignored, as xterm
+  does; audithygiene.cpp's `state` switch has a case for every value the
+  loop sets. Behaviour is unchanged: a switch with no matching case
+  already skipped its body. clang-tidy reports 0; ctest --preset=default
+  6599/6599.
   **Layman:** Switch statements with no fallback for a value nobody listed.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.

@@ -394,6 +394,7 @@ bool lineHasCode(const QString &source, const QString &path, int line) {
                 state = 0;
             }
             break;
+        default: break;  // every state set above has its case
         }
     }
     return hasCodeOnLine;
