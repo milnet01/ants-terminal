@@ -90,7 +90,7 @@ TEST(FileOutlineTypedefStruct, TaggedRegistersAliasAndTag) {
     QTemporaryDir dir;
     const QString path = writeHeader(dir);
     const QJsonObject outline = FileOutline::compute(
-        path, FileOutline::Mode::Cpp, /*includeDoc=*/false, /*maxSymbols=*/100);
+        path, FileOutline::Mode::Cpp, /*includeDocComment=*/false, /*maxSymbols=*/100);
 
     const QJsonObject alias = symByName(outline, "vertex_t");
     const QJsonObject tag   = symByName(outline, "vertex_s");

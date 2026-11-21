@@ -115021,9 +115021,13 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5440] **clang-tidy bugprone-argument-comment: 24 sites in 5 files.**
+- ✅ [ANTS-5440] **clang-tidy bugprone-argument-comment: 24 sites in 5 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   A stale name can hide swapped arguments: check each, then fix.
+  2026-11-21: every hit checked: each comment was an abbreviation of the
+  parameter at that position (durUs for durationUs, h1 for h1Heading),
+  so no swapped arguments. Comments now carry the full names; clang-tidy
+  reports 0 over the five test files.
   **Layman:** Inline comments naming an argument that no longer match the parameter's name.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

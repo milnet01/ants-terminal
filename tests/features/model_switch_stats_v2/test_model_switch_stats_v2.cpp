@@ -109,7 +109,7 @@ TEST(ModelSwitchStatsV2_ANTS1957, NonCorrectiveOverrideIsNotRegret)
     // A downgrade where the user manually switched (userOverrideWithin5=true)
     // but NOT upward (overrideUndidDowngrade=false) — e.g. a lateral or
     // further-down /model. With turns accrued it is a measured non-regret.
-    L::Record r = makeDowngrade(/*turns=*/3, /*override_=*/true,
+    L::Record r = makeDowngrade(/*turnsOnToTier=*/3, /*override_=*/true,
                                 /*correction=*/false, /*underRoute=*/false,
                                 /*cleanEnd=*/false, /*pending=*/false);
     r.outcome.overrideUndidDowngrade = false;   // diverge from the broad signal

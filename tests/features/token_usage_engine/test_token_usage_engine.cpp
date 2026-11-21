@@ -185,8 +185,8 @@ TEST(TokenUsageEngine, BaselineScalesPerCall) {
 // V2-1 — recordCall writes new accumulators.
 TEST(TokenUsageEngine, V2WrapBytesAndDurationAccumulate) {
     Tracker t;
-    t.recordCall("foo", 10, 100, /*wrap=*/5,  /*durUs=*/200);
-    t.recordCall("foo", 10, 100, /*wrap=*/5,  /*durUs=*/200);
+    t.recordCall("foo", 10, 100, /*wrapBytes=*/5,  /*durationUs=*/200);
+    t.recordCall("foo", 10, 100, /*wrapBytes=*/5,  /*durationUs=*/200);
     auto snap = t.buildReport(true);
     ASSERT_EQ(snap.calls.size(), 1);
     EXPECT_EQ(snap.calls[0].wrapBytes,      qint64(10));
@@ -199,9 +199,9 @@ TEST(TokenUsageEngine, V2WrapBytesAndDurationAccumulate) {
 // V2-2 — duration min/max/mean evolve correctly across calls.
 TEST(TokenUsageEngine, V2DurationMinMaxMeanEvolve) {
     Tracker t;
-    t.recordCall("bar", 0, 0, 0, /*durUs=*/500);
-    t.recordCall("bar", 0, 0, 0, /*durUs=*/100);
-    t.recordCall("bar", 0, 0, 0, /*durUs=*/2000);
+    t.recordCall("bar", 0, 0, 0, /*durationUs=*/500);
+    t.recordCall("bar", 0, 0, 0, /*durationUs=*/100);
+    t.recordCall("bar", 0, 0, 0, /*durationUs=*/2000);
     auto snap = t.buildReport(true);
     ASSERT_EQ(snap.calls.size(), 1);
     EXPECT_EQ(snap.calls[0].durationUsMin,  qint64(100));
@@ -215,10 +215,10 @@ TEST(TokenUsageEngine, V2DurationMinMaxMeanEvolve) {
 TEST(TokenUsageEngine, V2TotalWrapBytesSpansAllTools) {
     Tracker t;
     // roadmap_query — has a baseline → est_tokens_saved > 0.
-    t.recordCall("roadmap_query", 0, 0, /*wrap=*/30, /*durUs=*/100);
+    t.recordCall("roadmap_query", 0, 0, /*wrapBytes=*/30, /*durationUs=*/100);
     // unknown tool — baseline 0 → est_tokens_saved 0; would be
     // filtered when includeZero:false. wrap_bytes still counts.
-    t.recordCall("zzz_unknown",    0, 0, /*wrap=*/50, /*durUs=*/100);
+    t.recordCall("zzz_unknown",    0, 0, /*wrapBytes=*/50, /*durationUs=*/100);
     auto snap = t.buildReport(/*includeZero=*/false);
     // zzz_unknown filtered out of calls[].
     ASSERT_EQ(snap.calls.size(), 1);
@@ -233,7 +233,7 @@ TEST(TokenUsageEngine, V2TotalWrapBytesSpansAllTools) {
 // genuine 0 sample (NOT treated as uninitialised).
 TEST(TokenUsageEngine, V2DurationZeroOnFirstCallIsGenuine) {
     Tracker t;
-    t.recordCall("baz", 0, 0, 0, /*durUs=*/0);
+    t.recordCall("baz", 0, 0, 0, /*durationUs=*/0);
     auto snap = t.buildReport(true);
     ASSERT_EQ(snap.calls.size(), 1);
     EXPECT_EQ(snap.calls[0].nCalls, 1);
@@ -241,7 +241,7 @@ TEST(TokenUsageEngine, V2DurationZeroOnFirstCallIsGenuine) {
     EXPECT_EQ(snap.calls[0].durationUsMax,  qint64(0));
     EXPECT_EQ(snap.calls[0].durationUsMean, qint64(0));
     // Adding a non-zero second sample lifts max but min stays at 0.
-    t.recordCall("baz", 0, 0, 0, /*durUs=*/500);
+    t.recordCall("baz", 0, 0, 0, /*durationUs=*/500);
     snap = t.buildReport(true);
     EXPECT_EQ(snap.calls[0].durationUsMin,  qint64(0));
     EXPECT_EQ(snap.calls[0].durationUsMax,  qint64(500));
@@ -266,13 +266,13 @@ TEST(TokenUsageEngine, V2DurationSumIsPrivate) {
 // V2-6 — reset clears v2 accumulators too.
 TEST(TokenUsageEngine, V2ResetClearsV2Fields) {
     Tracker t;
-    t.recordCall("foo", 10, 100, /*wrap=*/5, /*durUs=*/200);
+    t.recordCall("foo", 10, 100, /*wrapBytes=*/5, /*durationUs=*/200);
     t.reset();
     auto snap = t.buildReport(true);
     EXPECT_EQ(snap.totalWrapBytes, qint64(0));
     EXPECT_EQ(snap.calls.size(),   0);
     // Second record after reset behaves as a fresh tool (sentinel).
-    t.recordCall("foo", 0, 0, 0, /*durUs=*/777);
+    t.recordCall("foo", 0, 0, 0, /*durationUs=*/777);
     snap = t.buildReport(true);
     ASSERT_EQ(snap.calls.size(), 1);
     EXPECT_EQ(snap.calls[0].durationUsMin, qint64(777));

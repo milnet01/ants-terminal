@@ -231,16 +231,16 @@ static int runStandaloneMode3Scenario() {
 // produces the same post-state — guarded for correctness even though no
 // real TUI emits that pattern.
 TEST(ScrollbackRedraw, IdenticalRepaint2J) {
-    EXPECT_EQ(0, runScenario("identical-repaint-2J", "\x1b[2J\x1b[H", /*identical=*/true));
+    EXPECT_EQ(0, runScenario("identical-repaint-2J", "\x1b[2J\x1b[H", /*repaintIdenticalContent=*/true));
 }
 TEST(ScrollbackRedraw, DivergedRepaint2J) {
-    EXPECT_EQ(0, runScenario("diverged-repaint-2J", "\x1b[2J\x1b[H", /*identical=*/false));
+    EXPECT_EQ(0, runScenario("diverged-repaint-2J", "\x1b[2J\x1b[H", /*repaintIdenticalContent=*/false));
 }
 TEST(ScrollbackRedraw, IdenticalRepaint0J) {
-    EXPECT_EQ(0, runScenario("identical-repaint-0J", "\x1b[H\x1b[0J", /*identical=*/true));
+    EXPECT_EQ(0, runScenario("identical-repaint-0J", "\x1b[H\x1b[0J", /*repaintIdenticalContent=*/true));
 }
 TEST(ScrollbackRedraw, IdenticalRepaint1J) {
-    EXPECT_EQ(0, runScenario("identical-repaint-1J", "\x1b[24;80H\x1b[1J\x1b[H", /*identical=*/true));
+    EXPECT_EQ(0, runScenario("identical-repaint-1J", "\x1b[24;80H\x1b[1J\x1b[H", /*repaintIdenticalContent=*/true));
 }
 TEST(ScrollbackRedraw, InkOverflowRepaint) {
     EXPECT_EQ(0, runInkOverflowScenario());

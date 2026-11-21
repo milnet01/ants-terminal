@@ -60,7 +60,7 @@ TEST(McpFeedbackLog, RenderFindingTemplate) {
     f.suggestedFix = "do x";
     fs.append(f);
     const QString out = FeedbackFile::renderFindingBlock(
-        "2026-06-03", "session label", /*h1=*/false, "intro note", fs);
+        "2026-06-03", "session label", /*h1Heading=*/false, "intro note", fs);
     EXPECT_TRUE(out.startsWith("## 2026-06-03 — session label"));
     EXPECT_TRUE(out.contains("intro note"));
     EXPECT_TRUE(out.contains("### Title here"));
@@ -76,7 +76,7 @@ TEST(McpFeedbackLog, RenderFindingH1) {
     QVector<FeedbackFile::Finding> fs;
     FeedbackFile::Finding f; f.title = "T"; fs.append(f);
     const QString out = FeedbackFile::renderFindingBlock(
-        "2026-06-03", QString(), /*h1=*/true, QString(), fs);
+        "2026-06-03", QString(), /*h1Heading=*/true, QString(), fs);
     EXPECT_TRUE(out.startsWith("# 2026-06-03\n"));  // date-only h1
 }
 
