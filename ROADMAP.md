@@ -115256,7 +115256,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-05 (push gate, qt62 container leg).
   Lanes: tests, claudetabtracker.
 
-- 📋 [ANTS-6717] **Clear four clang-tidy performance warnings and two unused includes in claudeintegration.cpp.**
+- ✅ [ANTS-6717] **Clear four clang-tidy performance warnings and two unused includes in claudeintegration.cpp.**
   clangd showed these on 2026-11-09 while ANTS-5243 was fixed; none
   are new from that edit, and ANTS-5243 did not list them.
   - performance-unnecessary-value-param: McpCallContext ctx and
@@ -115270,6 +115270,8 @@ reports are asked for separately, each time.
   misc-use-anonymous-namespace on three file-static names:
   s_rateLimitClock, tabSpecificAcceptsTabIndex and
   writeMcpRequestError. Not new from that edit.
+  Shipped: all nine clang-tidy warnings named here cleared; INV-16's
+  anchor follows the clock into its anonymous namespace.
   **Layman:** Small speed and tidiness warnings a code checker raises in the Claude integration code.
   Kind: audit-fix.
   Source: in-session-2026-11-09 (ANTS-5243 clangd run).
