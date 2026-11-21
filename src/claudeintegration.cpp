@@ -34,8 +34,6 @@
 #include <QCoreApplication>
 
 #include <atomic>
-#include <climits>
-#include <limits>
 #include <memory>
 #include <utility>
 #include <sys/socket.h>
@@ -44,7 +42,9 @@
 // Started once in the ClaudeIntegration constructor; tests bypass via
 // the synthetic-nowMs parameter so this clock is never read during
 // pure-function tests.
-static QElapsedTimer s_rateLimitClock;
+namespace {
+QElapsedTimer s_rateLimitClock;
+}  // namespace
 // ANTS-5090 — the same monotonic clock for the read-cache TTL and the
 // in-flight and audit-job reapers, so a suspend or a wall-clock step can
 // neither reap a live slot nor serve a stale read. Declared in
@@ -61,11 +61,13 @@ qint64 monotonicNowMs() { return s_rateLimitClock.elapsed(); }
 // `tab`, so it must NOT count as a routing key for them — else a stray
 // tab:N would bypass the Phase 3b gate and still fall back to the
 // focused tab. See docs/specs/ANTS-1415-callercwdcontract-tabspecific.md.
-static bool tabSpecificAcceptsTabIndex(const QString &toolName) {
+namespace {
+bool tabSpecificAcceptsTabIndex(const QString &toolName) {
     return toolName == QLatin1String("get_text") ||
            toolName == QLatin1String("recent_errors") ||
            toolName == QLatin1String("last_selection");
 }
+}  // namespace
 
 // ANTS-1659 — the most one hook event or MCP request may buffer: both are
 // small, and the cap closes a same-UID OOM vector (deeply nested JSON
@@ -1175,8 +1177,8 @@ QJsonObject ClaudeIntegration::toolCallResult(const QString &wrapped,
 // ANTS-2132 / ANTS-5072 — the GUI-thread half of the reply: the cache insert,
 // recordDispatch and the socket write. The transforms already ran in
 // transformReply, wherever the handler ran.
-void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
-                                           ReplyTransform reply) {
+void ClaudeIntegration::finishToolDispatch(const McpCallContext &ctx,
+                                           const ReplyTransform &reply) {
     const QString     &toolName    = ctx.toolName;
     const QJsonObject &argsObj     = ctx.args;
     const bool         cachedHit   = ctx.cachedHit;
@@ -1300,8 +1302,9 @@ void ClaudeIntegration::sendMcpResponse(const QPointer<McpReplyChannel> &socket,
 // cannot dispatch: -32700 when it does not parse, -32600 when it parses but is
 // not an object. Written here, not through sendMcpResponse, which sends nothing
 // for a null id. Same terminator (ANTS-1769).
-static void writeMcpRequestError(McpReplyChannel *socket,
-                                 const QJsonParseError &parseError) {
+namespace {
+void writeMcpRequestError(McpReplyChannel *socket,
+                          const QJsonParseError &parseError) {
     QJsonObject rpcError;
     if (parseError.error != QJsonParseError::NoError) {
         rpcError["code"]    = -32700;
@@ -1319,6 +1322,7 @@ static void writeMcpRequestError(McpReplyChannel *socket,
     if (!socket || !socket->isOpen()) return;
     socket->reply(QJsonDocument(envelope).toJson(QJsonDocument::Compact) + '\n');
 }
+}  // namespace
 
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
@@ -2745,7 +2749,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     auto liteSummaryFor = [](const QJsonObject &t) -> QString {
                         // selection_hint when there is one, else the first
                         // sentence of description, cut to 160 characters.
-                        const QString hint =
+                        QString hint =
                             t.value(QStringLiteral("selection_hint"))
                              .toString();
                         if (!hint.isEmpty()) return hint;
@@ -3340,7 +3344,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             const QPointer<ClaudeIntegration> self(this);
                             const auto replied = std::make_shared<bool>(false);
                             it->second.deferred(argsObj,
-                                [self, dctx, replied](QString body) {
+                                [self, dctx, replied](const QString &body) {
                                     // The first reply is written; any later
                                     // one is dropped.
                                     if (*replied || !self) return;

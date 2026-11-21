@@ -417,7 +417,8 @@ TEST_F(RateLimitTestFixture, Inv15ProbeAccessors) {
 TEST_F(RateLimitTestFixture, Inv16MonotonicClockDeclared) {
     const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
-    EXPECT_NE(cc.find("static QElapsedTimer s_rateLimitClock"),
+    // ANTS-6717 — in an anonymous namespace, so no `static`.
+    EXPECT_NE(cc.find("namespace {\nQElapsedTimer s_rateLimitClock;"),
               std::string::npos);
     EXPECT_NE(cc.find("s_rateLimitClock.start();"),
               std::string::npos);

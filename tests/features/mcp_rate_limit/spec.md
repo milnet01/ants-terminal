@@ -53,7 +53,7 @@ is full. See `docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md` for the full desi
   and `rateLimitBucketDepthForTest(tool, cwd)` return correct
   values on empty / one-entry / post-prune-empty states.
 - **INV-16 / monotonic clock declared.** Source-grep verifies a
-  `static QElapsedTimer s_rateLimitClock` lives at TU scope in
+  `QElapsedTimer s_rateLimitClock` lives in an anonymous namespace in
   `claudeintegration.cpp` and is started in the constructor.
 - **INV-19 / bucket key memoised (ANTS-5090).** `rateLimitCheck`
   resolves a raw `caller_cwd` to its canonical key at most once per

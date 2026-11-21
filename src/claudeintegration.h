@@ -732,7 +732,7 @@ private slots:
     // ANTS-2132 / ANTS-5072 — the GUI-thread half of the reply: the
     // idempotent-read cache insert, recordDispatch and the socket write.
     // Every path reaches it with a transformReply result.
-    void finishToolDispatch(McpCallContext ctx, ReplyTransform reply);
+    void finishToolDispatch(const McpCallContext &ctx, const ReplyTransform &reply);
     // ANTS-4932 — a parsed request, dispatched by method. Body moved verbatim
     // out of onMcpConnection's readyRead lambda.
     void handleMcpRequest(const QJsonDocument &doc, const QByteArray &buf,
