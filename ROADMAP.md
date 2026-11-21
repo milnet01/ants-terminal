@@ -103294,7 +103294,7 @@ a modern terminal" release.
   **Layman:** Change how scrollback is stored so jumping to a point in history stays fast even in very long histories.
   Kind: refactor.
 
-- 📋 [ANTS-4944] **The switch-confirm burst scans the terminal tail sixteen times per tick, forever.**
+- ✅ [ANTS-4944] **The switch-confirm burst scans the terminal tail sixteen times per tick, forever.**
   Found while fixing ANTS-4457's config-parse claim, which shares this
   loop. Not the same defect and not fixed with it.
 
@@ -103327,6 +103327,15 @@ a modern terminal" release.
   rather than on every tick that finds none — ANTS-1955 armed it this way
   to catch a dialog rendering between ticks, and that goal does not
   require polling when nothing has changed.
+  Measured 2026-11-21 (Release build, real TerminalWidget, full
+  scrollback): one poll, recentOutput(12) plus switchConfirmVisible,
+  costs about 14 us at 80 columns, 34 us at 200 and 116 us at 400.
+  Seventeen polls per 2 s is 0.01-0.1 % of one core, so the scan itself
+  is cheap; the waste was the never-ending 120 ms timer. Fixed by
+  ModelAutoSwitch::shouldArmUnarmedPoll: the tick arms the burst only
+  within kUserModelCommandWindowMs of a typed /model, the only time a
+  confirm can fire. Idle cost is now one read per tick. Spec
+  tests/features/model_switch_confirm INV-11.
   **Layman:** A background check reads the terminal's recent output many times a second even when nothing is happening.
   Kind: perf.
   Source: in-session-2026-09-08.

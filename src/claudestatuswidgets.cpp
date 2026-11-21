@@ -2344,14 +2344,10 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
     if (m_unarmedPollActive) return;   // ANTS-1955 — burst already running
 
     // ANTS-4457 — cachedConfig(), not a fresh Config. This runs on the 2 s
-    // tick and, when no dialog is on screen, arms a kSwitchConfirmMaxPolls
-    // burst that read the same setting the same way. The burst's budget is
-    // just under the tick interval, so in the steady state it never stops:
-    // one tick plus one full burst was seventeen open-read-parse cycles
-    // every two seconds — more than the five to seven per tick ANTS-2116
-    // removed, on the same timer, in the same file. It is the default
-    // configuration: the toggle defaults to true and the burst is armed by
-    // the ABSENCE of a dialog, so it ran whenever a terminal had focus.
+    // tick and can arm a kSwitchConfirmMaxPolls burst that reads the same
+    // setting the same way: one tick plus one full burst was seventeen
+    // open-read-parse cycles every two seconds — more than the five to seven
+    // per tick ANTS-2116 removed, on the same timer, in the same file.
     const bool enabled = cachedConfig().claudeAutoModelConfirmUserSwitch();
     auto *focused = m_focusedTerminalProvider
         ? m_focusedTerminalProvider() : nullptr;
@@ -2379,9 +2375,11 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
             }
         }
         // ANTS-1955 — arm a burst so a dialog that renders shortly after this
-        // tick is caught at kSwitchConfirmPollMs granularity.
-        if (!visible && !m_unarmedSwitchConfirmed
-                && !m_modelHandshakeInFlight) {  // enabled guaranteed by early return above
+        // tick is caught at kSwitchConfirmPollMs granularity. ANTS-4944 —
+        // only after a typed /model, or it polls the tail forever.
+        if (ModelAutoSwitch::shouldArmUnarmedPoll(
+                visible, m_unarmedSwitchConfirmed, m_modelHandshakeInFlight,
+                userTypedModelRecently(focused))) {  // enabled: early return above
             m_unarmedPollActive = true;
             QPointer<ClaudeStatusBarController> self(this);
             QTimer::singleShot(kSwitchConfirmPollMs, this, [self]() {

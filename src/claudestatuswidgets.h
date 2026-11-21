@@ -157,8 +157,9 @@ public:
     // is on + a turn is active (ANTS-1969, via sendUnarmedConfirm).
     // Gated by ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch + the
     // claude.auto_model_confirm_user_switch config key.
-    // When the dialog has not yet rendered at tick time, arms a short polling
-    // burst (pollUnarmedSwitchConfirm) so it is caught within
+    // When the dialog has not yet rendered at tick time and the user just typed
+    // /model (ModelAutoSwitch::shouldArmUnarmedPoll, ANTS-4944), arms a short
+    // polling burst (pollUnarmedSwitchConfirm) so it is caught within
     // kSwitchConfirmPollMs rather than waiting a full 2-s tick cycle.
     void maybeAutoConfirmUserModelSwitch();
 

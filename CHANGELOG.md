@@ -238,6 +238,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **The "Switch model?" auto-confirm watches the terminal closely only for the 10 seconds after you type /model** (ANTS-4944)
+  At other times it reads the screen once every two seconds instead of about
+  eight times a second.
+
 - **When a program changes a line or two, the terminal now redraws only those lines.** (ANTS-3464)
   Typing at a prompt or a spinner rewriting its line repaints the rows
   that changed plus the cursor's rows, instead of the whole window. Output

@@ -219,6 +219,17 @@ bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
                                     bool permissionPending,
                                     bool userTypedModel);
 
+// ANTS-4944 — whether the 2 s tick arms the short poll burst that watches for
+// a dialog the user raised. Only when none is on screen or already confirmed,
+// no Ants handshake owns it, and the user just typed `/model` (userTypedModel).
+// A confirm needs that stamp anyway, and the direct-switch banner the burst's
+// last poll looks for follows a typed `/model <tier>`. Arming on every tick
+// polled the focused terminal eight times a second, indefinitely.
+bool shouldArmUnarmedPoll(bool dialogVisible,
+                          bool alreadyConfirmed,
+                          bool handshakeInFlight,
+                          bool userTypedModel);
+
 // ANTS-6437 — how long after the user submits `/model` a "Switch model?"
 // dialog may be auto-confirmed. The dialog renders within about a second.
 constexpr qint64 kUserModelCommandWindowMs = 10'000;   // 10 s

@@ -89,6 +89,33 @@ TEST(UnarmedConfirm, CallersPassTheTrackedState) {
     EXPECT_EQ(calls, 2);
 }
 
+// ANTS-4944 — the tick arms the poll burst only after a typed /model, and
+// never while a dialog is up, confirmed, or owned by an Ants handshake.
+TEST(UnarmedConfirm, BurstArmsOnlyAfterATypedModelCommand) {
+    using ModelAutoSwitch::shouldArmUnarmedPoll;
+    EXPECT_TRUE(shouldArmUnarmedPoll(false, false, false, /*userTypedModel=*/true));
+    EXPECT_FALSE(shouldArmUnarmedPoll(false, false, false, /*userTypedModel=*/false));
+    EXPECT_FALSE(shouldArmUnarmedPoll(/*dialogVisible=*/true, false, false, true));
+    EXPECT_FALSE(shouldArmUnarmedPoll(false, /*alreadyConfirmed=*/true, false, true));
+    EXPECT_FALSE(shouldArmUnarmedPoll(false, false, /*handshakeInFlight=*/true, true));
+}
+
+// ANTS-4944 — the one place that starts a burst is guarded by that gate, fed
+// the focused tab's /model stamp.
+TEST(UnarmedConfirm, BurstStartIsGatedOnTheStamp) {
+    const std::string src = ants_test::slurpFile(ANTS_SRC_DIR "/claudestatuswidgets.cpp");
+    const std::string start = "pollUnarmedSwitchConfirm(0)";
+    const size_t at = src.find(start);
+    ASSERT_NE(at, std::string::npos);
+    EXPECT_EQ(src.find(start, at + 1), std::string::npos) << "a second burst start";
+    const size_t gate = src.rfind("ModelAutoSwitch::shouldArmUnarmedPoll(", at);
+    ASSERT_NE(gate, std::string::npos) << "the burst start has no arm gate before it";
+    const std::string between = src.substr(gate, at - gate);
+    EXPECT_NE(between.find("userTypedModelRecently(focused)"), std::string::npos) << between;
+    // The guarded block is a few lines; a gate further back guards something else.
+    EXPECT_LT(between.size(), 600u) << between;
+}
+
 // ANTS-6437 — the per-tab tracker of a typed `/model` line.
 namespace {
 using ModelAutoSwitch::ModelCommandTracker;

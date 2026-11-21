@@ -270,6 +270,14 @@ bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
         && claudeRunning && !permissionPending && userTypedModel;
 }
 
+bool shouldArmUnarmedPoll(bool dialogVisible,
+                          bool alreadyConfirmed,
+                          bool handshakeInFlight,
+                          bool userTypedModel) {
+    return !dialogVisible && !alreadyConfirmed && !handshakeInFlight
+        && userTypedModel;
+}
+
 bool modelCommandRecent(qint64 stampMs, qint64 nowMs) {
     return stampMs >= 0 && nowMs >= stampMs
         && nowMs - stampMs <= kUserModelCommandWindowMs;

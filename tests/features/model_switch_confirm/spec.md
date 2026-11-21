@@ -93,13 +93,23 @@ the handshake's existing terminator. There is **no** "Esc to cancel" footer.
   `/mo`. Backspace erases, Tab keeps the line, and any other key makes it
   unknown. It stores no typed text. `TerminalWidget::sendKeyData` feeds it
   and stamps `lastModelCommandMs()`.
+- **INV-11 — the burst follows a typed `/model` (ANTS-4944).**
+  `ModelAutoSwitch::shouldArmUnarmedPoll(dialogVisible, alreadyConfirmed,
+  handshakeInFlight, userTypedModel)` returns true *only* when no dialog is
+  visible, none is confirmed, no Ants handshake is polling, and the user
+  submitted `/model` in the focused tab within `kUserModelCommandWindowMs`.
+  `maybeAutoConfirmUserModelSwitch` starts a `pollUnarmedSwitchConfirm` burst
+  only when it holds, passing `userTypedModelRecently(focused)`. Without the
+  stamp the tick reads the tail once and arms nothing. So INV-9's continuation
+  also runs only after a `/model <tier>` the INV-10 tracker saw.
 
 ## Tests
 
 - `test_switch_confirm_visible.cpp` (pure, on the core bundle) — INV-1..INV-4.
 - `test_switch_confirm_actuator.cpp` (source-grep on
   `src/claudestatuswidgets.cpp` + `src/modelautoswitch.h`) — INV-5, INV-6.
-- `test_unarmed_confirm.cpp` (pure, on the core bundle) — INV-7, INV-8, INV-10.
+- `test_unarmed_confirm.cpp` (pure, on the core bundle) — INV-7, INV-8, INV-10,
+  INV-11 (`BurstArmsOnlyAfterATypedModelCommand`, `BurstStartIsGatedOnTheStamp`).
 
 To confirm the source-grep test would catch a real regression: reverting
 `performModelSwitchHandshake` to the blind `\r@400` sequence reintroduces the
