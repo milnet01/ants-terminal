@@ -114908,10 +114908,17 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5432] **clang-tidy bugprone-implicit-widening-of-multiplication-result: 143 sites in 79 files.**
+- ✅ [ANTS-5432] **clang-tidy bugprone-implicit-widening-of-multiplication-result: 143 sites in 79 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   143 unique, 1160 raw (headers counted per TU). Spot-check for a real
   overflow, then fix or suppress as one class. ANTS-5243 covers two sites.
+  Closed 2026-11-21 by suppressing the check as a class in .clang-tidy.
+  The 2026-11-21 sweep found 170 hits. Most are constant sizes such as `64
+  * 1024`; g++ reports an overflow in a constant expression itself
+  (-Woverflow, on by default). In tests, the runtime ones multiply small
+  loop counters and fixture sizes. In src, the two runtime ones cannot
+  overflow: mcpspill.cpp's `offloadHeadBytes() * 2` (head clamped to at
+  most 16384) and verifyengine.cpp's `2 * keep` (a constant).
   **Layman:** Multiplications done in a small number type and widened afterwards, which can overflow first.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

@@ -37,6 +37,7 @@ Checks: >
   -performance-implicit-conversion-in-loop,
   -bugprone-signed-bitwise,
   -misc-use-anonymous-namespace,
+  -bugprone-implicit-widening-of-multiplication-result,
   -cert-err33-c
 
 # Each exclusion above traces to a filed decision or a verified reason:
@@ -62,6 +63,10 @@ Checks: >
 #   misc-use-anonymous-namespace         ANTS-5431 -- style: `static` and an
 #                                        anonymous namespace give the same
 #                                        internal linkage
+#   bugprone-implicit-widening-of-       ANTS-5432 -- the hits are constant
+#     multiplication-result              sizes such as `64 * 1024`, where the
+#                                        compiler reports an overflow itself;
+#                                        the two runtime ones are bounded
 #   cert-err33-c                         verified as the stderr-logging idiom
 #                                        (debuglog.cpp, dialogshowtracer.cpp);
 #                                        ignoring an fprintf return there is
