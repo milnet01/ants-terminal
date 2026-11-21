@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6853 -->
+<!-- ants-roadmap-id-high-water: ANTS=6854 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -114458,7 +114458,7 @@ reports are asked for separately, each time.
   Source: ANTS-3830-root-cause-2026-09-07.
   Lanes: audit, tests.
 
-- 📋 [ANTS-4994] **The specs half of the contract-doc drift lane is isolated but still not triageable.**
+- ✅ [ANTS-4994] **The specs half of the contract-doc drift lane is isolated but still not triageable.**
   Split out of ANTS-3849, which closed the half it could: the standards lane is now small and readable. This is the half that is not.
 
   State at the split: roughly a thousand findings under `contract_doc_drift_specs`, after two passes of shape filtering took the combined lane from 2,325 to 1,000. ANTS-3849 established two things that constrain any fix here, both measured rather than assumed.
@@ -114470,6 +114470,15 @@ reports are asked for separately, each time.
   So the next move is not another filter. Candidates, unranked: age the findings so a spec's design vocabulary stops re-reporting once accepted; separate `docs/specs/` claims-of-fact from design vocabulary by position rather than token shape; or give the stale-spec-prose class an owner of its own and let this lane report only what that owner does not.
 
   Do not start by re-measuring the volume — ANTS-3849 carries three passes of measurement and the numbers above are from a probe that linked `ants_audit_lib` and called the real lane, not a replica.
+  Shipped 2026-11-21 as candidates two and three. Position: the specs
+  lane skips sections headed Problem, Out of scope, Non-goal, Open
+  question, Rejected, Alternative or Why not, and specs whose Status
+  opens with "superseded" (feature spec INV-13). Measured with a probe
+  on the real lane: 1,248 to 993 findings, none added. Status lines
+  other than superseded proved unreliable (200 findings sat in specs
+  still marked "spec draft"), so status is not used further. Owner: the
+  residual is real stale prose and moves to ANTS-6854. Ageing (candidate
+  one) already exists as audit_run save_baseline.
   **Layman:** One audit lane still produces about a thousand results, too many for anyone to read through.
   Kind: audit-fix.
   Source: audit-2026-08-06.
@@ -115736,6 +115745,27 @@ reports are asked for separately, each time.
   Kind: audit-fix.
   Source: in-session-2026-11-20 (ANTS-6176 edit).
   Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6854] **Accepted and shipped specs name tests and symbols that do not exist; correct each spec's prose.**
+  The owner of what contract_doc_drift_specs still reports once ANTS-4994
+  skips design discussion. Measured 2026-11-21 with a probe calling
+  FeatureCoverage::runContractDocDriftSpecsCheck: 993 findings in 183
+  specs; 420 sit under an Invariants or Tests heading, and 223 tokens are
+  test-shaped (test_*.cpp, tests/..., Ants<NNNN>Name). Heaviest specs:
+  ANTS-1895, ANTS-1896, ANTS-5719, ANTS-1893, ANTS-1160.
+
+  Work spec by spec, heaviest first. For each finding: the test or symbol
+  was renamed (cite the new name), folded into a bundle (cite where it
+  lives), or never built (say so, or file the missing test). Many specs'
+  Status lines are also stale ("spec draft" on shipped work); fix the
+  Status in the same pass, since only "superseded" is read by the lane.
+
+  Ageing is already available: a whole-tree audit_run with save_baseline
+  pins today's findings, and later runs report since_baseline.new[].
+  **Layman:** Many design documents still mention test files and code names that were renamed or never built, so they no longer describe the program truthfully.
+  Kind: doc-fix.
+  Source: split from ANTS-4994, 2026-11-21.
+  Lanes: auditengine.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

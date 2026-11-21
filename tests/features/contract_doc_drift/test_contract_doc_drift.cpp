@@ -1,7 +1,7 @@
 // ANTS-3600 — contract-doc ↔ code literal-drift lane, conformance test.
 // See spec.md for the full contract. Headless: drives
 // FeatureCoverage's two directory-scoped drift lanes directly over a temp
-// fixture tree (no QtWidgets, no AuditDialog), asserting INV-1 … INV-12.
+// fixture tree (no QtWidgets, no AuditDialog), asserting INV-1 … INV-13.
 
 #include "featurecoverage.h"
 
@@ -196,6 +196,46 @@ TEST(ContractDocDrift, LanesPartitionByDirectory) {
     EXPECT_EQ(countMentions(std_, "driftOnlyInSpecs"), 0);
     EXPECT_EQ(countMentions(spec, "driftOnlyInSpecs"), 1);
     EXPECT_EQ(countMentions(spec, "driftOnlyInStandards"), 0);
+}
+
+// INV-13 (ANTS-4994) — the specs lane reads a spec's design discussion as
+// design: a name under a Problem / Out of scope / Open questions / Rejected /
+// Why not heading, at any depth below it, and every name in a superseded
+// spec, is not reported. A claim of fact under any other heading still is,
+// and the standards lane is unchanged.
+TEST(ContractDocDrift, SpecDesignSectionsSkipped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+
+    ASSERT_TRUE(writeFile(root + "/src/code.cpp", "int x;\n"));
+    const QString body =
+        "# ANTS-9003 — fixture\n\n"
+        "**Status:** accepted (2026-11-21).\n\n"
+        "## 1. Problem\n\n`goneInProblem` was removed.\n\n"
+        "### 1.1 Timeline\n\n`goneInProblemChild` too.\n\n"
+        "## 2. Invariants\n\n- INV-1 — `testNamedButMissing` locks it.\n\n"
+        "## 3. Out of scope\n\n`neverBuilt` waits.\n\n"
+        "## Open questions\n\n`maybeLater`?\n\n"
+        "## 4.a Rejected — a flag\n\n`rejectedFlag`.\n\n"
+        "## Why not a cache\n\n`notACache`.\n\n"
+        "## 5. Tests\n\n`test_missing_file.cpp`.\n";
+    ASSERT_TRUE(writeFile(root + "/docs/specs/ANTS-9003.md", body));
+    ASSERT_TRUE(writeFile(root + "/docs/specs/ANTS-9004.md",
+                          "# ANTS-9004\n\n**Status:** superseded (2026-11-21) by ANTS-9003.\n\n"
+                          "## Invariants\n\n`goneWithItsSpec`.\n"));
+    ASSERT_TRUE(writeFile(root + "/docs/standards/std.md",
+                          "## Out of scope\n\n`standardsStillFlag`.\n"));
+
+    const QString spec = FeatureCoverage::runContractDocDriftSpecsCheck(root);
+    for (const char *design : {"goneInProblem`", "goneInProblemChild", "neverBuilt",
+                               "maybeLater", "rejectedFlag", "notACache",
+                               "goneWithItsSpec"})
+        EXPECT_EQ(countMentions(spec, design), 0) << design << "\n" << spec.toStdString();
+    EXPECT_EQ(countMentions(spec, "testNamedButMissing"), 1) << spec.toStdString();
+    EXPECT_EQ(countMentions(spec, "test_missing_file.cpp"), 1) << spec.toStdString();
+    EXPECT_EQ(countMentions(FeatureCoverage::runContractDocDriftStandardsCheck(root),
+                            "standardsStillFlag"), 1);
 }
 
 // INV-11 (ANTS-3849) — a `<head>:<line|json-literal>` citation is not

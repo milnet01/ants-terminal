@@ -820,10 +820,38 @@ QSet<QString> loadAllowlist(const QString &projectPath) {
 // Measured on this corpus the specs half carries ~1,100 findings against the
 // standards half's ~64, and a single shared category made the readable half
 // unreadable: anything genuine in it was invisible under by-construction
-// noise. The extraction contract is identical for both — only the scope
-// differs, so the two lanes cannot drift apart.
+// noise. The extraction contract is shared; the scope differs, and the specs
+// lane also skips design discussion (skipSpecDesign, ANTS-4994).
+
+// ANTS-4994 — a spec heading whose section is design discussion by name:
+// what was wrong, what is not built, what was turned down. A name there need
+// not exist in source. Leading numbering ("1.", "4.a", "§ 5") is ignored.
+// Measured 2026-11-21: these headings and superseded specs held 255 of the
+// specs lane's 1,248 findings; claims of fact sit under Invariants and Tests.
+static bool isSpecDesignHeading(const QString &text) {
+    static const QRegularExpression numbering(
+        QStringLiteral("^(?:§\\s*)?(?:\\d+(?:\\.\\d+)*(?:\\.?[a-z])?[.)]?\\s+)?"));
+    const QString t = text.mid(numbering.match(text).capturedLength()).toLower();
+    for (const char *p : {"problem", "out of scope", "non-goal", "open question",
+                          "rejected", "alternative", "why not"})
+        if (t.startsWith(QLatin1String(p))) return true;
+    return false;
+}
+
+// ANTS-4994 — a spec whose Status line opens with "superseded": its names
+// describe a design another spec replaced.
+static bool isSupersededSpec(const QStringList &lines) {
+    static const QRegularExpression status(
+        QStringLiteral("^\\s*[*_]*status[*_]*\\s*:[*_\\s]*superseded"),
+        QRegularExpression::CaseInsensitiveOption);
+    for (int i = 0; i < lines.size() && i < 40; ++i)
+        if (status.match(lines.at(i)).hasMatch()) return true;
+    return false;
+}
+
 static QString contractDocDriftIn(const QString &projectPath,
-                                  const QString &sub) {
+                                  const QString &sub,
+                                  bool skipSpecDesign = false) {
     // Silent no-op ("" == "no findings") when THIS lane's dir is absent
     // (INV-9); each lane answers only for its own directory.
     const QDir projectDir(projectPath);
@@ -867,8 +895,21 @@ static QString contractDocDriftIn(const QString &projectPath,
         const QString docText = readHead(docFile);
         docFile.close();
         const QString relPath = projectDir.relativeFilePath(docPath);
+        QVector<MarkdownScan::Heading> designSections;
+        if (skipSpecDesign) {
+            const QStringList lines = docText.split('\n');
+            if (isSupersededSpec(lines)) continue;
+            for (const MarkdownScan::Heading &h : MarkdownScan::headings(lines))
+                if (isSpecDesignHeading(h.text)) designSections << h;
+        }
+        const auto inDesign = [&designSections](int line) {
+            for (const MarkdownScan::Heading &h : designSections)
+                if (line >= h.line && line <= h.endLine) return true;
+            return false;
+        };
         for (const SpecToken &t : extractDocLiteralTokens(docText)) {
             if (allow.contains(t.token)) continue;
+            if (inDesign(t.line)) continue;
             if (existsInSource(index, t.token)) continue;
             out += QString("%1:%2: doc references `%3` but no match in "
                            "project sources\n")
@@ -887,7 +928,8 @@ QString runContractDocDriftStandardsCheck(const QString &projectPath) {
 }
 
 QString runContractDocDriftSpecsCheck(const QString &projectPath) {
-    return contractDocDriftIn(projectPath, QStringLiteral("docs/specs"));
+    return contractDocDriftIn(projectPath, QStringLiteral("docs/specs"),
+                              /*skipSpecDesign=*/true);
 }
 
 QString runChangelogCoverageCheck(const QString &projectPath) {

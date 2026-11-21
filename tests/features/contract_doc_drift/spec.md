@@ -46,6 +46,12 @@ it, so anything genuine inside it was invisible. The split suppresses nothing
   token in each directory is reported by its own lane and by neither the other.
   Asserted in both directions, because a lane that still scanned both dirs
   would pass a one-directional check. *Test:* `LanesPartitionByDirectory`.
+- **INV-13** (ANTS-4994) — the specs lane skips a spec's design discussion: a
+  token inside a section whose heading, numbering aside, opens with Problem,
+  Out of scope, Non-goal, Open question, Rejected, Alternative or Why not,
+  subsections included, and every token in a spec whose `Status:` opens with
+  `superseded`. A token under any other heading still flags. The standards
+  lane skips nothing. *Test:* `SpecDesignSectionsSkipped`.
 
 INV-7 (blob refactor behaviour-preserving) and INV-8 (caller-agnostic
 free function) are covered by the existing `feature_coverage` +

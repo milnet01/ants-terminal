@@ -238,6 +238,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **The specs half of the contract-doc drift audit no longer reports names from a spec's Problem, Out of scope, Open questions or Rejected sections, or from superseded specs** (ANTS-4994)
+  Those sections describe old or unbuilt designs, so a name there is not
+  expected to exist in the code. Names a spec states as fact still report.
+
 - **The "Switch model?" auto-confirm watches the terminal closely only for the 10 seconds after you type /model** (ANTS-4944)
   At other times it reads the screen once every two seconds instead of about
   eight times a second.
