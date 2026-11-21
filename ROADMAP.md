@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6849 -->
+<!-- ants-roadmap-id-high-water: ANTS=6850 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74318,7 +74318,7 @@ indie-review finding.
   Source: indie-review-2026-05-14 (self-observed).
   Resolved-by-design (2026-06-27): both named gitleaks FP sources are already filtered built-in, not via a persisted .gitleaks.toml. auditdialog.cpp's skip fn excludes tests/audit_fixtures/ (covers secrets_scan/bad.cpp) and AUTOMATED_AUDIT_REPORT_*.json (reAuditReport regex). The chosen mechanism is a built-in skip that ships without per-project config (comment: "Scoped here rather than as a per-project path_rule so the skip ships built-in"), and auditrunner.cpp writes a throwaway gitleaks --config (ANTS-2016) for build/.audit_cache pruning. Adding a tracked .gitleaks.toml would contradict that design; no action needed.
 
-- 📋 [ANTS-1408] **Archive-rotate shipped 0.7.x sections out of `ROADMAP.md`.**
+- 🚫 [ANTS-1408] **Archive-rotate shipped 0.7.x sections out of `ROADMAP.md`.**
   Current file: 12,373 lines / ~657 KiB. Nine
   fully-shipped h2 sections — `0.7.0`, `0.7.7`, `0.7.12`,
   `0.7.50–0.7.59`, `0.7.78`, `0.7.79`, `0.7.80–0.7.84` — account
@@ -74353,6 +74353,11 @@ indie-review finding.
   paragraph added for exactly this mistake.\n\nThe file has also grown
   well past the size recorded in this item's body; treat that figure as
   historical. Nothing here changes the action, only the urgency.
+  2026-11-21: dropped as a duplicate of ANTS-3749, which owns the same
+  rotation. ANTS-4081 has shipped, so rotate_minor is callable; what both
+  wait on is the 0.8.0 bump, since 0.7 is still the current minor (0.7.115)
+  and roadmap-format.md § 3.9 rotates a minor only once it is closed.
+  Duplicate-of: ANTS-3749.
 
 - 📋 [ANTS-1376] **Claude Code ghost-suggestion auto-submits on Enter — verify Ants Terminal behavior.**
   Claude Code
@@ -74967,6 +74972,25 @@ indie-review finding.
   Source: in-session-2026-11-14 (split from ANTS-5730).
   Lanes: verifytrust.
 
+- 🚧 [ANTS-6850] **token_usage with fields= or compact returns the terminal's session, not the caller's.**
+  Reproduced 2026-11-21 through ants-mcpd. Plain token_usage listed this
+  session's roadmap_query x6, session_message and session_orient, with
+  total_wrap_bytes 419. fields:[calls,total_wrap_bytes,mcpd] listed only
+  token_usage with wrap_bytes 0: the terminal's tracker. compact:true
+  dropped calls[] altogether.
+
+  Cause: the terminal narrows the reply before ants-mcpd sees it.
+  overlaySessionOnReply needs ok:true, which fields= projects out of a
+  success. It also replaces only keys still present, and compaction drops
+  the terminal's empty calls[].
+
+  Fix: ants-mcpd forwards token_usage without fields, compact and encoding
+  (compact:false). It overlays its session, then narrows the reply itself.
+  **Layman:** Asking the token report for only some of its fields shows the wrong session's numbers.
+  Kind: fix.
+  Source: in-session-2026-11-21 (measuring ANTS-1403).
+  Lanes: mcp.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
@@ -75406,7 +75430,7 @@ mostly closed by ANTS-1372's `RcGate::checkCallerCwd` on mutating
 ops; the residual read-path is intentional per ANTS-1372 INV-7
 (legitimate cross-project survey).
 
-- 📋 [ANTS-1403] **Wrap-overhead framing compression — v3 on ANTS-1294.**
+- 💭 [ANTS-1403] **Wrap-overhead framing compression — v3 on ANTS-1294.**
   With ANTS-1355 v2 shipped, the
   `total_wrap_bytes` envelope field now exposes how much of
   cumulative `bytes_out` is `<ants_mcp_data tool="…">…
@@ -75456,6 +75480,13 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   reach the verbs through ants-mcpd, and token_usage shows no per-tool
   wrap_bytes for those calls (ANTS-5262). wrap_bytes itself can also go
   negative (ANTS-6378). Re-measure after both ship.
+  2026-11-21: re-measured now that ANTS-5262 and ANTS-6378 have shipped. One
+  session's own ants-mcpd: total_wrap_bytes 419 against bytes_out 23,722,
+  a 1.8 % ratio, below the 10 % trigger. Per tool: roadmap_query 312/22,116
+  (1.4 %), session_orient 53/1,486 (3.6 %), session_message 54/120 (45 %,
+  one call). As in May, small verbs cross the line alone and the aggregate
+  does not. Moved to considered: it is a trigger-gated idea, and changing
+  the wrap tag is a contract every client parses.
 
 ---
 
