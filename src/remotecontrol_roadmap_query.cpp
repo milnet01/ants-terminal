@@ -85,6 +85,7 @@ static QJsonDocument rcPassErr(const QString &op, const QString &code,
 }
 
 // Validate + render one pass bullet (shared by single + batch append).
+namespace {
 struct PassAppendItem {
     bool    ok = false;
     QString code;     // refusal code iff !ok
@@ -93,6 +94,7 @@ struct PassAppendItem {
     QString synthId;  // reader-synthesised id iff ok
     QStringList bodyScrubbed;   // ANTS-6391 — what the body scrub removed
 };
+}  // namespace
 
 // ANTS-6391 — name what the leaked-tool-XML scrub removed, in the GFM path's
 // key and shape (note_scrubbed_params / body_scrubbed_params).
@@ -285,7 +287,7 @@ static QString rcSplicePassBlock(const QString &markdown,
 //
 // Echo, do not refuse: dropping them IS correct here, and refusing would make
 // a batch across mixed projects unwritable.
-QJsonArray rcPassIgnoredFields(const QJsonObject &req) {
+static QJsonArray rcPassIgnoredFields(const QJsonObject &req) {
     QJsonArray out;
     for (const char *k : {"kind", "source", "lanes", "layman", "evidence"}) {
         const QJsonValue v = req.value(QLatin1String(k));
@@ -1729,11 +1731,14 @@ bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
 // NOT NULL DEFAULT '[]'; `kind` and `source` are NOT NULL with no default. A
 // single rule ("clear it") reached the engine on four of the five and came back
 // as a raw `NOT NULL constraint failed: item.kind`.
+namespace {
 enum class RlUndeclare {
     ClearToNull,   // nullable: absence is a value it can hold
     EmptyList,     // NOT NULL DEFAULT '[]': the empty list IS its absent state
     Keep,          // NOT NULL, no default: it HAS no absent state
 };
+}  // namespace
+namespace {
 struct RlTrailerKey {
     const char *field;
     RoadmapParse::TrailerMatch RoadmapParse::TrailerValues::*match;
@@ -1744,6 +1749,7 @@ struct RlTrailerKey {
     QStringList RoadmapStore::ItemWrite::*colList;
     RlUndeclare undeclare;
 };
+}  // namespace
 static const RlTrailerKey kRlTrailerKeys[] = {
     {"kind",   &RoadmapParse::TrailerValues::kind,   nullptr,
      &RoadmapStore::ItemWrite::kind,   nullptr, RlUndeclare::Keep},

@@ -347,7 +347,7 @@ namespace ants5074 {
 // are reported via the plain bool return; callers on the main thread wrap
 // it in ASSERT_TRUE, and the background-thread caller counts failures in
 // an atomic instead (see Ants5074ConcurrentAccessDoesNotCorruptOrCrash).
-bool writeFileAtQuiet(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
+static bool writeFileAtQuiet(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
     f.write(bytes);
@@ -362,7 +362,7 @@ bool writeFileAtQuiet(const QString &path, const QByteArray &bytes, qint64 mtime
 
 // Main-thread convenience wrapper: same as writeFileAtQuiet, but records a
 // gtest failure with a diagnosis on error.
-bool writeFileAt(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
+static bool writeFileAt(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
     const bool ok = writeFileAtQuiet(path, bytes, mtimeMs);
     EXPECT_TRUE(ok) << "ants5074::writeFileAt: open/write/utimensat failed for "
                      << qUtf8Printable(path);
@@ -376,7 +376,7 @@ bool writeFileAt(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
 // below honest about what it is testing (the cache's own locking) rather
 // than picking up noise from a non-atomic in-place rewrite. No GTEST
 // macros — background-thread-safe, see writeFileAtQuiet above.
-bool replaceFileAtomicallyQuiet(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
+static bool replaceFileAtomicallyQuiet(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
     const QString tmp = path + QStringLiteral(".tmp-ants5074");
     if (!writeFileAtQuiet(tmp, bytes, mtimeMs)) return false;
     return ::rename(tmp.toLocal8Bit().constData(),
@@ -385,7 +385,7 @@ bool replaceFileAtomicallyQuiet(const QString &path, const QByteArray &bytes, qi
 
 // A one-bullet module-map body naming a single lane `laneName`, matching
 // the bullet shape SubsystemMap::parse() reads.
-QByteArray moduleMapBody(const QString &laneName) {
+static QByteArray moduleMapBody(const QString &laneName) {
     const QString text = QStringLiteral("## Module map (src/)\n\n"
                                         "- `%1` -- lane %1 summary.\n")
                               .arg(laneName);
@@ -393,7 +393,7 @@ QByteArray moduleMapBody(const QString &laneName) {
 }
 
 // True iff `lanes` is exactly the single lane parsed from `moduleMapBody(laneName)`.
-bool isExactlyLane(const QVector<SubsystemMap::Lane> &lanes, const QString &laneName) {
+static bool isExactlyLane(const QVector<SubsystemMap::Lane> &lanes, const QString &laneName) {
     if (lanes.size() != 1) return false;
     return lanes.at(0).name == laneName;
 }

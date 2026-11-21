@@ -168,7 +168,7 @@ int runScenarios() {
 // Anchors the "sticky across tail-window drift" behavior that the
 // initial `newPlan = false` implementation violated — discovered by
 // the /indie-review checkpoint on 2026-04-23.
-int runToggleFreeTailPreservesState() {
+static int runToggleFreeTailPreservesState() {
     QTemporaryDir tmp;
     if (!tmp.isValid()) return 1;
 

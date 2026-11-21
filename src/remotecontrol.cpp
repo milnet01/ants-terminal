@@ -88,7 +88,7 @@ QString resolveRootCanonical(const ants::RootProvider *roots, const QJsonObject 
 // APPEND — into an unrelated ancestor project's roadmap. No repo means no
 // project boundary, so there is nothing safe to walk and only the caller's
 // own directory is probed.
-QStringList repoBoundedAncestors(const QString &canonicalRoot) {
+static QStringList repoBoundedAncestors(const QString &canonicalRoot) {
     if (canonicalRoot.isEmpty()) return {};
     QStringList chain;
     QString dir = canonicalRoot;
@@ -428,7 +428,7 @@ constexpr int kRoadmapQueryBodySingleIdCap = 1024 * 1024;   // 1 MiB
 // the caller with no route to the omitted span, and the span that goes is the
 // MIDDLE — where a bullet's resume plan sits. Still count-free, for the
 // byte-stability reason above.
-const QString &kBodyElisionMarker() {
+static const QString &kBodyElisionMarker() {
     static const QString m = QStringLiteral(
         "\n\n… [body elided — tail follows; refetch by id with "
         "max_body_bytes for more] …\n\n");
@@ -450,7 +450,7 @@ constexpr int kRoadmapQueryBodyTailCap = 1024;
 // preview drops the body entirely. Measured by finbreak: three calls and a
 // hand-picked byte offset to read one closing paragraph — and an offset
 // guessed too high misses the note with nothing in the envelope saying so.
-QString rcElideBody(const QString &body, int cap, bool fromEnd = false) {
+static QString rcElideBody(const QString &body, int cap, bool fromEnd = false) {
     const QString &marker = kBodyElisionMarker();
     if (fromEnd) {
         const int tailLen = cap - marker.size();
@@ -539,7 +539,7 @@ void rcStripBodyFields(QJsonArray &arr) {
 // already fits are returned verbatim (no ellipsis added). The UTF-8
 // continuation-byte check (0x80..0xBF) backs up to the prior code-
 // point boundary, so we never emit a half-character.
-QString rcClipMatchBytes(const QString &s, int cap) {
+static QString rcClipMatchBytes(const QString &s, int cap) {
     // ANTS-4700 — the body moved to ReadRegion::clipToBytes so read_region's
     // per-line clip and this one cannot drift on the marker. A caller strips
     // or greps for that marker, so two implementations would be two contracts.
@@ -705,7 +705,7 @@ const QRegularExpression kIdPrefixShape(
 // given AND the roadmap has no existing counter IDs to sniff, so a
 // fresh project (DOOM_Ants → "DOOM") gets a project-shaped prefix
 // instead of the hardcoded "ANTS".
-QString rlLeafDirPrefix(const QString &callerCanonical) {
+static QString rlLeafDirPrefix(const QString &callerCanonical) {
     return RoadmapParse::leafIdPrefix(QFileInfo(callerCanonical).fileName());
 }
 
@@ -1030,7 +1030,9 @@ QJsonObject rcCompactBullet(const QString &id, const QString &statusWord,
 // ANTS-4977 — the five lifecycle statuses, word and emoji, in one table.
 // Every walker, flipper and mapper in this file reads it, so a new status
 // is added here once.
+namespace {
 struct RcStatus { const char *word; const char *emoji; };
+}  // namespace
 constexpr RcStatus kRcStatuses[] = {
     {"shipped",     RoadmapParse::kEmojiDone},
     {"planned",     RoadmapParse::kEmojiPlanned},
@@ -1040,7 +1042,7 @@ constexpr RcStatus kRcStatuses[] = {
 };
 
 // The status emoji that starts at `pos` in `line`, or empty.
-QString rcStatusEmojiAt(const QString &line, int pos) {
+static QString rcStatusEmojiAt(const QString &line, int pos) {
     for (const RcStatus &st : kRcStatuses) {
         const QString e = QString::fromUtf8(st.emoji);
         if (QStringView(line).mid(pos, e.size()) == e) return e;
@@ -1322,7 +1324,7 @@ constexpr int kRcMaxSetBodyChars = 65536;
 // while `fenceMask` was wrong the same way — ANTS-3678 taught it CommonMark
 // § 4.5 and left this guard behind, after which a body quoting fence syntax
 // was written unescaped and fenced off every bullet under it (ANTS-4823).
-void rcEscapeUnclosedFence(QString &text) {
+static void rcEscapeUnclosedFence(QString &text) {
     if (!text.contains(QLatin1Char('`')) && !text.contains(QLatin1Char('~')))
         return;
     QStringList ls = text.split(QChar('\n'));

@@ -1382,9 +1382,9 @@ QJsonObject gitErr(const char *code, const QString &message,
 // mean an unknown revision, which each subcommand words its own way. Under
 // `exit1IsNoMatch` (git grep), exit 1 with empty stderr is a success.
 // Returns an empty object when git succeeded.
-QJsonObject gitFailure(const GitWrap::Result &g, const QString &sub,
-                       const QStringList &badRange = {},
-                       bool exit1IsNoMatch = false) {
+static QJsonObject gitFailure(const GitWrap::Result &g, const QString &sub,
+                              const QStringList &badRange = {},
+                              bool exit1IsNoMatch = false) {
     if (!g.started) {
         return gitErr("git_missing",
             QStringLiteral("git_state: git binary not found on PATH"));

@@ -678,7 +678,7 @@ namespace rcdetail {
 // Pinned reviewer system prompt — see docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md § 3.1.
 // Inlined here so the implementation is self-contained; the spec
 // holds the canonical text.
-const char *kReviewerSystemPrompt =
+static const char *kReviewerSystemPrompt =
     "You are an independent code reviewer briefed cold on a single "
     "subsystem of a larger project. You have not seen this code before "
     "and have no context from prior conversations.\n\n"
@@ -889,7 +889,7 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
 namespace rcdetail {
 
 
-QJsonObject vcGateToJson(const VerifyEngine::GateResult &r) {
+static QJsonObject vcGateToJson(const VerifyEngine::GateResult &r) {
     QJsonObject o;
     o["ran"]    = r.ran;
     o["passed"] = r.passed;
@@ -1050,7 +1050,7 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
 
 // The cache key's options, built from the options the run will use, so a
 // value the parse drops or defaults cannot split the key from the run.
-QJsonObject canonicaliseVerifyOptions(const VerifyEngine::VerifyOptions &opts) {
+static QJsonObject canonicaliseVerifyOptions(const VerifyEngine::VerifyOptions &opts) {
     QStringList gates;
     for (const VerifyEngine::GateName g : opts.only) gates.append(VerifyEngine::gateKey(g));
     gates.sort();
@@ -1059,12 +1059,12 @@ QJsonObject canonicaliseVerifyOptions(const VerifyEngine::VerifyOptions &opts) {
             {QStringLiteral("timeout_sec"), opts.timeoutSec}};
 }
 
-QString verifyCacheKey(const QString &root,
-                       const VerifyGitSnapshot &snap,
-                       const QString &cfgSource,
-                       bool verifyUntrusted,
-                       const QByteArray &autoTrustEnv,
-                       const QJsonObject &canonOpts) {
+static QString verifyCacheKey(const QString &root,
+                              const VerifyGitSnapshot &snap,
+                              const QString &cfgSource,
+                              bool verifyUntrusted,
+                              const QByteArray &autoTrustEnv,
+                              const QJsonObject &canonOpts) {
     QByteArray trustMaterial;
     trustMaterial += cfgSource.toUtf8();
     trustMaterial += ':';
@@ -1091,7 +1091,7 @@ QString verifyCacheKey(const QString &root,
             .toHex().left(16));
 }
 
-bool anyGateNotNaturallyCompleted(const VerifyEngine::VerifyReport &rep) {
+static bool anyGateNotNaturallyCompleted(const VerifyEngine::VerifyReport &rep) {
     for (const auto &g : rep.gates) {
         if (g.skippedReason == QLatin1String("command not resolvable")) return true;
         if (g.timedOutAfterSec >= 0) return true;

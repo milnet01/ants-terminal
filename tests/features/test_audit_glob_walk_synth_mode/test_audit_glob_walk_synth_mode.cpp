@@ -489,7 +489,7 @@ TEST(TestAuditDocs, G13ErrorCodesPresentInTaxonomy) {
 // Build a project fixture with a SIBLING directory outside it, so an
 // escape has something real to find (a walk that returns nothing would
 // pass a naive assertion for the wrong reason).
-QString buildEscapeFixture(const QString &parent) {
+static QString buildEscapeFixture(const QString &parent) {
     const QString root = parent + QStringLiteral("/project");
     EXPECT_TRUE(writeFile(root + "/CMakeLists.txt",
                           "project(t)\nenable_testing()\n"));

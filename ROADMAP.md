@@ -114923,9 +114923,14 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5433] **clang-tidy misc-use-internal-linkage: 108 sites in 24 files.**
+- ✅ [ANTS-5433] **clang-tidy misc-use-internal-linkage: 108 sites in 24 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Style only: fix or suppress as one class.
+  Shipped 2026-11-21: the 102 sites of the 2026-11-21 sweep have
+  internal linkage. 81 functions and variables are `static`
+  (clang-tidy's own fix), and 21 structs, classes and enums sit in an
+  anonymous namespace. No name was defined twice, so no live clash was
+  found. The check stays on and reports 0 in those files.
   **Layman:** Helpers visible to the whole program that only one file uses.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

@@ -95,6 +95,7 @@ QList<ClaudeTask> defaultTasks() {
 
 }  // namespace
 
+namespace {
 class TaskListDialogContextMenuTest : public ::testing::Test {
 protected:
     static void SetUpTestSuite() {
@@ -105,6 +106,7 @@ protected:
         }
     }
 };
+}  // namespace
 
 // ANTS-1638 — every QListWidgetItem must carry id / status / subject /
 // description in the UserRole+1..+4 slots after rebuild(). The round-

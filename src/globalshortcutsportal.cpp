@@ -30,20 +30,22 @@ constexpr const char *kSessionIface = "org.freedesktop.portal.Session";
 // Custom D-Bus type: one entry in BindShortcuts' shortcuts array.
 // Wire type is `(sa{sv})` — a string id followed by a dict of string
 // keys to variant values (description, preferred_trigger).
+namespace {
 struct PortalShortcut {
     QString id;
     QVariantMap properties;
 };
+}  // namespace
 Q_DECLARE_METATYPE(PortalShortcut)
 
-QDBusArgument &operator<<(QDBusArgument &arg, const PortalShortcut &s) {
+static QDBusArgument &operator<<(QDBusArgument &arg, const PortalShortcut &s) {
     arg.beginStructure();
     arg << s.id << s.properties;
     arg.endStructure();
     return arg;
 }
 
-const QDBusArgument &operator>>(const QDBusArgument &arg, PortalShortcut &s) {
+static const QDBusArgument &operator>>(const QDBusArgument &arg, PortalShortcut &s) {
     arg.beginStructure();
     arg >> s.id >> s.properties;
     arg.endStructure();

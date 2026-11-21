@@ -85,6 +85,7 @@ std::string dump(const QJsonObject &o) {
 }  // namespace
 
 // This machine sets a global core.hooksPath; a fixture must not inherit it.
+namespace {
 class GitStateHooks : public ::testing::Test {
 protected:
     static void SetUpTestSuite() {
@@ -92,6 +93,7 @@ protected:
         qputenv("GIT_CONFIG_NOSYSTEM", "1");
     }
 };
+}  // namespace
 
 // The verb's own path: dispatch reaches the op, and the default machine-wide
 // hook is whatever ANTS_GLOBAL_HOOKS names.

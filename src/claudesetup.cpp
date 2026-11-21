@@ -358,7 +358,7 @@ Outcome installStatusHooks() {
 
 // ANTS-5109 — defined after installGitContextHook below; declared here for
 // the status check.
-QString gitContextHookScript();
+static QString gitContextHookScript();
 
 Status gitContextStatus() {
     const QString scriptPath = ConfigPaths::antsClaudeGitContextScript();

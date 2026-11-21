@@ -2279,7 +2279,7 @@ TEST(RoadmapMigrateVerb, Ants5671InitHandlerRendersAndUsesTheSeam) {
 // No `ants-roadmap-format` marker, deliberately: detectRoadmapFormat returns
 // ants-v1 on that line before it examines a single bullet, so a marked file can
 // never reach the mixed case at all. Vestige's carries none.
-QByteArray mixedDialectRoadmap() {
+static QByteArray mixedDialectRoadmap() {
     QByteArray md =
         "# Demo — Roadmap\n"
         "\n"

@@ -20,7 +20,9 @@
 
 // A `|` or `>` scalar, kept apart from a plain one: a shell guard is read
 // from a single-line plain `run:` only (spec § 4.4).
+namespace {
 struct BlockText { QString text; };
+}  // namespace
 Q_DECLARE_METATYPE(BlockText)
 
 namespace CiWorkflows {

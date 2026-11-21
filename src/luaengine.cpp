@@ -65,11 +65,13 @@ static int luaPanicHandler(lua_State *L) {
 // reports failure by returning 0, and pushing a C function with no
 // upvalues, or a light userdata, stores a value directly without
 // allocating a Lua object.
+namespace {
 struct HandlerPushCtx {
     int         ref;
     const char *data;
     size_t      len;
 };
+}  // namespace
 
 static int luaPushHandlerAndArg(lua_State *L) {
     auto *ctx = static_cast<HandlerPushCtx *>(lua_touserdata(L, 1));
@@ -82,10 +84,12 @@ static int luaPushHandlerAndArg(lua_State *L) {
 // push that runs out of memory raises; raised in the callback's own frame it
 // would longjmp past that frame's C++ objects. Inside lua_pcall it comes
 // back as a return code, and the callback raises once its objects are gone.
+namespace {
 struct BytesPushCtx {
     const char *data;
     size_t      len;
 };
+}  // namespace
 
 static int luaPushBytes(lua_State *L) {
     auto *ctx = static_cast<BytesPushCtx *>(lua_touserdata(L, 1));

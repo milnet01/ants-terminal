@@ -824,16 +824,18 @@ TEST(McpLastAuditSummary, Inv5And6WiringRegistered) {
 
 namespace ants1625 {
 
+namespace {
 struct PickProbe {
     QString name;
     QString basis;
 };
+}  // namespace
 
 // Mirrors `pickForeignReport` in remotecontrol.cpp. The production helper
 // is in an anon namespace; we replicate the algorithm here so the test
 // asserts the contract independently of the call site (same approach
 // used for ANTS-1576's classifyAuditScope above).
-PickProbe pickForeign(const QDir &dir, const QString &glob) {
+static PickProbe pickForeign(const QDir &dir, const QString &glob) {
     PickProbe out;
     const QStringList ns = dir.entryList(
         QStringList{glob}, QDir::Files, QDir::Name | QDir::Reversed);
@@ -892,8 +894,8 @@ PickProbe pickForeign(const QDir &dir, const QString &glob) {
     return out;
 }
 
-void writeFile(const QDir &dir, const QString &name,
-               const QByteArray &content, qint64 mtimeMs) {
+static void writeFile(const QDir &dir, const QString &name,
+                      const QByteArray &content, qint64 mtimeMs) {
     QFile f(dir.absoluteFilePath(name));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         FAIL() << "cannot write " << name.toStdString();

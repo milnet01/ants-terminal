@@ -27,7 +27,7 @@ namespace mainwindowdetail {
 // preferred_trigger, in which case the binding still succeeds with no
 // default and the user adjusts in System Settings. Kept deliberately
 // minimal; full keysym coverage is xkbcommon's job, not ours.
-QString qtKeySequenceToPortalTrigger(const QString &qtHotkey) {
+static QString qtKeySequenceToPortalTrigger(const QString &qtHotkey) {
     if (qtHotkey.isEmpty()) return {};
     const QStringList parts = qtHotkey.split(QLatin1Char('+'), Qt::SkipEmptyParts);
     QStringList out;

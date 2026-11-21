@@ -497,7 +497,7 @@ void setBeforeBeginHookForTest(std::function<void()> hook) { g_beforeBeginHook =
 // rewritten a pass-headings roadmap into bullet form, the exact loss the
 // comment above says the store-side lookup exists to prevent. An absent ROW
 // still means ants-v1, unchanged — that is the pre-bump case.
-std::optional<QString> dialectOf(RoadmapStore &store, qint64 projectId) {
+static std::optional<QString> dialectOf(RoadmapStore &store, qint64 projectId) {
     QString err;
     const auto row = store.readProject(projectId, &err);
     if (row)

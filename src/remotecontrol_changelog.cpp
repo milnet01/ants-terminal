@@ -1509,6 +1509,7 @@ namespace rcdetail {
 // single path keys on the explicit top-level `op`; this auto-detect is a
 // deliberately different contract, so a `summary` here never overrides a
 // cited headline.
+namespace {
 struct ClBatchEntryResult {
     bool    ok = false;
     QString code, error;       // per-entry refusal iff !ok
@@ -1518,8 +1519,9 @@ struct ClBatchEntryResult {
     QString summary, body;
     QString laymanOmitted;   // ANTS-5673
 };
+}  // namespace
 
-ClBatchEntryResult resolveClBatchEntry(
+static ClBatchEntryResult resolveClBatchEntry(
         const QJsonObject &e,
         const QVector<RoadmapParse::BulletRecord> &roadmapBullets,
         bool roadmapPresent) {

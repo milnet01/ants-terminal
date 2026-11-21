@@ -4011,7 +4011,7 @@ QString feedbackCallerLeaf(const QJsonObject &req) {
 // absolute path so a configured root that IS the parent yields one entry, not
 // two. Order is deliberate — derived directory first, so ANTS-3376's
 // own-file-floats-first ranking still applies to the caller's own neighbours.
-QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
+static QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
     QJsonArray out;
     QSet<QString> seen;
     const auto scan = [&](const QDir &dir) {
@@ -4041,7 +4041,7 @@ QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
 // case- and separator-insensitive token, so a checkout named `Fin_Break`
 // matches the `finbreak_Ants_MCP_Feedback.md` its package ships under. Lower-
 // cases and drops every non-alphanumeric char (`_`, `-`, spaces, `.`).
-QString normalizeFeedbackStem(const QString &s) {
+static QString normalizeFeedbackStem(const QString &s) {
     QString out;
     out.reserve(s.size());
     for (const QChar &c : s)
@@ -4051,7 +4051,7 @@ QString normalizeFeedbackStem(const QString &s) {
 
 // Strip the trailing kFeedbackSuffix from a feedback filename → its stem.
 // (`sizeof - 1` = suffix length without the NUL.)
-QString feedbackStemOf(const QString &fileName) {
+static QString feedbackStemOf(const QString &fileName) {
     QString stem = fileName;
     if (stem.endsWith(QLatin1String(kFeedbackSuffix)))
         stem.chop(static_cast<int>(sizeof(kFeedbackSuffix)) - 1);
@@ -4069,7 +4069,7 @@ QString feedbackStemOf(const QString &fileName) {
 // exact second candidate, not a fuzzy match, so ANTS-3366's "no silent
 // fuzzy-accept" non-goal is preserved. (ANTS-3439's normalized scan can't
 // catch this: the leaf normalizes to "doomants" but the file stem to "doom".)
-QStringList feedbackConventionalNames(const QString &leaf) {
+static QStringList feedbackConventionalNames(const QString &leaf) {
     QStringList names;
     if (leaf.endsWith(QLatin1String("_Ants"), Qt::CaseInsensitive)) {
         QString stem = leaf;

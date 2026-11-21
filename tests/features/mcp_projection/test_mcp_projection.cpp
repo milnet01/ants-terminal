@@ -556,6 +556,7 @@ TEST(McpReadHints, Ants2086NoLeanerHintWhenAlreadyLean) {
 // TearDown always restores the module default (OFF + empty set) so a
 // failing assertion can't leak latch state into a sibling test.
 // ───────────────────────────────────────────────────────────────────
+namespace {
 class McpHintLatch : public ::testing::Test {
 protected:
     void SetUp() override { mcp::resetHintLatch(); }
@@ -564,6 +565,7 @@ protected:
         mcp::resetHintLatch();
     }
 };
+}  // namespace
 
 // Getter/setter round-trip; the module default is OFF (mirrors terseDefault).
 TEST_F(McpHintLatch, Ants3550GetterSetterDefaultOff) {

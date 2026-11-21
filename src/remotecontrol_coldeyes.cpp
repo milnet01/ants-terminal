@@ -408,16 +408,18 @@ namespace rcdetail {
 // would hash to a real bucket file and silently return empty. Shared by
 // session_memory, workflow_state and project_layout; each words its own
 // refusal.
+namespace {
 enum class CallerDir { Ok, Missing, NotDir };
-CallerDir canonicalCallerDir(const QString &raw, QString *canon) {
+}  // namespace
+static CallerDir canonicalCallerDir(const QString &raw, QString *canon) {
     *canon = QFileInfo(raw).canonicalFilePath();
     if (canon->isEmpty()) return CallerDir::Missing;
     if (!QFileInfo(*canon).isDir()) return CallerDir::NotDir;
     return CallerDir::Ok;
 }
 
-QJsonObject smErr(const QString &code, const QString &msg,
-                  const QString &opStr, const QString &keyEcho) {
+static QJsonObject smErr(const QString &code, const QString &msg,
+                         const QString &opStr, const QString &keyEcho) {
     QJsonObject o;
     o["ok"]    = false;
     o["code"]  = code;

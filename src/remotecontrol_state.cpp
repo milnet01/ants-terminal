@@ -217,7 +217,7 @@ namespace rcdetail {
 // Locate `CLAUDE.md` for the focused tab's project: walk up from the
 // shellCwd looking for a file named CLAUDE.md; stop at filesystem root.
 // Returns absolute path or empty string.
-QString findClaudeMdForRoot(const QString &startDir) {
+static QString findClaudeMdForRoot(const QString &startDir) {
     if (startDir.isEmpty()) return {};
     QDir d(startDir);
     while (true) {
@@ -230,7 +230,7 @@ QString findClaudeMdForRoot(const QString &startDir) {
     return {};
 }
 
-QJsonObject lanesAsJson(const QVector<SubsystemMap::Lane> &lanes) {
+static QJsonObject lanesAsJson(const QVector<SubsystemMap::Lane> &lanes) {
     QJsonObject root;
     QJsonArray arr;
     for (const auto &l : lanes) {
@@ -243,13 +243,13 @@ QJsonObject lanesAsJson(const QVector<SubsystemMap::Lane> &lanes) {
     return root;
 }
 
-QJsonArray laneNamesArray(const QVector<SubsystemMap::Lane> &lanes) {
+static QJsonArray laneNamesArray(const QVector<SubsystemMap::Lane> &lanes) {
     QJsonArray arr;
     for (const auto &l : lanes) arr.append(l.name);
     return arr;
 }
 
-bool laneIsKnown(const QString &name, const QVector<SubsystemMap::Lane> &lanes) {
+static bool laneIsKnown(const QString &name, const QVector<SubsystemMap::Lane> &lanes) {
     for (const auto &l : lanes) {
         if (l.name == name) return true;
     }
@@ -258,7 +258,7 @@ bool laneIsKnown(const QString &name, const QVector<SubsystemMap::Lane> &lanes) 
 
 // ANTS-1251-INV-4: enumerate `src/<lane>*` files; canonical-startswith
 // re-check each result against project root before yielding it.
-QStringList resolveLaneFiles(const QString &lane, const QString &rootCanonical) {
+static QStringList resolveLaneFiles(const QString &lane, const QString &rootCanonical) {
     QStringList out;
     if (rootCanonical.isEmpty()) return out;
     QDir srcDir(QDir(rootCanonical).filePath(QStringLiteral("src")));
@@ -456,7 +456,7 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
 
 namespace rcdetail {
 
-QJsonObject auditSummaryFindingAsJson(
+static QJsonObject auditSummaryFindingAsJson(
     const AuditEngine::AuditSummaryFinding &f) {
     QJsonObject o;
     o["level"]          = f.level;
@@ -470,7 +470,7 @@ QJsonObject auditSummaryFindingAsJson(
     return o;
 }
 
-QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
+static QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
     QJsonObject ok;
     ok["ok"]         = true;
     // ANTS-1576 — null-or-omit normalisation. Always emit the
@@ -518,12 +518,14 @@ QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
 // the report basename; tags the response as single_file / narrow /
 // broad. Counts distinct files in topFindings[] (server-clamped to
 // 50 by the caller, so O(50) max). Pure function.
+namespace {
 struct ScopeClassification {
     QString     tag;            // "single_file" | "narrow" | "broad"
     QStringList distinctFiles;  // up to 5 entries (preview list)
 };
+}  // namespace
 
-ScopeClassification classifyAuditScope(
+static ScopeClassification classifyAuditScope(
     const AuditEngine::AuditSummary &s,
     const QString &reportPath) {
     QSet<QString> seen;
@@ -562,12 +564,14 @@ ScopeClassification classifyAuditScope(
 // non-narrow-name (no `-postfix` / `-single` / `-narrow` suffix) and
 // larger size. Returns `{basename, basis}` where basis ∈
 // {"sole","newest","broadest_in_recency_window"}.
+namespace {
 struct ForeignPick {
     QString name;
     QString basis;
 };
+}  // namespace
 
-ForeignPick pickForeignReport(const QDir &cacheDir, const QString &glob) {
+static ForeignPick pickForeignReport(const QDir &cacheDir, const QString &glob) {
     ForeignPick out;
     const QStringList ns = cacheDir.entryList(
         QStringList{glob}, QDir::Files, QDir::Name | QDir::Reversed);
@@ -654,7 +658,7 @@ ForeignPick pickForeignReport(const QDir &cacheDir, const QString &glob) {
 // ANTS-1540 — post-cap rule_ids filter. Operates on a snapshot of
 // AuditSummary; restricts topFindings[] to entries whose ruleId is in
 // the filter set, then caps to `cap`. Pure function.
-AuditEngine::AuditSummary applyRuleIdsFilter(
+static AuditEngine::AuditSummary applyRuleIdsFilter(
     AuditEngine::AuditSummary s,
     const QSet<QString> &ruleIds,
     int cap) {
@@ -1063,8 +1067,8 @@ namespace rcdetail {
 // when the file exists but the block is missing or empty.
 // `fileExists` reports whether the file is on disk so the caller can
 // decide whether to omit or emit-as-empty.
-QString readWorkflowStatusLine(const QString &rootCanonical,
-                               bool *fileExists) {
+static QString readWorkflowStatusLine(const QString &rootCanonical,
+                                      bool *fileExists) {
     *fileExists = false;
     const QString path =
         rootCanonical + QStringLiteral("/.claude/workflow.md");
@@ -2099,7 +2103,7 @@ QString resolveSpecRelForId(const QString &rootCanonical,
 // intentionally excluded; pass an explicit `path` for those. Bounded at
 // kSpecListCap entries (filename order) so a pathological tree can't
 // blow the response.
-QJsonObject specListEnvelope(const QString &rootCanonical) {
+static QJsonObject specListEnvelope(const QString &rootCanonical) {
     const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
     QJsonObject out;
     out["ok"]        = true;
@@ -2208,7 +2212,7 @@ bool readSpecFile(QFile &f, QString &body) {
 // ANTS-5096 — `budgetMs` bounds the walk (one git call per spec, up to 500).
 // Past it the remaining specs are listed in `unchecked` and the reply is
 // `truncated`: an unchecked spec is not current.
-QJsonObject specGateDriftEnvelope(const QString &rootCanonical, int budgetMs) {
+static QJsonObject specGateDriftEnvelope(const QString &rootCanonical, int budgetMs) {
     const QJsonObject list = specListEnvelope(rootCanonical);
     QJsonObject out;
     out["ok"]        = true;
@@ -2967,7 +2971,7 @@ namespace rcdetail {
 
 // ANTS-1306 § 3.2.1 — v1 stopword set (English function words +
 // generic task verbs that carry no ranking signal). Process-static.
-const QSet<QString> &taskPriorStopwords() {
+static const QSet<QString> &taskPriorStopwords() {
     static const QSet<QString> kStop = {
         QStringLiteral("the"),   QStringLiteral("and"),   QStringLiteral("or"),
         QStringLiteral("but"),   QStringLiteral("nor"),   QStringLiteral("for"),
@@ -2999,14 +3003,16 @@ const QSet<QString> &taskPriorStopwords() {
     return kStop;
 }
 
+namespace {
 struct TpTerms {
     QStringList ids;    // <PREFIX>-NNN, upper-cased, deduped
     QStringList paths;  // known-extension tokens, deduped
     QStringList terms;  // lower-cased words >=4, minus stopwords, cap 25
 };
+}  // namespace
 
 // ANTS-1306 § 3.2 — deterministic three-set extraction, fixed order.
-TpTerms tpExtract(const QString &description) {
+static TpTerms tpExtract(const QString &description) {
     TpTerms t;
     // ANTS-6256 — any project's prefix: letter-led, up to 16 characters
     // (kIdPrefixShape's cap). Three or more digits, so UTF-8 or SHA-1 is not
@@ -3042,7 +3048,7 @@ TpTerms tpExtract(const QString &description) {
 // Count distinct entries of (ids ∪ paths ∪ terms) present in the
 // already-lower-cased haystack. ids/paths are lower-cased here; terms
 // arrive lower-cased.
-int tpDistinctNeedles(const QString &haystackLower, const TpTerms &t) {
+static int tpDistinctNeedles(const QString &haystackLower, const TpTerms &t) {
     int n = 0;
     for (const QString &id : t.ids)
         if (haystackLower.contains(id.toLower())) ++n;
@@ -3060,7 +3066,7 @@ using TpWeights = QList<QPair<QString, int>>;   // lower-cased needle, weight
 // since a word on so many cards says nothing about this task. Under 20 cards,
 // or where every needle would be 0, each counts 1: there is nothing to tell
 // common from rare, and a description of common words still finds its cards.
-TpWeights tpCardWeights(const QStringList &haysLower, const TpTerms &t) {
+static TpWeights tpCardWeights(const QStringList &haysLower, const TpTerms &t) {
     constexpr int kMinCards = 20;
     TpWeights w;
     for (const QString &id : t.ids) w.append({id.toLower(), 3});
@@ -3080,7 +3086,7 @@ TpWeights tpCardWeights(const QStringList &haysLower, const TpTerms &t) {
     return w;
 }
 
-int tpWeightedScore(const QString &hayLower, const TpWeights &weights) {
+static int tpWeightedScore(const QString &hayLower, const TpWeights &weights) {
     int score = 0;
     for (const auto &needle : weights)
         if (needle.second > 0 && hayLower.contains(needle.first)) score += needle.second;
@@ -3089,8 +3095,8 @@ int tpWeightedScore(const QString &hayLower, const TpWeights &weights) {
 
 // First body line containing any needle, trimmed + capped to 200
 // chars; fallback (trimmed) when none matches.
-QString tpExcerpt(const QString &body, const TpTerms &t,
-                  const QString &fallback) {
+static QString tpExcerpt(const QString &body, const TpTerms &t,
+                         const QString &fallback) {
     const QStringList lines = body.split(QLatin1Char('\n'));
     for (const QString &line : lines) {
         const QString low = line.toLower();
@@ -3103,17 +3109,19 @@ QString tpExcerpt(const QString &body, const TpTerms &t,
     return fallback.trimmed();
 }
 
+namespace {
 struct TpScored {
     QJsonObject obj;
     int score = 0;
     QString     sortKey;
 };
+}  // namespace
 
 // Ranks `hits` best score first, then by sortKey; stable, so hits with equal
 // keys keep their scan order. Writes every hit's count under `countKey` and
 // the top `cap` under `listKey`.
-void tpEmitRanked(QJsonObject &out, QVector<TpScored> &hits,
-                  const QString &countKey, const QString &listKey, int cap) {
+static void tpEmitRanked(QJsonObject &out, QVector<TpScored> &hits,
+                         const QString &countKey, const QString &listKey, int cap) {
     std::stable_sort(hits.begin(), hits.end(),
                      [](const TpScored &a, const TpScored &b) {
         if (a.score != b.score) return a.score > b.score;
@@ -3564,10 +3572,12 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
 
 namespace rcdetail {
 
+namespace {
 struct FocusedRun { bool started = false; bool timedOut = false; bool crashed = false; QString output; };
+}  // namespace
 
-FocusedRun runFocused(const QString &root, const QString &program,
-                      const QStringList &args, int timeoutSec) {
+static FocusedRun runFocused(const QString &root, const QString &program,
+                             const QStringList &args, int timeoutSec) {
     QProcess p;
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::MergedChannels);
@@ -3587,7 +3597,7 @@ FocusedRun runFocused(const QString &root, const QString &program,
     return o;
 }
 
-QJsonArray toJsonArray(const QStringList &xs) {
+static QJsonArray toJsonArray(const QStringList &xs) {
     QJsonArray a;
     for (const QString &s : xs) a.append(s);
     return a;
@@ -3595,10 +3605,12 @@ QJsonArray toJsonArray(const QStringList &xs) {
 
 // The codes a runner refuses with. ctest keeps its own, which the verb's
 // description names; every other runner shares runner_* (INV-12).
+namespace {
 struct FocusedRunCodes {
     QString missing;
     QString failed;
 };
+}  // namespace
 const FocusedRunCodes kCtestCodes{QStringLiteral("ctest_missing"),
                                   QStringLiteral("ctest_failed")};
 const FocusedRunCodes kRunnerCodes{QStringLiteral("runner_missing"),
@@ -3607,9 +3619,9 @@ const FocusedRunCodes kRunnerCodes{QStringLiteral("runner_missing"),
 // ANTS-6257 — the refusal for a run that did not finish, or empty when it did.
 // `label` names the run in the timeout and crash messages. The captured tail
 // rides along: it usually names the problem.
-QJsonObject focusedRunRefusal(const FocusedRun &run, const QString &program,
-                              const QString &label, int timeoutSec,
-                              const FocusedRunCodes &codes) {
+static QJsonObject focusedRunRefusal(const FocusedRun &run, const QString &program,
+                                     const QString &label, int timeoutSec,
+                                     const FocusedRunCodes &codes) {
     if (!run.started) {
         return mcp::refusal(codes.missing,
             QStringLiteral("focused_test: %1 not found on PATH").arg(program));
@@ -3629,16 +3641,16 @@ QJsonObject focusedRunRefusal(const FocusedRun &run, const QString &program,
 }
 
 // Output no parser recognised, with the tail that shows what it was.
-QJsonObject focusedUnrecognised(const FocusedRun &run, const QString &message) {
+static QJsonObject focusedUnrecognised(const FocusedRun &run, const QString &message) {
     QJsonObject e = mcp::refusal(QStringLiteral("unrecognised_output"), message);
     e[QStringLiteral("output_tail")] = run.output.right(2000);
     return e;
 }
 
-QJsonObject focusedTestOtherRunner(TestRunners::Runner runner, const QString &evidence,
-                                   const QString &root, const QStringList &changed,
-                                   const FocusedTest::CoverageMap &map, int timeoutSec,
-                                   const QElapsedTimer &wall) {
+static QJsonObject focusedTestOtherRunner(TestRunners::Runner runner, const QString &evidence,
+                                          const QString &root, const QStringList &changed,
+                                          const FocusedTest::CoverageMap &map, int timeoutSec,
+                                          const QElapsedTimer &wall) {
     const TestRunners::Command cmd = TestRunners::buildCommand(runner, root, changed, map);
     FocusedRun run = runFocused(root, cmd.program, cmd.args, timeoutSec);
     QJsonObject err = focusedRunRefusal(run, cmd.program, cmd.program, timeoutSec,
@@ -3884,7 +3896,7 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
 
 namespace rcdetail {
 
-QJsonObject sqArgErr(const QString &tool) {
+static QJsonObject sqArgErr(const QString &tool) {
     QJsonObject o;
     o["ok"]    = false;
     o["error"] = tool + QStringLiteral(": \"symbol\" missing, empty, or "
@@ -3894,7 +3906,7 @@ QJsonObject sqArgErr(const QString &tool) {
     return o;
 }
 
-QJsonObject sqNoProject(const QString &tool) {
+static QJsonObject sqNoProject(const QString &tool) {
     QJsonObject o;
     o["ok"]    = false;
     o["error"] = tool + QStringLiteral(": project root unresolved");
@@ -3903,14 +3915,14 @@ QJsonObject sqNoProject(const QString &tool) {
 }
 
 // Normalised `lang` echo for the envelope ("auto" when unset).
-QString sqLangEcho(const QJsonObject &req) {
+static QString sqLangEcho(const QJsonObject &req) {
     const QString l = req.value(QStringLiteral("lang")).toString()
                           .trimmed().toLower();
     return l.isEmpty() ? QStringLiteral("auto") : l;
 }
 
 // Parse the shared `lang` + `max_results` opts from the request.
-SymbolQuery::Options sqOptions(const QJsonObject &req) {
+static SymbolQuery::Options sqOptions(const QJsonObject &req) {
     SymbolQuery::Options opts;
     opts.lang = SymbolQuery::parseLang(
         req.value(QStringLiteral("lang")).toString().trimmed().toLower());
@@ -3930,8 +3942,8 @@ SymbolQuery::Options sqOptions(const QJsonObject &req) {
 // ANTS-5001 — a type is used, not called: its uses are declarations and
 // constructions, which a call-site scan does not count. So zero callers of a
 // struct / class / enum is expected, and the reply says where to look instead.
-void addTypeNoCallersHint(QJsonObject &out, const QString &symbol,
-                          const SymbolQuery::DefMatch &d, int callersTotal) {
+static void addTypeNoCallersHint(QJsonObject &out, const QString &symbol,
+                                 const SymbolQuery::DefMatch &d, int callersTotal) {
     static const QRegularExpression rxType(
         QStringLiteral("^(?:template\\s*<[^>]*>\\s*)?(?:struct|class|enum)\\b"));
     if (callersTotal == 0 && rxType.match(d.signature).hasMatch())
@@ -3941,7 +3953,7 @@ void addTypeNoCallersHint(QJsonObject &out, const QString &symbol,
             "uses.").arg(symbol);
 }
 
-QJsonObject defMatchToJson(const SymbolQuery::DefMatch &d) {
+static QJsonObject defMatchToJson(const SymbolQuery::DefMatch &d) {
     QJsonObject o;
     o["file"]      = d.file;
     o["line"]      = d.line;
@@ -3959,8 +3971,8 @@ QJsonObject defMatchToJson(const SymbolQuery::DefMatch &d) {
 // ambiguity, generated file): the def is still returned, just without a
 // body. `d.file` is project-relative; the abs path is root + '/' + file,
 // trusted (it came from our own in-root scan), so no PathValidation here.
-void sqAttachBody(QJsonObject &defJson, const QString &root,
-                  const QString &symbol) {
+static void sqAttachBody(QJsonObject &defJson, const QString &root,
+                         const QString &symbol) {
     const QString rel = defJson.value(QStringLiteral("file")).toString();
     if (rel.isEmpty() || root.isEmpty()) return;
     ReadRegion::Options o;
@@ -4143,7 +4155,7 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
 
 namespace rcdetail {
 
-QJsonObject scArgErr() {
+static QJsonObject scArgErr() {
     QJsonObject o;
     o["ok"]    = false;
     o["error"] = QStringLiteral("similar_code: \"shape\" missing, empty, "
@@ -4153,7 +4165,7 @@ QJsonObject scArgErr() {
     return o;
 }
 
-QJsonObject scNoProject() {
+static QJsonObject scNoProject() {
     QJsonObject o;
     o["ok"]    = false;
     o["error"] = QStringLiteral("similar_code: project root unresolved");
@@ -4161,7 +4173,7 @@ QJsonObject scNoProject() {
     return o;
 }
 
-SimilarCode::Options scOptions(const QJsonObject &req) {
+static SimilarCode::Options scOptions(const QJsonObject &req) {
     SimilarCode::Options opts;
     opts.lang = SimilarCode::parseLang(
         req.value(QStringLiteral("lang")).toString().trimmed().toLower());
@@ -4177,7 +4189,7 @@ SimilarCode::Options scOptions(const QJsonObject &req) {
 // similar_code match's signature line: strip a leading "ReturnType "
 // (keep a Class::method qualifier), and for a class/struct take the name
 // after the keyword. Empty when nothing parseable (caller falls back).
-QString scSymbolFromSignature(const QString &signature, const QString &kind) {
+static QString scSymbolFromSignature(const QString &signature, const QString &kind) {
     QString s = signature.trimmed();
     if (kind == QLatin1String("class")) {
         // "class Widget" / "struct Foo : Base" → "Widget" / "Foo".

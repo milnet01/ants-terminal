@@ -405,7 +405,7 @@ TEST(McpRoadmapLogAppendBatch, SuccessEnvelopeShape) {
 // `mame-curator-NNNN` back, never a mixed-in `ANTS-NNNN`.
 // ───────────────────────────────────────────────────────────────────
 
-QString mameCuratorRoadmap() {
+static QString mameCuratorRoadmap() {
     return QStringLiteral(
         "# Test Roadmap\n"
         "\n"
@@ -482,7 +482,7 @@ TEST(McpRoadmapLogAppendBatch, Ants2054BackCompatAntsRoadmap) {
 // rather than orphan the bullet past the last child + closing `---`.
 // ───────────────────────────────────────────────────────────────────
 
-QString milestoneWithChildrenRoadmap() {
+static QString milestoneWithChildrenRoadmap() {
     return QStringLiteral(
         "# Test Roadmap\n"
         "\n"
@@ -563,7 +563,7 @@ TEST(McpRoadmapLogAppendBatch, Ants2055LeafSectionStillAppends) {
 // bullet carries its own full ID string written verbatim.
 // ───────────────────────────────────────────────────────────────────
 
-QJsonObject stableBullet(const char *headline, const char *stableId) {
+static QJsonObject stableBullet(const char *headline, const char *stableId) {
     QJsonObject b = bullet(headline);
     b["stable_id"] = QString::fromLatin1(stableId);
     return b;
@@ -706,7 +706,7 @@ TEST(McpRoadmapLogAppendBatch, Ants2080SingleAppendReturnHeadlineOnly) {
 // the counter. minimalRoadmap()'s max id is ANTS-9002.
 // ───────────────────────────────────────────────────────────────────
 
-QJsonObject singleAppendReq(const QString &dir) {
+static QJsonObject singleAppendReq(const QString &dir) {
     QJsonObject req;
     req["caller_cwd"] = dir;
     req["op"]         = QStringLiteral("append");

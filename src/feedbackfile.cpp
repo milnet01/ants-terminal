@@ -483,7 +483,7 @@ ParseResult parse(const QString &fileContent) {
 // (hash, pipe, hyphen, fence, setext underline) while rendering
 // identically. The first line needs nothing — it already sits after the
 // `- **Field:** ` label.
-QString indentContinuation(const QString &value) {
+static QString indentContinuation(const QString &value) {
     QString v = value;
     v.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
     return v.replace(QStringLiteral("\n"), QStringLiteral("\n  "));

@@ -119,11 +119,13 @@ static QJsonObject triageReplyObject(const QByteArray &data, QString *why) {
     return inner.object();
 }
 
+namespace {
 struct TriageVerdict {
     QString verdict;
     int     confidence;
     QString reasoning;
 };
+}  // namespace
 
 // One verdict object from the model, made safe to render.
 static TriageVerdict parseTriageVerdict(const QJsonObject &o) {

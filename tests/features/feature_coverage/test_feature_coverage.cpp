@@ -418,7 +418,7 @@ void testChangelogCoverageByEntryId() {
 // run-set cannot answer and the run-concatenation must), a path-shaped token,
 // a token spanning characters in neither class (which must fall through to the
 // full blob), the `::` and `.` tail fallbacks, and absent tokens of each shape.
-void testIndexedLookupMatchesUnindexed() {
+static void testIndexedLookupMatchesUnindexed() {
     const QString blob = QStringLiteral(
         "class RemoteControl { void dispatch(); };\n"
         "#include \"featurecoverage.h\"\n"

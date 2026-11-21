@@ -92,7 +92,7 @@ int runScenario(const char *scenarioName, const char *clearSeq, bool repaintIden
 //   (b) The subsequent replay (phase 2 content) must not duplicate into
 //       scrollback even though the mode-3 clear historically bypassed the
 //       suppression window.
-int runInkOverflowScenario() {
+static int runInkOverflowScenario() {
     TerminalGrid grid(kRows, kCols);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
 
@@ -156,7 +156,7 @@ int runInkOverflowScenario() {
 // position for Ink (H comes after 3J). This scenario pins that `clear`
 // wipes scrollback as the user expects, even though the byte-level
 // 2J/3J pair within the Ink-window is otherwise identical.
-int runUserClearScenario() {
+static int runUserClearScenario() {
     TerminalGrid grid(kRows, kCols);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
 
@@ -194,7 +194,7 @@ int runUserClearScenario() {
 // is the explicit user-initiated "clear scrollback" semantics. Regression
 // guard for the Ink-overflow fix: make sure we didn't break the legitimate
 // meaning of mode 3.
-int runStandaloneMode3Scenario() {
+static int runStandaloneMode3Scenario() {
     TerminalGrid grid(kRows, kCols);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
 
