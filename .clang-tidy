@@ -38,6 +38,8 @@ Checks: >
   -bugprone-signed-bitwise,
   -misc-use-anonymous-namespace,
   -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-throwing-static-initialization,
+  -cert-err58-cpp,
   -cert-err33-c
 
 # Each exclusion above traces to a filed decision or a verified reason:
@@ -67,6 +69,12 @@ Checks: >
 #     multiplication-result              sizes such as `64 * 1024`, where the
 #                                        compiler reports an overflow itself;
 #                                        the two runtime ones are bounded
+#   bugprone-throwing-static-            ANTS-5435 -- every hit is a file-scope
+#     initialization, cert-err58-cpp     Qt or std value built from a literal;
+#                                        its only throw is bad_alloc before
+#                                        main, which nothing could recover
+#                                        from; a bad literal regex throws on
+#                                        every run, so any test run shows it
 #   cert-err33-c                         verified as the stderr-logging idiom
 #                                        (debuglog.cpp, dialogshowtracer.cpp);
 #                                        ignoring an fprintf return there is

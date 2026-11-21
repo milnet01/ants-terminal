@@ -114950,10 +114950,15 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5435] **clang-tidy bugprone-throwing-static-initialization (cert-err58-cpp): 86 sites in 38 files.**
+- ✅ [ANTS-5435] **clang-tidy bugprone-throwing-static-initialization (cert-err58-cpp): 86 sites in 38 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   cert-err58-cpp flags the same 86 locations; one item covers both.
   Likely static QString/QRegularExpression: spot-check, then one class.
+  2026-11-21: excluded in .clang-tidy with its reason. Every hit is a
+  file-scope Qt or std value built from a literal (QString, QByteArray,
+  QStringList and the like); the one file-scope std::regex is a literal
+  in a test. Proof: src/auditdialog.cpp reports 6 hits under the old
+  config, 0 under the new one.
   **Layman:** Global values built at startup in a way that could, in theory, throw before the program begins.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
