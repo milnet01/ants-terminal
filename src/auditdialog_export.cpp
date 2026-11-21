@@ -5,13 +5,49 @@
 #include "auditautofix.h"
 #include "auditfpledger.h"
 #include "debtsweepengine.h"
+#include "secureio.h"
+#include <QDateTime>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <algorithm>
 
 using namespace auditdialogdetail;
+
+// 0.7.52 (2026-04-27 indie-review CRITICAL) — atomic write + 0600 perms.
+// Both reports may carry secrets surfaced by gitleaks / secrets_scan rules
+// (the whole point of those checks is to find leaked tokens); persisting
+// one world-readable would just relocate the leak. QSaveFile + commit
+// gives the same write-rename-fsync atomicity as the Config code path.
+void AuditDialog::saveReportPrivately(const QString &label, const QString &savedLabel,
+                                      const QString &ext, const QString &body) {
+    ensurePrivateDir(m_projectPath + "/.audit_cache");  // ANTS-5085 — 0700 from the start
+    const QString path = m_projectPath + "/.audit_cache/audit-"
+                       + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
+                       + "." + ext;
+    QSaveFile sf(path);
+    if (!sf.open(QIODevice::WriteOnly)) {  // ANTS-5084 — say so
+        m_statusLabel->setFullText(label + " save failed: " + sf.errorString());
+        return;
+    }
+    // ANTS-5151 — private or not saved.
+    if (!setOwnerOnlyPerms(sf)) {
+        m_statusLabel->setFullText(label + " save failed: could not make the file private");
+        return;  // uncommitted: QSaveFile discards its temp file
+    }
+    sf.write(body.toUtf8());
+    if (!sf.commit()) {
+        m_statusLabel->setFullText(label + " save failed: " + sf.errorString());
+    } else if (setOwnerOnlyPerms(path)) {  // re-chmod final inode
+        m_statusLabel->setFullText(savedLabel + ": " + path);
+    } else {
+        QFile::remove(path);
+        m_statusLabel->setFullText(label + " save failed: could not make " + path + " private");
+    }
+}
 
 // ---------------------------------------------------------------------------
 // SARIF v2.1.0 export (OASIS standard, consumed by GitHub code-scanning,

@@ -61,8 +61,14 @@ TEST(AuditDialogLows, WarningIsNotCalledATimeout) {
 // INV-5
 TEST(AuditDialogLows, FailedExportOpenIsReported) {
     const QString src = auditSource();
-    EXPECT_EQ(src.count(QStringLiteral("\"SARIF save failed: \"")), 2);
-    EXPECT_EQ(src.count(QStringLiteral("\"HTML save failed: \"")), 2);
+    const QString body = between(src,
+        QStringLiteral("void AuditDialog::saveReportPrivately("),
+        QStringLiteral("\n}\n"));
+    ASSERT_FALSE(body.isEmpty()) << "saveReportPrivately not found";
+    EXPECT_EQ(body.count(QStringLiteral("label + \" save failed: \" + sf.errorString()")), 2)
+        << "a failed open or a failed commit is not reported";
+    EXPECT_TRUE(src.contains(QStringLiteral("saveReportPrivately(QStringLiteral(\"SARIF\")")));
+    EXPECT_TRUE(src.contains(QStringLiteral("saveReportPrivately(QStringLiteral(\"HTML\")")));
 }
 
 // INV-6

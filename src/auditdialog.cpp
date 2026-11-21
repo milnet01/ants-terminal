@@ -2176,38 +2176,8 @@ void AuditDialog::buildUI() {
     m_sarifBtn->setToolTip("Save findings as SARIF v2.1.0 JSON for CI / IDE viewers");
     connect(m_sarifBtn, &QPushButton::clicked, this, [this]() {
         if (m_completedResults.isEmpty()) return;
-        ensurePrivateDir(m_projectPath + "/.audit_cache");  // ANTS-5085 — 0700 from the start
-        const QString path = m_projectPath + "/.audit_cache/audit-"
-                           + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
-                           + ".sarif";
-        // 0.7.52 (2026-04-27 indie-review CRITICAL) — atomic write +
-        // 0600 perms. The SARIF body may carry secrets surfaced by
-        // gitleaks / secrets_scan rules (the whole point of those
-        // checks is to find leaked tokens); persisting the report
-        // world-readable would just relocate the leak. QSaveFile +
-        // commit gives the same write-rename-fsync atomicity as the
-        // Config code path; setOwnerOnlyPerms locks 0600.
-        QSaveFile sf(path);
-        if (!sf.open(QIODevice::WriteOnly)) {  // ANTS-5084 — say so
-            m_statusLabel->setFullText("SARIF save failed: " + sf.errorString());
-            return;
-        }
-        // ANTS-5151 — the report may carry leaked secrets: private or not saved.
-        if (!setOwnerOnlyPerms(sf)) {
-            m_statusLabel->setFullText("SARIF save failed: could not make the file private");
-            return;  // uncommitted: QSaveFile discards its temp file
-        }
-        sf.write(exportSarif().toUtf8());
-        if (sf.commit()) {
-            if (setOwnerOnlyPerms(path)) {  // re-chmod final inode
-                m_statusLabel->setFullText("SARIF saved: " + path);
-            } else {
-                QFile::remove(path);
-                m_statusLabel->setFullText("SARIF save failed: could not make " + path + " private");
-            }
-        } else {
-            m_statusLabel->setFullText("SARIF save failed: " + sf.errorString());
-        }
+        saveReportPrivately(QStringLiteral("SARIF"), QStringLiteral("SARIF saved"),
+                            QStringLiteral("sarif"), exportSarif());
     });
     btnRow->addWidget(m_sarifBtn);
 
@@ -2217,35 +2187,8 @@ void AuditDialog::buildUI() {
     m_htmlBtn->setToolTip("Save a single-file HTML report (browser-viewable, no external assets)");
     connect(m_htmlBtn, &QPushButton::clicked, this, [this]() {
         if (m_completedResults.isEmpty()) return;
-        ensurePrivateDir(m_projectPath + "/.audit_cache");  // ANTS-5085 — 0700 from the start
-        const QString path = m_projectPath + "/.audit_cache/audit-"
-                           + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
-                           + ".html";
-        // 0.7.52 — same atomic + 0600 treatment as SARIF (CRITICAL
-        // from 2026-04-27 indie-review — the HTML body embeds the
-        // same finding metadata, including any leaked-secret strings
-        // surfaced by gitleaks rules).
-        QSaveFile sf(path);
-        if (!sf.open(QIODevice::WriteOnly)) {  // ANTS-5084 — say so
-            m_statusLabel->setFullText("HTML save failed: " + sf.errorString());
-            return;
-        }
-        // ANTS-5151 — same finding metadata as the SARIF: private or not saved.
-        if (!setOwnerOnlyPerms(sf)) {
-            m_statusLabel->setFullText("HTML save failed: could not make the file private");
-            return;  // uncommitted: QSaveFile discards its temp file
-        }
-        sf.write(exportHtml().toUtf8());
-        if (sf.commit()) {
-            if (setOwnerOnlyPerms(path)) {
-                m_statusLabel->setFullText("HTML report saved: " + path);
-            } else {
-                QFile::remove(path);
-                m_statusLabel->setFullText("HTML save failed: could not make " + path + " private");
-            }
-        } else {
-            m_statusLabel->setFullText("HTML save failed: " + sf.errorString());
-        }
+        saveReportPrivately(QStringLiteral("HTML"), QStringLiteral("HTML report saved"),
+                            QStringLiteral("html"), exportHtml());
     });
     btnRow->addWidget(m_htmlBtn);
 

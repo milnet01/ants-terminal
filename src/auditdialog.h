@@ -639,6 +639,12 @@ private:
     // Useful for attaching to bug reports or sharing with teammates.
     QString exportHtml() const;
 
+    // ANTS-6193 — the Export SARIF and Export HTML buttons' save: `body`
+    //   to .audit_cache/audit-<stamp>.<ext>, atomic and 0600 or not saved.
+    //   Reports "<label> save failed: …" or "<savedLabel>: <path>".
+    void saveReportPrivately(const QString &label, const QString &savedLabel,
+                             const QString &ext, const QString &body);
+
     QLabel *m_pathLabel = nullptr;
     QLabel *m_typesLabel = nullptr;
     QPushButton *m_runBtn = nullptr;

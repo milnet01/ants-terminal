@@ -17,7 +17,7 @@ recursive `QDirIterator`; it lists directories level by level up to its depth.
 
 **INV-5 — a failed export open says so.** The SARIF and HTML export buttons
 each report `save failed` when the file cannot be opened, as well as when
-the commit fails.
+the commit fails. Both save through `saveReportPrivately` (ANTS-6193).
 
 **INV-6 — the recent-files filter matches at a path separator.**
 `handleCheckOutput` matches a finding's file to a changed file with
