@@ -182,5 +182,4 @@ one timer and adds no config key, so it needs no stop/start control.
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|---|---|---|---|---|---|---|---|
+No review ran: not a contract, cheap to reverse (rule 14).
