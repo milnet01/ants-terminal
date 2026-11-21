@@ -10,6 +10,7 @@
 #include "sessionmemoryengine.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>

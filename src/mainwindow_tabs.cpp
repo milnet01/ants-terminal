@@ -19,6 +19,8 @@
 #include <QCheckBox>
 #include <QMessageBox>
 #include <QPointer>
+#include <QPushButton>
+#include <QStatusBar>
 #include <QVBoxLayout>
 #include <QSplitter>
 #include <QDir>

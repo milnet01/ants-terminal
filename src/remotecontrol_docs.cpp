@@ -22,6 +22,7 @@
 #include <QSaveFile>
 #include <QCryptographicHash>
 #include <QDirIterator>
+#include <QElapsedTimer>
 
 using namespace rcdetail;  // ANTS-3833
 

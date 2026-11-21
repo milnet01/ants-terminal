@@ -16,10 +16,12 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QTabWidget>
 #include <QTextBrowser>
 #include <QThread>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWidget>
 
 using namespace auditdialogdetail;
 

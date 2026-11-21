@@ -74394,11 +74394,13 @@ suppression that survives line drift.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
   Lanes: auditdialog.
 
-- 📋 [ANTS-6861] **Four sources compile only through the precompiled header: they include the Qt classes they use.**
+- ✅ [ANTS-6861] **Four sources compile only through the precompiled header: they include the Qt classes they use.**
   clang-tidy with the PCH stripped (2026-11-21): mainwindow_tabs.cpp
   (QStatusBar, QPushButton), auditdialog_debtsweep.cpp (QTabWidget,
   QWidget), remotecontrol_docs.cpp and
   tests/features/mcp_ci_report/test_mcp_ci_report.cpp (QElapsedTimer).
+  Shipped 2026-11-21: the four files include the Qt classes they use.
+  clang-tidy over a PCH-free compile database reports no errors in them.
   **Layman:** The code builds even when the shared precompiled header is turned off.
   Kind: fix.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
