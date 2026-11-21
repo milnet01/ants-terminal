@@ -11,7 +11,7 @@ namespace mcp {
 namespace {
 
 // Every description string under one argument's schema, nested ones included.
-void collectDescriptions(const QJsonValue &v, QString *out) {
+void collectDescriptions(const QJsonValue &v, QString *out) {  // NOLINT(misc-no-recursion): walks this server's own tool schemas
     if (v.isArray()) {
         for (const QJsonValue &e : v.toArray())
             collectDescriptions(e, out);

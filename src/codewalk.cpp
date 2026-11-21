@@ -21,7 +21,7 @@ namespace {
 // Every indexable file under `dir`, as root-relative paths, pruning noise
 // directories by name. Stops once `out` holds kMaxFiles + 1 entries, so the
 // caller can tell a full walk from a cut one.
-void walk(const QDir &root, const QString &dir, QStringList &out) {
+void walk(const QDir &root, const QString &dir, QStringList &out) {  // NOLINT(misc-no-recursion): directory depth; symlinks are not followed
     const QFileInfoList entries = QDir(dir).entryInfoList(
         QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks,
         QDir::Name);

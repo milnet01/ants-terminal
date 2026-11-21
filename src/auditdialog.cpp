@@ -2718,7 +2718,7 @@ void AuditDialog::finishRun() {
         if (c.toggle) c.toggle->setEnabled(c.available);
 }
 
-void AuditDialog::runNextCheck() {
+void AuditDialog::runNextCheck() {  // NOLINT(misc-no-recursion): re-entered once per check whose process fails to start, so at most the check count deep
     // Cancellation short-circuit — user clicked Cancel while a check was
     // running. `cancelAudit()` already killed the process and rendered
     // whatever completed, so we just bail out of the chain.

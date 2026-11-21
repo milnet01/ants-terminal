@@ -256,6 +256,15 @@ TEST(QuotationCheck, Inv5AllowedGlobsMatchResolvedPath)
     EXPECT_FALSE(QuotationCheck::globMatch("docs/[b].md", "docs/b.md"));
 }
 
+// ANTS-5444 — a caller's glob of nothing but stars is `**`, and matching it
+// does not recurse once per star until the stack overflows.
+TEST(QuotationCheck, Ants5444LongStarRunMatchesLikeDoubleStar)
+{
+    EXPECT_TRUE(QuotationCheck::globMatch(QString(400000, QLatin1Char('*')), "docs/b.md"));
+    EXPECT_TRUE(QuotationCheck::globMatch("docs/***.md", "docs/x/b.md"));
+    EXPECT_FALSE(QuotationCheck::globMatch("docs/*.md", "docs/x/b.md"));
+}
+
 // INV-6
 TEST(QuotationCheck, Inv6RefReadsTheBlob)
 {

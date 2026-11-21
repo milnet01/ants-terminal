@@ -324,7 +324,7 @@ private:
     // file's "/rel" without its extension. Noise and hidden directories are
     // left out, as a reference into one is not a claim about this project's
     // tree. Walked once, on the first reference the plain lookup cannot find.
-    void walkPaths(const QString &dir) {
+    void walkPaths(const QString &dir) {  // NOLINT(misc-no-recursion): directory depth; symlinks are not followed
         constexpr int kMaxPaths = 200000;   // bounds a huge root; beyond it, a reference can read dead
         const QDir root(m_root);
         const auto entries = QDir(dir).entryInfoList(

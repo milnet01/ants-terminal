@@ -115072,9 +115072,19 @@ reports are asked for separately, each time.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5444] **clang-tidy misc-no-recursion: 12 sites in 9 files.**
+- ✅ [ANTS-5444] **clang-tidy misc-no-recursion: 12 sites in 9 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Check each recursion is bounded by its input (depth caps), then suppress.
+  2026-11-21: every recursion's depth bound checked. Three had none and
+  are fixed: CiWorkflows' parser (ANTS-6866), QuotationCheck::globMatch
+  (a caller's run of stars recursed once per pair; a 400000-star glob
+  segfaulted test_core at the default stack; star runs now collapse to
+  `**`, bounding depth by the path length), and duplicateblocks'
+  union-find find(), now a loop. The rest carry
+  NOLINT(misc-no-recursion) naming the bound: kMaxDepth,
+  kMarshalMaxDepth, QJsonDocument's 1024-level limit (measured: 1025
+  refuses), directory depth with symlinks not followed, or trusted
+  input. The check stays enabled.
   **Layman:** Functions that call themselves, which can run out of stack on deep input.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.

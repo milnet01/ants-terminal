@@ -346,7 +346,7 @@ void VtParser::processChar(uint32_t ch) {
     }
 }
 
-void VtParser::processCsi(uint32_t ch) {
+void VtParser::processCsi(uint32_t ch) {  // NOLINT(misc-no-recursion): re-enters once, from CsiEntry after switching to CsiParam
     switch (m_state) {
     case CsiEntry:
         // transition(CsiEntry) has already reset what a CSI collects.

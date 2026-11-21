@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QRegularExpression>
 
 #include <algorithm>
 #include <climits>
@@ -141,7 +142,7 @@ Normalised dropMarks(const Normalised &in)
 // match. Without it a caller's `allowed` glob such as `*a*a*a*a*a*a*b` against
 // a long path backtracks exponentially in the number of stars; with it every
 // state is tried once, so the cost is bounded by g.size() * p.size().
-bool globMatchAt(const QString &g, qsizetype gi, const QString &p, qsizetype pi,
+bool globMatchAt(const QString &g, qsizetype gi, const QString &p, qsizetype pi,  // NOLINT(misc-no-recursion): depth within the path length once globMatch collapses star runs
                  std::vector<bool> &failed)
 {
     const size_t key = size_t(gi) * size_t(p.size() + 1) + size_t(pi);
@@ -197,8 +198,14 @@ QByteArray normaliseQuotation(const QByteArray &raw)
     return q.mid(b, e - b);
 }
 
-bool globMatch(const QString &glob, const QString &path)
+bool globMatch(const QString &raw, const QString &path)
 {
+    // A run of stars matches what `**` matches. Collapsing it also bounds
+    // globMatchAt's recursion: every star left is followed by a character
+    // that consumes one path character, so the depth stays within the path's
+    // length (ANTS-5444).
+    static const QRegularExpression starRun(QStringLiteral("\\*{3,}"));
+    const QString glob = QString(raw).replace(starRun, QStringLiteral("**"));
     // The memo is one bit per state; a glob and path whose product passes 64M
     // states (8 MiB) is not a path glob, and matches nothing.
     const size_t states = size_t(glob.size() + 1) * size_t(path.size() + 1);

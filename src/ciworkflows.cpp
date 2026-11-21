@@ -166,7 +166,7 @@ private:
         const QString after = rest.mid(close + 1).trimmed();
         return after.isEmpty() || after.startsWith(QLatin1Char('#')) ? rest.left(close + 1) : rest;
     }
-    QVariant value(const QString &rest) {
+    QVariant value(const QString &rest) {  // NOLINT(misc-no-recursion): depth capped at kMaxDepth (ANTS-6866)
         const Descend in(m_depth);
         if (m_depth > kMaxDepth) { fail(); return {}; }
         if (rest.startsWith(QLatin1Char('*'))) { fail(); return {}; }  // an alias
@@ -233,7 +233,7 @@ private:
         return sp < 0 ? QString() : rest.mid(sp + 1).trimmed();
     }
 
-    QVariant node(int indent) {
+    QVariant node(int indent) {  // NOLINT(misc-no-recursion): depth capped at kMaxDepth (ANTS-6866)
         const Descend in(m_depth);
         if (m_depth > kMaxDepth) { fail(); return {}; }
         const int i = next(m_i);
@@ -246,7 +246,7 @@ private:
         return value(m_l[i].text);
     }
 
-    QVariant map(int indent) {
+    QVariant map(int indent) {  // NOLINT(misc-no-recursion): depth capped at kMaxDepth (ANTS-6866)
         QVariantMap m;
         for (;;) {
             const int i = next(m_i);
@@ -275,7 +275,7 @@ private:
         return m;
     }
 
-    QVariant list(int indent) {
+    QVariant list(int indent) {  // NOLINT(misc-no-recursion): depth capped at kMaxDepth (ANTS-6866)
         QVariantList out;
         for (;;) {
             const int i = next(m_i);

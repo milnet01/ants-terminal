@@ -75,7 +75,7 @@ bool escapeString(const QString &s, QByteArray *out, QString *error) {
 
 bool write(const QJsonValue &v, QByteArray *out, QString *error);
 
-bool writeObject(const QJsonObject &o, QByteArray *out, QString *error) {
+bool writeObject(const QJsonObject &o, QByteArray *out, QString *error) {  // NOLINT(misc-no-recursion): JSON nesting; QJsonDocument refuses more than 1024 levels
     // RFC 8785 § 3.2.3 — sorted on the RAW (unescaped) property names, by
     // UTF-16 code unit. QString::compare() is exactly that comparison, which
     // is why it is used rather than localeAwareCompare: locale collation would
@@ -100,7 +100,7 @@ bool writeObject(const QJsonObject &o, QByteArray *out, QString *error) {
     return true;
 }
 
-bool write(const QJsonValue &v, QByteArray *out, QString *error) {
+bool write(const QJsonValue &v, QByteArray *out, QString *error) {  // NOLINT(misc-no-recursion): JSON nesting; QJsonDocument refuses more than 1024 levels
     switch (v.type()) {
     case QJsonValue::Null:
         out->append("null");

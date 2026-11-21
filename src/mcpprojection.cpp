@@ -546,7 +546,7 @@ bool isCompactDroppable(const QJsonValue &v) {
 
 QJsonValue compactValue(const QJsonValue &v);
 
-QJsonObject compactObject(const QJsonObject &in) {
+QJsonObject compactObject(const QJsonObject &in) {  // NOLINT(misc-no-recursion): JSON nesting; QJsonDocument refuses more than 1024 levels
     QJsonObject out;
     for (auto it = in.begin(); it != in.end(); ++it) {
         const QString key = it.key();
@@ -562,7 +562,7 @@ QJsonObject compactObject(const QJsonObject &in) {
     return out;
 }
 
-QJsonValue compactValue(const QJsonValue &v) {
+QJsonValue compactValue(const QJsonValue &v) {  // NOLINT(misc-no-recursion): JSON nesting; QJsonDocument refuses more than 1024 levels
     if (v.isObject()) return compactObject(v.toObject());
     if (v.isArray()) {
         QJsonArray out;

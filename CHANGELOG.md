@@ -1270,6 +1270,8 @@ for security-relevant changes.
 
 ### Security
 
+- **quotation_check reads a run of stars in an `allowed` glob as `**`, so a long run of stars cannot crash the server.** (ANTS-5444)
+
 - **ci_report reads a workflow file nested more than 64 levels deep as unreadable, so a hostile repository's CI file cannot crash the server.** (ANTS-6866)
 
 - **A project's `.gitattributes` is read only up to 1 MiB** (ANTS-6797)

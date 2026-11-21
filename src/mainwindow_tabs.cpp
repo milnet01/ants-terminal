@@ -686,7 +686,7 @@ QSplitter *MainWindow::findParentSplitter(QWidget *w) const {
     return qobject_cast<QSplitter *>(w->parentWidget());
 }
 
-void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {
+void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {  // NOLINT(misc-no-recursion): one level per pane split the user made
     if (!tabRoot) return;
 
     // Recursively clean up splitters with 0 or 1 children

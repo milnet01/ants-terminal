@@ -1045,7 +1045,7 @@ bool chargeMarshal(qint64 bytes, QString &err) {
 
 QJsonValue marshalLuaValue(lua_State *L, int idx, int depth, QString &err);
 
-QJsonValue marshalLuaTable(lua_State *L, int idx, int depth, QString &err) {
+QJsonValue marshalLuaTable(lua_State *L, int idx, int depth, QString &err) {  // NOLINT(misc-no-recursion): depth capped at kMarshalMaxDepth
     // Bound only TABLE nesting (a scalar leaf at any depth is harmless).
     if (depth > kMarshalMaxDepth) {
         err = QStringLiteral("table nested deeper than %1 levels").arg(kMarshalMaxDepth);
@@ -1119,7 +1119,7 @@ QJsonValue marshalLuaTable(lua_State *L, int idx, int depth, QString &err) {
     return obj;
 }
 
-QJsonValue marshalLuaValue(lua_State *L, int idx, int depth, QString &err) {
+QJsonValue marshalLuaValue(lua_State *L, int idx, int depth, QString &err) {  // NOLINT(misc-no-recursion): depth capped at kMarshalMaxDepth
     if (!err.isEmpty()) return {};
     ++t_marshalNodes;
     // A lower bound of the value's JSON size: null or a boolean 4, a number

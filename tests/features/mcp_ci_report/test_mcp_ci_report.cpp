@@ -212,7 +212,7 @@ struct Project {
 
 // Move every *At / *_at timestamp by `secs`, so a recorded fixture sits in
 // the live verb's window whatever day the test runs.
-QJsonValue shifted(const QJsonValue &v, qint64 secs) {
+QJsonValue shifted(const QJsonValue &v, qint64 secs) {  // NOLINT(misc-no-recursion): walks a checked-in fixture
     if (v.isArray()) {
         QJsonArray out;
         for (const QJsonValue &e : v.toArray()) out.append(shifted(e, secs));

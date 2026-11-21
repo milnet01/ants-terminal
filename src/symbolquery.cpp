@@ -987,7 +987,7 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
 // are src/walkrules.h's, shared with the trace engine.
 using walkrules::skippedDir;
 
-void walk(ScanState &st, const QString &dirPath) {
+void walk(ScanState &st, const QString &dirPath) {  // NOLINT(misc-no-recursion): directory depth; symlinks are not followed
     if (st.walkCapped) return;
     const QFileInfoList entries = walkrules::entries(dirPath);
     for (const QFileInfo &fi : entries) {

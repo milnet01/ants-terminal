@@ -264,7 +264,18 @@ public:
         m_parent.append(int(m_parent.size()));
         return int(m_sites.size()) - 1;
     }
-    int find(int i) { return m_parent[i] == i ? i : (m_parent[i] = find(m_parent[i])); }
+    // A loop, not recursion: with no union by rank a parent chain can be as
+    // long as the site count, which grows with the tree scanned (ANTS-5444).
+    int find(int i) {
+        int root = i;
+        while (m_parent[root] != root) root = m_parent[root];
+        while (m_parent[i] != root) {  // point every site on the path at the root
+            const int up = m_parent[i];
+            m_parent[i] = root;
+            i = up;
+        }
+        return root;
+    }
     void unite(int a, int b) { m_parent[find(a)] = find(b); }
     const QList<Site> &sites() const { return m_sites; }
 

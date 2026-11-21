@@ -556,7 +556,7 @@ VerifyReport runVerify(const QString &projectPath,
 // ancestor (or to /) is walked once rather than re-walked down the link.
 // ANTS-6462 — and a directory or file whose real location is outside `root`
 // is not read at all.
-static void collectCmakeText(const QString &root, const QString &dir, QString &out,
+static void collectCmakeText(const QString &root, const QString &dir, QString &out,  // NOLINT(misc-no-recursion): directory depth; each canonical directory visited once
                              QSet<QString> &visited) {
     const QString canon = QFileInfo(dir).canonicalFilePath();
     if (canon.isEmpty() || visited.contains(canon) ||

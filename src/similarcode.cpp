@@ -149,7 +149,7 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
     }
 }
 
-void walk(ScanState &st, const QString &dirPath) {
+void walk(ScanState &st, const QString &dirPath) {  // NOLINT(misc-no-recursion): directory depth; symlinks are not followed
     if (st.walkCapped) return;
     for (const QFileInfo &fi : walkrules::entries(dirPath)) {
         if (st.walkCapped) return;
