@@ -115032,9 +115032,15 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5441] **clang-tidy bugprone-assignment-in-if-condition: 20 sites in 3 files.**
+- ✅ [ANTS-5441] **clang-tidy bugprone-assignment-in-if-condition: 20 sites in 3 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Fix or suppress as one class.
+  2026-11-21: excluded in .clang-tidy with its reason. Every hit is the
+  double-parenthesised assignment idiom, mostly `(m =
+  re.match(line)).hasMatch()` chains in fileoutline.cpp and
+  dependencyinventory.cpp; a bare `=` typo is caught by -Wparentheses
+  under -Wall. Proof: src/dependencyinventory.cpp reports 4 hits under
+  the old config, 0 under the new one.
   **Layman:** Assignments written inside an if test, easy to misread as a comparison.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

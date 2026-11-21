@@ -41,6 +41,7 @@ Checks: >
   -bugprone-throwing-static-initialization,
   -cert-err58-cpp,
   -performance-enum-size,
+  -bugprone-assignment-in-if-condition,
   -cert-err33-c
 
 # Each exclusion above traces to a filed decision or a verified reason:
@@ -82,6 +83,11 @@ Checks: >
 #                                        struct, the uint32_t that follows
 #                                        Type keeps it at offset 4, so a
 #                                        1-byte Type saves nothing
+#   bugprone-assignment-in-if-condition  ANTS-5441 -- every hit is the
+#                                        double-parenthesised idiom, mostly
+#                                        `(m = re.match(line)).hasMatch()`
+#                                        chains; a bare `=` typo is caught by
+#                                        -Wparentheses, which -Wall enables
 #   cert-err33-c                         verified as the stderr-logging idiom
 #                                        (debuglog.cpp, dialogshowtracer.cpp);
 #                                        ignoring an fprintf return there is
