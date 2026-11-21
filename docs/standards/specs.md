@@ -371,9 +371,9 @@ spec, as their bullets state.
   (CLAUDE.md module map, CHANGELOG, README, PLUGINS.md, sibling specs).
 - **§ Open questions** — unresolved design forks, so a reviewer knows
   where judgment is still needed.
-- **§ Cold-eyes loop log** — **required on every spec.** The gate always
-  runs (§ 5.7), so this section is never empty, and its heading is what
-  `check-doc-facts` looks for. See § 5.7.
+- **§ Cold-eyes loop log** — **required on every spec.** It holds a
+  pointer to the spec's review record, or one line saying no review ran.
+  Its heading is what `check-doc-facts` looks for. See § 5.7.
 
 ## 5. Conventions
 
@@ -458,14 +458,16 @@ changes get their own spec that supersedes it (`**Superseded by:**`).
 
 ### 5.7 Cold-eyes loop log
 
-Specs in this project run through the `review-contract` skill before
-implementation, looped until it reports convergence or its loop cap
-binds — at the cap the remaining findings are filed and the spec ships.
-Never ship a first-draft spec. The skill owns the procedure, the cap and
-the definition of convergence; this standard does not restate them.
+`CLAUDE.md` rule 14 decides when a spec gets a `review-contract` run.
+The skill owns the procedure, the cap and the definition of convergence;
+this standard does not restate them.
 
-Record each loop's findings + resolutions in a `## Cold-eyes loop log`
-section and reflect progress in the **Status** line. **The section name
+Record each loop's findings + resolutions as a row, and reflect progress
+in the **Status** line. **The rows go to a record under `docs/reviews/`,
+never into the spec.** The spec's `## Cold-eyes loop log` section keeps
+its heading and a one-line pointer to that record; `documentation.md`
+§ 9.1 owns this form, and this standard uses it too. Where no review
+ran, the section says so in one line. **The section name
 is frozen deliberately**: it is the heading `check-doc-facts` looks for
 and the one every gated document in this corpus already carries, so
 renaming it here would strand all of them. The log is the evidence the
@@ -491,11 +493,6 @@ work across the older shapes too.
 **Findings go in the outcome cell and nowhere else.** Restating them
 under per-loop headings puts each count in two places, and two places
 drift.
-
-**The rules above bind the rows, not their location.** Rows normally sit
-in the section. Where it names a record instead — `documentation.md`
-§ 9.1's form, which this standard itself uses — the section keeps its
-heading and a one-line pointer, and the rows go to `docs/reviews/`.
 
 **This binds new logs, and the rules above bind table logs only.** A
 landed row is never edited, so a log already running keeps the shape it
@@ -571,10 +568,8 @@ its stop/start control, or why it has none>
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|---|---|---|---|---|---|---|---|
-
-<one row per review loop; written as the loops happen, never back-filled>
+<one line: a link to docs/reviews/ANTS-NNNN-<topic>-loop-log.md,
+which holds § 5.7's table; or "No review ran: <why>.">
 ```
 
 ## What checks this
@@ -596,7 +591,8 @@ its stop/start control, or why it has none>
 | § 5.3 brevity, § 5.4 security boundaries | **nothing mechanical** — the review gate's cold lanes, and the reader of the resulting document |
 | § 5.6 the status lifecycle | **`Partial:`** `spec_lint` `header_status_unknown`, a word-list check on the value's start. It accepts any listed word, so it does not check the order of § 5.6's states |
 | § 5.7 the loop log exists | `spec_lint` `missing_section`, via § 3's block, which lists it |
-| § 5.7 every loop row records an outcome | `spec_lint` `loop_row_no_outcome`, an emptiness check on the row's LAST cell, read by position |
+| § 5.7 every loop row records an outcome | **`Partial:`** `spec_lint` `loop_row_no_outcome`, an emptiness check on the row's LAST cell, read by position. A default run walks `docs/specs/`, so it reads no row kept under `docs/reviews/` |
+| § 5.7 the rows sit in a record, not the spec | **nothing** — an inline row passes every check |
 | § 5.7 the table's columns | **nothing** — no check reads the header cells. `loop_row_no_outcome` matches the first cell `Loop` and then counts from the end, which is what lets it work across the older shapes |
 | § 5.7 a landed row is never edited, and the log is not back-filled | **nothing** — both show only in the commit diff, and no check reads it |
 | § 5.7 the gate ran at all | **nothing** — the log is the only evidence, and the session that ran the gate writes it |

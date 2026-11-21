@@ -88319,7 +88319,7 @@ to docs/reviews/ and the section keeps its heading plus a one-line pointer. The
 convention already exists and is partly applied; this section holds the work to
 finish it and to make it the default rather than the alternative.
 
-- 📋 [ANTS-4934] **specs.md 5.7 makes an inline loop log the default and the moved record the alternative; invert it.**
+- ✅ [ANTS-4934] **specs.md 5.7 makes an inline loop log the default and the moved record the alternative; invert it.**
   MEASURED 2026-09-07, and the rule already exists — it is the DEFAULT that is wrong, not the mechanism.
 
   docs/standards/specs.md § 5.7 reads: "The rules above bind the rows, not their location. Rows NORMALLY sit in the section. Where it names a record instead — documentation.md § 9.1's form — the section keeps its heading and a one-line pointer, and the rows go to docs/reviews/."
@@ -88333,6 +88333,12 @@ finish it and to make it the default rather than the alternative.
   THE EDIT IS A CONTRACT CHANGE. Inverting the default changes what every conforming project writes, so it re-arms CLAUDE.md rule 14 and needs `review-contract --genre standard`. documentation.md § 9.1 states the same rule from the other side; it was verified 2026-09-07 to sit in THIS project's delta half, not the mirrored half, so it is editable here — but check that again before editing, since the mirror boundary moves.
 
   DO THIS BEFORE THE MIGRATION ITEM BESIDE IT. Migrating documents against a standard that still calls the inline form normal produces a corpus disagreeing with its own rule.
+  Shipped 2026-11-21. specs.md § 5.7 now sends rows to a record under
+  docs/reviews/ with a one-line pointer (documentation.md § 9.1's form),
+  or one line saying no review ran. The § 4 bullet, § 7 skeleton and
+  What-checks-this rows follow. § 5.7's gate paragraph now defers to
+  CLAUDE.md rule 14. No review-contract run: since 2026-10-31 rule 14
+  gives a standard no automatic review.
   **Layman:** Our rule says review history normally stays inside the document. We want the opposite: it moves out and leaves a pointer.
   Kind: doc.
   Source: user-request-2026-09-07.
