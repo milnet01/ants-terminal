@@ -40,6 +40,7 @@ Checks: >
   -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-throwing-static-initialization,
   -cert-err58-cpp,
+  -performance-enum-size,
   -cert-err33-c
 
 # Each exclusion above traces to a filed decision or a verified reason:
@@ -75,6 +76,12 @@ Checks: >
 #                                        main, which nothing could recover
 #                                        from; a bad literal regex throws on
 #                                        every run, so any test run shows it
+#   performance-enum-size                ANTS-5437 -- every hit is an option or
+#                                        state enum held once per object or
+#                                        call; in VtAction, the one per-byte
+#                                        struct, the uint32_t that follows
+#                                        Type keeps it at offset 4, so a
+#                                        1-byte Type saves nothing
 #   cert-err33-c                         verified as the stderr-logging idiom
 #                                        (debuglog.cpp, dialogshowtracer.cpp);
 #                                        ignoring an fprintf return there is

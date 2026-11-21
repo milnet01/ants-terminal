@@ -114976,12 +114976,18 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5437] **clang-tidy performance-enum-size: 57 sites in 44 files.**
+- ✅ [ANTS-5437] **clang-tidy performance-enum-size: 57 sites in 44 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   57 unique, 2059 raw (headers). Changing an enum's size can change a
   serialised or ABI layout: check QDataStream users first.
   2026-10-23: re-measured in src/mcporientation.cpp: enum class
   MergeOutcome (six values) could take std::uint8_t.
+  2026-11-21: excluded in .clang-tidy with its reason. Every hit is an
+  option or state enum held once per object or call, so no serialised
+  layout changes. In VtAction, the one per-byte struct, the uint32_t
+  after Type sits at offset 4 either way (checked by static_assert).
+  Proof: src/vtparser.cpp reports 2 hits under the old config, 0 under
+  the new one.
   **Layman:** Small lists of named options stored in a bigger number type than they need.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
