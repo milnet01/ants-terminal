@@ -71683,7 +71683,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (write-test run for ANTS-5025).
   Lanes: mcp, speclint.
 
-- 📋 [ANTS-5150] **MCP result offload copies and hashes the whole body before writing the spill file.**
+- 🚫 [ANTS-5150] **MCP result offload copies and hashes the whole body before writing the spill file.**
   Split out of ANTS-5072, which moved the reply transforms onto the
   dispatch worker and left this part of its fix direction open.
   mcp::offloadBody still holds the full body, hashes it and writes it in
@@ -71701,6 +71701,9 @@ extends an existing item, that item carries it instead.
   on the dispatch worker (ANTS-5072), not the GUI thread.
   Recommendation: close as not worth a spec change unless a caller shows
   the delay.
+  Dropped 2026-11-21 by the user, on the 2026-09-14 measurement above:
+  the cost is the SHA-256 the ANTS-2094 spec pins, not the copy, and it
+  runs on the dispatch worker. Reopen if a caller shows the delay.
   **Layman:** Saving a very large answer to a file on the side still reads the whole answer into memory more than it needs to.
   Kind: perf.
   Source: in-session-2026-09-13 split from ANTS-5072.
