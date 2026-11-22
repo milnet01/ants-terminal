@@ -223,9 +223,12 @@ ants_cap_log() {
 }
 
 # ANTS-2141-INV-8 — best-effort tally append + cap (≤500 lines, kept-last-250).
-# Never fails the caller. <warned> is the literal "true"/"false". See §2.4.
+# Never fails the caller. Usage: <tool> <warned> <kind> [<bypassed>]; warned
+# and bypassed are the literals "true"/"false", kind is "search" or "read".
+# ANTS-5776 (INV-13) — the row's ppid is the Claude process, which ants-mcpd
+# matches against its own parent to count one session. See §2.4.
 ants_grep_nudge_record() {
-    local tool="$1" warned="$2"
+    local tool="$1" warned="$2" kind="$3" bypassed="${4:-false}"
     local dir; dir="$(ants_grep_nudge_dir)"
     local f="$dir/count.jsonl"
     mkdir -p "$dir" 2>/dev/null || return 0
@@ -240,7 +243,8 @@ ants_grep_nudge_record() {
     fi
     local ts
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '')"
-    printf '{"ts":"%s","tool":"%s","warned":%s}\n' "$ts" "$tool" "$warned" >>"$f" 2>/dev/null || true
+    printf '{"ts":"%s","tool":"%s","kind":"%s","warned":%s,"bypassed":%s,"ppid":%s}\n' \
+        "$ts" "$tool" "$kind" "$warned" "$bypassed" "${PPID:-0}" >>"$f" 2>/dev/null || true
     return 0
 }
 

@@ -24,6 +24,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QTemporaryDir>
+#include <QTimeZone>
 
 #include <limits>
 
@@ -593,4 +594,70 @@ TEST(McpdUsageSnapshots, Ants6288OversizedCallCountIsCorrupt) {
     EXPECT_FALSE(snapshotFromJson(o, &t, &r, &why))
         << "n_calls read as " << t.value(QStringLiteral("spec_query")).nCalls;
     EXPECT_TRUE(why.contains(QStringLiteral("n_calls"))) << why.toStdString();
+}
+
+// INV-13 (ANTS-5776) — raw_side counts the hook's tally rows for one Claude
+// process, from the second its session began. Rows from another process, an
+// earlier second, a pre-ANTS-5776 row with no ppid and a malformed line count
+// nothing.
+namespace {
+QByteArray tallyRow(qint64 secs, const char *tool, const char *kind, bool warned,
+                    bool bypassed, qint64 ppid) {
+    QJsonObject o;
+    o["ts"] = QDateTime::fromSecsSinceEpoch(secs, QTimeZone::utc()).toString(Qt::ISODate);
+    o["tool"] = QString::fromLatin1(tool);
+    o["kind"] = QString::fromLatin1(kind);
+    o["warned"] = warned;
+    o["bypassed"] = bypassed;
+    if (ppid > 0) o["ppid"] = ppid;
+    return QJsonDocument(o).toJson(QJsonDocument::Compact) + '\n';
+}
+constexpr qint64 kSessionSec = 1'700'000'000;
+constexpr qint64 kClaudePid = 4242;
+}  // namespace
+
+TEST(McpdUsageSnapshots, Ants5776RawSideCountsThisSessionOnly) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("count.jsonl"));
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(tallyRow(kSessionSec, "grep", "search", true, false, kClaudePid));
+    f.write(tallyRow(kSessionSec + 100, "cat", "read", false, true, kClaudePid));
+    f.write(tallyRow(kSessionSec + 200, "rg", "search", false, false, kClaudePid));
+    f.write(tallyRow(kSessionSec + 300, "grep", "search", true, false, 9999));
+    f.write(tallyRow(kSessionSec - 1, "grep", "search", true, false, kClaudePid));
+    f.write(tallyRow(kSessionSec + 400, "find", "search", true, false, 0));
+    f.write("not json\n");
+    f.close();
+
+    const QJsonObject raw = rawSideFromTally(path, kClaudePid, kSessionSec * 1000 + 500);
+    EXPECT_EQ(raw.value(QStringLiteral("searches")).toInt(), 2);
+    EXPECT_EQ(raw.value(QStringLiteral("reads")).toInt(), 1);
+    EXPECT_EQ(raw.value(QStringLiteral("nudged")).toInt(), 1);
+    EXPECT_EQ(raw.value(QStringLiteral("bypassed")).toInt(), 1);
+    const QJsonObject byTool = raw.value(QStringLiteral("by_tool")).toObject();
+    EXPECT_EQ(byTool.size(), 3) << QJsonDocument(byTool).toJson().toStdString();
+    EXPECT_EQ(byTool.value(QStringLiteral("grep")).toInt(), 1);
+    EXPECT_EQ(byTool.value(QStringLiteral("cat")).toInt(), 1);
+    EXPECT_EQ(byTool.value(QStringLiteral("rg")).toInt(), 1);
+
+    const QJsonObject none = rawSideFromTally(dir.filePath(QStringLiteral("absent.jsonl")),
+                                              kClaudePid, 0);
+    EXPECT_EQ(none.value(QStringLiteral("searches")).toInt(-1), 0);
+    EXPECT_TRUE(none.value(QStringLiteral("by_tool")).toObject().isEmpty());
+}
+
+TEST(McpdUsageSnapshots, Ants5776OverlayAddsRawSide) {
+    const QJsonObject raw{{QStringLiteral("searches"), 4}};
+    QJsonObject env = sessionFieldsJson(Snapshot{});
+    env["ok"] = true;
+    const QJsonObject got = envOf(overlaySessionOnReply(replyLine(env), localSession(), raw));
+    EXPECT_EQ(got.value(QStringLiteral("raw_side")).toObject(), raw);
+    // A reply the overlay leaves alone gains nothing.
+    QJsonObject refused;
+    refused["ok"] = false;
+    refused["tools_called"] = 2;
+    const QByteArray r = replyLine(refused);
+    EXPECT_EQ(overlaySessionOnReply(r, localSession(), raw), r);
 }

@@ -87,6 +87,11 @@ These run only when `jq` is present (skipped with a `[skip]` line otherwise).
   where the dir should be), the hook still emits the warn and exits 0.
 - **Outside project (INV-11).** Run from a non-ants dir, no `count.jsonl` /
   stamp is created.
+- **Row fields (INV-13, ANTS-5776).** A search row and a read row each carry
+  `kind`, `bypassed:false` and a numeric `ppid`.
+- **Bypass tally (INV-14, ANTS-5776).** `grep -rn foo src/ # ants-bypass`
+  prints nothing and appends one `bypassed:true` row; `ls src # ants-bypass`
+  appends none.
 
 ## ANTS-2023 — cat/head/tail/bat read-dump soft-warn (appended; 1-13 + ANTS-2141 unchanged)
 

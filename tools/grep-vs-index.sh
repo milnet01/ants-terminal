@@ -23,19 +23,22 @@ if [ ! -f "$f" ]; then
 fi
 
 # Count only well-formed lines (must contain "tool" and "warned").
-total=0; warned=0
+total=0; warned=0; bypassed=0
 declare -A by_tool
 while IFS= read -r line; do
     case "$line" in *'"tool"'*'"warned"'*) ;; *) continue ;; esac
     total=$((total + 1))
     case "$line" in *'"warned":true'*) warned=$((warned + 1)) ;; esac
+    case "$line" in *'"bypassed":true'*) bypassed=$((bypassed + 1)) ;; esac
     tool="$(printf '%s' "$line" | sed -n 's/.*"tool":"\([^"]*\)".*/\1/p')"
     [ -n "$tool" ] && by_tool["$tool"]=$(( ${by_tool["$tool"]:-0} + 1 ))
 done < "$f"
 
 echo "grep-nudge tally  ($f)"
-echo "  total source-searches : $total"
-echo "  nudges emitted        : $warned   (the rest were throttle-suppressed)"
+echo "  total searches + reads: $total"
+echo "  nudges emitted        : $warned"
+echo "  silenced by bypass    : $bypassed"
+echo "  throttle-suppressed   : $((total - warned - bypassed))"
 if [ "$total" -gt 0 ]; then
     echo "  by tool:"
     for t in "${!by_tool[@]}"; do
@@ -44,5 +47,6 @@ if [ "$total" -gt 0 ]; then
 fi
 echo
 echo "Index side: call mcp__ants__token_usage and compare these counts against"
-echo "the n_calls for workspace_search / find_definition / find_sources."
+echo "the n_calls for workspace_search / find_definition / find_sources. Its"
+echo "raw_side block gives this session's share of the counts above (ANTS-5776)."
 echo "A healthy ratio trends toward the index verbs over raw grep/find."

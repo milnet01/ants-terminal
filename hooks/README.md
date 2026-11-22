@@ -81,11 +81,11 @@ process. Tuning env vars:
 - `ANTS_GREP_NUDGE_KEY` — throttle key (default `$PPID`); a seam for a future
   session-id key.
 
-Every eligible search — warned or throttle-suppressed — is tallied to
-`~/.cache/ants-terminal/grep-nudge/count.jsonl` (bounded to ≤ 500 lines). Compare
-that "grep side" against the "index side" (`token_usage`'s per-verb `n_calls` for
-`workspace_search` / `find_definition` / `find_sources`) with
-[`tools/grep-vs-index.sh`](../tools/grep-vs-index.sh) to see whether the session
-is greping or querying the index.
+Every eligible search or read — warned, throttle-suppressed or silenced by
+`# ants-bypass` — is tallied to
+`~/.cache/ants-terminal/grep-nudge/count.jsonl` (bounded to ≤ 500 lines). Each
+row names the Claude process (`ppid`), so `token_usage`'s `raw_side` block shows
+one session's raw searches beside its verb calls (ANTS-5776).
+[`tools/grep-vs-index.sh`](../tools/grep-vs-index.sh) prints the whole tally.
 
 A broken cache never silences the warn — the throttle **fails open** (emits).

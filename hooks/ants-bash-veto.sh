@@ -28,8 +28,17 @@ cmd="$(jq -r '.tool_input.command // empty' 2>/dev/null)"
 # Override: a `# ants-bypass` token ANYWHERE in the command lets it through
 # untouched, before any pattern below is tested. The token never appears in
 # a reason text (INV-12); readers learn about it from hooks/README.md.
+# ANTS-5776 (ANTS-2141 INV-14) — a bypassed search or read is still tallied,
+# marked bypassed, so token_usage's raw_side can count the silences.
 case "$cmd" in
-    *"# ants-bypass"*) exit 0 ;;
+    *"# ants-bypass"*)
+        unbypassed="${cmd//"# ants-bypass"/}"
+        if ants_is_source_search "$unbypassed"; then
+            ants_grep_nudge_record "${ANTS_NUDGE_TOOL:-grep}" false search true
+        elif ants_is_source_read "$unbypassed"; then
+            ants_grep_nudge_record "${ANTS_NUDGE_TOOL:-cat}" false read true
+        fi
+        exit 0 ;;
 esac
 
 # ANTS-2141 — soft-warn a raw source search (grep -r / rg / project find).
@@ -40,10 +49,10 @@ esac
 if ants_is_source_search "$cmd"; then
     nudge_tool="${ANTS_NUDGE_TOOL:-grep}"
     if ants_grep_nudge_throttled; then
-        ants_grep_nudge_record "$nudge_tool" false   # counted, nudge suppressed
+        ants_grep_nudge_record "$nudge_tool" false search   # counted, nudge suppressed
         exit 0
     fi
-    ants_grep_nudge_record "$nudge_tool" true
+    ants_grep_nudge_record "$nudge_tool" true search
     # shellcheck disable=SC2016  # backticks are literal markdown, not a subshell
     ctx='Ants tip: that was a raw source search. Prefer mcp__ants__workspace_search (project-wide code search) / find_definition (where it is defined) / trace (who calls it) — indexed, far fewer tokens than streaming grep/find output back. Append `# ants-bypass` to silence.'
     jq -nc --arg c "$ctx" \
@@ -58,10 +67,10 @@ fi
 if ants_is_source_read "$cmd"; then
     nudge_tool="${ANTS_NUDGE_TOOL:-cat}"
     if ants_grep_nudge_throttled; then
-        ants_grep_nudge_record "$nudge_tool" false   # counted, nudge suppressed
+        ants_grep_nudge_record "$nudge_tool" false read   # counted, nudge suppressed
         exit 0
     fi
-    ants_grep_nudge_record "$nudge_tool" true
+    ants_grep_nudge_record "$nudge_tool" true read
     # shellcheck disable=SC2016  # backticks are literal markdown, not a subshell
     ctx='Ants tip: that dumped a whole source file. Prefer mcp__ants__file_outline (symbols/structure) or mcp__ants__read_region (a line range) — far fewer tokens than cat-ing the entire file back. Append `# ants-bypass` to silence.'
     jq -nc --arg c "$ctx" \

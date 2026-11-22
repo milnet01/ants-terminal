@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **`token_usage` shows a session's raw grep and cat calls beside its verb calls** (ANTS-5776)
+  Through `ants-mcpd`, the reply's `raw_side` block counts the raw source
+  searches and reads the Ants Bash hook saw in this Claude session: how many
+  were nudged and how many were silenced with `# ants-bypass`. Each tally row
+  now names its session, and a bypassed search is counted instead of skipped.
+  `tools/grep-vs-index.sh` prints the bypass count too.
+
 - **`find_definition` takes `lane`, as `find_caller` does, to search one folder** (ANTS-5712)
   A short name such as `start` can have many definitions across the
   project. `lane` limits the search, and the bodies `include_body`

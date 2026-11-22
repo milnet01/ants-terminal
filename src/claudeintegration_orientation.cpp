@@ -2615,7 +2615,9 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "entry adds {wrap_bytes, duration_us_min/"
                         "max/mean}. Sorted by est_tokens_saved "
                         "descending. `mcpd` counts calls served by "
-                        "ants-mcpd processes (ANTS-5311). Pure read "
+                        "ants-mcpd processes (ANTS-5311). `raw_side` "
+                        "counts this session's raw grep/cat calls the "
+                        "Ants hooks saw (ANTS-5776). Pure read "
                         "by default; pass reset:true to read-and-clear "
                         "in one round-trip. No required args.");
                     t["selection_hint"] = QStringLiteral(

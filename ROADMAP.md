@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6870 -->
+<!-- ants-roadmap-id-high-water: ANTS=6872 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74155,7 +74155,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-10-19 (roadmap audit fan-out).
   Lanes: mcp.
 
-- 📋 [ANTS-5776] **Measure how often sessions bypass Ants verbs for raw grep/sed/Read, and what each route costs.**
+- ✅ [ANTS-5776] **Measure how often sessions bypass Ants verbs for raw grep/sed/Read, and what each route costs.**
   Seen 2026-10-19 in this session: about six raw grep/sed calls on
   source where a verb fitted, two silenced with `# ants-bypass`. The
   stated reason, "one shell call is cheaper than several verb calls", was
@@ -74183,6 +74183,23 @@ fixes don't address. Roadmapped here as their own design tasks.
   larger. The same session hit workspace_search's 10-calls-a-minute cap
   (rate_limited) while one ants-explore subagent ran, which is
   ANTS-5112.
+  Shipped 2026-11-22.
+  - Count: each hook tally row now carries kind, bypassed and the Claude
+    process (ppid); a `# ants-bypass` search or read is tallied as
+    bypassed. token_usage through ants-mcpd adds `raw_side` {searches,
+    reads, nudged, bypassed, by_tool} for rows whose ppid is the
+    helper's parent (ANTS-2141 INV-13/14, ANTS-5311 INV-13). Not
+    counted: the Read tool (no hook sees it) and `sed`.
+  - Measure, 2026-11-22, one query each, mcp_trace resp_bytes vs wc -c:
+    workspace_search tabular + fields + max_match_bytes:160 378 B vs
+    `rg -n` over src tests 1440 B; find_definition 519 B vs a targeted
+    git grep 180 B (ANTS-6871); read_region 41 lines 1944 B vs sed
+    1634 B (ANTS-6872). Timings not recorded: load average was ~22 on
+    12 cores. That load also timed out a default workspace_search
+    (rg past 5 s, git fallback git_failed).
+  - Hot reload: the hook is re-read per call; raw_side reaches clients
+    on an ants-mcpd rebuild and /mcp reconnect, no terminal relaunch.
+    No running state, so no stop/start control.
   **Layman:** Find out whether Claude sessions actually use the cheaper Ants tools, and whether they really are cheaper, instead of guessing.
   Kind: optimize.
   Source: user-request-2026-10-19.
@@ -74287,6 +74304,30 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: self-found-2026-11-18.
   Lanes: claudeintegration.
+
+- 📋 [ANTS-6871] **find_definition's default reply for one symbol is about three times the raw grep that finds it.**
+  Measured 2026-11-22 (mcp_trace resp_bytes vs wc -c): find_definition
+  symbol:overlaySessionOnReply returned 519 B; `git grep -n 'QByteArray
+  overlaySessionOnReply' -- src` printed 180 B for the same two sites.
+  The gap is the envelope (files_scanned, lang, truncated, walk_capped,
+  definitions_count) and per-row kind/lang. Options: drop false and
+  zero fields by default, or name `fields:["definitions"]` in the hook
+  nudge. Refute by re-measuring the same query.
+  **Layman:** Looking up where a function is defined through the Ants tool costs more text than a plain search does, so it does not save what it should.
+  Kind: optimize.
+  Source: ANTS-5776 measurement (2026-11-22).
+  Lanes: mcp.
+
+- 📋 [ANTS-6872] **read_region's reply for a line range is about a fifth larger than the raw lines.**
+  Measured 2026-11-22: read_region src/tokenusageengine.cpp 600-640 (41
+  lines) returned 1944 B; `sed -n 600,640p` printed 1634 B. The JSON
+  lines array escapes quotes and adds a quoted, comma-joined string per
+  line. Options: an opt-in plain-text body, or encoding the lines as one
+  string. Refute by re-measuring the same range.
+  **Layman:** Reading a few lines through the Ants tool costs a bit more text than reading them directly, which works against the tool's purpose.
+  Kind: optimize.
+  Source: ANTS-5776 measurement (2026-11-22).
+  Lanes: mcp.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

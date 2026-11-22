@@ -13,7 +13,7 @@ new assertions verified red against pre-change hooks).
 
 - §1 Problem
 - §2 Surface (2.1 warn envelope · 2.2 match algorithm · 2.3 throttle · 2.4 observability · 2.5 cache tree · 2.6 files)
-- §3 Invariants (INV-1..INV-12)
+- §3 Invariants (INV-1..INV-14)
 - §4 RAM / build cost
 - §5 Out of scope
 - §6 Tests
@@ -248,8 +248,14 @@ failed PROJECT_FIND, or any non-eligible/exempt command, never records),
 a nudge is suppressed:
 
 ```json
-{"ts":"2026-06-16T12:00:00Z","tool":"grep","warned":true}
+{"ts":"2026-06-16T12:00:00Z","tool":"grep","kind":"search","warned":true,"bypassed":false,"ppid":27870}
 ```
+
+ANTS-5776 added the last three fields. `kind` is `search` for this
+section's predicate and `read` for ANTS-2023's. `ppid` is the hook's
+`$PPID`, which is the Claude process; `ants-mcpd` matches it against its own
+parent to count one session's rows (ANTS-5311 INV-13). `bypassed` is `true`
+on a row INV-14 writes for a command carrying `# ants-bypass`.
 
 `tool` is one of a fixed vocabulary — `grep` (covers `grep`/`egrep`/`fgrep`),
 `rg`, `ag`, `ack` (`ack-grep` buckets as `ack`), `git-grep`, `find` — derived
@@ -270,8 +276,9 @@ The **index side** already exists: `token_usage` reports per-verb `n_calls`
 for `workspace_search` / `find_definition` / `find_sources`. The readout is
 their comparison. A thin `tools/grep-vs-index.sh` prints the grep-nudge tally
 (total + warned-count + last-N) and reminds the reader to compare it against
-`token_usage` — a one-screen "are we greping or querying?" check. No C++; no
-new MCP verb (a unified single-call readout is §5 out-of-scope).
+`token_usage` — a one-screen "are we greping or querying?" check. ANTS-5776
+puts both sides in one reply: `token_usage`'s `raw_side` block (ANTS-5311
+INV-13).
 
 ### 2.5 Cache tree + helper ordering
 
@@ -389,6 +396,18 @@ existing sub-millisecond stat-ascent (ANTS-1252 INV-9), zero tokens, zero files.
 - **INV-12** — `ants-bash-veto.sh` exits 0 on every path (warn, block, exempt,
   no-op, error). *Test:* the existing ANTS-1252 INV-1 case plus each new case
   asserts exit 0.
+- **INV-13** (ANTS-5776) — Every tally row carries `kind` (`search` or
+  `read`), `bypassed` (a boolean) and `ppid` (a number). Broken by a record
+  call that drops a field or passes the wrong kind. *Test:* `hook_pack` fires
+  `grep -rn foo src/` and `cat src/foo.cpp` into a temp `HOME`; `jq -e` on
+  each row checks its kind, `bypassed == false` and a numeric `ppid`.
+- **INV-14** (ANTS-5776) — A command carrying `# ants-bypass` whose
+  remainder is a §2.2 search or an ANTS-2023 read appends one row with
+  `bypassed:true` and `warned:false`, and still prints nothing. A bypassed
+  command that is neither appends nothing. Broken by the bypass exiting
+  before the tally (the pre-ANTS-5776 hook), or by tallying every bypass.
+  *Test:* `hook_pack` fires `grep -rn foo src/ # ants-bypass` (one
+  `bypassed:true` row, empty stdout) and `ls src # ants-bypass` (no row).
 
 ## 4. RAM / build cost
 
@@ -417,10 +436,8 @@ existing sub-millisecond stat-ascent (ANTS-1252 INV-9), zero tokens, zero files.
 - **Strict-deny escalation** (block again if warnings are ignored) — deferred
   per the user's 2026-06-15 posture; revisit if the readout shows warnings
   aren't changing behaviour. A follow-up ROADMAP id will carry it if needed.
-- **A unified single-call "index vs grep" MCP verb** — the readout is assembled
-  from `token_usage` + `count.jsonl` + `tools/grep-vs-index.sh`. A dedicated
-  verb folding both sides into one envelope is a separate item if the manual
-  comparison proves clumsy.
+- **A unified single-call "index vs grep" MCP verb** — ANTS-5776 shipped
+  it as `token_usage`'s `raw_side` block (ANTS-5311 INV-13).
 - **Softening the git-status / ROADMAP-grep branches** — out of this item's lane
   (scoped to grep/find over source).
 - **Catching `&&`-chained / `find -exec` searches** — accepted blind spots
@@ -429,7 +446,7 @@ existing sub-millisecond stat-ascent (ANTS-1252 INV-9), zero tokens, zero files.
 ## 6. Tests
 
 Extend the existing shell harness `tests/features/hook_pack/test_hooks.sh`
-(ctest `hook_pack`, label `features`) — no new test target. Covers INV-1..INV-12.
+(ctest `hook_pack`, label `features`) — no new test target. Covers INV-1..INV-14.
 Per the project convention, **verify each new assertion FAILS against the
 pre-change `ants-bash-veto.sh`** (which blocks instead of warning, has no
 throttle/counter, no `ants_is_source_search`) before the new behaviour is in

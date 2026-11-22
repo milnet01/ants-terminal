@@ -388,6 +388,44 @@ QString peerSnapshotDir() {
            + QStringLiteral("/ants-terminal/mcpd-usage");
 }
 
+QString rawTallyPath() {
+    // The hook writes under $HOME/.cache literally (hooks/_common.sh
+    // ants_grep_nudge_dir), not under XDG_CACHE_HOME.
+    return QDir::homePath() + QStringLiteral("/.cache/ants-terminal/grep-nudge/count.jsonl");
+}
+
+QJsonObject rawSideFromTally(const QString &path, qint64 claudePid,
+                             qint64 sinceUnixMs) {
+    // The rows' ts has whole seconds, so a row in the session's first second
+    // counts.
+    const qint64 sinceSec = sinceUnixMs / 1000;
+    int searches = 0, reads = 0, nudged = 0, bypassed = 0;
+    QJsonObject byTool;
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!f.atEnd()) {
+            const QJsonObject row = QJsonDocument::fromJson(f.readLine()).object();
+            if (row.value(QStringLiteral("ppid")).toInteger(-1) != claudePid) continue;
+            const QDateTime ts = QDateTime::fromString(
+                row.value(QStringLiteral("ts")).toString(), Qt::ISODate);
+            if (!ts.isValid() || ts.toSecsSinceEpoch() < sinceSec) continue;
+            const QString kind = row.value(QStringLiteral("kind")).toString();
+            if (kind == QLatin1String("search")) ++searches;
+            else if (kind == QLatin1String("read")) ++reads;
+            else continue;
+            if (row.value(QStringLiteral("warned")).toBool()) ++nudged;
+            if (row.value(QStringLiteral("bypassed")).toBool()) ++bypassed;
+            const QString tool = row.value(QStringLiteral("tool")).toString();
+            byTool[tool] = byTool.value(tool).toInt() + 1;
+        }
+    }
+    return QJsonObject{{QStringLiteral("searches"), searches},
+                       {QStringLiteral("reads"), reads},
+                       {QStringLiteral("nudged"), nudged},
+                       {QStringLiteral("bypassed"), bypassed},
+                       {QStringLiteral("by_tool"), byTool}};
+}
+
 QJsonObject snapshotToJson(const QHash<QString, ToolCounter> &tools,
                            const QHash<QString, qint64> &savedBytesByProject,
                            qint64 pid, qint64 startedMs, qint64 updatedMs) {
@@ -630,7 +668,8 @@ QJsonObject sessionFieldsJson(const Snapshot &snap) {
 }
 
 QByteArray overlaySessionOnReply(const QByteArray &replyLine,
-                                 const Snapshot &local) {
+                                 const Snapshot &local,
+                                 const QJsonObject &rawSide) {
     // token_usage is control-plane, so its text is the bare envelope with no
     // data wrap; fields= may already have dropped some session fields.
     QJsonObject rpc = QJsonDocument::fromJson(replyLine).object();
@@ -655,6 +694,7 @@ QByteArray overlaySessionOnReply(const QByteArray &replyLine,
     if (!replaced) return replyLine;
     if (!terminal.isEmpty())
         env[QStringLiteral("terminal_session")] = terminal;
+    if (!rawSide.isEmpty()) env[QStringLiteral("raw_side")] = rawSide;
 
     text[QStringLiteral("text")] =
         QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));

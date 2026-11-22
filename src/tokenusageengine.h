@@ -206,9 +206,22 @@ QJsonObject sessionFieldsJson(const Snapshot &snap);
 // ANTS-5262 — ants-mcpd's rewrite of a forwarded token_usage reply line.
 // Each session field present in the terminal's ok envelope is replaced by
 // `local`'s, and the terminal's own tools_called / total_saved move to
-// `terminal_session`. Any other line is returned unchanged.
+// `terminal_session`. ANTS-5776 — a non-empty `rawSide` is added as
+// `raw_side` to a reply the overlay changed. Any other line is returned
+// unchanged.
 QByteArray overlaySessionOnReply(const QByteArray &replyLine,
-                                 const Snapshot &local);
+                                 const Snapshot &local,
+                                 const QJsonObject &rawSide = {});
+
+// ANTS-5776 — the Ants Bash hook's tally of raw source searches and reads,
+// ~/.cache/ants-terminal/grep-nudge/count.jsonl (ANTS-2141 § 2.4).
+QString rawTallyPath();
+
+// ANTS-5776 — {searches, reads, nudged, bypassed, by_tool} over the tally
+// rows whose ppid is `claudePid` and whose ts falls in or after the second of
+// `sinceUnixMs`. A missing file or a bad row counts nothing.
+QJsonObject rawSideFromTally(const QString &path, qint64 claudePid,
+                             qint64 sinceUnixMs);
 
 // ANTS-6850 — the terminal narrows a reply before ants-mcpd sees it, and a
 // narrowed reply hides the fields the overlay replaces. So ants-mcpd forwards

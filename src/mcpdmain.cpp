@@ -256,13 +256,18 @@ int main(int argc, char **argv) {
             }
             const QJsonObject args = params.value(QStringLiteral("arguments")).toObject();
             const bool reset = args.value(QStringLiteral("reset")).toBool();
+            TokenUsageEngine::Snapshot mine = pipeline.tokenUsageReport(
+                args.value(QStringLiteral("include_zero")).toBool());
+            // ANTS-5776 — this helper's parent is the Claude process the Bash
+            // hook names in each tally row, so raw_side is this session's.
+            QJsonObject raw = TokenUsageEngine::rawSideFromTally(
+                TokenUsageEngine::rawTallyPath(), qint64(getppid()), mine.sinceUnixMs);
             onReply = [inner = std::move(onReply), &pipeline, reset, args,
-                       mine = pipeline.tokenUsageReport(
-                           args.value(QStringLiteral("include_zero")).toBool())](
+                       mine = std::move(mine), raw = std::move(raw)](
                           const QByteArray &reply) {
                 if (reset) pipeline.resetTokenUsage();
                 inner(TokenUsageEngine::narrowForCaller(
-                    TokenUsageEngine::overlaySessionOnReply(reply, mine), args));
+                    TokenUsageEngine::overlaySessionOnReply(reply, mine, raw), args));
             };
             forwarder.forward(TokenUsageEngine::wholeReportRequest(line),
                               std::move(onReply), std::move(onFail));

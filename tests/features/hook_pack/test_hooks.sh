@@ -346,13 +346,16 @@ if [ "$have_jq" -eq 1 ]; then
     esac
     check_reason_size git-status '{"tool_input":{"command":"git status"}}'
 
-    # Bypass: trailing `# ants-bypass` suppresses the veto.
-    bypass_out="$(printf '%s' '{"tool_input":{"command":"grep -r foo src/ # ants-bypass"}}' | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)"
+    # Bypass: trailing `# ants-bypass` suppresses the veto. A temp HOME,
+    # because a bypassed search is tallied (ANTS-2141 INV-14).
+    B_HOME="$(mktemp -d -t ants-bypass.XXXXXX)"
+    bypass_out="$(printf '%s' '{"tool_input":{"command":"grep -r foo src/ # ants-bypass"}}' | HOME="$B_HOME" bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)"
     if [ -z "$bypass_out" ]; then
         pass "behaviour bash-veto bypass strips veto"
     else
         fail "behaviour bash-veto bypass did NOT suppress: $bypass_out"
     fi
+    rm -rf "$B_HOME"
 else
     skip "INV-4 + bash-veto behaviour (jq not available)"
 fi
@@ -483,6 +486,34 @@ if [ "$have_jq" -eq 1 ]; then
         fail "ANTS-6519 prune: $(cd "$pdir" && echo *.stamp)"
     fi
     rm -rf "$P_HOME"
+
+    # ANTS-2141 INV-13/INV-14 (ANTS-5776): each row carries kind, bypassed and
+    # ppid; a bypassed search is tallied silently, a bypassed `ls` is not.
+    K_HOME="$(mktemp -d -t ants-nudge-kind.XXXXXX)"
+    kf="$K_HOME/.cache/ants-terminal/grep-nudge/count.jsonl"
+    kveto() {
+        printf '%s' "$1" | ANTS_GREP_NUDGE_KEY=kindtest HOME="$K_HOME" \
+            bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null
+    }
+    kveto '{"tool_input":{"command":"grep -rn foo src/"}}' >/dev/null
+    kveto '{"tool_input":{"command":"cat src/foo.cpp"}}' >/dev/null
+    row_is() { sed -n "$1p" "$kf" | jq -e "$2" >/dev/null 2>&1; }
+    if [ "$(wc -l <"$kf" 2>/dev/null || echo 0)" -eq 2 ] \
+       && row_is 1 '.kind=="search" and .bypassed==false and (.ppid|type=="number")' \
+       && row_is 2 '.kind=="read" and .bypassed==false and (.ppid|type=="number")'; then
+        pass "ANTS-2141 INV-13 rows carry kind, bypassed and ppid"
+    else
+        fail "ANTS-2141 INV-13 rows: $(cat "$kf" 2>/dev/null)"
+    fi
+    bout="$(kveto '{"tool_input":{"command":"grep -rn foo src/ # ants-bypass"}}')"
+    kveto '{"tool_input":{"command":"ls src # ants-bypass"}}' >/dev/null
+    if [ -z "$bout" ] && [ "$(wc -l <"$kf" 2>/dev/null || echo 0)" -eq 3 ] \
+       && row_is 3 '.bypassed==true and .warned==false and .kind=="search" and .tool=="grep"'; then
+        pass "ANTS-2141 INV-14 a bypassed search is tallied, a bypassed ls is not"
+    else
+        fail "ANTS-2141 INV-14 out='${bout}' rows: $(cat "$kf" 2>/dev/null)"
+    fi
+    rm -rf "$K_HOME"
 
     # INV-9: fail-open — unwritable cache (regular file blocks mkdir) still warns.
     F_HOME="$(mktemp -d -t ants-nudge-fo.XXXXXX)"
