@@ -465,9 +465,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     if (!itemsOpt) return pbErr(QStringLiteral("store_failed"), err);
     const QHash<qint64, RoadmapStore::ItemWrite> &items = *itemsOpt;
     // A reference into `items`, never QHash::value()'s copy of a whole row: the
-    // loops below read it per item per section. Every pk is one of its keys.
+    // loops below read it per item per section. Every pk is one of its keys;
+    // the end check is for GCC, which cannot prove it (ANTS-6818).
     const auto itemAt = [&items](qint64 pk) -> const RoadmapStore::ItemWrite & {
-        return *items.constFind(pk);
+        static const RoadmapStore::ItemWrite kAbsent{};
+        const auto it = items.constFind(pk);
+        return it != items.constEnd() ? *it : kAbsent;
     };
     const auto historyOpt = store.placementHistory(projectId, &err);
     if (!historyOpt) return pbErr(QStringLiteral("store_failed"), err);

@@ -116002,12 +116002,16 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-17 (ANTS-6130).
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6818] **GCC's -Wnull-dereference fires in remotecontrol_roadmap_release.cpp, inlined from place_by_release's itemAt lambda.**
+- ✅ [ANTS-6818] **GCC's -Wnull-dereference fires in remotecontrol_roadmap_release.cpp, inlined from place_by_release's itemAt lambda.**
   14 warnings at qhash.h, inlined from `*items.constFind(pk)` in
   cmdRoadmapLogPlaceByRelease's itemAt lambda, through the std::sort
   of `order`. GCC cannot prove the key is present. Every pk is a key
   (the comment above says so), so this is the ANTS-6791 class. Seen
   2026-11-17 when a comment edit recompiled the file.
+  Shipped 2026-11-22: the code now lives in
+  remotecontrol_roadmap_release.cpp. itemAt checks constFind against
+  constEnd() and falls back to a static empty row it never reaches.
+  Recompiling the file alone: 14 warnings before, 0 after.
   **Layman:** Clear a compiler warning in the release-placement roadmap tool.
   Kind: fix.
   Source: in-session-2026-11-17 (ANTS-6130).
@@ -116096,12 +116100,15 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: ci-run-44927997673-2026-11-21.
 
-- 📋 [ANTS-6865] **GCC's -Wnull-dereference fires in speclog.cpp, inlined from SpecLog::loopLogPointer's `*targets.constBegin()`.**
+- ✅ [ANTS-6865] **GCC's -Wnull-dereference fires in speclog.cpp, inlined from SpecLog::loopLogPointer's `*targets.constBegin()`.**
   Seen 2026-11-21 in the Release build: qhash.h node() via QSet
   const_iterator::operator*, from `return targets.size() == 1 ?
   *targets.constBegin() : QString();`. Present at HEAD 40a9d6c2 too
   (compiled the unedited file with the same flags). Same class as
   ANTS-6798 and ANTS-6818.
+  Shipped 2026-11-22: loopLogPointer checks the iterator against
+  constEnd() (the ANTS-5217 pattern). Recompiling speclog.cpp alone: 1
+  warning before, 0 after.
   **Layman:** The build prints one warning from the spec-log code; clear it so real warnings stand out.
   Kind: fix.
   Source: build-warning-2026-11-21.

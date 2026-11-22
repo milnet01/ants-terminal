@@ -653,7 +653,9 @@ QString loopLogPointer(const QString &content) {
         }
     }
     // Two different files linked: which one is the log is a guess.
-    return targets.size() == 1 ? *targets.constBegin() : QString();
+    if (targets.size() != 1) return {};
+    const auto only = targets.constBegin();   // checked: GCC cannot prove it
+    return only != targets.constEnd() ? *only : QString();
 }
 
 EditResult appendInv(const QString &content, const QString &invId,
