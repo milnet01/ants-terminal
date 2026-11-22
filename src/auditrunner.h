@@ -145,6 +145,8 @@ struct ToolResult {
     QHash<QString, QString> parseFailureReasons;
 };
 
+// One per audit run: field order follows meaning, not size (ANTS-5454).
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
 struct RunResult {
     bool                       ok = true;
     QString                    error;       // non-empty when ok==false

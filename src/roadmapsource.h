@@ -94,7 +94,9 @@ inline constexpr qint64 kDetectorByteCap = 1 << 20;   // 1 MiB
 // prefix stopped and appends rather than seeking back. Hence every byte is read
 // at most once (INV-6), prefix and body come from one file description, and a
 // mid-read error leaves openFailed() true with full() returning what was read
-// before it — which is what QFile::readAll() already does.
+// before it — which is what QFile::readAll() already does. One per read,
+// so field order follows meaning, not size (ANTS-5454).
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
 class RoadmapText {
 public:
     // Move-only: a file-backed text owns an open handle, so a copy would either

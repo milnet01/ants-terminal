@@ -250,6 +250,8 @@ struct PromptRegion {
 };
 
 // Represents the terminal screen buffer and handles all actions from the parser.
+// One per tab, so field order follows meaning, not size (ANTS-5454).
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
 class TerminalGrid {
 public:
     // Per-image dimension cap shared by every image-intake path

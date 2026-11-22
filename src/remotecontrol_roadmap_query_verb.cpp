@@ -885,7 +885,9 @@ int rcIdsThatFit(const QJsonObject &reply, const QJsonArray &fullRows,
 }  // namespace
 
 // ANTS-6164 — one roadmap_query call: the request, the reply being built and
-// the steps that fill it. Lives for the length of cmdRoadmapQuery().
+// the steps that fill it. Lives for the length of cmdRoadmapQuery(); one
+// per call, so field order follows meaning, not size (ANTS-5454).
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
 struct RemoteControl::RoadmapQueryCall {
     RoadmapQueryCall(RemoteControl &owner, const QJsonObject &request)
         : rc(owner), req(request) {}

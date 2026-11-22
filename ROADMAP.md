@@ -108714,6 +108714,10 @@ worked after these.
   firing-ledger append waited 1662 ms against the 1000 ms bound; passed
   3/3 run alone. A second sighting, so the bound is load-sensitive, not
   a one-off.
+  2026-11-22: failed again once in ctest --preset=default (-j4) on
+  f8e6b7f1 plus the ANTS-5448..5463 edits, which touch no ledger code;
+  green 3/3 run alone. Third sighting.
+
   **Layman:** One timing test failed once while every test ran at the same time, then passed three times on its own.
   Kind: test.
   Source: ctest-run-2026-10-24.
@@ -115229,9 +115233,13 @@ reports are asked for separately, each time.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5454] **clang-analyzer-optin.performance.Padding: 4 structs.**
+- ✅ [ANTS-5454] **clang-analyzer-optin.performance.Padding: 4 structs.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Reorder only where the struct is hot or numerous; else suppress.
+  Shipped 2026-11-22: none is hot or numerous (AuditRunner::RunResult
+  one per audit run, RoadmapQueryCall one per call, RoadmapText one per
+  read, TerminalGrid one per tab), so each is suppressed with that
+  reason, as the item allowed.
   **Layman:** Data structures with wasted gaps between their fields.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
