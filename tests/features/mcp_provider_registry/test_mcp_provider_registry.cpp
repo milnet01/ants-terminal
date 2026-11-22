@@ -170,8 +170,12 @@ TEST(McpProviderRegistry, Inv8SchemaMatchesRegistry) {
         if (name == "tool_info") continue;
         const std::string needle = "registerToolProvider(\"" + name + "\"";
         expect(mw.find(needle) != std::string::npos, "INV-8b",
-               ("schema names tool \"" + name + "\" but mainwindow.cpp "
-                "has no matching registerToolProvider(\"" + name + "\", …) call")
+               std::string("schema names tool \"")
+                   .append(name)
+                   .append("\" but mainwindow.cpp has no matching "
+                           "registerToolProvider(\"")
+                   .append(name)
+                   .append("\", …) call")
                    .c_str());
     }
     EXPECT_EQ(0, expect_failures());

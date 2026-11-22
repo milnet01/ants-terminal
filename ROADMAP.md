@@ -115278,8 +115278,12 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5459] **clang-tidy performance-inefficient-string-concatenation: 2 sites.**
+- ✅ [ANTS-5459] **clang-tidy performance-inefficient-string-concatenation: 2 sites.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt. Fix as one class.
+  Shipped 2026-11-22: four sites at HEAD, all in tests
+  (mcp_project_conventions, mcp_provider_registry, two in
+  threaded_parse_equivalence); each builds its string with += / append /
+  insert.
   **Layman:** Text joined with + in a loop, making a new copy each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.

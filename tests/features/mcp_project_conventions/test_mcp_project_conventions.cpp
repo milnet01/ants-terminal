@@ -144,7 +144,8 @@ TEST(McpProjectConventions, WiringAndDriftGuard) {
            "INV-5", "expected >=6 distinct curated source paths");
     const std::string root = ANTS_SOURCE_DIR;
     for (const std::string &s : sources) {
-        const std::string full = root + "/" + s;
+        std::string full = root + '/';
+        full += s;
         std::string msg = std::string("INV-5 source must exist: ") + s;
         expect(fileExists(full), "INV-5", msg.c_str());
     }

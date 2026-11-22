@@ -397,7 +397,7 @@ static bool gridsEqual(const TerminalGrid &ref, const TerminalGrid &cand,
         if (!cellsEqual(ref.scrollbackLine(i), cand.scrollbackLine(i), why) ||
             ref.scrollbackLineWrapped(i) != cand.scrollbackLineWrapped(i) ||
             ref.scrollbackCombining(i) != cand.scrollbackCombining(i)) {
-            why = "scrollback line " + std::to_string(i) + " " + why;
+            why.insert(0, "scrollback line " + std::to_string(i) + ' ');
             return false;
         }
     }
@@ -410,7 +410,7 @@ static bool gridsEqual(const TerminalGrid &ref, const TerminalGrid &cand,
         if (!cellsEqual(a, b, why) ||
             ref.screenLineWrapped(r) != cand.screenLineWrapped(r) ||
             ref.screenCombining(r) != cand.screenCombining(r)) {
-            why = "screen row " + std::to_string(r) + " " + why;
+            why.insert(0, "screen row " + std::to_string(r) + ' ');
             return false;
         }
     }
