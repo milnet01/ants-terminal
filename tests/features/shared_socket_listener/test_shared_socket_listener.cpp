@@ -134,7 +134,7 @@ bool bindWithoutListening(const QString &path) {
     const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return false;
     const bool bound =
-        ::bind(fd, static_cast<sockaddr *>(static_cast<void *>(&addr)),
+        ::bind(fd, reinterpret_cast<sockaddr *>(&addr),
                sizeof(addr)) == 0;
     ::close(fd);
     return bound;

@@ -115288,8 +115288,9 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5460] **clang-tidy bugprone-casting-through-void: 1 test site.**
+- ✅ [ANTS-5460] **clang-tidy bugprone-casting-through-void: 1 test site.**
   test_shared_socket_listener.cpp:138. Use reinterpret_cast as the check suggests.
+  Shipped 2026-11-22: reinterpret_cast<sockaddr *>(&addr).
   **Layman:** A socket address converted through void* instead of the usual cast.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
