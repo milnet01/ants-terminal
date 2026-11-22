@@ -116096,6 +116096,13 @@ reports are asked for separately, each time.
   2026-11-21: the failure message now ends with the last 400 characters
   of the get-text reply, so the next CI failure shows what the screen
   held. The flake itself stays open.
+  2026-11-22: no local repro. `bash tools/e2e/cases.sh resize`
+  (offscreen, build/ants-terminal) passed 20/20, and 20/20 pinned to one
+  core with taskset. ci_report over three days shows no failure since
+  run 44927997673, so the capture has not fired yet. Unconfirmed lead:
+  cmdResizeWindow replies right after win->resize(), before the PTY's
+  SIGWINCH reaches the shell, so the typed line can race the redraw.
+  Next: read the capture when CI next fails this lane.
   **Layman:** An automatic end-to-end check failed once on GitHub for no code reason; make it reliable.
   Kind: fix.
   Source: ci-run-44927997673-2026-11-21.
