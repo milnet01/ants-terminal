@@ -214,7 +214,8 @@ QJsonDocument cmdInjectClick(const QJsonObject &req);
 
 // cmd "resize-window" — resize the resolved top-level window.
 //   { cmd:"resize-window", w:<int>, h:<int> }
-// Clamped to [minimumSize, screenAvailable]; calls QWidget::resize. The reply
+// Clamped to [minimumSize, screenAvailable]; calls QWidget::resize, then gives
+// each terminal its new grid size before replying (ANTS-6864). The reply
 // echoes the post-clamp size: { ok:true, w:<applied>, h:<applied> } — so a test
 // can assert the result WITHOUT current_state (which is not socket-reachable).
 QJsonDocument cmdResizeWindow(const QJsonObject &req);

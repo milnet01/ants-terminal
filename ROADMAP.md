@@ -116111,7 +116111,7 @@ reports are asked for separately, each time.
   Source: split from ANTS-4994, 2026-11-21.
   Lanes: auditengine.
 
-- 📋 [ANTS-6864] **The e2e resize lane sees the shell's echo after a shrink to the minimum window on every run.**
+- ✅ [ANTS-6864] **The e2e resize lane sees the shell's echo after a shrink to the minimum window on every run.**
   tools/e2e/cases.sh lane_resize: "resize: PTY silent after reflow"
   failed on CI run 44927997673 (a275b414, first attempt), green on rerun
   and 5/5 locally. The needle waits 15 s (E2E_TEXT_WAIT_S). Suspects, not
@@ -116129,6 +116129,16 @@ reports are asked for separately, each time.
   cmdResizeWindow replies right after win->resize(), before the PTY's
   SIGWINCH reaches the shell, so the typed line can race the redraw.
   Next: read the capture when CI next fails this lane.
+  2026-11-22: cause found. CI run 45041898522 fired the capture (blank
+  rows only). A local probe under `script` recorded bash's bytes: the
+  output was printed, then bash's SIGWINCH redraw (prompt measured at
+  the old 18-column width) moved up two rows and cleared them. The grid
+  was 18x5 because the pre-layout resize started the ANTS-3456 settle
+  timer, and each resize-window restarted it, so the reply came before
+  the grid changed. Fix: cmdResizeWindow applies each terminal's grid
+  size before replying. Probe: failed within 5-21 runs before, 40/40
+  after; the grid read straight after the reply went from 18 to 156
+  columns.
   **Layman:** An automatic end-to-end check failed once on GitHub for no code reason; make it reliable.
   Kind: fix.
   Source: ci-run-44927997673-2026-11-21.

@@ -1107,6 +1107,13 @@ QJsonDocument RemoteControl::cmdResizeWindow(const QJsonObject &req) {
         if (avail.height() > 0) h = std::min(h, avail.height());
     }
     win->resize(w, h);
+    // ANTS-6864 — apply each terminal's new grid size now, not when the
+    // resize settle timer (ANTS-3456) fires. A caller that types next must
+    // reach a shell that already has the new size: a shell told late redraws
+    // its prompt for the old width and wipes the output above it.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+    for (TerminalWidget *t : win->findChildren<TerminalWidget *>())
+        t->forceRecalcSize();
 
     QJsonObject o;
     o["ok"] = true;
