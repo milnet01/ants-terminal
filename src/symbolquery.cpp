@@ -1055,6 +1055,24 @@ void describeCap(const QString &root, const QString &stoppedAt,
     }
 }
 
+// ANTS-3805 — the folder a `lane` scopes the walk to. Cleaned and re-checked
+// against the root so a `..` cannot walk outside the project; a lane that
+// does not resolve under the root, or does not exist, is ignored rather than
+// refused — the answer is then the whole-project scan the caller would have
+// got anyway, never a silent empty result that reads as "not found".
+QString laneScanRoot(const QString &rootCanonical, const QString &lane) {
+    QString root = QDir::cleanPath(rootCanonical);
+    if (lane.isEmpty()) return root;
+    QString cand = QDir::cleanPath(root + QLatin1Char('/') + lane);
+    // ANTS-6456 — and by its real location, so a symlinked lane that
+    // leads out of the root is ignored too.
+    if ((cand == root || cand.startsWith(root + QLatin1Char('/'))) &&
+        QFileInfo(cand).isDir() &&
+        PathValidation::isInsideProject(rootCanonical, cand))
+        return cand;
+    return root;
+}
+
 void prepare(ScanState &st, const QString &rootCanonical,
              const QString &symbol, const Options &opts) {
     const QString root = QDir::cleanPath(rootCanonical);
@@ -1158,11 +1176,25 @@ DefResult findDefinition(const QString &rootCanonical,
     st.collectDefs = true;
     st.defCap = (opts.maxResults > 0) ? opts.maxResults : kDefDefaultResults;
 
-    walk(st, QDir::cleanPath(rootCanonical));
+    // ANTS-5712 — `lane` scopes the walk, as find_caller's does.
+    const QString root = QDir::cleanPath(rootCanonical);
+    const QString scanRoot = laneScanRoot(rootCanonical, opts.lane);
+    walk(st, scanRoot);
     DefResult found = finishDefs(st, st.filesScanned, st.walkCapped);
-    if (st.walkCapped)
-        describeCap(QDir::cleanPath(rootCanonical), st.stoppedAt,
+    if (st.walkCapped) {
+        // stoppedAt is root-relative; describeCap reads the lane's own
+        // top-level folders, so both sides are re-based onto the lane.
+        const QString laneRel = scanRoot.mid(root.size() + 1);
+        const QString lanePrefix =
+            laneRel.isEmpty() ? QString() : laneRel + QLatin1Char('/');
+        describeCap(scanRoot, st.stoppedAt.mid(lanePrefix.size()),
                     &found.walkStoppedIn, &found.walkUnreached);
+        if (!lanePrefix.isEmpty()) {
+            if (!found.walkStoppedIn.isEmpty())
+                found.walkStoppedIn.prepend(lanePrefix);
+            for (QString &u : found.walkUnreached) u.prepend(lanePrefix);
+        }
+    }
     return found;
 }
 
@@ -1252,23 +1284,7 @@ CallResult findCaller(const QString &rootCanonical,
     st.collectDefs = true;
     st.defCap = kDefDefaultResults;
 
-    // ANTS-3805 — scope the walk to `lane` when given. Cleaned and re-checked
-    // against the root so a `..` cannot walk outside the project; a lane that
-    // does not resolve under the root, or does not exist, is ignored rather
-    // than refused — the answer is then the whole-project scan the caller would
-    // have got anyway, never a silent empty result that reads as "no callers".
-    QString scanRoot = QDir::cleanPath(rootCanonical);
-    if (!opts.lane.isEmpty()) {
-        const QString cand =
-            QDir::cleanPath(scanRoot + QLatin1Char('/') + opts.lane);
-        // ANTS-6456 — and by its real location, so a symlinked lane that
-        // leads out of the root is ignored too.
-        if ((cand == scanRoot || cand.startsWith(scanRoot + QLatin1Char('/'))) &&
-            QFileInfo(cand).isDir() &&
-            PathValidation::isInsideProject(rootCanonical, cand))
-            scanRoot = cand;
-    }
-    walk(st, scanRoot);
+    walk(st, laneScanRoot(rootCanonical, opts.lane));   // ANTS-3805
 
     r.callers = st.calls;
     r.callersTotal = st.callsTotal;

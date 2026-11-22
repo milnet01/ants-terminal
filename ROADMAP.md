@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6868 -->
+<!-- ants-roadmap-id-high-water: ANTS=6869 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91009,13 +91009,21 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_MonsterHunt feedback 2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5712] **find_definition include_body returns a body only for definitions in the file the caller is likely to want, or names the cost first.**
+- ✅ [ANTS-5712] **find_definition include_body returns a body only for definitions in the file the caller is likely to want, or names the cost first.**
   Measured 2026-10-15: find_definition {symbol:"start", include_body,
   max_results:3} returned two header hits without bodies and the
   370-line body of Pty::start (src/ptyhandler.cpp), about 6k tokens,
   for a question about src/hostexec.h. A generic name has 140
   definitions. Options: bodies only when definitions_count is small, a
   body byte cap with an elision marker, or a path/lane filter.
+  Shipped 2026-11-22: find_definition takes find_caller's `lane` (one
+  shared laneScanRoot helper), so the walk, definitions_count and
+  include_body's bodies cover one folder. Live: `start` gave 200
+  definitions unscoped, 3 under lane src/trace. A known single file is
+  already served by read_region {path, symbol}. Chose this over a body
+  byte cap: a cap hides the wanted body as readily as an unwanted one.
+  Test Ants5712FindDefinitionHonoursLane red with the walk unscoped,
+  green on the fix. Reload: ants-mcpd, next client reconnect.
   **Layman:** Stop one tool from pasting a long, unrelated function into the reply.
   Kind: perf.
   Source: in-session-2026-10-15.
@@ -116151,6 +116159,14 @@ reports are asked for separately, each time.
   **Layman:** Three lines at the top of one source file pull in code it no longer uses; removing them makes the file a little faster to build.
   Kind: audit-fix.
   Source: in-session-2026-11-22, found while closing ANTS-5530.
+  Lanes: mcp.
+
+- 📋 [ANTS-6869] **clangd reports buildcache.h as an unused include in remotecontrol_state.cpp.**
+  Seen 2026-11-22 while closing ANTS-5712. Confirm nothing in the file
+  reaches a type or macro only through it, remove it, and build.
+  **Layman:** One source file pulls in code it no longer uses; removing that line makes it a little faster to build.
+  Kind: audit-fix.
+  Source: in-session-2026-11-22, found while closing ANTS-5712.
   Lanes: mcp.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)

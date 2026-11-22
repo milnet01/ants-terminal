@@ -2420,6 +2420,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("read_region/max_bytes"), QStringLiteral("Cap on lines[] bytes (default 512 KiB); keeps the head.")},
                         {QStringLiteral("find_definition/lang"), QStringLiteral("One language family; auto (default) scans all.")},
                         {QStringLiteral("find_definition/max_results"), QStringLiteral("Cap on definitions[] (default 50).")},
+                        {QStringLiteral("find_definition/lane"), QStringLiteral("Only scan this project-relative folder, e.g. \"src/render\".")},
                     };
                     static const QSet<QString> kSharedArgs = {
                         QStringLiteral("fields"), QStringLiteral("compact"),

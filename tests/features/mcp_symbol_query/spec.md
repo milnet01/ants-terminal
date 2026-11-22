@@ -88,4 +88,13 @@ has no public test seam, same contract as INV-9/10/11):
     top-level `callers_count` still carries the true pre-cap total.
 13. The `find_caller` `tools/list` descriptor enumerates `files_only`.
 
+**`find_definition` lane** (ANTS-5712, live —
+`Ants5712FindDefinitionHonoursLane`):
+
+14. `findDefinition` with a `lane` walks only that project-relative folder,
+    so `definitions_count` counts the lane's definitions. A lane that is not
+    a folder under the root is ignored: the whole project is scanned. A
+    capped walk's `walk_stopped_in` and `walk_unreached` name folders inside
+    the lane, as root-relative paths.
+
 Exit 0 = every invariant holds.

@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **`find_definition` takes `lane`, as `find_caller` does, to search one folder** (ANTS-5712)
+  A short name such as `start` can have many definitions across the
+  project. `lane` limits the search, and the bodies `include_body`
+  returns, to one project-relative folder.
+
 - **`tool_info {name, op}` returns one op's prose and the arguments it uses** (ANTS-6829)
   `other_arguments` names the arguments left out. On `roadmap_log`, the
   slice for `op:"append"` is about 15 KB against 58 KB for the whole

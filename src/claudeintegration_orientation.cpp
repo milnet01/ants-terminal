@@ -1330,6 +1330,18 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         props["max_results"] = p;
                     }
                     {
+                        // ANTS-5712 — find_caller's scope filter. A generic
+                        // name (`start` had 140 definitions) otherwise buries
+                        // the one wanted, and include_body pastes each body.
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["description"] = QStringLiteral(
+                            "Optional. Only scan this project-relative "
+                            "folder; echoed back as `lane`. A lane that is "
+                            "not a folder under the root is ignored.");
+                        props["lane"] = p;
+                    }
+                    {
                         // ANTS-2087 — opt-in symbol body inline.
                         QJsonObject p;
                         p["type"]        = "boolean";

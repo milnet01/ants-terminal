@@ -4022,6 +4022,8 @@ QJsonDocument RemoteControl::cmdFindDefinition(const QJsonObject &req) {
     out["lang"]              = sqLangEcho(req);
     out["definitions"]       = defs;
     out["definitions_count"] = res.definitionsTotal;
+    const QString lane = req.value(QStringLiteral("lane")).toString().trimmed();
+    if (!lane.isEmpty()) out["lane"] = lane;   // ANTS-5712
     out["files_scanned"]     = res.filesScanned;
     out["truncated"]         = res.truncated;
     out["walk_capped"]       = res.walkCapped;

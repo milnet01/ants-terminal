@@ -1696,6 +1696,39 @@ TEST(McpSymbolQuery, Ants6456SymlinkLaneOutOfRootIsIgnored) {
     EXPECT_EQ(r.callers.size(), 1);
 }
 
+// ANTS-5712 — find_definition takes find_caller's `lane`. A generic name
+// defined in two folders returns only the lane's definition; a lane that is
+// not a folder is ignored; a capped walk names lane-relative folders.
+TEST(McpSymbolQuery, Ants5712FindDefinitionHonoursLane) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("a/p/x.cpp"), QStringLiteral("void start() {}\n"));
+    writeFile(root, QStringLiteral("a/q/y.cpp"), QStringLiteral("void other() {}\n"));
+    writeFile(root, QStringLiteral("a/r/w.cpp"), QStringLiteral("void other() {}\n"));
+    writeFile(root, QStringLiteral("b/z.cpp"),   QStringLiteral("void start() {}\n"));
+
+    SymbolQuery::Options opts;
+    opts.lane = QStringLiteral("a");
+    const SymbolQuery::DefResult r =
+        SymbolQuery::findDefinition(root, QStringLiteral("start"), opts);
+    ASSERT_EQ(r.definitions.size(), 1);
+    EXPECT_EQ(r.definitions.first().file, QStringLiteral("a/p/x.cpp"));
+    EXPECT_EQ(r.definitionsTotal, 1);
+
+    opts.lane = QStringLiteral("nope");
+    EXPECT_EQ(SymbolQuery::findDefinition(root, QStringLiteral("start"), opts)
+                  .definitions.size(), 2);
+
+    opts.lane = QStringLiteral("a");
+    opts.maxFiles = 1;   // scans a/p, stops at the first file of a/q
+    const SymbolQuery::DefResult capped =
+        SymbolQuery::findDefinition(root, QStringLiteral("missing"), opts);
+    ASSERT_TRUE(capped.walkCapped);
+    EXPECT_EQ(capped.walkStoppedIn, QStringLiteral("a/q"));
+    EXPECT_EQ(capped.walkUnreached, QStringList{QStringLiteral("a/r")});
+}
+
 // ANTS-5535 — an enumerator is a definition of its name. Both layouts: the
 // whole enum on one line, and one enumerator per line. A name that only
 // appears inside an enumerator's initialiser is a use, not a definition.
