@@ -193,7 +193,7 @@ TEST(VtparserPrintRunCoalesce, Main) {
         // position cursor back to col 0 with CUP, then feed the run.
         // U+0301 combining acute accent.
         std::string input;
-        input += "a";
+        input += 'a';
         input += "\xcc\x81";     // U+0301 combining
         input += "\x1b[1;1H";    // CUP back to 1,1
         input.append(20, 'R');   // ASCII run overwriting 'a' and past it

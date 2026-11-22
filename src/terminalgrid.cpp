@@ -3238,7 +3238,7 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
             if (m_currentAttrs.underline)     reply += ";4";
             if (m_currentAttrs.inverse)       reply += ";7";
             if (m_currentAttrs.strikethrough) reply += ";9";
-            reply += "m";
+            reply += 'm';
         } else if (req == " q") {
             // DECSCUSR — cursor shape 0-6 + trailing " q" (space + q)
             reply = std::to_string(static_cast<int>(m_cursorShape)) + " q";

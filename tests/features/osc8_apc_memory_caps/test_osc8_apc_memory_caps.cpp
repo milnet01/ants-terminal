@@ -39,7 +39,7 @@ std::string osc8Open(const std::string &uri, const std::string &params = "") {
     std::string s;
     s += "\x1b]8;";
     s += params;
-    s += ";";
+    s += ';';
     s += uri;
     s += '\x07';
     return s;
@@ -53,7 +53,7 @@ std::string apcEnv(const std::string &params, const std::string &data) {
     std::string s;
     s += "\x1b_G";
     s += params;
-    s += ";";
+    s += ';';
     s += data;
     s += '\x07';
     return s;

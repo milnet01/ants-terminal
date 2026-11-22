@@ -163,7 +163,7 @@ TEST(VtStringRearm, dangerousFinalsStillDiscarded) {
 // final `J`); `2` and `J` fall through to Ground as Print.
 TEST(VtStringRearm, csiStaysDiscarded) {
     std::string s;
-    s += ESC; s += ']'; s += "x";
+    s += ESC; s += ']'; s += 'x';
     s += ESC; s += '[';
     s += '2'; s += 'J';
     const auto a = collectActions(s);

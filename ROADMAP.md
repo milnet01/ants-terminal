@@ -115177,9 +115177,11 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5449] **clang-tidy performance-faster-string-find (prefer-single-char-overloads): 7 sites in 6 files.**
+- ✅ [ANTS-5449] **clang-tidy performance-faster-string-find (prefer-single-char-overloads): 7 sites in 6 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   performance-prefer-single-char-overloads flags the same 7; one item.
+  Shipped 2026-11-22: seven sites at HEAD (terminalgrid.cpp and five
+  tests) now pass a char, not a one-character string.
   **Layman:** Searching text for a one-letter string instead of a single character.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.

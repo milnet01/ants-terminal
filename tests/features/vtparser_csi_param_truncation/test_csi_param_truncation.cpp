@@ -33,7 +33,7 @@ const VtAction *lastCsi(const std::vector<VtAction> &v) {
 std::string manyParamSgr(int count) {
     std::string s = "\x1B[";
     for (int i = 0; i < count; ++i) s += "1;";
-    s += "m";
+    s += 'm';
     return s;
 }
 

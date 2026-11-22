@@ -77,7 +77,7 @@ static int runMain() {
         std::string tail = header.substr(pos);
         // Stop at next access specifier or class-close to avoid matching
         // private helpers with the same name.
-        size_t stop = tail.find_first_of("}");
+        size_t stop = tail.find('}');
         size_t stopPrivate = tail.find("private");
         size_t stopSignals = tail.find("signals");
         size_t clip = std::min({stop, stopPrivate, stopSignals});
