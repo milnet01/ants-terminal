@@ -1115,7 +1115,7 @@ public:
         const MainWindow *w = m_w;
         const auto i = ants::onGuiThread(
             [w]() { return w->currentTabIndexForRemote(); });
-        if (i && *i >= 0) return *i;
+        if (i && *i >= 0) return i;
         return std::nullopt;
     }
     ants::ResolvedRoot::Source fallbackSource() const override {

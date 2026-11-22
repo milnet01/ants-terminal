@@ -115205,10 +115205,13 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5452] **clang-tidy bugprone-optional-value-conversion: 5 sites in 4 files.**
+- ✅ [ANTS-5452] **clang-tidy bugprone-optional-value-conversion: 5 sites in 4 files.**
   Sites: mainwindow.cpp:3230, remotecontrol_feedback.cpp:2276,
   remotecontrol_roadmap_query_verb.cpp:3319/3321, test_roadmap_render.cpp:352.
   The unwrap is unchecked; check each, then drop the round trip.
+  Shipped 2026-11-22: four sites at HEAD, each already checked before
+  the unwrap; the optional is now passed through. test_roadmap_render no
+  longer flags.
   **Layman:** An optional value unwrapped and immediately re-wrapped.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

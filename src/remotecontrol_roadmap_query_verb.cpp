@@ -4002,9 +4002,9 @@ auto RemoteControl::RoadmapQueryCall::list() -> QJsonDocument {
                     *store, rcProjectRootFor(callerCanonical), text, nullptr,
                     &winWhy)) {
                 QString err;
-                shippedIds = store->idsShippedInWindow(*pid, shippedSince,
+                shippedIds = store->idsShippedInWindow(pid, shippedSince,
                                                        shippedUntil, &err);
-                if (const auto rc = store->reportCounts(*pid, &err))
+                if (const auto rc = store->reportCounts(pid, &err))
                     shippedUndated = rc->shippedUndated;
             }
         }

@@ -1541,7 +1541,7 @@ ResolvedRoot resolveCallerCwdRoot(const RootProvider *roots,
             // Case 2 — explicit caller_cwd hits an open tab.
             rr.source   = ResolvedRoot::Source::ExplicitMatch;
             rr.cwd      = wantCanonical;
-            rr.tabIndex = *tab;
+            rr.tabIndex = tab;
             return rr;
         }
     }
