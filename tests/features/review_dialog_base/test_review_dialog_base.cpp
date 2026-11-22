@@ -391,6 +391,9 @@ TEST(ReviewDialogBase, INV23_PlaintextPromptWarningLabelBothEntryPoints) {
     Config cfg;
     const QString host = QStringLiteral("192.0.2.1");   // TEST-NET-1
     cfg.setAiEndpoint(QStringLiteral("http://%1/v1/chat/completions").arg(host));
+    // Config persists to the bundle's sandboxed config.json, so a key an
+    // earlier test set (the keyed case below) would otherwise be read here.
+    cfg.setAiApiKey(QString());
     TestReviewDialog dlg(QString(), nullptr, &cfg);
 
     int calls = 0;

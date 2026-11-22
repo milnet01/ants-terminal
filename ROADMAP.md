@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6866 -->
+<!-- ants-roadmap-id-high-water: ANTS=6867 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71919,6 +71919,16 @@ extends an existing item, that item carries it instead.
   **Layman:** Stop the window freezing briefly while an AI review prepares each part of its work.
   Kind: perf.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines), split from ANTS-5101.
+  Lanes: review.
+
+- ✅ [ANTS-6867] **ReviewDialogBase INV-23's warning case sets the keyless state it tests.**
+  The keyed negative case saved an API key into the bundle's sandboxed
+  config.json, so under --gtest_repeat the positive case read it and
+  failed every iteration after the first. Fixed 2026-11-22: the positive
+  case clears the key first; ReviewDialogBase.* passes 20 of 20 repeats.
+  **Layman:** A review-dialog test no longer fails when run twice in a row.
+  Kind: test.
+  Source: ANTS-5624 build, 2026-11-22.
   Lanes: review.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
