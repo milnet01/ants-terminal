@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6869 -->
+<!-- ants-roadmap-id-high-water: ANTS=6870 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -103658,13 +103658,19 @@ a modern terminal" release.
   Kind: investigate.
   Source: in-session-2026-10-20 (ANTS-5134 bench_resize_reflow).
 
-- 📋 [ANTS-5790] **A width change reflows a 50k scrollback in about 107 ms on the GUI thread, so dragging a window edge drops frames.**
+- ✅ [ANTS-5790] **A width change reflows a 50k scrollback in about 107 ms on the GUI thread, so dragging a window edge drops frames.**
   Measured 2026-10-20 by bench_resize_reflow (resize.reflow.scrollback_50k
   in tests/perf/baseline.tsv): 160 <-> 120 columns over 50k soft-wrapped
   lines, about 107 ms per reflow, three runs within 4%. A 60 fps frame is
   16.7 ms. Options to weigh: reflow the visible screen first and the
   scrollback lazily or off-thread, or coalesce resize steps during a drag.
   Refute by re-running the benchmark.
+  Closed 2026-11-22: both options shipped under other ids. ANTS-3456
+  (2026-11-21) coalesces a drag's resize events: the first applies at
+  once, the rest once they stop for 150 ms (TerminalWidget::resizeEvent),
+  so a drag re-wraps at most twice, not once per step. ANTS-6851
+  (2026-11-21) cut one 50k re-wrap to ~34 ms. Not done: an off-thread
+  re-wrap; ANTS-6851 holds it until a user hits it.
   **Layman:** Resizing the window with a long history makes it stutter, because each step of the drag rewraps every stored line before the next frame can draw.
   Kind: perf.
   Source: in-session-2026-10-20 (ANTS-5134 benchmarks).
@@ -103690,6 +103696,18 @@ a modern terminal" release.
   **Layman:** Copying a very large selection takes nearly a second, and half of that is spent doing the same work twice.
   Kind: perf.
   Source: in-session-2026-10-20 (ANTS-5134 benchmarks).
+
+- 📋 [ANTS-6870] **The perf baseline still holds the pre-ANTS-6851 resize reflow time, so a slide back to it would pass.**
+  tests/perf/baseline.tsv has resize.reflow.scrollback_50k at
+  110.19 ms (saved 2026-10-20, commit 6cc19704). ANTS-6851 cut it to
+  ~34 ms. perf-report.sh flags only a rise over 5% of the baseline, so
+  the reflow could triple and stay green. Fix: re-save the baseline
+  with tools/perf-report.sh --save-baseline under a quiet-machine hold
+  (global rule 17c). Check: the row reads near the new time.
+  **Layman:** The speed check for window resizing still compares against the old, slow time, so it would not notice if resizing got slow again.
+  Kind: test.
+  Source: in-session-2026-11-22 (ANTS-5790 close).
+  Lanes: terminal-grid.
 
 ### 🎨 Features — multiplexing
 
