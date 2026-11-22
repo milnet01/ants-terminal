@@ -20,9 +20,8 @@ indexed in parallel with `m_scrollback` (span for line `idx` lives at
   together when over the cap.
 - `setMaxScrollback` pops both deques in one lockstep loop.
 
-The normal scroll path already pushes both in parallel
-(`m_screenHyperlinks` is always sized to `m_rows`, so its `hlInRange` guard
-is always true), so 1:1 lockstep is the real invariant.
+The normal scroll path already keeps lines and spans in step, so 1:1
+lockstep is the real invariant.
 
 ## Invariants
 

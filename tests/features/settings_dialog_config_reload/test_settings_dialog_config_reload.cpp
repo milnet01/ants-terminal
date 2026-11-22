@@ -121,12 +121,12 @@ static int runMain() {
                              "setTabToolTip(", "wireQuakeHotkey()",
                              "PluginEvent::WindowConfigReloaded", "setMcpEnabled(",
                              "mcp_orientation::uninstall()"}) {
-        const QString needle = QString::fromLatin1(step);
-        expect(shared.contains(needle), "I5/reapplyConfig-step",
-               QStringLiteral("reapplyConfig lacks %1").arg(needle));
-        expect(!onCfgBody.contains(needle) && !applyBody.contains(needle),
+        const QString stepText = QString::fromLatin1(step);
+        expect(shared.contains(stepText), "I5/reapplyConfig-step",
+               QStringLiteral("reapplyConfig lacks %1").arg(stepText));
+        expect(!onCfgBody.contains(stepText) && !applyBody.contains(stepText),
                "I5/step-not-repeated-in-a-caller",
-               QStringLiteral("%1 is written out in a caller again").arg(needle));
+               QStringLiteral("%1 is written out in a caller again").arg(stepText));
     }
 
     // Sanity: the cached-dialog construction site is still at its

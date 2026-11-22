@@ -29,8 +29,9 @@ affected range stays put.** Only rows in the [cursorRow, bottom]
 window are touched.
 
 **I4 — Operations do not throw on under-populated hyperlink
-tables.** The `hlInRange` guard in both functions keeps lazy-grow
-paths safe.
+tables.** Each screen line carries its own spans
+(`TermLine::hyperlinks`), so spans move with their line and no
+separate table can fall short.
 
 ## Scope
 

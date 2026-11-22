@@ -116106,6 +116106,12 @@ reports are asked for separately, each time.
 
   Ageing is already available: a whole-tree audit_run with save_baseline
   pins today's findings, and later runs report since_baseline.new[].
+  2026-11-22 audit (ants-audit v0.7.115, Contract-Doc drift check):
+  fixed the `hlInRange` mentions in
+  tests/features/osc8_insert_delete_lines/spec.md and
+  scrollback_hyperlink_restore_sync/spec.md. The latter's Problem and
+  Fix sections still describe the old two-deque span storage; spans are
+  now keyed by m_scrollbackHlBase + index (terminalgrid.h).
   **Layman:** Many design documents still mention test files and code names that were renamed or never built, so they no longer describe the program truthfully.
   Kind: doc-fix.
   Source: split from ANTS-4994, 2026-11-21.
@@ -116176,6 +116182,8 @@ reports are asked for separately, each time.
   Seen 2026-11-22 while closing ANTS-5530: clangd's unused-includes
   check flags all three. Confirm each is truly unused (a macro or a
   type reached only through it keeps it), remove the rest, and build.
+  2026-11-22: clangd also flags projectsettings.h and findsources.h as
+  unused in src/remotecontrol_terminal.cpp.
   **Layman:** Three lines at the top of one source file pull in code it no longer uses; removing them makes the file a little faster to build.
   Kind: audit-fix.
   Source: in-session-2026-11-22, found while closing ANTS-5530.
