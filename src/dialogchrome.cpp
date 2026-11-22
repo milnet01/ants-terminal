@@ -49,7 +49,6 @@ public:
         dlg->installEventFilter(this);
     }
 
-protected:
     bool eventFilter(QObject *obj, QEvent *ev) override {
         // Identity-check against the QObject base, never the QPointer<QDialog>
         // (ANTS-1869): events still flow to this filter while `dlg` is mid-

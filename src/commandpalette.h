@@ -48,11 +48,12 @@ public:
     QLineEdit *inputForTest() const { return m_input; }
     QListWidget *listForTest() const { return m_list; }
 
+    bool eventFilter(QObject *obj, QEvent *event) override;
+
 signals:
     void closed();
 
 protected:
-    bool eventFilter(QObject *obj, QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
 
 private slots:

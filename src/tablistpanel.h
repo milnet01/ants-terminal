@@ -112,7 +112,7 @@ signals:
     // ANTS-5709 — a left click on a tab row's close mark.
     void tabCloseRequested(QWidget *page);
 
-protected:
+public:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:

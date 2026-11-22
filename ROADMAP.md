@@ -115167,9 +115167,12 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5448] **clang-tidy misc-override-with-different-visibility: 7 sites in 6 files.**
+- ✅ [ANTS-5448] **clang-tidy misc-override-with-different-visibility: 7 sites in 6 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   Often deliberate for Qt event handlers: check, then fix or suppress.
+  Shipped 2026-11-22: five sites at HEAD. The four eventFilter overrides
+  are public, as in QObject; the indie_review_dialog test spy widens
+  onAllReportsCollected on purpose and is suppressed with that reason.
   **Layman:** Overridden methods that are public in one class and private in another.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

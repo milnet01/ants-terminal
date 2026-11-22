@@ -38,6 +38,9 @@ public:
     using IndieReviewDialog::setJobRunner;
 
     int onAllCalls = 0;
+    // Public on purpose: the tests call it directly, as the using-lines
+    // above widen the other protected members.
+    // NOLINTNEXTLINE(misc-override-with-different-visibility)
     void onAllReportsCollected(const QHash<QString, QString> &r) override {
         ++onAllCalls;
         IndieReviewDialog::onAllReportsCollected(r);

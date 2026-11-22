@@ -47,7 +47,6 @@ QWidget *tabPageOf(const QTabWidget *tabs, QWidget *w);
 class StayOpenOnToggleFilter : public QObject {
 public:
     using QObject::QObject;
-protected:
     bool eventFilter(QObject *obj, QEvent *ev) override {
         if (ev->type() == QEvent::MouseButtonRelease) {
             if (auto *menu = qobject_cast<QMenu *>(obj)) {
