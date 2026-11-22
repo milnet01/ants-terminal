@@ -792,6 +792,18 @@ private:
     bool m_hasSelection = false;
     QPoint m_selStart{-1, -1};  // (globalLine, col)
     QPoint m_selEnd{-1, -1};
+    // ANTS-5791 — the last whole-selection text, so a copy right after the
+    // select (which already built it for the primary selection) does not
+    // build it again. Valid only while the grid's contentRevision and the
+    // selection's ends and shape are what they were when it was built.
+    struct SelectionTextCache {
+        bool     valid = false;
+        uint64_t revision = 0;
+        QPoint   start, end;
+        bool     rect = false;
+        QString  text;
+    };
+    mutable SelectionTextCache m_selTextCache;
 
     // Selection highlight color
     QColor m_selectionBg{0x89, 0xB4, 0xFA};

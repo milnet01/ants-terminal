@@ -5,8 +5,11 @@
 // live screen with the button still held, then a move and release at the
 // bottom-right cell. Then it times two things separately:
 //
-//   extract  TerminalWidget::selectedText(), the walk that builds the string
-//   copy     Ctrl+Shift+C, which extracts again and hands it to the clipboard
+//   extract  TerminalWidget::selectedText(-1, nullptr), the walk that builds
+//            the string. The uncached form: the release already filled the
+//            no-argument form's cache (ANTS-5791), which would time a hit.
+//   copy     Ctrl+Shift+C after the select, the user's path: it reuses the
+//            text the release built and hands it to the clipboard
 //
 // A selection that did not span the scrollback would time a small copy and
 // look fast, so the run fails (exit 2) unless the text covers most of it.
@@ -81,7 +84,7 @@ int main(int argc, char **argv) {
     sendMouse(w, QEvent::MouseButtonRelease, bottomRight, Qt::LeftButton, Qt::NoButton);
 
     auto t0 = std::chrono::steady_clock::now();
-    const QString text = w.selectedText();
+    const QString text = w.selectedText(-1, nullptr);
     const double extractMs = msSince(t0);
 
     t0 = std::chrono::steady_clock::now();

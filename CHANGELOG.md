@@ -243,6 +243,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Ctrl+Shift+C right after selecting reuses the text the selection already built** (ANTS-5791)
+  Selecting fills the middle-click buffer, which builds the selected
+  text. Copying straight after now reuses it instead of building it a
+  second time, so copying a selection over a full scrollback no longer
+  pays that cost twice.
+
 - **The AI review dialogs prepare each part of a review in the background, so the window stays responsive while a large part is read.** (ANTS-5624)
 
 - **Review with Claude starts on the audit's findings** (ANTS-6855)

@@ -4191,6 +4191,7 @@ void TerminalWidget::clearSelection() {
     m_hasSelection = false;
     m_selStart = QPoint(-1, -1);
     m_selEnd = QPoint(-1, -1);
+    m_selTextCache = {};   // ANTS-5791 — release the text
 }
 
 TerminalWidget::OrderedSelection TerminalWidget::orderedSelection() const {
@@ -4218,7 +4219,19 @@ void TerminalWidget::publishSelection() {
 }
 
 QString TerminalWidget::selectedText() const {
-    return selectedText(-1, nullptr);
+    if (!m_hasSelection) return {};
+    SelectionTextCache &c = m_selTextCache;
+    const uint64_t revision = m_grid->contentRevision();
+    if (c.valid && c.revision == revision && c.start == m_selStart &&
+        c.end == m_selEnd && c.rect == m_rectSelection)
+        return c.text;
+    c.text     = selectedText(-1, nullptr);
+    c.revision = revision;
+    c.start    = m_selStart;
+    c.end      = m_selEnd;
+    c.rect     = m_rectSelection;
+    c.valid    = true;
+    return c.text;
 }
 
 // ANTS-5623 — maxChars >= 0 keeps the selection's tail and builds only

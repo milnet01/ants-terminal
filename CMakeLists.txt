@@ -2557,6 +2557,8 @@ if(ANTS_TESTS)
                 tests/features/legacy_key_modifiers/test_legacy_key_modifiers.cpp
                 # ANTS-6532 — a double-click goes to a mouse-reporting app.
                 tests/features/mouse_report_double_click/test_mouse_report_double_click.cpp
+                # ANTS-5791 — a copy right after a select reuses its text.
+                tests/features/selection_text_cache/test_selection_text_cache.cpp
                 # URL / highlight / search / quick-select spans land on the
                 # cells that hold them after non-BMP or combining characters.
                 tests/features/span_cell_columns/test_span_cell_columns.cpp

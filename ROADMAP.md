@@ -103669,7 +103669,7 @@ a modern terminal" release.
   Kind: perf.
   Source: in-session-2026-10-20 (ANTS-5134 benchmarks).
 
-- 📋 [ANTS-5791] **Ctrl+Shift+C over a large selection builds the selected text twice, about 430 ms each for a full 50k scrollback.**
+- ✅ [ANTS-5791] **Ctrl+Shift+C over a large selection builds the selected text twice, about 430 ms each for a full 50k scrollback.**
   Measured 2026-10-20 by bench_selection_copy: a drag over the whole 50k
   scrollback (9.06M characters); selection.extract_ms 428 and
   selection.copy_ms 443 in tests/perf/baseline.tsv. The copy re-runs the
@@ -103677,6 +103677,16 @@ a modern terminal" release.
   Investigate whether the copy path and auto-copy-on-select can reuse one
   extraction, and whether extraction itself (about 47 ns a character) has
   an obvious cost. Refute by re-running the benchmark.
+  Shipped 2026-11-22. The user's second build was publishSelection() at
+  release, then copySelection() at Ctrl+Shift+C. selectedText() now
+  keeps the last whole-selection text, keyed on
+  TerminalGrid::contentRevision() (every public mutator bumps it; cell()
+  and screenRow() are private), the selection's ends and its rect flag;
+  clearSelection releases it. bench_selection_copy now times extraction
+  through the uncached selectedText(-1, nullptr), since the release
+  fills the cache: extract 153-156 ms, copy 1.1-1.4 ms (was 443).
+  Extraction itself was not changed. Test SelectionTextCache red with
+  the cache bypassed, green on the fix.
   **Layman:** Copying a very large selection takes nearly a second, and half of that is spent doing the same work twice.
   Kind: perf.
   Source: in-session-2026-10-20 (ANTS-5134 benchmarks).
