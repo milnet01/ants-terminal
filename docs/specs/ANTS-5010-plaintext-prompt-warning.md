@@ -12,7 +12,7 @@ when an API key is set. With no key, the request goes out unencrypted, and
 every AI send path puts terminal or project content in it:
 
 1. `AiDialog::sendRequest` sends recent terminal output as context.
-2. The review dialogs send lane briefs from each subclass's `composeBrief`
+2. The review dialogs send lane briefs from each subclass's `briefWork`
    (`ColdEyesDialog`, `IndieReviewDialog`, `TestAuditDialog`).
 3. `AuditDialog::requestAiTriage` and `AuditDialog::requestAiTriageBatch`
    send a finding's rule, file and line, source snippet and git blame.
@@ -68,7 +68,7 @@ non-empty. When it is empty, `beginRound` clears the label if the label
 still shows the warning an earlier round set: `MainWindow` reloads `Config`
 in place while the dialog is open, so the endpoint can change between
 rounds. A member holds the text it set, as `m_failureStatus` does for
-`onAllFinished`. Each subclass's `composeBrief` puts that same endpoint and
+`onAllFinished`. Each subclass's `briefWork` puts that same endpoint and
 key in its request.
 
 `startDispatch` and `redispatch` both call `beginRound`, so every round

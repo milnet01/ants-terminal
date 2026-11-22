@@ -56,16 +56,23 @@ subclasses fill four hooks and use the base services.
   work again.
 - **INV-25** (ANTS-5082) — a lane's brief is composed when its job starts,
   not when the round is queued. With five lanes and two jobs at a time,
-  `composeBrief` has run twice when the round starts, three times after the
+  `briefWork` has run twice when the round starts, three times after the
   first job finishes, and five times once every job has finished. So no more
   briefs are held than jobs in flight, which is the 2 x 200 KiB budget
   ANTS-1722 and ANTS-1258 state. `setJobRunner` swaps only the job runner;
   the composing step stays in place.
+- **INV-26** (ANTS-5624) — a lane's brief work runs on a worker thread, not
+  the GUI thread. Its `apply` step runs on the GUI thread, before the job
+  runner is called.
+- **INV-27** (ANTS-5624) — a dialog destroyed while a brief is being built
+  drops that job: neither its `apply` step nor the job runner runs.
 
 ## Test notes
 
 GUI bundle (needs QApplication for the QDialog). Drives a minimal concrete
-subclass; `dispatchOne` uses an injected fake runner. INV-21/INV-22
+subclass; `dispatchOne` uses an injected fake runner. A round's jobs start
+once a worker has built the brief, so the round tests pump the event loop
+until the state they check has arrived. INV-21/INV-22
 construct a real `Config` (XDG-sandboxed by the bundle's `main()`, so no
 write touches the user's real config.json) with an `ai_endpoint` set, so
 `endpointDispatchable` passes and the Dispatch button starts enabled; they

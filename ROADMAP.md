@@ -71878,7 +71878,7 @@ extends an existing item, that item carries it instead.
   Source: user-request-2026-09-18.
   Lanes: chrome.
 
-- 📋 [ANTS-5624] **Compose review briefs off the GUI thread.**
+- ✅ [ANTS-5624] **Compose review briefs off the GUI thread.**
   Split from ANTS-5101 (2026-10-02). ReviewDialogBase's dispatcher runner
   calls composeBrief(lane) on the GUI thread as each job starts
   (src/reviewdialogbase.cpp). Each Independent Review brief re-splits
@@ -71905,6 +71905,17 @@ extends an existing item, that item carries it instead.
   the worker in each dialog's destructor. The shared per-round parts
   (ROADMAP split, ledger, standards bodies) can be cached as a
   follow-up.
+  2026-11-22: shipped as option A. The hook is now `briefWork`: it
+  copies the lane's inputs on the GUI thread and returns work that runs
+  on a QThread::create worker; the work's optional `apply` step writes
+  dialog state on the GUI thread before the job is sent (ColdEyes
+  m_staleByLane; TestAudit's stale-token re-partition via
+  applyPartition). The completion is bound to the dialog, so a dialog
+  closed mid-build drops the job (cancel, not join). `composeBrief` runs
+  the same work synchronously for tests. Briefs byte-identical before
+  and after over the four dialog suites; tests review_dialog_base
+  INV-26/INV-27 and test_audit_dialog INV-14, each seen red. The
+  per-round cache stays a follow-up.
   **Layman:** Stop the window freezing briefly while an AI review prepares each part of its work.
   Kind: perf.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines), split from ANTS-5101.

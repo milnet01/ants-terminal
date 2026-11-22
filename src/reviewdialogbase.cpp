@@ -15,8 +15,11 @@
 #include <QScrollArea>
 #include <QTabWidget>
 #include <QTextEdit>
+#include <QThread>
 #include <QVBoxLayout>
 #include <QWidget>
+
+#include <memory>
 
 ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
                                    Config *config)
@@ -107,14 +110,33 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
     // setJobRunner swaps m_runner only, so this step stays in place.
     m_dispatcher->setRunner([this](const LlmJob &job,
                                    std::function<void(const LlmResult &)> done) {
-        LlmJob composed = job;
-        for (const ReviewLane &lane : std::as_const(m_lanes)) {
-            if (lane.id == job.id) {
-                composed.request = composeBrief(lane);
+        const ReviewLane *lane = nullptr;
+        for (const ReviewLane &l : std::as_const(m_lanes)) {
+            if (l.id == job.id) {
+                lane = &l;
                 break;
             }
         }
-        m_runner(composed, std::move(done));
+        if (!lane) {
+            m_runner(job, std::move(done));
+            return;
+        }
+        // ANTS-5624 — a brief reads and hashes the lane's files, over a
+        // second on a large lane, so it is built on a worker. The thread
+        // deletes itself; a dialog closed first drops the connection below,
+        // so the brief is discarded and its job never sent.
+        auto brief = std::make_shared<ComposedBrief>();
+        QThread *worker = QThread::create(
+            [work = briefWork(*lane), brief]() { *brief = work(); });
+        connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+        connect(worker, &QThread::finished, this,
+                [this, job, brief, done = std::move(done)]() mutable {
+                    if (brief->apply) brief->apply();
+                    LlmJob composed = job;
+                    composed.request = std::move(brief->request);
+                    m_runner(composed, std::move(done));
+                }, Qt::QueuedConnection);
+        worker->start();
     });
 
     updateDispatchEnabled();
@@ -161,6 +183,12 @@ LlmRequest ReviewDialogBase::aiRequest() const {
     }
     req.maxTokens = 2048;
     return req;
+}
+
+LlmRequest ReviewDialogBase::composeBrief(const ReviewLane &lane) {
+    ComposedBrief brief = briefWork(lane)();
+    if (brief.apply) brief.apply();
+    return brief.request;
 }
 
 void ReviewDialogBase::setJobRunner(LlmDispatcher::JobRunner runner) {

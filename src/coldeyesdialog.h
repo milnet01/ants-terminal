@@ -70,7 +70,7 @@ public:
 
 protected:
     QList<ReviewLane> derivePartition() override;
-    LlmRequest        composeBrief(const ReviewLane &lane) override;
+    BriefWork         briefWork(const ReviewLane &lane) override;
     void onAllReportsCollected(const QHash<QString, QString> &reportsById) override;
     void performFoldIn() override;
     void prepareDispatch() override;
@@ -79,13 +79,14 @@ private:
     QList<ReviewLane> selectedReviewLanes() const;
     const ColdEyesEngine::Lane *laneByName(const QString &name) const;
     QStringList laneKeywords(const ColdEyesEngine::Lane &lane) const;
-    QString     staleFindingLine(const QString &cite, const QString &lane) const;
-    QString     assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
-                                     const QString &summary,
-                                     const QStringList &staleFindings,
-                                     const QString &fpBlock,
-                                     const QString &laneBodies,
-                                     const QString &xrefBodies) const;
+    // Static: the brief work calls them on a worker thread (ANTS-5624).
+    static QString     staleFindingLine(const QString &cite, const QString &lane);
+    static QString     assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
+                                            const QString &summary,
+                                            const QStringList &staleFindings,
+                                            const QString &fpBlock,
+                                            const QString &laneBodies,
+                                            const QString &xrefBodies);
     void buildControls();
     void onReReviewClicked();
     void rebuildPartitionPanel();

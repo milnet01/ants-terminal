@@ -5,8 +5,9 @@
 // fold-in logic directly; INV-8 is a construction smoke assertion. INV-6
 // and INV-9 lock ANTS-2011 (cold re-review + loop log); INV-9 drives real
 // dispatch rounds (ReviewDialogBase::startDispatch / redispatch via a
-// synchronous fake LlmDispatcher::JobRunner) rather than calling
-// onAllReportsCollected directly, because the loop log must track what
+// synchronous fake LlmDispatcher::JobRunner, waiting out each brief's worker)
+// rather than calling onAllReportsCollected directly, because the loop log
+// must track what
 // each round DISPATCHED, not ReviewDialogBase's accumulated reports().
 // See tests/features/cold_eyes_dialog/spec.md + docs/specs/ANTS-1721-coldeyesdialog-native-app-documentation.md.
 
@@ -17,7 +18,9 @@
 
 #include <gtest/gtest.h>
 
+#include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -46,6 +49,17 @@ public:
     using ColdEyesDialog::setJobRunner;
     using ColdEyesDialog::startDispatch;
 };
+
+// ANTS-5624 — a brief is built on a worker, so a round's jobs start once the
+// event loop delivers it. Pump until `pred()` holds or `budgetMs` elapses.
+template <typename Pred>
+bool pumpUntil(Pred pred, int budgetMs = 5000) {
+    QElapsedTimer t;
+    t.start();
+    while (!pred() && t.elapsed() < budgetMs)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    return pred();
+}
 
 bool writeFile(const QString &path, const QString &body) {
     QFileInfo fi(path);
@@ -343,6 +357,8 @@ TEST(ColdEyesDialog, INV9_LoopLogTracksDispatchedRoundsNotMergedReports) {
 
     // Round 1 — full dispatch of every selected lane.
     dlg.startDispatch();
+    ASSERT_TRUE(pumpUntil([&] { return dlg.loopLog().size() == 1; }))
+        << "round 1 never finished";
 
     // Round 2 — flip the canned reply, then drive the REAL re-review
     // button (not a direct onAllReportsCollected call) so the test
@@ -356,6 +372,8 @@ TEST(ColdEyesDialog, INV9_LoopLogTracksDispatchedRoundsNotMergedReports) {
             reReviewBtn = b;
     ASSERT_TRUE(reReviewBtn != nullptr) << "re-review button must exist";
     reReviewBtn->click();
+    ASSERT_TRUE(pumpUntil([&] { return dlg.loopLog().size() == 2; }))
+        << "round 2 never finished";
 
     const QList<ColdEyesDialog::LoopEntry> &log = dlg.loopLog();
     ASSERT_EQ(log.size(), 2)

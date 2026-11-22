@@ -140,6 +140,11 @@ void TestAuditDialog::setDimensionsCsv(const QString &csv) {
 }
 
 void TestAuditDialog::runEnginePartition(bool withPrePass) {
+    applyPartition(TestAuditEngine::partition(partitionRequest(withPrePass)));
+}
+
+TestAuditEngine::PartitionRequest
+TestAuditDialog::partitionRequest(bool withPrePass) const {
     TestAuditEngine::PartitionRequest preq;
     preq.prePass = withPrePass;
     preq.callerCwd  = projectCwd();
@@ -147,7 +152,10 @@ void TestAuditDialog::runEnginePartition(bool withPrePass) {
     preq.dimensions = m_dimensionsCsv.isEmpty() ? QStringLiteral("auto")
                                                 : m_dimensionsCsv;
     preq.chunkSize  = 12;
-    const auto pr = TestAuditEngine::partition(preq);
+    return preq;
+}
+
+void TestAuditDialog::applyPartition(const TestAuditEngine::PartitionResult &pr) {
     if (!pr.ok) {
         if (statusLabel())
             statusLabel()->setText(tr("Partition failed: %1").arg(pr.error));
@@ -249,30 +257,42 @@ void TestAuditDialog::prepareDispatch() {
                   .arg(m_chunks.size()));
 }
 
+TestAuditDialog::RecoveredBrief TestAuditDialog::briefWithRecovery(
+    TestAuditEngine::BriefRequest br,
+    const TestAuditEngine::PartitionRequest &preq) {
+    RecoveredBrief out;
+    out.brief = TestAuditEngine::brief(br);
+    if (!out.brief.ok && out.brief.code == QStringLiteral("stale_partition")) {
+        // Post-restart in-process cache miss. Spec ANTS-1722 calls this
+        // code "stale_token"; the engine returns "stale_partition". Re-run
+        // partition for a fresh token (deterministic qHash → same token for
+        // the same file set), then retry once. A failed partition leaves no
+        // token, as applyPartition does.
+        out.repartition = TestAuditEngine::partition(preq);
+        br.partitionToken = out.repartition->ok
+                                ? out.repartition->partitionToken : QString();
+        out.brief = TestAuditEngine::brief(br);
+    }
+    return out;
+}
+
 TestAuditEngine::BriefResult TestAuditDialog::briefFor(const QString &chunkId) {
     TestAuditEngine::BriefRequest br;
     br.callerCwd      = projectCwd();
     br.chunkId        = chunkId;
     br.partitionToken = m_token;
-    auto b = TestAuditEngine::brief(br);
-    if (!b.ok && b.code == QStringLiteral("stale_partition")) {
-        // Post-restart in-process cache miss. Spec ANTS-1722 calls this
-        // code "stale_token"; the engine returns "stale_partition". Re-run
-        // partition for a fresh token (deterministic qHash → same token for
-        // the same file set), then retry once.
-        runEnginePartition();
-        br.partitionToken = m_token;
-        b = TestAuditEngine::brief(br);
-    }
-    return b;
+    RecoveredBrief r = briefWithRecovery(br, partitionRequest(true));
+    if (r.repartition) applyPartition(*r.repartition);
+    return r.brief;
 }
 
 QString TestAuditDialog::assembleCappedPrompt(
-    const TestAuditEngine::BriefResult &b) const {
+    const QString &root, const QStringList &dimensionsActive,
+    const TestAuditEngine::BriefResult &b) {
     QString fixed;
     fixed += QStringLiteral("# Test-audit chunk review — ") + b.chunkId
              + QStringLiteral("\n\n## Dimensions to audit (all active)\n\n");
-    for (const QString &d : m_dimensionsActive)
+    for (const QString &d : dimensionsActive)
         fixed += QStringLiteral("- ") + d + QChar('\n');
     fixed += QStringLiteral("\n## Framework context\n\n")
              + QString::fromUtf8(
@@ -289,8 +309,7 @@ QString TestAuditDialog::assembleCappedPrompt(
     // header itself (ANTS-1731), so no prefix-stripping is needed here.
     const QString bulk =
         QStringLiteral("\n## Test files (verbatim)\n\n")
-        + BriefDispatch::inlineBodies(projectCwd(), b.sourcePaths,
-                                      kPerFileCapBytes);
+        + BriefDispatch::inlineBodies(root, b.sourcePaths, kPerFileCapBytes);
 
     const qint64 fixedBytes = fixed.toUtf8().size();
     const qint64 bulkBytes  = bulk.toUtf8().size();
@@ -315,18 +334,33 @@ QString TestAuditDialog::assembleCappedPrompt(
         (fixed + dropMarker + bulk).toUtf8(), hardMarker, kPromptCapBytes);
 }
 
-LlmRequest TestAuditDialog::composeBrief(const ReviewLane &laneRef) {
+ReviewDialogBase::BriefWork TestAuditDialog::briefWork(const ReviewLane &laneRef) {
     LlmRequest req = aiRequest();
     req.systemPrompt = testAuditSystemPrompt(m_dimensionsActive);
 
-    const auto b = briefFor(laneRef.id);
-    if (!b.ok) {
-        req.userPrompt = QStringLiteral("[test-audit: brief failed (%1)]")
-                             .arg(b.code);
-        return req;
-    }
-    req.userPrompt = assembleCappedPrompt(b);
-    return req;
+    TestAuditEngine::BriefRequest br;
+    br.callerCwd      = projectCwd();
+    br.chunkId        = laneRef.id;
+    br.partitionToken = m_token;
+    return [this, req, br, preq = partitionRequest(true),
+            dims = m_dimensionsActive]() mutable {
+        RecoveredBrief r = briefWithRecovery(br, preq);
+        // m_token and m_chunks are GUI-thread state, so a re-partition is
+        // applied there, before the request goes out.
+        std::function<void()> apply;
+        if (r.repartition) {
+            if (r.repartition->ok) dims = r.repartition->dimensionsActive;
+            else dims.clear();
+            apply = [this, pr = *r.repartition]() { applyPartition(pr); };
+        }
+        if (!r.brief.ok) {
+            req.userPrompt = QStringLiteral("[test-audit: brief failed (%1)]")
+                                 .arg(r.brief.code);
+        } else {
+            req.userPrompt = assembleCappedPrompt(br.callerCwd, dims, r.brief);
+        }
+        return ComposedBrief{ req, apply };
+    };
 }
 
 void TestAuditDialog::onAllReportsCollected(

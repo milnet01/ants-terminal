@@ -46,3 +46,4 @@ Record for [`../specs/ANTS-1727-review-dialog-foundation-llmclient.md`](../specs
     before `cancelAll()` — otherwise a `cancelAll`-emitted `allFinished`
     routes to the pure-virtual `onAllReportsCollected` after the derived
     dtor ran ("pure virtual method called"). Caught by `review_dialog_base`.
+- **impl (2026-11-22, ANTS-5624)** — § 2.4 amended: the brief hook is `briefWork`, run on a worker thread, with an `apply` step on the GUI thread; `composeBrief` is its synchronous form. Tests: `review_dialog_base` INV-26 and INV-27, seen red then green. Not a review loop; no reviewer was dispatched.

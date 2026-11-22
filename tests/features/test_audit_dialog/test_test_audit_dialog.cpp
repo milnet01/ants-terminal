@@ -226,6 +226,31 @@ TEST(TestAuditDialog, INV6_StaleTokenRepartitions) {
         << "collected reports must survive the re-partition";
 }
 
+// INV-14 (ANTS-5624) — the brief work recovers from a stale token too: it
+// re-partitions on its worker and hands the new partition back, so the
+// dialog holds the fresh token once the brief is applied, and the brief is
+// a real one rather than a "brief failed" stub.
+TEST(TestAuditDialog, Inv14BriefWorkRecoversStaleToken) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QTemporaryDir mem; ASSERT_TRUE(mem.isValid());
+    buildSuite(tmp.path());
+
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+    dlg.setSessionMemBaseDir(mem.path());
+    const auto lanes = dlg.derivePartition();
+    ASSERT_FALSE(lanes.isEmpty());
+
+    dlg.setPartitionTokenForTest(QStringLiteral("garbage-token-xyz"));
+    const LlmRequest req = dlg.composeBrief(lanes.first());
+    EXPECT_FALSE(req.userPrompt.contains(QStringLiteral("brief failed")))
+        << req.userPrompt.left(200).toStdString();
+    EXPECT_TRUE(req.userPrompt.contains("UNIQUEBODYMARKER"))
+        << "the retried brief must inline the chunk's body";
+    EXPECT_NE(dlg.partitionToken(), QStringLiteral("garbage-token-xyz"))
+        << "the re-partition was not applied to the dialog";
+    EXPECT_FALSE(dlg.partitionToken().isEmpty());
+}
+
 // INV-12 (ANTS-5102) — a collected report survives a re-partition only while
 // its chunk still covers the same files. INV-6 keeps reports across a
 // same-tree token refresh; a changed tree must not carry a report for files

@@ -225,7 +225,7 @@ public:
 protected:
     // ---- engine-specific hooks ----
     virtual QList<ReviewLane> derivePartition() = 0;                      // step 1
-    virtual LlmRequest        composeBrief(const ReviewLane &lane) = 0;   // step 2 (bodies inlined)
+    virtual BriefWork         briefWork(const ReviewLane &lane) = 0;      // step 2 (bodies inlined; runs on a worker)
     virtual void onAllReportsCollected(const QHash<QString, QString> &reportsById) = 0; // step 3
     virtual void performFoldIn() = 0;                                     // step 4 (subclass owns the sequence)
 
@@ -251,8 +251,8 @@ protected:
 
 Dispatch is gated on `endpointDispatchable(config->aiEndpoint())`; when
 false the button is disabled with a status line pointing at `ai_endpoint`
-in config. The base owns the Dispatch button (enqueue `composeBrief` per
-lane into the `LlmDispatcher`, accumulate each `jobFinished` into
+in config. The base owns the Dispatch button (enqueue one job per lane
+into the `LlmDispatcher`, accumulate each `jobFinished` into
 `reports()` keyed by lane id, call `onAllReportsCollected` on
 `allFinished`) and the Fold-in button (which calls the subclass's
 `performFoldIn`).
@@ -262,6 +262,12 @@ tab shows the error, and the status line names the round's failed lanes
 (ANTS-5003): an empty report reads as a clean lane. Dispatch is disabled
 while a round is in flight (ANTS-5004), and a dispatch with no lanes
 starts no round (ANTS-5006).
+
+A lane's brief is built when its job starts (ANTS-5082), on a worker
+thread (ANTS-5624). `briefWork` copies what the brief needs on the GUI
+thread and returns the work; the work's optional `apply` step writes dialog
+state on the GUI thread before the job is sent. A dialog closed mid-build
+drops the job. `composeBrief` runs the same work synchronously, for tests.
 
 Fold-in ownership is deliberately **not** a fixed base orchestration,
 because it differs by subclass: cold-eyes (ANTS-1721) allocates IDs and

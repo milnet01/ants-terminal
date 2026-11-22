@@ -238,6 +238,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The AI review dialogs prepare each part of a review in the background, so the window stays responsive while a large part is read.** (ANTS-5624)
+
 - **Review with Claude starts on the audit's findings** (ANTS-6855)
   The hand-off no longer asks the session to rebuild and run the whole
   test suite first; it runs the tests covering each fix instead.

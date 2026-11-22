@@ -57,6 +57,9 @@ smoke assertion.
   `pruneReportDirs` keeps the newest `kKeepReportDirs` (5) folders under
   `.audit_cache/`, the current round's among them however old it is, and
   deletes the rest. Nothing but a real `test_audit_*` directory is touched.
+- **INV-14** (ANTS-5624) — the brief work recovers from a stale token as
+  `briefFor` does: it re-partitions and retries once, and the dialog holds
+  the new token once the brief is applied.
 
 Note: the spec names the cache-miss code `stale_token`; the engine
 actually returns `stale_partition` — the dialog (and this test) use the

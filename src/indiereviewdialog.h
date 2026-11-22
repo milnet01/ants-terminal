@@ -56,7 +56,7 @@ public:
 
 protected:
     QList<ReviewLane> derivePartition() override;
-    LlmRequest        composeBrief(const ReviewLane &lane) override;
+    BriefWork         briefWork(const ReviewLane &lane) override;
     void onAllReportsCollected(const QHash<QString, QString> &reportsById) override;
     void performFoldIn() override;
 
@@ -69,7 +69,8 @@ protected:
 private:
     QList<ReviewLane> selectedReviewLanes() const;
     const IndieReviewEngine::Lane *laneByName(const QString &name) const;
-    QString assembleCappedPrompt(const QString &dispatchBrief) const;
+    // Static: the brief work calls it on a worker thread (ANTS-5624).
+    static QString assembleCappedPrompt(const QString &dispatchBrief);
     void buildControls();
     void onReReviewClicked();
     void maybeDispatchSynthesis();

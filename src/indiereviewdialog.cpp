@@ -144,7 +144,7 @@ IndieReviewDialog::laneByName(const QString &name) const {
     return nullptr;
 }
 
-QString IndieReviewDialog::assembleCappedPrompt(const QString &brief) const {
+QString IndieReviewDialog::assembleCappedPrompt(const QString &brief) {
     const QByteArray utf = brief.toUtf8();
     if (utf.size() <= kPromptCapBytes) return brief;
     // assembleBriefForDispatch is uncapped (inlines whole source + standards
@@ -157,24 +157,26 @@ QString IndieReviewDialog::assembleCappedPrompt(const QString &brief) const {
     return BriefDispatch::clipToCapClosingFence(utf, marker, kPromptCapBytes);
 }
 
-LlmRequest IndieReviewDialog::composeBrief(const ReviewLane &laneRef) {
+ReviewDialogBase::BriefWork IndieReviewDialog::briefWork(const ReviewLane &laneRef) {
     LlmRequest req = aiRequest();
     req.systemPrompt = indieReviewSystemPrompt();
 
-    const IndieReviewEngine::Lane *lane = laneByName(laneRef.id);
-    if (!lane) {
+    const IndieReviewEngine::Lane *found = laneByName(laneRef.id);
+    if (!found) {
         req.userPrompt = QStringLiteral("[indie-review: lane \"%1\" not found]")
                              .arg(laneRef.id);
-        return req;
+        return [req]() { return ComposedBrief{ req, {} }; };
     }
-    // Reuse the engine's purpose-built dispatch brief: it already fences
-    // source bodies, inlines the standards docs, injects the ants::falsepos
-    // prior-FP block for ("indie-review", lane.name), and appends the
-    // ROADMAP slice. Do NOT re-add any of that — just sum-cap (INV-2/INV-3).
-    const QString brief =
-        IndieReviewEngine::assembleBriefForDispatch(projectCwd(), *lane);
-    req.userPrompt = assembleCappedPrompt(brief);
-    return req;
+    return [req, root = projectCwd(), lane = *found]() mutable {
+        // Reuse the engine's purpose-built dispatch brief: it already fences
+        // source bodies, inlines the standards docs, injects the
+        // ants::falsepos prior-FP block for ("indie-review", lane.name), and
+        // appends the ROADMAP slice. Do NOT re-add any of that — just sum-cap
+        // (INV-2/INV-3).
+        req.userPrompt = assembleCappedPrompt(
+            IndieReviewEngine::assembleBriefForDispatch(root, lane));
+        return ComposedBrief{ req, {} };
+    };
 }
 
 void IndieReviewDialog::onAllReportsCollected(

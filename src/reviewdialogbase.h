@@ -7,7 +7,7 @@
 // partition panel, the per-lane brief tabs, the Dispatch button (→
 // LlmDispatcher), a host slot for the subclass's results pane, and the
 // Fold-into-ROADMAP button. Concrete dialogs fill four hooks
-// (derivePartition / composeBrief / onAllReportsCollected / performFoldIn)
+// (derivePartition / briefWork / onAllReportsCollected / performFoldIn)
 // and use the base services (setLanes / reports / redispatch / dispatchOne
 // + the fold-in helpers).
 
@@ -54,9 +54,21 @@ public:
     static constexpr qint64 kPromptCapBytes = qint64{200} * 1024;
 
 protected:
+    // ANTS-5624 — a lane's brief, built on a worker thread. `apply`, when
+    // set, writes what the build found into dialog state; the base runs it on
+    // the GUI thread before the request is sent.
+    struct ComposedBrief {
+        LlmRequest            request;
+        std::function<void()> apply;
+    };
+    using BriefWork = std::function<ComposedBrief()>;
+
     // ---- engine-specific hooks ----
     virtual QList<ReviewLane> derivePartition() = 0;                         // step 1
-    virtual LlmRequest        composeBrief(const ReviewLane &lane) = 0;      // step 2 (bodies inlined)
+    // Step 2 (bodies inlined). Runs on the GUI thread and copies what the
+    // brief needs; the work it returns runs on a worker, so it reads no member
+    // or widget, and uses `this` only inside `apply`.
+    virtual BriefWork briefWork(const ReviewLane &lane) = 0;
     virtual void onAllReportsCollected(const QHash<QString, QString> &reportsById) = 0; // step 3
     virtual void performFoldIn() = 0;                                        // step 4 (subclass owns the sequence)
     // ANTS-1843 — called once at the top of startDispatch(), before any job
@@ -77,6 +89,8 @@ protected:
     // without a Config) and the family's 2048-token reply budget. Every
     // lane brief and synthesis job starts from it.
     LlmRequest aiRequest() const;
+    // briefWork() run to completion on the calling thread, `apply` included.
+    LlmRequest composeBrief(const ReviewLane &lane);
     void    setResultsWidget(QWidget *w);
     void    runPartition();                                    // derivePartition() → setLanes()
     void    setLanes(const QList<ReviewLane> &lanes);          // (re)partition; keeps reports of surviving lanes, drops the rest

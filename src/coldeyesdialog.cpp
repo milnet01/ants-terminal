@@ -192,7 +192,7 @@ QStringList ColdEyesDialog::laneKeywords(const ColdEyesEngine::Lane &lane) const
 }
 
 QString ColdEyesDialog::staleFindingLine(const QString &cite,
-                                        const QString &lane) const {
+                                        const QString &lane) {
     return QStringLiteral(
                "- [ACCURACY] %1 — cited in lane \"%2\" docs but not found "
                "on disk")
@@ -204,7 +204,7 @@ QString ColdEyesDialog::assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
                                             const QStringList &staleFindings,
                                             const QString &fpBlock,
                                             const QString &laneBodies,
-                                            const QString &xrefBodies) const {
+                                            const QString &xrefBodies) {
     QString head;
     head += QStringLiteral("# Cold-eyes review — lane: ") + lane.name
             + QStringLiteral("\n\n");
@@ -253,45 +253,47 @@ QString ColdEyesDialog::assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
         fixed.toUtf8(), hardMarker, kPromptCapBytes);
 }
 
-LlmRequest ColdEyesDialog::composeBrief(const ReviewLane &laneRef) {
+ReviewDialogBase::BriefWork ColdEyesDialog::briefWork(const ReviewLane &laneRef) {
     LlmRequest req = aiRequest();
     req.systemPrompt = coldEyesSystemPrompt();
 
-    const ColdEyesEngine::Lane *lane = laneByName(laneRef.id);
-    if (!lane) {
+    const ColdEyesEngine::Lane *found = laneByName(laneRef.id);
+    if (!found) {
         req.userPrompt = QStringLiteral("[cold-eyes: lane \"%1\" not found]")
                              .arg(laneRef.id);
-        return req;
+        return [req]() { return ComposedBrief{ req, {} }; };
     }
 
-    // The manifest already embeds an FP block, the prior-fix block, and
-    // Read-tool instructions — all of which are wrong for a raw inlined-
-    // bodies endpoint. Use it only for its structured fields and compose
-    // our own prompt; pass no prior fixes — a re-review runs cold (ANTS-2011).
-    const auto m = ColdEyesEngine::assembleBriefManifest(projectCwd(), *lane);
+    return [this, req, root = projectCwd(), lane = *found,
+            kw = laneKeywords(*found)]() mutable {
+        // The manifest already embeds an FP block, the prior-fix block, and
+        // Read-tool instructions — all of which are wrong for a raw inlined-
+        // bodies endpoint. Use it only for its structured fields and compose
+        // our own prompt; pass no prior fixes — a re-review runs cold
+        // (ANTS-2011).
+        const auto m = ColdEyesEngine::assembleBriefManifest(root, lane);
 
-    // Stash stale citations so onAllReportsCollected can surface them even
-    // when the model returns nothing (INV-3).
-    QStringList stale;
-    for (const QString &c : m.staleCitations)
-        stale << staleFindingLine(c, lane->name);
-    m_staleByLane.insert(lane->name, stale);
+        QStringList stale;
+        for (const QString &c : m.staleCitations)
+            stale << staleFindingLine(c, lane.name);
 
-    const QStringList kw = laneKeywords(*lane);
-    const QString laneBodies =
-        BriefDispatch::inlineBodies(projectCwd(), lane->docPaths,
-                                    kPerFileCapBytes);
-    const QString xrefBodies =
-        BriefDispatch::inlineRelevantSections(projectCwd(),
-                                              m.crossReferenceDocs, kw,
-                                              kPerDocCapBytes);
-    const QString fpBlock = ants::falsepos::formatForBrief(
-        ants::falsepos::filter(ants::falsepos::loadEntries(projectCwd()),
-                               QStringLiteral("cold-eyes"), lane->name));
+        const QString laneBodies =
+            BriefDispatch::inlineBodies(root, lane.docPaths, kPerFileCapBytes);
+        const QString xrefBodies =
+            BriefDispatch::inlineRelevantSections(root, m.crossReferenceDocs,
+                                                  kw, kPerDocCapBytes);
+        const QString fpBlock = ants::falsepos::formatForBrief(
+            ants::falsepos::filter(ants::falsepos::loadEntries(root),
+                                   QStringLiteral("cold-eyes"), lane.name));
 
-    req.userPrompt = assembleCappedPrompt(*lane, m.summary, stale, fpBlock,
-                                          laneBodies, xrefBodies);
-    return req;
+        req.userPrompt = assembleCappedPrompt(lane, m.summary, stale, fpBlock,
+                                              laneBodies, xrefBodies);
+        // Stash stale citations so onAllReportsCollected can surface them
+        // even when the model returns nothing (INV-3).
+        return ComposedBrief{ req, [this, name = lane.name, stale]() {
+                                  m_staleByLane.insert(name, stale);
+                              } };
+    };
 }
 
 void ColdEyesDialog::onAllReportsCollected(

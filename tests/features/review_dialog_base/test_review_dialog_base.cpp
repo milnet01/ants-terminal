@@ -8,6 +8,9 @@
 // INV-22 startDispatch with no lanes starts no round.
 // INV-23 (ANTS-5010) plaintext-prompt-warning label from both dispatch
 //        entry points; cleared on switch to https/loopback/keyed.
+// INV-26 (ANTS-5624) a brief is built on a worker; apply runs on the GUI
+//        thread before the job is sent.
+// INV-27 (ANTS-5624) a dialog closed mid-build drops the job.
 
 #include "reviewdialogbase.h"
 
@@ -15,25 +18,32 @@
 
 #include <gtest/gtest.h>
 
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QHash>
 #include <QLabel>
 #include <QPushButton>
+#include <QSemaphore>
 #include <QString>
 #include <QTemporaryDir>
+#include <QThread>
 
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace {
 
 // Minimal concrete subclass exposing the protected services the test
-// drives. derivePartition/composeBrief are trivial; onAllReportsCollected
+// drives. derivePartition/briefWork are trivial; onAllReportsCollected
 // records its call count so INV-15/INV-22 can assert it (never) fires.
 class TestReviewDialog : public ReviewDialogBase {
 public:
     using ReviewDialogBase::ReviewDialogBase;  // inherit (cwd, parent, config)
 
+    using ReviewDialogBase::ComposedBrief;
     using ReviewDialogBase::allocateFoldInIds;
     using ReviewDialogBase::dispatchOne;
     using ReviewDialogBase::lastFoldInError;
@@ -46,10 +56,16 @@ public:
 
     int allCollectedCalls = 0;
     int composeCalls = 0;   // INV-25
+    // INV-26/INV-27 — when set, the brief work every lane gets.
+    BriefWork work;
 
 protected:
     QList<ReviewLane> derivePartition() override { return {}; }
-    LlmRequest composeBrief(const ReviewLane &) override { ++composeCalls; return {}; }
+    BriefWork briefWork(const ReviewLane &) override {
+        ++composeCalls;
+        if (work) return work;
+        return [] { return ComposedBrief{}; };
+    }
     void onAllReportsCollected(const QHash<QString, QString> &) override {
         ++allCollectedCalls;
     }
@@ -69,6 +85,17 @@ QString readFile(const QString &path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return QString();
     return QString::fromUtf8(f.readAll());
+}
+
+// ANTS-5624 — a brief is built on a worker, so a round's jobs start once the
+// event loop delivers it. Pump until `pred()` holds or `budgetMs` elapses.
+template <typename Pred>
+bool pumpUntil(Pred pred, int budgetMs = 5000) {
+    QElapsedTimer t;
+    t.start();
+    while (!pred() && t.elapsed() < budgetMs)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    return pred();
 }
 
 bool writeFile(const QString &path, const QString &content) {
@@ -146,6 +173,7 @@ TEST(ReviewDialogBase, INV16_SetLanesPreservesSurvivingReports) {
 
     dlg.setLanes({ {"A", "A", ""}, {"B", "B", ""}, {"C", "C", ""} });
     dlg.redispatch({ "A", "B", "C" });
+    ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 1; }));
     ASSERT_EQ(dlg.reports().size(), 3) << "all three lanes collected";
 
     // Toggle: keep A and C, drop B.
@@ -250,6 +278,7 @@ TEST(ReviewDialogBase, INV20_FailedJobNotStoredStatusNamesFailure) {
     dlg.setLanes({ ReviewLane{"lane-alpha", "lane-alpha", ""},
                    ReviewLane{"lane-bravo", "lane-bravo", ""} });
     dlg.redispatch({ "lane-alpha", "lane-bravo" });
+    ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 1; }));
 
     ASSERT_TRUE(dlg.reports().contains(QStringLiteral("lane-alpha")));
     EXPECT_EQ(dlg.reports().value(QStringLiteral("lane-alpha")), QStringLiteral("REPORT-A"));
@@ -260,11 +289,11 @@ TEST(ReviewDialogBase, INV20_FailedJobNotStoredStatusNamesFailure) {
     EXPECT_TRUE(status1.contains(QStringLiteral("lane-bravo"))) << status1.toStdString();
     EXPECT_TRUE(status1.contains(QStringLiteral("failed"), Qt::CaseInsensitive))
         << status1.toStdString();
-    EXPECT_GE(dlg.allCollectedCalls, 1);
 
     // A later round where lane-bravo succeeds must populate its report.
     bravoSucceeds = true;
     dlg.redispatch({ "lane-bravo" });
+    ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 2; }));
     ASSERT_TRUE(dlg.reports().contains(QStringLiteral("lane-bravo")));
     EXPECT_EQ(dlg.reports().value(QStringLiteral("lane-bravo")), QStringLiteral("REPORT-B"));
 
@@ -272,6 +301,7 @@ TEST(ReviewDialogBase, INV20_FailedJobNotStoredStatusNamesFailure) {
     // report for that lane is removed too)" in the fix's own description.
     bravoSucceeds = false;
     dlg.redispatch({ "lane-bravo" });
+    ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 3; }));
     EXPECT_FALSE(dlg.reports().contains(QStringLiteral("lane-bravo")))
         << "a stale report from a prior success must be dropped on failure";
 }
@@ -300,7 +330,7 @@ TEST(ReviewDialogBase, INV21_DispatchButtonDisabledDuringRound) {
     EXPECT_FALSE(dispatchBtn->isEnabled())
         << "Dispatch must be disabled once a round is in flight";
 
-    ASSERT_EQ(pending.size(), 2u);
+    ASSERT_TRUE(pumpUntil([&] { return pending.size() == 2u; }));
     for (auto &done : pending) {
         LlmResult r;
         r.ok = true;
@@ -374,6 +404,7 @@ TEST(ReviewDialogBase, INV23_PlaintextPromptWarningLabelBothEntryPoints) {
 
     // Entry point 1: startDispatch.
     dlg.startDispatch();
+    ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 1; }));
     ASSERT_NE(dlg.statusLabel(), nullptr);
     EXPECT_EQ(dlg.statusLabel()->text(), expected)
         << "INV-23: startDispatch must show the plaintext-prompt warning; "
@@ -384,6 +415,7 @@ TEST(ReviewDialogBase, INV23_PlaintextPromptWarningLabelBothEntryPoints) {
     // from the previous round can't make this assertion pass vacuously.
     calls = 0;
     dlg.redispatch({ "a" });
+    ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 2; }));
     EXPECT_EQ(dlg.statusLabel()->text(), expected)
         << "INV-23: redispatch must show the same warning as startDispatch";
     EXPECT_EQ(calls, 1);
@@ -394,6 +426,7 @@ TEST(ReviewDialogBase, INV23_PlaintextPromptWarningLabelBothEntryPoints) {
     cfg.setAiEndpoint(QStringLiteral("https://%1/v1/chat/completions").arg(host));
     calls = 0;
     dlg.redispatch({ "a" });
+    ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 3; }));
     EXPECT_NE(dlg.statusLabel()->text(), expected)
         << "INV-23: a stale plaintext warning from an earlier plain-http "
            "round must not survive a switch to https";
@@ -416,6 +449,7 @@ TEST(ReviewDialogBase, INV23_NoWarningForLoopbackOrKeyedEndpoint) {
         dlg.setJobRunner(countingOkRunner(&calls));
         dlg.setLanes({ ReviewLane{"a", "a", ""} });
         dlg.startDispatch();
+        ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 1; }));
         ASSERT_NE(dlg.statusLabel(), nullptr);
         EXPECT_FALSE(dlg.statusLabel()->text().contains(expectedSubstring))
             << "INV-23: a loopback endpoint must not warn; got: "
@@ -431,6 +465,7 @@ TEST(ReviewDialogBase, INV23_NoWarningForLoopbackOrKeyedEndpoint) {
         dlg.setJobRunner(countingOkRunner(&calls));
         dlg.setLanes({ ReviewLane{"a", "a", ""} });
         dlg.startDispatch();
+        ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 1; }));
         ASSERT_NE(dlg.statusLabel(), nullptr);
         EXPECT_FALSE(dlg.statusLabel()->text().contains(expectedSubstring))
             << "INV-23: a keyed endpoint must not warn; got: "
@@ -452,7 +487,7 @@ TEST(ReviewDialogBase, INV24_MidRoundRedispatchAndSetLanesIgnored) {
     });
     dlg.setLanes({ ReviewLane{"A", "A", ""}, ReviewLane{"B", "B", ""} });
     dlg.redispatch({ "A" });
-    ASSERT_EQ(runs, 1) << "round A did not start";
+    ASSERT_TRUE(pumpUntil([&] { return runs == 1; })) << "round A did not start";
 
     // Mid-round: both calls must be no-ops.
     dlg.redispatch({ "B" });
@@ -467,12 +502,14 @@ TEST(ReviewDialogBase, INV24_MidRoundRedispatchAndSetLanesIgnored) {
         pending.erase(pending.begin());
         done(ok);
     }
-    EXPECT_EQ(runs, 1) << "a mid-round redispatch queued a second job";
+    EXPECT_FALSE(pumpUntil([&] { return runs > 1; }, 200))
+        << "a mid-round redispatch queued a second job";
     EXPECT_TRUE(dlg.reports().contains(QStringLiteral("A")));
 
     // After the round, lane B must still exist: setLanes did not swap lanes.
     dlg.redispatch({ "B" });
-    EXPECT_EQ(runs, 2) << "lane B is gone: setLanes replaced the lanes mid-round";
+    EXPECT_TRUE(pumpUntil([&] { return runs == 2; }))
+        << "lane B is gone: setLanes replaced the lanes mid-round";
     while (!pending.empty()) {
         auto done = std::move(pending.front());
         pending.erase(pending.begin());
@@ -504,7 +541,8 @@ TEST(ReviewDialogBase, INV25_BriefComposedWhenJobStarts) {
     LlmResult ok;
     ok.ok = true;
     ok.text = QStringLiteral("r");
-    ASSERT_FALSE(pending.empty()) << "setup: no job started";
+    ASSERT_TRUE(pumpUntil([&] { return !pending.empty(); }))
+        << "setup: no job started";
     {
         auto done = std::move(pending.front());
         pending.erase(pending.begin());
@@ -513,10 +551,76 @@ TEST(ReviewDialogBase, INV25_BriefComposedWhenJobStarts) {
     EXPECT_EQ(dlg.composeCalls, 3)
         << "INV-25: finishing a job did not compose the next lane's brief";
 
-    while (!pending.empty()) {
+    for (int finished = 1; finished < 5; ++finished) {
+        ASSERT_TRUE(pumpUntil([&] { return !pending.empty(); }))
+            << "INV-25: job " << finished + 1 << " never started";
         auto done = std::move(pending.front());
         pending.erase(pending.begin());
         done(ok);
     }
     EXPECT_EQ(dlg.composeCalls, 5) << "INV-25: some lane was never composed";
+    EXPECT_EQ(dlg.allCollectedCalls, 1);
+}
+
+// INV-26 (ANTS-5624) — a lane's brief is built on a worker thread, so a large
+// lane does not freeze the dialog, and its apply step runs on the GUI thread
+// before the job is sent.
+TEST(ReviewDialogBase, INV26_BriefBuiltOnWorkerApplyBeforeSend) {
+    TestReviewDialog dlg(QString(), nullptr, nullptr);
+    QThread *const gui = QThread::currentThread();
+    auto workThread = std::make_shared<std::atomic<QThread *>>(nullptr);
+    QThread *applyThread = nullptr;
+    bool appliedBeforeSend = false;
+    dlg.work = [workThread, &applyThread] {
+        workThread->store(QThread::currentThread());
+        return TestReviewDialog::ComposedBrief{
+            LlmRequest{}, [&applyThread] { applyThread = QThread::currentThread(); } };
+    };
+    dlg.setJobRunner([&](const LlmJob &, const std::function<void(const LlmResult &)> &done) {
+        appliedBeforeSend = applyThread != nullptr;
+        LlmResult r;
+        r.ok = true;
+        done(r);
+    });
+    dlg.setLanes({ ReviewLane{"a", "a", ""} });
+    dlg.redispatch({ "a" });
+    ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 1; }));
+
+    ASSERT_NE(workThread->load(), nullptr) << "INV-26: the brief work never ran";
+    EXPECT_NE(workThread->load(), gui) << "INV-26: the brief was built on the GUI thread";
+    EXPECT_EQ(applyThread, gui) << "INV-26: apply must run on the GUI thread";
+    EXPECT_TRUE(appliedBeforeSend) << "INV-26: the job was sent before apply ran";
+}
+
+// INV-27 (ANTS-5624) — a dialog closed while a brief is being built drops
+// the job: neither apply nor the runner runs on the destroyed dialog.
+TEST(ReviewDialogBase, INV27_DialogClosedMidBuildDropsJob) {
+    struct Shared {
+        QSemaphore entered, release;
+        std::atomic<bool> finished{false};
+        int applied = 0;
+        int sent = 0;
+    };
+    auto st = std::make_shared<Shared>();
+    auto *dlg = new TestReviewDialog(QString(), nullptr, nullptr);
+    dlg->work = [st] {
+        st->entered.release();
+        st->release.acquire();
+        st->finished = true;
+        return TestReviewDialog::ComposedBrief{ LlmRequest{}, [st] { ++st->applied; } };
+    };
+    dlg->setJobRunner([st](const LlmJob &, const std::function<void(const LlmResult &)> &) {
+        ++st->sent;
+    });
+    dlg->setLanes({ ReviewLane{"a", "a", ""} });
+    dlg->redispatch({ "a" });
+    ASSERT_TRUE(st->entered.tryAcquire(1, 5000)) << "setup: the brief work never started";
+
+    delete dlg;
+    st->release.release();
+    ASSERT_TRUE(pumpUntil([&] { return st->finished.load(); }));
+    // Give a wrongly delivered completion every chance to land.
+    pumpUntil([] { return false; }, 200);
+    EXPECT_EQ(st->applied, 0) << "INV-27: apply ran after the dialog closed";
+    EXPECT_EQ(st->sent, 0) << "INV-27: a job was sent after the dialog closed";
 }

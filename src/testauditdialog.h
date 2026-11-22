@@ -29,6 +29,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include <optional>
+
 class QLineEdit;
 class QPlainTextEdit;
 class QRadioButton;
@@ -68,7 +70,7 @@ public:
 
 protected:
     QList<ReviewLane> derivePartition() override;
-    LlmRequest        composeBrief(const ReviewLane &lane) override;
+    BriefWork         briefWork(const ReviewLane &lane) override;
     void onAllReportsCollected(const QHash<QString, QString> &reportsById) override;
     void performFoldIn() override;
     // ANTS-1843 — refresh the partition (token + chunks + lanes) once before
@@ -82,6 +84,20 @@ private:
     // token; the dispatch path needs the cache, because the briefs that
     // follow read each chunk's pre-pass findings out of it.
     void    runEnginePartition(bool withPrePass = true);
+    // runEnginePartition's two halves: the request, which reads dialog
+    // state, and the result's write into it (ANTS-5624).
+    TestAuditEngine::PartitionRequest partitionRequest(bool withPrePass) const;
+    void    applyPartition(const TestAuditEngine::PartitionResult &pr);
+    // A brief, re-partitioned and retried once on stale_partition. Reads no
+    // dialog state, so the brief work runs it on a worker; `repartition` is
+    // the partition the caller then applies (ANTS-5624).
+    struct RecoveredBrief {
+        TestAuditEngine::BriefResult                     brief;
+        std::optional<TestAuditEngine::PartitionResult>  repartition;
+    };
+    static RecoveredBrief briefWithRecovery(
+        TestAuditEngine::BriefRequest br,
+        const TestAuditEngine::PartitionRequest &preq);
     // ANTS-5102 — drop each collected report whose chunk now covers other
     // files. Called after every successful partition.
     void    dropReportsForChangedChunks();
@@ -89,7 +105,10 @@ private:
     void    renderResults();
     void    persistResumeState();
     QString reportsRelDir() const;
-    QString assembleCappedPrompt(const TestAuditEngine::BriefResult &b) const;
+    // Static: the brief work calls it on a worker thread (ANTS-5624).
+    static QString assembleCappedPrompt(const QString &root,
+                                        const QStringList &dimensionsActive,
+                                        const TestAuditEngine::BriefResult &b);
 
     QString                          m_token;
     QVector<TestAuditEngine::Chunk>  m_chunks;

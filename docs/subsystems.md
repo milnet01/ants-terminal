@@ -242,8 +242,9 @@ Listed only where behavior isn't obvious from the name.
 - `reviewdialogbase` (`ants_dialogs_lib`) — shared QDialog scaffold for
   the v2 review-dialog family. Owns partition tabs, Dispatch button (→
   `LlmDispatcher`), results host, Fold-into-ROADMAP. Hooks:
-  `derivePartition` / `composeBrief` / `onAllReportsCollected` /
-  `performFoldIn`. Base provides fold-in *helpers*, not an orchestrator
+  `derivePartition` / `briefWork` / `onAllReportsCollected` /
+  `performFoldIn`; each lane's brief is built on a worker thread
+  (ANTS-5624). Base provides fold-in *helpers*, not an orchestrator
   (the subclass owns the sequence, so engine-owned fold-in doesn't
   double-allocate). ANTS-1721.
 - `coldeyesdialog` (`ants_dialogs_lib`) — native in-app cold-eyes doc
