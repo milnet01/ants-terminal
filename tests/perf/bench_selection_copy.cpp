@@ -25,9 +25,9 @@
 
 #include <chrono>
 #include <cstdio>
-#include <cstdlib>
 #include <string>
 
+#include "perf_env.h"
 #include "perf_metric.h"
 
 namespace {
@@ -35,12 +35,6 @@ namespace {
 constexpr int kRows = 50;
 constexpr int kCols = 200;
 constexpr int kLineChars = 180;
-
-int envInt(const char *name, int fallback) {
-    const char *v = std::getenv(name);
-    const int n = (v && *v) ? std::atoi(v) : 0;
-    return n > 0 ? n : fallback;
-}
 
 void sendKey(TerminalWidget &w, int key, Qt::KeyboardModifiers mods) {
     QKeyEvent ev(QEvent::KeyPress, key, mods);
@@ -63,7 +57,7 @@ double msSince(std::chrono::steady_clock::time_point t0) {
 int main(int argc, char **argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
-    const int lines = envInt("ANTS_PERF_SCROLLBACK", 50'000);
+    const int lines = AntsPerf::envPositiveInt("ANTS_PERF_SCROLLBACK", 50'000);
 
     TerminalWidget w;
     w.resize(kCols * 10, kRows * 20);

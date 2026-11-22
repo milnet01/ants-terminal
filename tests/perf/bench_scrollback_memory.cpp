@@ -22,23 +22,17 @@
 #include <QCoreApplication>
 
 #include <cstdio>
-#include <cstdlib>
 #include <malloc.h>
 #include <string>
 #include <vector>
 
+#include "perf_env.h"
 #include "perf_metric.h"
 
 namespace {
 
 constexpr int kRows = 50;
 constexpr int kCols = 200;
-
-int envInt(const char *name, int fallback) {
-    const char *v = std::getenv(name);
-    const int n = (v && *v) ? std::atoi(v) : 0;
-    return n > 0 ? n : fallback;
-}
 
 size_t heapInUse() {
     const struct mallinfo2 mi = mallinfo2();
@@ -66,7 +60,7 @@ std::string cycle() {
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
-    const int lines = envInt("ANTS_PERF_SCROLLBACK", 50'000);
+    const int lines = AntsPerf::envPositiveInt("ANTS_PERF_SCROLLBACK", 50'000);
 
     TerminalGrid grid(kRows, kCols);
     grid.setMaxScrollback(lines);

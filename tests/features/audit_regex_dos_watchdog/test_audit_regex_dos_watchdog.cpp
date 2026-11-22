@@ -5,7 +5,6 @@
 // rejection path stops emitting a qWarning.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 
@@ -201,7 +200,7 @@ TEST(AuditRegexDosWatchdog, Main) {
              "regexharden.cpp). The step-limit is the second-line defense "
              "for adversarial patterns that slip past shape rejection.");
     } else {
-        const int n = std::atoi(lm[1].str().c_str());
+        const int n = std::stoi(lm[1].str());
         if (n < 1000 || n > 1000000) {
             std::fprintf(stderr, "LIMIT_MATCH=%d out of [1000, 1000000]\n", n);
             fail("INV-3: LIMIT_MATCH value outside the sane range. Too "

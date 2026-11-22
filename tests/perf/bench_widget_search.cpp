@@ -44,16 +44,10 @@
 #include <cstdlib>
 #include <string>
 
+#include "perf_env.h"
 #include "perf_metric.h"
 
 namespace {
-
-int envInt(const char *name, int fallback) {
-    const char *v = std::getenv(name);
-    if (!v || !*v) return fallback;
-    const int n = std::atoi(v);
-    return n > 0 ? n : fallback;
-}
 
 // Log-shaped lines, 1 in 8 carrying the needle — the same mix
 // bench_search_throughput uses, so the two are comparable.
@@ -97,13 +91,13 @@ int main(int argc, char **argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
 
-    const int lines = envInt("ANTS_PERF_LINES", 50000);
-    const int scans = envInt("ANTS_PERF_SCANS", 5);
+    const int lines = AntsPerf::envPositiveInt("ANTS_PERF_LINES", 50000);
+    const int scans = AntsPerf::envPositiveInt("ANTS_PERF_SCANS", 5);
 
     // Grid width matters: the scan builds every line's text cell by cell, so
     // cost scales with columns. Default 50x200, matching bench_full_paint.
-    const int rows = envInt("ANTS_PERF_ROWS", 50);
-    const int cols = envInt("ANTS_PERF_COLS", 200);
+    const int rows = AntsPerf::envPositiveInt("ANTS_PERF_ROWS", 50);
+    const int cols = AntsPerf::envPositiveInt("ANTS_PERF_COLS", 200);
 
     TerminalWidget w;
     w.resize(cols * 10, rows * 20);

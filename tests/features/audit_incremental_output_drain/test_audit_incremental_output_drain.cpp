@@ -87,7 +87,7 @@ TEST(AuditIncrementalOutputDrain, Main) {
         std::regex_search(cpp, capMatch, capDecl)) {
         long long product = 1;
         for (int g = 1; g <= 3; ++g)
-            product *= std::atoll(capMatch[g].str().c_str());
+            product *= std::stoll(capMatch[g].str());
         if (product >= 4LL * 1024 * 1024 && product < (1LL << 30)) capOk = true;
     }
     if (!capOk) {

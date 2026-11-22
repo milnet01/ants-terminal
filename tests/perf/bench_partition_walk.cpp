@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <vector>
 
+#include "perf_env.h"
 #include "perf_metric.h"
 
 namespace {
@@ -46,8 +47,8 @@ double runOnce(const QString &root, int *files, int *chunks) {
     // ANTS-5126 — ANTS_PERF_NO_PREPASS=1 measures the partition the dialog's
     // panel refresh runs, which skips the grep pre-pass.
     {
-        const char *np = std::getenv("ANTS_PERF_NO_PREPASS");
-        req.prePass = !(np && *np && std::atoi(np) != 0);
+        const std::optional<int> np = AntsPerf::envInt("ANTS_PERF_NO_PREPASS");
+        req.prePass = !(np && *np != 0);
     }
 
     const auto t0 = std::chrono::steady_clock::now();
@@ -64,13 +65,6 @@ double runOnce(const QString &root, int *files, int *chunks) {
     return std::chrono::duration<double, std::milli>(t1 - t0).count();
 }
 
-int envInt(const char *name, int fallback) {
-    const char *v = std::getenv(name);
-    if (!v || !*v) return fallback;
-    const int n = std::atoi(v);
-    return n > 0 ? n : fallback;
-}
-
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -81,7 +75,7 @@ int main(int argc, char **argv) {
         ? QString::fromLocal8Bit(envRoot)
         : QStringLiteral(ANTS_PROJECT_ROOT);
 
-    const int iters = envInt("ANTS_PERF_ITERS", 5);
+    const int iters = AntsPerf::envPositiveInt("ANTS_PERF_ITERS", 5);
 
     int files = 0, chunks = 0;
     const double firstMs = runOnce(root, &files, &chunks);
@@ -107,7 +101,7 @@ int main(int argc, char **argv) {
     AntsPerf::reportLowerBetter("audit.partition_walk.warm_ms", warmMs, "ms");
     AntsPerf::reportLowerBetter("audit.partition_walk.cold_ms", firstMs, "ms");
 
-    const int maxMs = envInt("ANTS_PERF_MAX_MS", 0);
+    const int maxMs = AntsPerf::envPositiveInt("ANTS_PERF_MAX_MS", 0);
     if (maxMs > 0 && warmMs > double(maxMs)) {
         std::fprintf(stderr,
                      "partition walk %.1f ms exceeds ANTS_PERF_MAX_MS=%d\n",

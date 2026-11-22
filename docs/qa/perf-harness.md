@@ -65,9 +65,12 @@ AntsPerf::reportLowerBetter("grid.reflow_1M_ms", ms, "ms");
 AntsPerf::reportHigherBetter("vt.throughput.ascii", mbPerSec, "MB/s");
 ```
 
-4. Register it in `CMakeLists.txt` beside the others: an `add_executable`, a
+4. Read any setting from the environment through `tests/perf/perf_env.h`:
+   `AntsPerf::envPositiveInt("ANTS_PERF_ITERS", 5)`. It treats a value that
+   is not wholly an int as unset.
+5. Register it in `CMakeLists.txt` beside the others: an `add_executable`, a
    `target_include_directories(... ${CMAKE_SOURCE_DIR}/tests/perf)` so the
-   header resolves, and an `add_test` with `LABELS "perf"`.
+   headers resolve, and an `add_test` with `LABELS "perf"`.
 
 It then appears in the report. There is no list of benchmarks and no list of
 metrics kept anywhere — the runner discovers sources from `tests/perf/` and

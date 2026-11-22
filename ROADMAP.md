@@ -115140,9 +115140,16 @@ reports are asked for separately, each time.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5446] **clang-tidy bugprone-unchecked-string-to-number-conversion (cert-err34-c): 9 sites in 8 files.**
+- ✅ [ANTS-5446] **clang-tidy bugprone-unchecked-string-to-number-conversion (cert-err34-c): 9 sites in 8 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it).
   cert-err34-c flags the same 9; one item covers both. Check each input.
+  2026-11-22: re-swept: 12 sites in 11 files, all in tests. Four feature
+  tests parse regex `(\d+)` captures: std::atoi/atoll ->
+  std::stoi/stoll, which throw on overflow. Seven perf benches: five
+  copies of envInt and two inline reads -> one checked helper,
+  tests/perf/perf_env.h (std::from_chars, whole value or unset). Before,
+  "12abc" read as 12 and "99999999999" as 1215752191. clang-tidy reports
+  0 for both checks on the 11 files.
   **Layman:** Text turned into numbers without checking the text was a number.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.

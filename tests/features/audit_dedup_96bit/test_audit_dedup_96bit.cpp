@@ -4,7 +4,6 @@
 // or saveSuppression stops updating m_suppressionReasons.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 
@@ -104,7 +103,7 @@ TEST(AuditDedup96Bit, Main) {
                  "The function must keep a fixed-width prefix of the "
                  "SHA-256 digest.");
         } else {
-            const int width = std::atoi(m[1].str().c_str());
+            const int width = std::stoi(m[1].str());
             if (width < 24) {
                 fail("INV-1: computeDedup truncates to fewer than 24 hex "
                      "chars — must be at least 24 (96 bits) for the widened "

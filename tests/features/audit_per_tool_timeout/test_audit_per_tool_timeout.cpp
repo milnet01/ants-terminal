@@ -5,7 +5,6 @@
 // disappear.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 
@@ -139,7 +138,7 @@ TEST(AuditPerToolTimeout, Main) {
             std::regex assign(R"(timeoutMs\s*=\s*(\d+))");
             std::smatch m;
             if (std::regex_search(window, m, assign)) {
-                int v = std::atoi(m[1].str().c_str());
+                int v = std::stoi(m[1].str());
                 if (v > 30000) { foundOverride = true; break; }
             }
             pos = checks.find(needle, pos + 1);

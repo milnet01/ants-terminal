@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "perf_env.h"
 #include "perf_metric.h"
 
 #include <string>
@@ -90,8 +91,7 @@ int main(int argc, char **argv) {
     std::printf("TOTAL,%.1f,0\n", total);
     AntsPerf::reportLowerBetter("audit.drift.total", total, "ms");
 
-    const char *maxEnv = std::getenv("ANTS_PERF_MAX_MS");
-    const int maxMs = (maxEnv && *maxEnv) ? std::atoi(maxEnv) : 0;
+    const int maxMs = AntsPerf::envPositiveInt("ANTS_PERF_MAX_MS", 0);
     if (maxMs > 0 && total > double(maxMs)) {
         std::fprintf(stderr, "drift lanes %.1f ms exceeds ANTS_PERF_MAX_MS=%d\n",
                      total, maxMs);

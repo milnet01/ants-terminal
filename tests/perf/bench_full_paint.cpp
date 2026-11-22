@@ -48,20 +48,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
-#include <cstdlib>
 #include <string>
 #include <vector>
 
+#include "perf_env.h"
 #include "perf_metric.h"
 
 namespace {
-
-int envInt(const char *name, int fallback) {
-    const char *v = std::getenv(name);
-    if (!v || !*v) return fallback;
-    const int n = std::atoi(v);
-    return n > 0 ? n : fallback;
-}
 
 // Build `rows` lines, each filling roughly `cols` columns by repeating `unit`.
 //
@@ -123,9 +116,9 @@ int main(int argc, char **argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
 
-    const int rows   = envInt("ANTS_PERF_ROWS", 50);
-    const int cols   = envInt("ANTS_PERF_COLS", 200);
-    const int frames = envInt("ANTS_PERF_FRAMES", 60);
+    const int rows   = AntsPerf::envPositiveInt("ANTS_PERF_ROWS", 50);
+    const int cols   = AntsPerf::envPositiveInt("ANTS_PERF_COLS", 200);
+    const int frames = AntsPerf::envPositiveInt("ANTS_PERF_FRAMES", 60);
 
     // Enough rows to fill the view several times over, so the scrolled-back
     // corpus has somewhere to scroll to.
@@ -157,7 +150,7 @@ int main(int argc, char **argv) {
 
     std::printf("corpus,rows,cols,frames,total_ms,ms_per_frame,fps,ink_px\n");
 
-    const int maxFrameMs = envInt("ANTS_PERF_MAX_FRAME_MS", 0);
+    const int maxFrameMs = AntsPerf::envPositiveInt("ANTS_PERF_MAX_FRAME_MS", 0);
     int overBudget = 0;
     int vacuous = 0;
 
