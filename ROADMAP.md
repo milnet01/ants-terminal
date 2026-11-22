@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6872 -->
+<!-- ants-roadmap-id-high-water: ANTS=6893 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -105686,7 +105686,272 @@ asked for them to ship in 0.8.0.
   Source: in-session-2026-10-20 (first comment_claims run over src/).
   Lanes: mcp.
 
-- 📋 [ANTS-5796] **Review the repeated code duplicate_blocks finds in src/ and fold the copies that coding.md § 1.3 says should be one.**
+- 📋 [ANTS-6873] **Build roadmap_log's flip and annotate success reply in one function instead of six copies.**
+  Sites: remotecontrol_roadmap_log.cpp (ants-v1 lambda dry-run and
+  write, GFM dry-run and write) and remotecontrol_roadmap_query.cpp's
+  pass-headings dry-run and write. The copies already differ: only the
+  GFM ones emit anchor, counter and needInjection; the pass ones omit
+  write_path and anchor_injected. Fix: one rlFlipEnvelope(opts,
+  dryRun) with per-format extras passed in. Pinned by source anchors
+  in test_roadmap_log_annotate and test_roadmap_log_flip_ants_v1.
+  Groups dup:94aa93b5868f, dup:6e8c02eb5f12, dup:8f8fb646e4e2,
+  dup:6aa16bee4d4a. Lane A, .indie-review/reports-2026-11-22-dup/.
+  **Layman:** The reply a roadmap status change sends back is written out six times and the copies already list different fields; one builder makes them agree.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6874] **Give roadmap_log one store-locator refusal and one pass-store locate helper.**
+  The 'line_range cannot be served by this project's roadmap store'
+  refusal is written four times in remotecontrol_roadmap_log.cpp and
+  once in remotecontrol_roadmap_log_batch.cpp. The pass-store locate
+  block (flipPassStatus then bullet_not_found) is in flip and amend;
+  amend locates through flipPassStatus(..., "planned") and discards
+  the markdown, which no comment explains. Fix: rlRefuseStoreLocator
+  and rlLocatePassInStore. Groups dup:f07ecf64227a, dup:05edda669819.
+  Lane A.
+  **Layman:** One refusal message is typed out five times; a single helper means a wording or code change is made once.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6875] **Validate roadmap_log's id_prefix argument in one helper shared by append, append_batch and flip_batch.**
+  Copies: append, append_batch, flip_batch (batch file, ANTS-6236).
+  The append_batch echo drift was fixed in 12ef9287. Fix: one
+  rlValidateIdPrefix(arg, label) beside kIdPrefixShape, returning an
+  optional refusal. Group dup:f2f089af882f. Lane A.
+  **Layman:** The check on a roadmap id prefix is copied three times; one copy had drifted and is already fixed, and one helper stops it happening again.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-roadmap-query-log, mcp-roadmap-batch.
+
+- 📋 [ANTS-6876] **Read .roadmap-counter through one helper with an explicit policy for a missing, empty or unreadable file.**
+  Sites: append (auto-creates; empty refuses counter_missing), flip and
+  flip_batch (empty reads as 0; unreadable refuses counter_read_failed;
+  flip_batch omits the path from its message), append_batch. Only
+  flip_batch comments why. Fix: rlReadCounter(path, Policy) returning
+  {value, refusal}. Decide per caller which policy is intended before
+  folding. Groups dup:1022e7795b92, dup:9f52e741572a. Lane A.
+  **Layman:** Four places read the roadmap's id counter and each treats a missing or empty file differently; one reader makes the rule visible.
+  Kind: fix.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-roadmap-query-log, mcp-roadmap-batch.
+
+- 📋 [ANTS-6877] **Write RoadmapStore's setItemField and clearItemField through one private column writer.**
+  Both run the writable-field check, ImmediateTx,
+  mergedItemProvenance, UPDATE item SET, commit and
+  m_writtenItems.insert, and both carry the ANTS-6649 comment. They
+  differ only in the SET fragment and one bound value. Fix: a private
+  writeItemColumn(itemPk, field, setClause, bindValue, provenance,
+  error). Search the specs for both names first. Group
+  dup:79632a3389b4. Lane A.
+  **Layman:** Two database writers repeat the same locked update, and a past fix had to patch both; one shared writer keeps them in step.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6878] **Build spec_log's reply fields once for its dry-run and real-write branches.**
+  remotecontrol_feedback.cpp spec_log: the dry-run and write envelopes
+  carry the same field list and the same ANTS-4353/4364 and ANTS-6364
+  comments. Fix: one specLogFields(...) builder. Group
+  dup:d45388173213. Lane A.
+  **Layman:** A command's preview reply and real reply list the same fields by hand, and past fixes had to patch both.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6879] **Share roadmapBullets, roadmapStoreServes and roadmapWriteTarget's store-resolution preamble.**
+  remotecontrol_roadmap_query.cpp: each clears why and error, returns
+  on an empty root, calls roadmapStoreOrNull with localWhy, then
+  migratedProject(rcProjectRootFor(...)). The comments say a fix
+  (ANTS-4884) touched all three; INV-1 depends on localWhy. Fix: one
+  private migratedProjectFor(root, text, why, error). Specs ANTS-3793
+  and ANTS-3809 name these functions: read them first. Group
+  dup:ad9aefe5e5d3. Lane A.
+  **Layman:** Three functions open with the same steps for finding a project's roadmap database; one helper keeps a safety rule from being dropped in a fourth.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6880] **Share one owner-only atomic write and one size-capped read between the build, test-result and audit caches.**
+  buildcache.cpp and testrescache.cpp repeat the save sequence (both
+  cite ANTS-5151). loadBuild caps its read (ANTS-6528); loadTests
+  (testrescache.cpp) and auditcache's manifest load use an unbounded
+  readAll(), read 2026-11-22. Fix: one owner-only-atomic-write helper
+  and one bounded JSON read, used by all three. Group
+  dup:9778de78cb33. Lane B.
+  **Layman:** Three cache files are saved and loaded by copied code, and only one of the loaders refuses an oversized file.
+  Kind: fix.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: diagnostics-logging, audit-engine.
+
+- 📋 [ANTS-6881] **Run git in auditscope.cpp through one runner that checks the exit status the same way for all three callers.**
+  runGitRaw, runGitSucceeds and runGit each start git, wait and kill
+  on timeout. Only runGit checks exitStatus() != NormalExit, so the
+  other two can read a crashed git as success (runGitRaw and
+  runGitSucceeds read 2026-11-22). Fix: one private runner returning
+  exit status and stdout. Pinned: test_audit_run_since_last_run's
+  Inv9PureHelpersDoNotSpawnGit matches QProcess in auditscope.cpp.
+  Group dup:40464e258cca. Lane B.
+  **Layman:** Three copies of the code that runs git disagree on whether a crashed git counts as success.
+  Kind: fix.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6882] **Create and wire audit_run's self-freeing worker thread in one helper for the async and sync branches.**
+  mcptoolregistry.cpp: QThread::create, deleteLater on finish, the
+  queued completion connect and inFlightGuard.dismiss() appear in both
+  branches; ANTS-5080 patched both. Pinned hard:
+  test_socket_readyread_uaf_guard matches
+  QThread::create\([\s\S]{0,160}AuditRunner::runAudit, so the helper
+  must keep runAudit inside that window or the test changes; and
+  test_mcp_audit_run_async pins the call texts. Group dup:862f6d0bde59.
+  Lane B.
+  **Layman:** Two branches start the same background worker by hand, and a past fix had to patch both.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6883] **Walk indie-review's admitted and counted files with one walker and one filter.**
+  indiereviewengine.cpp: the count walk repeats the admit walk's
+  inNoiseDir, isGeneratedSource and canonicalise steps but lacks the
+  isIndexableFile skip, and its result is all minus admitted, so it
+  can over-count. Check whether that is intended before folding. Fix:
+  one walk helper with a keep-this-file predicate. Group
+  dup:1b382b7891bf. Lane B.
+  **Layman:** Two file walks that should agree use different filters, so the count of skipped files can be wrong.
+  Kind: fix.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: review-engines.
+
+- 📋 [ANTS-6884] **Share DocsIndex and CodebaseIndex's load-validate-refresh-write cache skeleton.**
+  DocsIndex::serve and CodebaseIndex::serve share the cache-path
+  override, the INV-13/INV-14 cold-build triggers and the cache-write
+  block, patched for one defect as ANTS-5103 and ANTS-5099. Fix: one
+  helper over version, fromJson, toJson and a refresh callback. Pinned:
+  test_mcp_docs_index (QSaveFile) and test_doc_engine_guards
+  (|| !sf.commit()). Groups dup:44ff5e5d327f, dup:a59527e807e8. Lane C.
+  **Layman:** Two indexes save and reload their caches with copied code, and the same bug had to be fixed in each separately.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: code-index-search, doc-engines.
+
+- 📋 [ANTS-6885] **Resolve a verb's project root and validate its path argument through two shared helpers.**
+  Sites include docs_index, doc_integrity, file_outline, read_log,
+  read_region(s), apply_edits, codebase_index, doc_symbols, spec_lint,
+  doc_dedup, doc_lint and ReadRegion::extractBatch. The ~global
+  sentinel is honoured by some (docs_index, doc_integrity,
+  file_outline, read_*) and not others (doc_symbols, spec_lint,
+  doc_dedup, doc_lint); nothing says whether that is intended. Decide
+  that first. Fix: resolveVerbRoot(req, verb, allowGlobalSentinel) and
+  validateExistingPath(rawPath, root, verb). Pinned:
+  test_mcp_path_anchor counts eight validatePath( call sites, plus the
+  sentinel and check.err anchors. Groups dup:5d9ba7069db5,
+  dup:d2fc1e1359e0. Lane C.
+  **Layman:** About a dozen commands each find the project folder and check a path in their own copy, and they disagree on whether the global-config shortcut is allowed.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-content-verbs, mcp-state-workspace.
+
+- 📋 [ANTS-6886] **Find the terminal for get_text, recent_errors and last_selection in one helper with one refusal code.**
+  remotecontrol_terminal.cpp: cmdGetText refuses with
+  mcp::refusal("not_found"); cmdRecentErrors and cmdLastSelection
+  build {ok:false, code:"no_window"} by hand (read 2026-11-22). A
+  client matching on the code sees two codes for one condition. Fix:
+  resolveTerminalForRequest(req) returning the widget or a ready
+  refusal. Changing a code is a wire change: say so in the CHANGELOG.
+  Group dup:4998bfde6da1. Lane C.
+  **Layman:** Three commands look up the terminal in copied code and refuse a missing one with two different error codes.
+  Kind: fix.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-6887] **Finish each MCP tool descriptor through one function that sets required, additionalProperties and inputSchema.**
+  About fifty copies across the claudeintegration_*.cpp files end
+  with req.append, schema["required"], additionalProperties=false,
+  inputSchema and tools.append(t). The shared prop builders exist; the
+  tail is hand-copied and has drifted (see the additionalProperties
+  item filed beside this). Fix: finishTool(t, schema, props, required,
+  strict=true). Pinned by many source anchors (tools.append(t);,
+  additionalProperties, makeFieldsProp()). Groups dup:8f84d407dbff,
+  dup:4c352174c10f. Lane C; lane D dismissed the sibling
+  dup:9b0c47bca82f as boilerplate, which the measured drift refutes.
+  **Layman:** Each of the server's tools ends its description with the same hand-copied lines, and some copies dropped one of them.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6888] **Give every MCP tool's input schema additionalProperties:false, as mcp-tools.md's schema-hygiene rule requires.**
+  Measured 2026-11-22 with build/ants-mcpd tools/list: 23 tools lack
+  it, among them workspace_search, roadmap_query, feedback_query,
+  feedback_log, spec_log, get_text, file_outline and git_state.
+  docs/standards/mcp-tools.md item 10 requires it. Before turning it
+  on, check each verb for an argument callers send that the schema
+  does not declare, or the client will start refusing it. Add a
+  tools/list test that every tool is strict. Found by lane C at
+  claudeintegration_docs.cpp (feedback_query).
+  **Layman:** Some of the server's tools do not tell the client to reject unknown arguments, which the project's own rule says every tool must.
+  Kind: fix.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6889] **Use cppre::optimized for every precompiled regex in fileoutline.cpp.**
+  About 25 hand-rolled static QRegularExpression blocks call
+  optimize() themselves; cppre::optimized already exists and some
+  rxCpp* use it. test_mcp_file_outline checks .optimize() appears in
+  the source, which the helper keeps. Groups dup:388efd314a34,
+  dup:d69927dd14de. Lane C, graded one edit.
+  **Layman:** One file builds its search patterns two different ways; using the existing helper everywhere leaves one way to copy.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6890] **Compute the unarmed model-switch confirm inputs in one place for both of its callers.**
+  claudestatuswidgets.cpp: maybeAutoConfirmUserModelSwitch and
+  pollUnarmedSwitchConfirm both build enabled, visible and ss and call
+  shouldAutoConfirmUnarmedSwitch; ANTS-4457 patched both. Pinned by
+  test_unarmed_confirm (UnarmedConfirm.CallersPassTheTrackedState).
+  Fix: an unarmedSwitchInputs(focused) builder. Group
+  dup:09f78d45c33e. Lane C.
+  **Layman:** Two places pass the same seven values to one decision, and a past fix had to patch both.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6891] **Share one cell-to-text function between ScrollbackExporter and TerminalWidget::lineText.**
+  scrollbackexporter.cpp copies TerminalWidget::lineText's cell loop:
+  zero-means-space, combining append and surrogate encoding. The widget
+  copy has a perf-tuned fast path covered by terminal_search_scan, so
+  the shared function must keep it; measure with the perf preset.
+  Group dup:3f7c5aa8ba9e. Lane C.
+  **Layman:** Exporting scrollback and reading a screen line turn cells into text with copied code, so a change to one can miss the other.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6892] **Build each changelog_log reply's shared fields once, then add only the dry-run or write tail.**
+  remotecontrol_changelog.cpp: add, reorder and add_batch list the
+  same fields in both branches; ANTS-4629 records a field emitted on
+  the dry-run path only for five days. The reorder write reply may
+  lack bytes, which the dry run has: check when folding. Pinned:
+  toUtf8().size() (workspace_search_payload_knobs). Group
+  dup:771dc697cfc7. Lane D.
+  **Layman:** Each changelog command lists its reply fields twice, once for a preview and once for the real write, and past fixes had to patch both.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6893] **Parse a reply once in mcpprojection.cpp for projectFields, compactEnvelope and tabularize.**
+  Each repeats fromJson, the error and isObject check, and returns the
+  input unchanged otherwise; tabularize ties its floor to INV-6.
+  Specs ANTS-2090 and ANTS-2132 and mcp-tools.md name compactEnvelope:
+  read them first. Group dup:2d560ad8eb24. Lane D.
+  **Layman:** Three reply-shaping steps each start by parsing the reply the same way; one helper keeps their fallback rule in one place.
+  Kind: refactor.
+  Source: review-readability-2026-11-22 (ANTS-5796 duplicate pass).
+  Lanes: mcp-infra.
+
+- ✅ [ANTS-5796] **Review the repeated code duplicate_blocks finds in src/ and fold the copies that coding.md § 1.3 says should be one.**
   Measured 2026-10-20 with duplicate_blocks over src/ (ANTS-5785): 335
   groups, 160 with finding_shape (three or more copies, or copies that
   drifted apart). Largest: the review dialogs' shared block
@@ -105699,6 +105964,14 @@ asked for them to ship in 0.8.0.
   dup:0be8fe509c07 (runner enum), dup:8eaf4fe55ef6 (the walk verbs'
   arguments). dup:500fe37250c0 was dismissed there as real content; its
   stale ctest wording is fixed.
+  2026-11-22: review finished. All 121 finding-shape groups at c986b23f
+  now have a decision. 51 were decided by the 2026-10-22 readability
+  run; nine of those were re-read. The other 70 went to three cold Q1
+  lanes. 38 group ids were confirmed. Each fold is its own item:
+  ANTS-6873 to ANTS-6893, plus notes on ANTS-6216, 6222, 6228, 6237,
+  6279 and 6816. The append_batch id_prefix echo drift was fixed in
+  12ef9287. Dismissals and their reasons:
+  .indie-review/reports-2026-11-22-dup/ (local).
   **Layman:** The same code is written out in several places; folding the copies means a future fix is made once instead of in each copy.
   Kind: refactor.
   Source: in-session-2026-10-20 (first duplicate_blocks run over src/).
@@ -107925,6 +108198,12 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 580
   `src/dialogchrome.cpp:169-176`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-22, ANTS-5796 duplicate pass (lane C): confirmed under new id
+  dup:7472797f297a. DialogChrome::applyTheme sets PlaceholderText
+  (dialogs.md D6); the roadmap dialog and the shortcuts overlay copies
+  do not, so their placeholder colour misses that fix. The shortcuts
+  copy also sets Highlight and HighlightedText, which the shared call
+  must keep.
   **Layman:** Two roadmap windows set their own background colours on top of the shared theme code, so a theme change has three places to edit.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F4).
@@ -108010,6 +108289,10 @@ worked after these.
   literal SO_PEERCRED inside each handler body before readyRead; that
   test must change to accept peerUidIs in the same commit.
   Hot reload: none needed.
+  2026-11-22, ANTS-5796 duplicate pass (lane C): confirmed HIGH under
+  new id dup:d1db209f0fb3 (onHookConnection, onMcpConnection,
+  RemoteControl::onNewConnection). Only the RemoteControl copy logs the
+  failure reason. The idle-timer setup beside each is copied too.
   **Layman:** The check that only your own user may talk to the terminal's sockets is written out four times; one shared copy means a fix lands everywhere.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L14-F9).
@@ -108111,6 +108394,10 @@ worked after these.
   Hot reload: none needed.
   The 2026-11-06 reviews also found this: row 770
   `src/claudebgtasks.cpp:60-76`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-22, ANTS-5796 duplicate pass (lane C): confirmed HIGH under
+  new id dup:22a9fd4640b3. The copies have drifted further: the bg
+  tracker's poll() also checks walkHelperTranscripts, its parse takes
+  m_processStartMs, and its shape compare omits subject.
   **Layman:** The two trackers that read Claude's background tasks and its task list repeat the same file-following code, so each fix has to be made twice.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L17-F5).
@@ -108244,6 +108531,14 @@ worked after these.
   and flip read the roadmap twice. Queued with ANTS-6238/6239: one
   restructuring of remotecontrol_roadmap_log.cpp, many scrape anchors.
   Hot reload: none needed.
+  2026-11-22, ANTS-5796 duplicate pass (lane A): the prologue now has
+  nine copies, four in remotecontrol_roadmap_log.cpp and five in
+  remotecontrol_roadmap_log_batch.cpp (dup:419874b060db). flip and amend
+  call findRoadmapUnder without &projectRootDir, which append and
+  append_batch pass (ANTS-4882); check whether a subdirectory caller
+  resolves the wrong store root there. The pass-headings probe in
+  append, flip and append_batch is the same shape (dup:8e7f3b9ca308):
+  fold it in the same helper.
   **Layman:** Three roadmap edit tools each repeat the steps that find and read the roadmap, and one copy has drifted.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F10).
@@ -108831,6 +109126,12 @@ worked after these.
   per-dialog members today, so the move takes them into the base.
   The 2026-11-06 reviews also found this: row 1005
   `src/indiereviewdialog.cpp:214`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-22, ANTS-5796 duplicate pass (lane B): confirmed again under
+  new ids dup:c840484077fb (the fold-in panel in the three dialogs;
+  radio order and default mode now differ) and dup:22774933446d (the
+  matching inline accessors in the three headers). dup:a8cc3560b566
+  (rebuildPartitionPanel, renderResults) was dismissed: the copies carry
+  different data and endings.
   **Layman:** The three review windows still each build the same fold-in controls and lane list by hand; make that one piece of code.
   Kind: refactor.
   Source: review-readability-2026-10-22 L28.
@@ -109091,6 +109392,13 @@ worked after these.
   and focused_test), irErr, subsystemErr and lasErr in
   remotecontrol_state.cpp, and fbErr in remotecontrol_workspace.cpp.
   Fold them into the same helper.
+  2026-11-22, ANTS-5796 duplicate pass (lane A): the {ok:false, code,
+  error} lambda is redefined in at least 12 roadmap verb functions, plus
+  file-local twins in publish, know_how, run_trace and session_message.
+  append and roadmap_query_verb attach an `example` object for
+  missing_field and no_roadmap; the rest do not. Groups
+  dup:ba84c75706b4, dup:9270fc723cca, dup:993a5fc2459b,
+  dup:f41971a4b6b2.
   **Layman:** The roadmap tools build their error replies in many separate copies; make them share one.
   Kind: refactor.
   Source: review-readability-2026-10-22 L21.
