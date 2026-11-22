@@ -45,9 +45,9 @@ enum class UnderlineStyle : uint8_t {
 class CellColor {
 public:
     CellColor() = default;
-    CellColor(const QColor &c)  // NOLINT(google-explicit-constructor) — drop-in for QColor
+    CellColor(const QColor &c)  // NOLINT(google-explicit-constructor,misc-explicit-constructor) — drop-in for QColor
         : m_rgba(c.isValid() ? encode(c.rgba()) : kUnset) {}
-    operator QColor() const {  // NOLINT(google-explicit-constructor)
+    operator QColor() const {  // NOLINT(google-explicit-constructor,misc-explicit-constructor)
         return isValid() ? QColor::fromRgba(m_rgba) : QColor();
     }
     bool isValid() const { return m_rgba != kUnset; }

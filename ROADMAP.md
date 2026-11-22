@@ -115268,8 +115268,12 @@ reports are asked for separately, each time.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5458] **clang-tidy misc-explicit-constructor: 2 sites.**
+- ✅ [ANTS-5458] **clang-tidy misc-explicit-constructor: 2 sites.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt. Mark explicit unless the conversion is wanted.
+  Shipped 2026-11-22: four sites at HEAD. RoadmapShortcutsDialog and the
+  decstr test Harness are explicit; CellColor's two conversions are
+  wanted (a drop-in for QColor), so their existing NOLINT also names
+  misc-explicit-constructor.
   **Layman:** Constructors that let one type silently turn into another.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

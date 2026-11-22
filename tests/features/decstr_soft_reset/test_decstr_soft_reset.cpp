@@ -19,7 +19,7 @@ namespace {
 struct Harness {
     TerminalGrid grid;
     VtParser parser;
-    Harness(int rows = 24, int cols = 80)
+    explicit Harness(int rows = 24, int cols = 80)
         : grid(rows, cols),
           parser([this](const VtAction &a) { grid.processAction(a); }) {}
     void feed(const std::string &s) {

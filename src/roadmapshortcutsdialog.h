@@ -21,7 +21,7 @@ class RoadmapShortcutsDialog : public QDialog {
     Q_OBJECT
 
 public:
-    RoadmapShortcutsDialog(const QString &themeName,
+    explicit RoadmapShortcutsDialog(const QString &themeName,
                            QWidget *parent = nullptr);
 
 protected:
