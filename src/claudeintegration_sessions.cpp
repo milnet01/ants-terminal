@@ -650,7 +650,7 @@ QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {
     // Skip excessively large transcripts to prevent memory exhaustion.
     // Surface the cap-hit so a "transcript empty / status frozen"
     // bug report is debuggable from logs (env-gated to avoid spam).
-    constexpr qint64 kMaxTranscriptBytes = 100ll * 1024 * 1024;
+    constexpr qint64 kMaxTranscriptBytes = 100LL * 1024 * 1024;
     if (file.size() > kMaxTranscriptBytes) {
         ANTS_LOG(DebugLog::Claude,
                  "loadTranscript: %s exceeds %lld-byte cap (size=%lld); "

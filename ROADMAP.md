@@ -115247,8 +115247,10 @@ reports are asked for separately, each time.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5456] **clang-tidy cert-dcl16-c: 2 lowercase integer suffixes.**
+- ✅ [ANTS-5456] **clang-tidy cert-dcl16-c: 2 lowercase integer suffixes.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt. Uppercase the suffix.
+  Shipped 2026-11-22: one site at HEAD (claudeintegration_sessions.cpp,
+  100ll → 100LL).
   **Layman:** Number literals ending in a lowercase l, which reads like a 1.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
