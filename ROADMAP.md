@@ -115496,7 +115496,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
   Lanes: docs.
 
-- 📋 [ANTS-5541] **remotecontrol_workspace.cpp declares outlineOneFile and outlineFileEtag static at file scope; clang-tidy asks for an anonymous namespace.**
+- ✅ [ANTS-5541] **remotecontrol_workspace.cpp declares outlineOneFile and outlineFileEtag static at file scope; clang-tidy asks for an anonymous namespace.**
   misc-use-anonymous-namespace on both. The file's eight
   performance-implicit-conversion-in-loop warnings were fixed in the
   ANTS-5096 cited_by commit; these two were left because moving them
@@ -115506,6 +115506,11 @@ reports are asked for separately, each time.
   (feedbackSiblingCandidates, normalizeFeedbackStem, feedbackStemOf,
   feedbackConventionalNames, feedbackOriginRepoName) that want internal
   linkage.
+  Shipped 2026-11-22: the two outline helpers and the six feedback
+  helpers (pickFeedbackNameIn too) move from `static` into anonymous
+  namespaces; the three QJsonValue loops take `const auto &`.
+  resolveFeedbackPath's comment moves back above its function. clang-tidy
+  on the file for both checks: 11 warnings before, 0 after.
   **Layman:** Two helper functions in the code-search file are declared in an older style the linter flags.
   Kind: refactor.
   Source: in-session-2026-09-28, found while closing ANTS-5096.

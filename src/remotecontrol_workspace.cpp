@@ -1617,7 +1617,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             QJsonArray lean;
             bool hadContext = false;
             const QJsonArray emitted = out.value("matches").toArray();
-            for (const QJsonValue &v : emitted) {
+            for (const auto &v : emitted) {
                 QJsonObject m = v.toObject();
                 hadContext = hadContext || m.contains("context_before")
                                         || m.contains("context_after");
@@ -1642,10 +1642,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         if (mcp::shouldOffload(bytes, mcp::offloadThresholdFor(
                                           QStringLiteral("workspace_search"), req))) {
             QHash<QString, int> perFile;
-            for (const QJsonValue &v : std::as_const(matches)) {
+            for (const auto &v : std::as_const(matches)) {
                 const QJsonObject m = v.toObject();
                 ++perFile[m.value(QStringLiteral("file")).toString()];
-                for (const QJsonValue &a : m.value(QStringLiteral("also_at")).toArray())
+                for (const auto &a : m.value(QStringLiteral("also_at")).toArray())
                     ++perFile[a.toObject().value(QStringLiteral("file")).toString()];
             }
             QList<QPair<QString, int>> rows(perFile.keyValueBegin(), perFile.keyValueEnd());
@@ -2041,6 +2041,8 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+namespace {
+
 // ANTS-2223 — outline ONE already-root-resolved file. The per-file body
 // shared by the single-path and multi-path (`paths:[...]`) forms of
 // cmdFileOutline (Rule of Three: two call-sites + a clean contract). Returns
@@ -2048,13 +2050,13 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
 // ok:false {code,error} object on a per-file failure (empty/escaping/missing
 // path) — so the multi-path loop can record one bad entry without aborting
 // the batch.
-static QJsonObject outlineOneFile(const QString &rawPath,
-                                  const QString &rootCanonical,
-                                  FileOutline::Mode mode, bool includeDoc,
-                                  int maxSymbols, int maxBytes,
-                                  bool withSizes = false,
-                                  int maxHeadingLevel = 0,
-                                  const QString &filter = QString()) {
+QJsonObject outlineOneFile(const QString &rawPath,
+                           const QString &rootCanonical,
+                           FileOutline::Mode mode, bool includeDoc,
+                           int maxSymbols, int maxBytes,
+                           bool withSizes = false,
+                           int maxHeadingLevel = 0,
+                           const QString &filter = QString()) {
     if (rawPath.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -2162,12 +2164,14 @@ static QJsonObject outlineOneFile(const QString &rawPath,
 // shape as ClaudeIntegration::etagFor so callers see ONE etag format across
 // the whole MCP surface (kept in sync deliberately — a 2-line hash, not worth
 // a cross-layer dependency from remotecontrol → claudeintegration).
-static QString outlineFileEtag(const QJsonObject &fileObj) {
+QString outlineFileEtag(const QJsonObject &fileObj) {
     const QByteArray buf =
         QJsonDocument(fileObj).toJson(QJsonDocument::Compact);
     return QString::fromUtf8(QCryptographicHash::hash(
         buf, QCryptographicHash::Sha256).toHex().left(16));
 }
+
+}  // namespace
 
 // ANTS-1249: file_outline — structured file outline (header_doc +
 // symbols[]). Replaces a full Read of a 5 000-line file with a ~1 K
@@ -3986,6 +3990,8 @@ QString feedbackCallerLeaf(const QJsonObject &req) {
     return QFileInfo(QFileInfo(callerRaw).canonicalFilePath()).fileName();
 }
 
+namespace {
+
 // ANTS-3366: a project whose leaf name collides with the convention suffix
 // (e.g. "DOOM_Ants" → "DOOM_Ants_Ants_MCP_Feedback.md") derives a path that
 // doesn't exist. Rather than leave the not_found envelope a dead end —
@@ -4012,7 +4018,7 @@ QString feedbackCallerLeaf(const QJsonObject &req) {
 // absolute path so a configured root that IS the parent yields one entry, not
 // two. Order is deliberate — derived directory first, so ANTS-3376's
 // own-file-floats-first ranking still applies to the caller's own neighbours.
-static QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
+QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
     QJsonArray out;
     QSet<QString> seen;
     const auto scan = [&](const QDir &dir) {
@@ -4042,7 +4048,7 @@ static QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
 // case- and separator-insensitive token, so a checkout named `Fin_Break`
 // matches the `finbreak_Ants_MCP_Feedback.md` its package ships under. Lower-
 // cases and drops every non-alphanumeric char (`_`, `-`, spaces, `.`).
-static QString normalizeFeedbackStem(const QString &s) {
+QString normalizeFeedbackStem(const QString &s) {
     QString out;
     out.reserve(s.size());
     for (const QChar &c : s)
@@ -4052,7 +4058,7 @@ static QString normalizeFeedbackStem(const QString &s) {
 
 // Strip the trailing kFeedbackSuffix from a feedback filename → its stem.
 // (`sizeof - 1` = suffix length without the NUL.)
-static QString feedbackStemOf(const QString &fileName) {
+QString feedbackStemOf(const QString &fileName) {
     QString stem = fileName;
     if (stem.endsWith(QLatin1String(kFeedbackSuffix)))
         stem.chop(static_cast<int>(sizeof(kFeedbackSuffix)) - 1);
@@ -4070,7 +4076,7 @@ static QString feedbackStemOf(const QString &fileName) {
 // exact second candidate, not a fuzzy match, so ANTS-3366's "no silent
 // fuzzy-accept" non-goal is preserved. (ANTS-3439's normalized scan can't
 // catch this: the leaf normalizes to "doomants" but the file stem to "doom".)
-static QStringList feedbackConventionalNames(const QString &leaf) {
+QStringList feedbackConventionalNames(const QString &leaf) {
     QStringList names;
     if (leaf.endsWith(QLatin1String("_Ants"), Qt::CaseInsensitive)) {
         QString stem = leaf;
@@ -4080,6 +4086,8 @@ static QStringList feedbackConventionalNames(const QString &leaf) {
     names << leaf + QLatin1String(kFeedbackSuffix);
     return names;
 }
+
+}  // namespace
 
 // ANTS-3366: augment a feedback not_found envelope with the sibling
 // candidate list (+ a one-line hint) when any exist.
@@ -4188,11 +4196,13 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
     return e;
 }
 
+namespace {
+
 // ANTS-5500 — the repository name from `<root>/.git/config`'s origin URL
 // (`https://github.com/milnet01/claude-config.git` -> `claude-config`).
 // Read from the file rather than by running git: this is on every
 // feedback call's resolve path. Empty when there is no such remote.
-static QString feedbackOriginRepoName(const QString &root) {
+QString feedbackOriginRepoName(const QString &root) {
     QFile f(root + QStringLiteral("/.git/config"));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
     bool inOrigin = false;
@@ -4214,12 +4224,6 @@ static QString feedbackOriginRepoName(const QString &root) {
     return QString();
 }
 
-// Resolve + validate the feedback-file `path` arg. On reject, fills
-// `err` and returns false. On success, `resolvedOut` is the absolute
-// path to read/write (which may not yet exist when `mustExist` is
-// false), and `existsOut` says whether it currently exists. When
-// `derivedOut` is non-null it reports whether the path was auto-derived
-// from caller_cwd (ANTS-3376) rather than supplied by the caller.
 // ANTS-6259 — the feedback file for `leaf` in `dir`, for both the parent
 // folder and the configured root. ANTS-3376's default is
 // "<leaf>_Ants_MCP_Feedback.md"; ANTS-3426 — a leaf already ending in "_Ants"
@@ -4229,8 +4233,8 @@ static QString feedbackOriginRepoName(const QString &root) {
 // (`Fin_Break` vs `finbreak`), so a sibling whose stem normalises to the
 // leaf's is the file. Otherwise the most-preferred name, so a fresh create
 // uses the de-doubled basename rather than forking history into a doubled one.
-static QString pickFeedbackNameIn(const QString &dir, const QString &leaf,
-                                  bool &existsOut) {
+QString pickFeedbackNameIn(const QString &dir, const QString &leaf,
+                           bool &existsOut) {
     existsOut = false;
     QString preferred;
     for (const QString &name : feedbackConventionalNames(leaf)) {
@@ -4251,6 +4255,14 @@ static QString pickFeedbackNameIn(const QString &dir, const QString &leaf,
     return preferred;
 }
 
+}  // namespace
+
+// Resolve + validate the feedback-file `path` arg. On reject, fills
+// `err` and returns false. On success, `resolvedOut` is the absolute
+// path to read/write (which may not yet exist when `mustExist` is
+// false), and `existsOut` says whether it currently exists. When
+// `derivedOut` is non-null it reports whether the path was auto-derived
+// from caller_cwd (ANTS-3376) rather than supplied by the caller.
 bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                          QString &resolvedOut, bool &existsOut,
                          QJsonObject &err, bool *derivedOut,
