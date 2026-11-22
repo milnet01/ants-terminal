@@ -19,7 +19,10 @@ got `ANTS-0001` instead of a project-shaped prefix) + idea B (`dry_run`).
 - **INV-3** — A malformed `id_prefix` (e.g. `"1234"`, letter-free) refuses
   with `code:"bad_args"` and writes nothing (counter unchanged). Per
   ANTS-3492 a digit-led prefix is fine *if* it contains a letter (`3D_E`);
-  only a letter-free prefix is rejected.
+  only a letter-free prefix is rejected. On `op:append` and
+  `op:append_batch` alike, the refusal echoes the value through
+  `ceSanitiseEcho`: control characters become `?` and the echo stops at
+  64 characters. *Test:* `roadmap_log_prefix.Inv3RefusalEchoIsSanitisedOnBothOps`
 - **INV-4** — `dry_run:true` on `op:append` returns
   `{ok:true, dry_run:true, would_be_id, bullet, line}` and leaves
   ROADMAP.md and `.roadmap-counter` byte-for-byte unchanged.

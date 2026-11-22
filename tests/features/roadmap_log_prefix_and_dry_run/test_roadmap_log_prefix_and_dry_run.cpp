@@ -157,6 +157,42 @@ TEST(roadmap_log_prefix, Inv3BadPrefixRefuses) {
         << "INV-3: a refused call must not bump the counter";
 }
 
+// INV-3 — the refusal echoes a malformed id_prefix sanitised (control
+// characters replaced, length capped), on append and append_batch alike.
+TEST(roadmap_log_prefix, Inv3RefusalEchoIsSanitisedOnBothOps) {
+    QTemporaryDir base;
+    const QString dir = makeProject(base, freshRoadmap(), 0);
+    ASSERT_FALSE(dir.isEmpty());
+    RemoteControl rc(nullptr);
+    const QString hostile =
+        QStringLiteral("AB\nINJECTED") + QString(100, QChar('x'));
+
+    QJsonObject single = appendReq(dir, QStringLiteral("Should not land."));
+    single["id_prefix"] = hostile;
+    QJsonArray bs;
+    bs.append(batchBullet(QStringLiteral("Should not land either.")));
+    QJsonObject batch;
+    batch["caller_cwd"] = dir;
+    batch["op"]         = QStringLiteral("append_batch");
+    batch["section"]    = QStringLiteral("backlog");
+    batch["bullets"]    = bs;
+    batch["id_prefix"]  = hostile;
+
+    const QJsonObject outs[] = {
+        rc.cmdRoadmapLogAppendForTest(single).object(),
+        rc.cmdRoadmapLogAppendBatchForTest(batch).object()};
+    for (const QJsonObject &out : outs) {
+        EXPECT_EQ(out["code"].toString(), QStringLiteral("bad_args"))
+            << QJsonDocument(out).toJson().toStdString();
+        const QString err = out["error"].toString();
+        EXPECT_FALSE(err.contains(QChar('\n')))
+            << "INV-3: a control character in id_prefix must not reach "
+               "the refusal text: " << err.toStdString();
+        EXPECT_FALSE(err.contains(QString(65, QChar('x'))))
+            << "INV-3: the echoed id_prefix must be length-capped";
+    }
+}
+
 // INV-4 — dry_run on op:append previews without writing.
 TEST(roadmap_log_prefix, Inv4AppendDryRunNoWrite) {
     QTemporaryDir base;

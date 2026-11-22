@@ -2754,7 +2754,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: id_prefix \"%1\" must contain a "
                            "letter and be 1-16 chars of [A-Za-z0-9_-] "
-                           "(e.g. ANTS, 3D_E) — ANTS-3492").arg(idPrefixArg));
+                           "(e.g. ANTS, 3D_E) — ANTS-3492").arg(ceSanitiseEcho(idPrefixArg)));
     }
     const bool dryRun =
         req.value(QStringLiteral("dry_run")).toBool();
