@@ -1063,6 +1063,8 @@ void SettingsDialog::populatePluginsTab() {
             }
         }
 
+        // groupLayout is owned by group (new QVBoxLayout(group)).
+        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
         layout->addWidget(group);
     }
     layout->addStretch(1);

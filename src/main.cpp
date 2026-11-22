@@ -391,7 +391,9 @@ int main(int argc, char *argv[]) {
     installTerminalAccessibilityFactory();
     // Wrap Fusion in NoAnimStyle so SH_Widget_Animation_Duration reports 0.
     // QProxyStyle takes ownership of the inner QStyle. See note on the
-    // NoAnimStyle class for rationale.
+    // NoAnimStyle class for rationale. The application owns the style; the
+    // analyzer cannot see that and reports a leak further down.
+    // NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
     app.setStyle(new NoAnimStyle(QStyleFactory::create("Fusion")));
 
     // Disable Qt's built-in UI animations. These animate menu show/
@@ -404,6 +406,7 @@ int main(int argc, char *argv[]) {
     // cases for animated menus — the terminal is a precision tool,
     // not a presentation app.
     QApplication::setEffectEnabled(Qt::UI_AnimateMenu, false);
+    // NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
     QApplication::setEffectEnabled(Qt::UI_FadeMenu, false);
     QApplication::setEffectEnabled(Qt::UI_AnimateCombo, false);
     QApplication::setEffectEnabled(Qt::UI_AnimateTooltip, false);

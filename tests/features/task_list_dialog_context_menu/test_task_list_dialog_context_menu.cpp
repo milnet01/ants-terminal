@@ -102,7 +102,10 @@ protected:
         if (!QCoreApplication::instance()) {
             static int argc = 1;
             static const char *argv[] = {"test"};
-            new QApplication(argc, const_cast<char **>(argv));
+            // Lives for the whole process; never deleted on purpose.
+            static auto *const app =
+                new QApplication(argc, const_cast<char **>(argv));
+            Q_UNUSED(app);
         }
     }
 };

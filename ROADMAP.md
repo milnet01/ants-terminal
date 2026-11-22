@@ -115216,10 +115216,15 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5453] **clang-analyzer-cplusplus.NewDeleteLeaks: 4 sites in 4 files.**
+- ✅ [ANTS-5453] **clang-analyzer-cplusplus.NewDeleteLeaks: 4 sites in 4 files.**
   main.cpp:205, mainwindow.cpp:1226 (stayOpen), settingsdialog.cpp:990
   (groupLayout), test_task_list_dialog_context_menu.cpp:106. Likely Qt
   parent ownership the analyzer cannot see: confirm each has a parent.
+  Shipped 2026-11-22: three sites at HEAD, all owned by Qt and
+  confirmed: QApplication owns the style (main.cpp), group owns
+  groupLayout (settingsdialog.cpp), the test's QApplication lives for
+  the process. Marked for the analyzer with the reason. mainwindow.cpp's
+  stayOpen no longer flags.
   **Layman:** Places the analyzer thinks memory is allocated and never freed.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115231,10 +115236,13 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5455] **clang-tidy bugprone-unused-local-non-trivial-variable: 2 test sites.**
+- ✅ [ANTS-5455] **clang-tidy bugprone-unused-local-non-trivial-variable: 2 test sites.**
   test_audit_dedup_96bit.cpp:81 (hdr), test_terminal_partial_update_mode.cpp:89
   (makeCurrentCall regex). An unused regex may mean an assertion was lost:
   check before deleting.
+  Shipped 2026-11-22: neither hid a lost assertion. hdr was never
+  searched (INV-2's body is in the .cpp); makeCurrentCall was superseded
+  by the callStmt check that implements spec INV-4. Both removed.
   **Layman:** Two tests build a value and never use it.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.

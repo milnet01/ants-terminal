@@ -13,9 +13,6 @@
 #ifndef ANTS_AUDITDIALOG_SOURCES
 #  error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
-#ifndef SRC_AUDIT_H_PATH
-#  error "SRC_AUDIT_H_PATH compile definition required"
-#endif
 
 
 // Locate the body of a free function (e.g. "static QString computeDedup").
@@ -77,7 +74,6 @@ TEST(AuditDedup96Bit, Main) {
     // dialog still owns isSuppressed. Slurp both and search the union
     // for the engine-side INVs, the dialog-side for the helper.
     const std::string dialogCpp = ants_test::slurpAuditDialog();
-    const std::string hdr       = ants_test::slurpFile(SRC_AUDIT_H_PATH);
 #ifdef SRC_AUDIT_ENGINE_CPP_PATH
     const std::string engineCpp = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP_PATH);
 #else

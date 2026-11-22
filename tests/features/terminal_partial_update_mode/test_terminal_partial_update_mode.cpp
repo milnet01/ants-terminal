@@ -83,13 +83,9 @@ TEST(TerminalPartialUpdateMode, Main) {
         (void)pos;
     }
 
-    // INV-4 (neg): makeCurrent / doneCurrent are GL-context-only APIs.
-    // After the refactor they must not appear in live code. (Comments
-    // are fine.)
-    std::regex makeCurrentCall(R"((^|[^/])makeCurrent\s*\()");
-    // Simpler form: look for "makeCurrent();" as a statement. The
-    // refactor's class-top comment still mentions "makeCurrent" but
-    // only inside // comments.
+    // INV-4 (neg): no live "makeCurrent();" statement — a GL-context-only
+    // API. The refactor's class-top comment still mentions "makeCurrent",
+    // but only inside // comments, which are fine.
     {
         std::regex callStmt(R"(\bmakeCurrent\s*\(\s*\)\s*;)");
         auto begin = std::sregex_iterator(src.begin(), src.end(), callStmt);
