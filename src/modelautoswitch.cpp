@@ -121,8 +121,8 @@ Decision decide(const Gate &g) {
     // (a build/test wait). Computed once here and shared by the
     // focused-state gate (ANTS-1959) and the composer gate (ANTS-1973).
     // Sentinel -1 (no tool-use telemetry) preserves v1 behaviour.
-    const bool longToolUse = (g.toolUseElapsedMs >= 0) &&
-                             (g.toolUseElapsedMs >= kLongToolUseMs);
+    // kLongToolUseMs is positive, so the sentinel never passes.
+    const bool longToolUse = g.toolUseElapsedMs >= kLongToolUseMs;
     // One threshold for both gates below: the human-idle bar and the
     // composer-stale bar (ANTS-1914).
     const qint64 composerStaleThreshold = (g.composerStaleThresholdMs >= 0)

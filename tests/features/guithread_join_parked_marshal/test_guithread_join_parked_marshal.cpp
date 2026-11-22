@@ -84,8 +84,6 @@ TEST(GuithreadJoinParkedMarshal, JoinReturnsWithoutRunningParkedCallable) {
         << "no QCoreApplication instance — broken test bundle setup (see "
            "tests/bundle_main_core.cpp), not the defect this test targets.";
 
-    GuiMarshalRefusedResetGuard resetGuard;
-
     auto state = std::make_unique<SharedState>();
     SharedState *const raw = state.get();
 
@@ -110,7 +108,9 @@ TEST(GuithreadJoinParkedMarshal, JoinReturnsWithoutRunningParkedCallable) {
             raw->gotNullopt.store(true, std::memory_order_release);
         raw->workerFinished.store(true, std::memory_order_release);
     }));
-    resetGuard.worker = worker.get();
+    // Declared after `worker` so it is destroyed first: the entry goes
+    // while the thread it names still exists.
+    GuiMarshalRefusedResetGuard resetGuard{worker.get()};
     worker->start();
 
     // Wait for the worker to reach onGuiThread() — no event pumping here,

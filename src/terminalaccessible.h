@@ -10,6 +10,9 @@ class TerminalWidget;
 // with a caret. Thin glue: all content logic lives in TerminalWidget's
 // accessible*() helpers; this class holds NO per-widget content cache.
 // See docs/specs/ANTS-1078-screen-reader-accessibility.md.
+// Qt's accessibility API requires this pairing: the text interface is
+// mixed into a QAccessibleWidget.
+// NOLINTNEXTLINE(misc-multiple-inheritance)
 class TerminalWidgetAccessible : public QAccessibleWidget,
                                  public QAccessibleTextInterface {
 public:

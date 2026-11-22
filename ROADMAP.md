@@ -115295,23 +115295,32 @@ reports are asked for separately, each time.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5461] **clang-analyzer-cplusplus.NewDelete: use after release in a test.**
+- ✅ [ANTS-5461] **clang-analyzer-cplusplus.NewDelete: use after release in a test.**
   test_guithread_join_parked_marshal.cpp:43. Not yet read: confirm or
   dismiss; a real use-after-free makes the test's result unreliable.
+  Shipped 2026-11-22. Not a memory error: setGuiMarshalRefused uses the
+  QThread pointer only as a QSet key. But on an early ASSERT return the
+  guard ran after the unique_ptr freed the thread. The guard is now
+  declared after the worker, so it is destroyed first.
   **Layman:** A test may touch memory after it has been freed.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5462] **clang-tidy misc-multiple-inheritance: 1 site.**
+- ✅ [ANTS-5462] **clang-tidy misc-multiple-inheritance: 1 site.**
   Site in cc-jobs/scratch/audit-20260926/clang-tidy.txt. Usually QObject +
   interface and intended: check, then suppress.
+  Shipped 2026-11-22: TerminalWidgetAccessible pairs QAccessibleWidget
+  with QAccessibleTextInterface as Qt's accessibility API requires;
+  suppressed with that reason.
   **Layman:** One class inherits from two classes that both carry code.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5463] **clang-tidy misc-redundant-expression: 1 site.**
+- ✅ [ANTS-5463] **clang-tidy misc-redundant-expression: 1 site.**
   modelautoswitch.cpp:123: `toolUseElapsedMs >= 0 && >= kLongToolUseMs`;
   the first test is implied by the second. Harmless; simplify.
+  Shipped 2026-11-22: kLongToolUseMs is positive, so the >= 0 test was
+  implied; removed, with a comment that the -1 sentinel never passes.
   **Layman:** A comparison that can never change the result.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
