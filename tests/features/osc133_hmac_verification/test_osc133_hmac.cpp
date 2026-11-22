@@ -31,7 +31,7 @@ namespace {
 // CHECK / CHECK_EQ call-sites work unchanged inside TEST() blocks.
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        ADD_FAILURE_AT(__FILE__, __LINE__) << msg;                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << (msg);                        \
     }                                                                        \
 } while (0)
 
@@ -39,7 +39,7 @@ namespace {
     auto _a = (actual);                                                      \
     auto _e = (expected);                                                    \
     if (_a != _e) {                                                          \
-        ADD_FAILURE_AT(__FILE__, __LINE__) << msg                           \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << (msg)                         \
             << " (actual=" << static_cast<long long>(_a)                    \
             << " expected=" << static_cast<long long>(_e) << ")";           \
     }                                                                        \

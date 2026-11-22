@@ -17,7 +17,7 @@ namespace {
 // ANTS-1217 Phase 2: CHECK redirected to ADD_FAILURE_AT.
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        ADD_FAILURE_AT(__FILE__, __LINE__) << msg;                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << (msg);                        \
     }                                                                        \
 } while (0)
 

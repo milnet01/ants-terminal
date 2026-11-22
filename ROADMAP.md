@@ -115154,8 +115154,15 @@ reports are asked for separately, each time.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5447] **clang-tidy bugprone-macro-parentheses: 8 sites in 6 files.**
+- ✅ [ANTS-5447] **clang-tidy bugprone-macro-parentheses: 8 sites in 6 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it). Fix as one class.
+  2026-11-22: 12 warnings, 7 test files. Six copies of the test-local
+  CHECK/CHECK_EQ macro now splice `<< (msg)`, as two other copies
+  already did; the build caught the two calls that passed a stream chain
+  (image_paste_uri_list, ANTS-5580 checks), now EXPECT_TRUE/EXPECT_FALSE
+  with `<<`. REQUIRE_OPENSSL (self_update) declares variables named by
+  its arguments, so it is suppressed with that reason. clang-tidy
+  reports 0 on the 7 files; 46/46 tests pass.
   **Layman:** Macros whose arguments are not bracketed, so an expression passed in can group wrongly.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.

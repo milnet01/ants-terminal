@@ -193,6 +193,8 @@ QByteArray payload(int seed, int n) {
 }
 
 // Skips the calling TEST when the openssl CLI cannot make/sign Ed25519.
+// kp and sigOut name the variables it declares, so they cannot be bracketed.
+// NOLINTBEGIN(bugprone-macro-parentheses)
 #define REQUIRE_OPENSSL(kp, dir, sigOut)                                            \
     KeyPair kp = makeKeyPair((dir), QStringLiteral(#kp));                           \
     if (!kp.ok) { GTEST_SKIP() << "openssl unavailable: " << kp.why.toStdString(); } \
@@ -200,6 +202,7 @@ QByteArray payload(int seed, int n) {
     QByteArray sigOut = signBytes(kp, (dir), QByteArrayLiteral("probe"), &sigWhy_##kp); \
     (void)sigOut;                                                                   \
     if (sigOut.size() != 64) { GTEST_SKIP() << "openssl lacks -rawin: " << sigWhy_##kp.toStdString(); }
+// NOLINTEND(bugprone-macro-parentheses)
 
 // ---- INV-1 -------------------------------------------------------------
 

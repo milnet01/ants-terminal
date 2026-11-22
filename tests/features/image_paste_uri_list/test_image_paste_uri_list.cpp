@@ -40,7 +40,7 @@ namespace {
 
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        ADD_FAILURE_AT(__FILE__, __LINE__) << msg;                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << (msg);                        \
     }                                                                        \
 } while (0)
 
@@ -246,11 +246,11 @@ TEST(ImagePasteUriList, AllThreeRoutesCallPasteFromClipboardAndNothingElse) {
     for (const Route &r : routes) {
         const QString body = bodyOf(src, r.sig);
         if (body.isEmpty()) continue;
-        CHECK(body.contains(r.call),
-              "ANTS-5580: " << r.name << " must call " << qUtf8Printable(r.call));
-        CHECK(!body.contains(direct),
-              "ANTS-5580: " << r.name << " still reads the clipboard's text or "
-              "mime data itself instead of going through pasteFromClipboard");
+        EXPECT_TRUE(body.contains(r.call))
+            << "ANTS-5580: " << r.name << " must call " << qUtf8Printable(r.call);
+        EXPECT_FALSE(body.contains(direct))
+            << "ANTS-5580: " << r.name << " still reads the clipboard's text or "
+               "mime data itself instead of going through pasteFromClipboard";
     }
 }
 

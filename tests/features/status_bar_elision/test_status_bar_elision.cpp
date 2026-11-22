@@ -37,7 +37,7 @@ namespace {
 // so a CHECK miss is a real gtest failure with the source location.
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        ADD_FAILURE_AT(__FILE__, __LINE__) << msg;                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << (msg);                        \
     }                                                                        \
 } while (0)
 
