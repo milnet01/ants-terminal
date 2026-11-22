@@ -599,6 +599,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log op:"append_batch" cleans a malformed id_prefix before quoting it in the refusal, as op:"append" does: control characters become ?, and the quote stops at 64 characters.** (ANTS-5796)
+
 - **A `roadmap_log` dry run on a project with no `.roadmap-counter` previews the same id the real append hands out, and honours `id_hint`.** (ANTS-5457)
 
 - **The audit's clang-tidy check shows up to 100 real warnings; snippet and caret lines no longer count toward the limit** (ANTS-6863)
