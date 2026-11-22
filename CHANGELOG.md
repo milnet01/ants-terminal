@@ -581,6 +581,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A `roadmap_log` dry run on a project with no `.roadmap-counter` previews the same id the real append hands out, and honours `id_hint`.** (ANTS-5457)
+
 - **The audit's clang-tidy check shows up to 100 real warnings; snippet and caret lines no longer count toward the limit** (ANTS-6863)
 
 - **The audit's clang-tidy section lists only clang-tidy's warnings and errors** (ANTS-6857)

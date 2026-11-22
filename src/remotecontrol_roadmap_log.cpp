@@ -999,20 +999,22 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                     QStringLiteral("roadmap_log: .roadmap-counter is "
                                    "not a number"));
             }
-            newId = counter + 1;
-            if (req.contains(QStringLiteral("id_hint"))) {
-                const qint64 hint =
-                    req.value(QStringLiteral("id_hint")).toInteger();
-                if (hint <= counter) {
-                    return rlErr(QStringLiteral("id_taken"),
-                        QStringLiteral("roadmap_log: id_hint %1 is at "
-                                       "or below current counter %2 — "
-                                       "pick a value > counter or omit "
-                                       "the hint")
-                            .arg(hint).arg(counter));
-                }
-                newId = hint;
+        }
+        // ANTS-5457 — also for a dry run's in-memory seed, so its id
+        // matches the real append's.
+        newId = counter + 1;
+        if (req.contains(QStringLiteral("id_hint"))) {
+            const qint64 hint =
+                req.value(QStringLiteral("id_hint")).toInteger();
+            if (hint <= counter) {
+                return rlErr(QStringLiteral("id_taken"),
+                    QStringLiteral("roadmap_log: id_hint %1 is at "
+                                   "or below current counter %2 — "
+                                   "pick a value > counter or omit "
+                                   "the hint")
+                        .arg(hint).arg(counter));
             }
+            newId = hint;
         }
     }
 

@@ -433,7 +433,7 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
                 const QString close =
                     QStringLiteral(")") + delim + QStringLiteral("\"");
                 const int end = (j < n) ? line.indexOf(close, j) : -1;
-                if (end < 0) { i = n; break; }   // unterminated on this line
+                if (end < 0) break;   // unterminated on this line
                 i = end + close.size() - 1;
                 if (lastCodeIdxOut) *lastCodeIdxOut = i;
                 continue;

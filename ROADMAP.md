@@ -115255,9 +115255,15 @@ reports are asked for separately, each time.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5457] **clang-analyzer-deadcode.DeadStores: 2 sites.**
+- ✅ [ANTS-5457] **clang-analyzer-deadcode.DeadStores: 2 sites.**
   fileoutline.cpp:337 (i), remotecontrol_roadmap_log.cpp:781 (counter).
   Check neither hides a lost use, then remove.
+  Shipped 2026-11-22. fileoutline.cpp: `i = n` before `break` was dead;
+  removed. remotecontrol_roadmap_log.cpp: the dead `counter = seed` hid
+  a real bug: a counter-less dry run skipped the newId step, so id_hint
+  was refused as id_taken and an id-bearing roadmap reported a counter
+  repair the real append never makes. The step now runs for both;
+  greenfield-counter INV-8 locks it (red before, green after).
   **Layman:** Values assigned and then never read.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.

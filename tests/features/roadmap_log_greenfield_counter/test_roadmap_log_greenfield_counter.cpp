@@ -238,6 +238,45 @@ TEST(RoadmapLogGreenfieldCounter, Inv5DryRunLeavesNoCounter) {
         << "a dry run must not create .roadmap-counter";
 }
 
+// INV-8 (ANTS-5457) — a dry run on a counter-less project computes its id
+// from the in-memory seed exactly as the real append does. It used to skip
+// that step: an id_hint was refused as taken, and an id-bearing roadmap
+// reported a counter repair the real append never makes.
+TEST(RoadmapLogGreenfieldCounter, Inv8DryRunIdMatchesRealAppend) {
+    {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        ASSERT_TRUE(writeFile(roadmapPath(tmp.path()),
+                              QByteArray(kGreenfieldRoadmap)));
+        QJsonObject req = appendReq(tmp.path());
+        req[QStringLiteral("dry_run")] = true;
+        req[QStringLiteral("id_hint")] = 5;
+        RemoteControl rc(nullptr);
+        const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(req).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(resp).toJson().toStdString();
+        EXPECT_EQ(resp.value(QStringLiteral("would_be_id")).toString(),
+                  QStringLiteral("CL-0005"));
+    }
+    {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        ASSERT_TRUE(writeFile(roadmapPath(tmp.path()),
+                              QByteArray(kIdBearingRoadmap)));
+        QJsonObject req = appendReq(tmp.path(), QString());
+        req[QStringLiteral("dry_run")] = true;
+        RemoteControl rc(nullptr);
+        const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(req).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(resp).toJson().toStdString();
+        EXPECT_EQ(resp.value(QStringLiteral("would_be_id")).toString(),
+                  QStringLiteral("ANTS-9002"));
+        EXPECT_FALSE(resp.contains(QStringLiteral("counter_advanced_to")))
+            << "the real append seeds the counter and repairs nothing: "
+            << QJsonDocument(resp).toJson().toStdString();
+    }
+}
+
 // INV-6 (ANTS-4691) — the reported case: a REFUSED dry run must leave the
 // tree exactly as it found it. The counter seed runs before the section
 // gate, so without the guard this call wrote a file having written no

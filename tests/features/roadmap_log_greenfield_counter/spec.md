@@ -28,6 +28,7 @@ with `counter_missing`, the `rlRoadmapHasAnyBulletId` discriminator.
 | 5 | `Inv5DryRunLeavesNoCounter` | A SUCCEEDING `dry_run` append on the greenfield project creates no `.roadmap-counter` and still reports `would_be_id` `CL-0001` — the same id INV-1's real append allocates. |
 | 6 | `Inv6RefusedDryRunLeavesNoCounter` | A `dry_run` append REFUSED with `section_has_subsections` creates no `.roadmap-counter`. The seed runs before the section gate, so this is the case that leaked. |
 | 7 | `Inv7BatchDryRunLeavesNoCounter` | A `dry_run` `op:append_batch` creates no `.roadmap-counter` — the batch path carries its own copy of the auto-init. |
+| 8 | `Inv8DryRunIdMatchesRealAppend` | A `dry_run` append on a counter-less project derives its id from the in-memory seed as the real append does: `id_hint` 5 on the greenfield roadmap previews `CL-0005`, and the id-bearing roadmap previews `ANTS-9002` with no `counter_advanced_to` (ANTS-5457). |
 
 **ANTS-4691** — the auto-init above is a WRITE, and it ran on the `dry_run`
 path too, before the section and target gates. So a preview that refused and
