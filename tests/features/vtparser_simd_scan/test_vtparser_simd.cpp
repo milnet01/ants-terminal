@@ -155,12 +155,14 @@ struct Case {
 };
 
 Case makePlainAscii() {
-    std::vector<std::uint8_t> buf;
     // 4 KiB of printable ASCII — well beyond SSE2's 16-byte lane and
     // exercises the hot loop many times.
+    constexpr int kSize = 4096;
+    std::vector<std::uint8_t> buf;
+    buf.reserve(kSize);
     std::mt19937 rng(0xA17CAFE);
     std::uniform_int_distribution<int> dist(0x20, 0x7E);
-    for (int i = 0; i < 4096; ++i) buf.push_back(static_cast<std::uint8_t>(dist(rng)));
+    for (int i = 0; i < kSize; ++i) buf.push_back(static_cast<std::uint8_t>(dist(rng)));
     return {"plain_ascii_4k", std::move(buf)};
 }
 
@@ -168,8 +170,7 @@ Case makeAsciiWithCsiAtEveryOffset(std::size_t offset) {
     // Start with safe bytes, plant a CSI sequence at `offset`, resume safe
     // bytes. Verifies the SIMD scan lands on the first interesting byte
     // at every offset mod 16 (the SSE2 lane width).
-    std::vector<std::uint8_t> buf;
-    for (std::size_t i = 0; i < offset; ++i) buf.push_back('A');
+    std::vector<std::uint8_t> buf(offset, 'A');
     // ESC [ 3 1 m A B C ESC [ 0 m
     const char *seq = "\x1b[31mABC\x1b[0m";
     for (const char *p = seq; *p; ++p) buf.push_back(static_cast<std::uint8_t>(*p));
@@ -180,10 +181,11 @@ Case makeAsciiWithCsiAtEveryOffset(std::size_t offset) {
 Case makeUtf8Mixed() {
     // Printable ASCII, then a multibyte UTF-8 codepoint, then more ASCII.
     // 好 = U+597D = 0xE5 0xA5 0xBD.  é = U+00E9 = 0xC3 0xA9.
-    std::vector<std::uint8_t> buf;
-    for (int i = 0; i < 30; ++i) buf.push_back('a' + (i % 26));
     const std::uint8_t utf8[] = {0xE5, 0xA5, 0xBD, 'x', 'y', 'z',
                                  0xC3, 0xA9, '!', '!'};
+    std::vector<std::uint8_t> buf;
+    buf.reserve(30 + sizeof(utf8) + 30);
+    for (int i = 0; i < 30; ++i) buf.push_back('a' + (i % 26));
     for (auto c : utf8) buf.push_back(c);
     for (int i = 0; i < 30; ++i) buf.push_back('A' + (i % 26));
     return {"utf8_mixed", std::move(buf)};
@@ -192,8 +194,7 @@ Case makeUtf8Mixed() {
 Case makeControlChars() {
     // Embed BEL, BS, HT, LF, CR, DEL into an ASCII stream. Each should
     // hit the scalar path, and the SIMD scan must stop exactly at each.
-    std::vector<std::uint8_t> buf;
-    for (int i = 0; i < 20; ++i) buf.push_back('x');
+    std::vector<std::uint8_t> buf(20, 'x');
     buf.push_back(0x07);  // BEL
     for (int i = 0; i < 5; ++i) buf.push_back('y');
     buf.push_back(0x08);  // BS
@@ -210,8 +211,7 @@ Case makeOscSequence() {
     // OSC 8 hyperlink + window title. OSC payload is not safe-ASCII-
     // scanned (we're in OscString state, not Ground), so the contract
     // here is simply that emitted actions match between feed strategies.
-    std::vector<std::uint8_t> buf;
-    for (int i = 0; i < 40; ++i) buf.push_back('p');
+    std::vector<std::uint8_t> buf(40, 'p');
     const char *osc = "\x1b]8;;https://example.com\x1b\\"
                       "link\x1b]8;;\x1b\\"
                       "\x1b]0;window title\x07"
@@ -223,8 +223,7 @@ Case makeOscSequence() {
 Case makeLongAsciiThenEsc() {
     // A full SSE2 lane of safe bytes, then ESC exactly at a lane
     // boundary. Regression guard for "SIMD scan ate the escape byte".
-    std::vector<std::uint8_t> buf;
-    for (int i = 0; i < 16; ++i) buf.push_back('K');
+    std::vector<std::uint8_t> buf(16, 'K');
     buf.push_back(0x1B);  // ESC at offset 16 — start of second lane
     buf.push_back('[');
     buf.push_back('H');

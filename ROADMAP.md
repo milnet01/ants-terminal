@@ -115197,8 +115197,10 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5451] **clang-tidy performance-inefficient-vector-operation: 6 sites in 1 file.**
+- ✅ [ANTS-5451] **clang-tidy performance-inefficient-vector-operation: 6 sites in 1 file.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it). Fix as one class.
+  Shipped 2026-11-22: test_vtparser_simd's fixture buffers. Fixed-byte
+  runs are built at size; the varying ones reserve first.
   **Layman:** Lists grown one item at a time without reserving room first.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
