@@ -163,9 +163,10 @@ The new fields add bounded overhead per response:
   server clamp of 10).
 - Per response: at most `max_results × 2 × context` entries —
   default ceiling is `50 × 20 = 1000` entries, the explicit cap is
-  `500 × 20 = 10 000` entries. Each entry inherits ripgrep's
-  `--max-columns 500` byte cap on `text`.
-- Worst-case envelope inflation: ~5 MiB at the explicit cap. The
+  `500 × 20 = 10 000` entries. Each entry's `text` is clipped by
+  `max_match_bytes` (ANTS-1876), not by ripgrep, which ignores
+  `--max-columns` under `--json` (ANTS-5530).
+- Worst-case envelope inflation at the default clip: ~5 MiB at the explicit cap. The
   default-config envelope grows by ≤ 500 KiB. No new caches, no
   cross-call retained state.
 

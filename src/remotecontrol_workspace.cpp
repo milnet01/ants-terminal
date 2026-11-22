@@ -660,7 +660,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     argv << QStringLiteral("--json")
          << QStringLiteral("--no-heading")
          << QStringLiteral("--line-number")
-         << QStringLiteral("--max-columns") << QString::number(kWorkspaceSearchMaxColumns)
+         // ANTS-5530 — no --max-columns: rg ignores it under --json. A row is
+         // bounded by max_match_bytes, and the scan by kRgStdoutCapBytes.
          << QStringLiteral("--threads")
          << QString::number(kWorkspaceSearchThreads);
     if (caseMode == QLatin1String("smart"))           argv << QStringLiteral("--smart-case");

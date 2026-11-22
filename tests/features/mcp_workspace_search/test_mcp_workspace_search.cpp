@@ -232,7 +232,6 @@ TEST(McpWorkspaceSearch, WiringContract) {
         "--json",
         "--no-heading",
         "--line-number",
-        "--max-columns",
         "--threads",
     };
     for (const char *f : rgFlags) {
@@ -245,6 +244,12 @@ TEST(McpWorkspaceSearch, WiringContract) {
                       f);
         expect(contains(rcCpp, f), label, d);
     }
+    // ANTS-5530 — rg ignores --max-columns under --json, so passing it
+    // claims a per-line cap that does not exist.
+    expect(!contains(rcCpp, "QStringLiteral(\"--max-columns\")"),
+           "INV-9 no --max-columns",
+           "cmdWorkspaceSearch passes --max-columns, which rg ignores "
+           "under --json (ANTS-5530)");
 
     // INV-10 — 2-tier kill timer: 2000 ms SIGTERM then 200 ms grace
     // before SIGKILL. We check that the body contains both

@@ -4758,10 +4758,12 @@ constexpr int kWorkspaceSearchMinBudgetMs  = 1000;  // ANTS-1565-INV-2 floor
 constexpr int kWorkspaceSearchMaxBudgetMs  = 30000; // ANTS-1565-INV-2/5 cap
 constexpr int kWorkspaceSearchKillGraceMs  =  200;  // ANTS-1248-INV-5
 constexpr int kWorkspaceSearchMaxResultsCap = 500;  // ANTS-1248-INV-4
+// ANTS-5096 — co_change_family skips a match line longer than this while
+// parsing. rg's own --max-columns does nothing under --json (ANTS-5530).
 constexpr int kWorkspaceSearchMaxColumns    = 500;
 // ANTS-3732 — rg worker threads. Was 1 from ANTS-1248, filed there under
 // "DoS mitigation"; measurement says that was the wrong lever. `--threads 1`
-// caps no per-line work (that is --max-columns) and costs the SAME total CPU
+// caps no per-line work and costs the SAME total CPU
 // (0.84 cpu-s at 1 thread vs 0.82 at 12, measured) — what it actually removes
 // is rg's parallel directory walker, so every file open is serialised. On this
 // project's spinning disk (/mnt/Games, ROTA=1) seek latency then dominates:

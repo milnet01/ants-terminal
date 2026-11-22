@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6867 -->
+<!-- ants-roadmap-id-high-water: ANTS=6868 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -115383,7 +115383,7 @@ reports are asked for separately, each time.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch), split from ANTS-5095.
   Lanes: roadmap, mcp.
 
-- 📋 [ANTS-5530] **workspace_search passes --max-columns alongside --json, where ripgrep ignores it, so its per-line cap bounds nothing.**
+- ✅ [ANTS-5530] **workspace_search passes --max-columns alongside --json, where ripgrep ignores it, so its per-line cap bounds nothing.**
   Measured 2026-09-28, ripgrep 15.2.0: `rg --json --max-columns 500` on
   a 620-character line still emits the whole line as a match event. The
   flag only shortens human-format output. cmdWorkspaceSearch passes it
@@ -115393,6 +115393,14 @@ reports are asked for separately, each time.
   every long line is still parsed whole. Fix as co_change_family now
   does (ANTS-5096): skip or clip lines past the cap while parsing, drop
   the inert flag, and correct the comment.
+  Shipped 2026-11-22: --max-columns dropped from workspace_search's argv
+  (re-measured with ripgrep 15.2.0: a 628-char line comes back whole
+  under --json). No parse-time clip: skipping a long line would hide
+  real hits, and clipping it before dedup would break ANTS-1876 INV-4. A
+  row stays bounded by max_match_bytes, the scan by kRgStdoutCapBytes.
+  Comments and the ANTS-1248, ANTS-1304 and ANTS-1452 specs corrected;
+  INV-9 now asserts the flag is absent (red on the old code, green on
+  the fix).
   **Layman:** A size limit on long lines in the code-search tool never takes effect, so a huge generated file is read in full on every search that hits it.
   Kind: perf.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
@@ -116135,6 +116143,15 @@ reports are asked for separately, each time.
   **Layman:** A specially written CI file in a project could crash the tool that reads it; the reader now stops at a sane nesting depth and reports the file as unreadable.
   Kind: security.
   Source: ANTS-5444 misc-no-recursion review 2026-11-21.
+
+- 📋 [ANTS-6868] **clangd reports guithread.h, claudeintegration.h and falseposledger.h as unused includes in remotecontrol_workspace.cpp.**
+  Seen 2026-11-22 while closing ANTS-5530: clangd's unused-includes
+  check flags all three. Confirm each is truly unused (a macro or a
+  type reached only through it keeps it), remove the rest, and build.
+  **Layman:** Three lines at the top of one source file pull in code it no longer uses; removing them makes the file a little faster to build.
+  Kind: audit-fix.
+  Source: in-session-2026-11-22, found while closing ANTS-5530.
+  Lanes: mcp.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

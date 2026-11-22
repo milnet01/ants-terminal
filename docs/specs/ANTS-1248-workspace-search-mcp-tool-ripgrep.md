@@ -59,8 +59,9 @@ Error shape (mirrors existing IPC verbs):
 
 ## 3. Implementation
 
-- Shell to `rg --json --no-heading --line-number --max-columns 500
-  --threads <kWorkspaceSearchThreads>` via `QProcess`. **Shell-less argv list**
+- Shell to `rg --json --no-heading --line-number
+  --threads <kWorkspaceSearchThreads>` via `QProcess`. No `--max-columns`:
+  rg ignores it under `--json` (ANTS-5530). **Shell-less argv list**
   (`QProcess::start("rg", args)`) — no shell interpolation, no command
   injection. INV asserts argv form, not the `command` overload.
 - Parse `rg`'s NDJSON output incrementally via
@@ -128,9 +129,9 @@ Error shape (mirrors existing IPC verbs):
 
 ## 5. Memory & perf
 
-- **Memory:** O(max_results × max_line_length). With `--max-columns
-  500`: default 50 × 500 B ≈ 25 KiB peak per call. Released after
-  response sent.
+- **Memory:** O(max_results × max_line_length). A matched line is
+  held whole until the reply's `max_match_bytes` clip; rg's output cap
+  (`kRgStdoutCapBytes`) bounds the total. Released after response sent.
 - **CPU latency budget:** ripgrep does the work; our overhead is
   per-line `QJsonDocument::fromJson` (~15 µs/line at 50 results ≈
   0.75 ms) + result-array build. Target: ≤ 10 ms in our process;
@@ -184,7 +185,7 @@ The triple is gone: the verb is now registered in
 | Massive pattern matches OOM | `max_results` server-clamp + 4 KiB stderr cap + hard kill at the wall budget + 200 ms grace (INV-5/8). |
 | Path-traversal via `lane` | Canonical-path startswith check + NFC + byte-class reject (INV-2). |
 | Symlink TOCTOU between resolve and fork | rg invoked without `-L` (no follow), bounding the post-resolve window. Residual race is sub-ms and same-UID by socket gate (INV-10). |
-| Pattern injection (regex DoS) | rg's Rust regex engine is linear-time; `--max-columns 500` caps per-line work and the wall budget (INV-1) caps total work; 2-tier kill (INV-5) catches a hostile rg-replacement on PATH that ignores SIGTERM. (`--threads` was listed here originally, but capping worker threads bounds neither per-line nor total work — it only serialises I/O. ANTS-3732 measured the cost and moved it 1 → 4.) |
+| Pattern injection (regex DoS) | rg's Rust regex engine is linear-time, and the wall budget (INV-5) caps total work; 2-tier kill (INV-5) catches a hostile rg-replacement on PATH that ignores SIGTERM. (`--threads` was listed here originally, but capping worker threads bounds neither per-line nor total work — it only serialises I/O. ANTS-3732 measured the cost and moved it 1 → 4.) |
 | Stderr info-leak (path enumeration) | 4 KiB cap; never echoed in `ok:true` (INV-8). |
 | Stale results during edits | None — every call re-runs rg. Cache-free by design (§5). |
 

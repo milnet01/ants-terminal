@@ -124,11 +124,10 @@ if (includeHidden) {
 
 Both flags are literal switches with no argument values — no
 new escape / quoting surface, no new TOCTOU window. Argv is
-still shell-less (INV-3 unchanged). `--max-columns 500`, the
-`--threads` cap, and `-L` exclusion are untouched, so the DoS /
-symlink-loop story is unchanged. (The thread count itself moved
-1 → 4 in ANTS-3732; it was never the DoS lever — `--max-columns`
-and the wall budget are.)
+still shell-less (INV-3 unchanged). The `--threads` cap and `-L`
+exclusion are untouched, so the DoS / symlink-loop story is
+unchanged. (The thread count itself moved 1 → 4 in ANTS-3732; it
+was never the DoS lever — the wall budget is.)
 
 ### Envelope echo
 
