@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6893 -->
+<!-- ants-roadmap-id-high-water: ANTS=6897 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74505,6 +74505,63 @@ suppression that survives line drift.
   Kind: fix.
   Source: ANTS-6857 follow-up 2026-11-21.
   Lanes: auditdialog.
+
+- 📋 [ANTS-6894] **Audit's find and grep checks skip the folders a git repository ignores.**
+  On Vestige (v0.7.115) one gitignored .ci-tools/ folder (local CMake
+  copies) produced the report's only BLOCKER (CMake's public
+  Windows_TemporaryKey.pfx template, env_files) and about 100 other
+  findings: header_guards, insecure_http, memory_patterns,
+  silent_catch, cppcheck. excludedDirNames() is a fixed list and the
+  audit is not git-aware. Suggested: when the project is a git repo,
+  enumerate with git ls-files -co --exclude-standard, or pass an
+  exclude for each ignored directory; keep the fixed list as the
+  fallback. See ANTS-6199 on which exclusion list audit_run uses.
+  **Layman:** The project audit scans folders the project tells git to ignore, so a copy of someone else's tool can fill the report with false alarms.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md (Vestige audit triage 2026-11-22).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6895] **Audit's find-check exclusions match an excluded folder at any depth, as grep's --exclude-dir does.**
+  findExcludeExpr() (src/auditengine.cpp) builds -not -path
+  './<dir>/*' for every excluded name except __pycache__, so only a
+  top-level folder is skipped (read 2026-11-22). Vestige's
+  tools/cursor_bridge/mcp_server/node_modules/.../sbcs-data-generated.js
+  was reported by encoding_check. grep's --exclude-dir already applies
+  at any depth, so the two check families disagree. Suggested:
+  -not -path '*/<dir>/*' or a -prune. Its comment says top-level-only
+  was kept to reproduce the old kFindExcl; the audit fixtures may pin
+  that.
+  **Layman:** The audit skips a folder like node_modules only at the top of the project, so a nested copy still gets scanned.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md (Vestige audit triage 2026-11-22).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6896] **Tighten three noisy audit rules: git_sensitive's name match, memory_patterns' language scope, and test-health's skip count.**
+  From Vestige: (1) git_sensitive flagged
+  .github/workflows/secret-scan.yml as CRITICAL by name; it holds no
+  secret. Exclude workflow files from the name match, or require
+  secret-shaped content. (2) memory_patterns matched `new` in shell
+  comments, Python strings and JavaScript. Restrict it to C/C++ and
+  skip comments and strings. (3) test-health counted CurveFitter::fit(
+  calls and comments naming GTEST_SKIP as skipped tests (about 35 of
+  89 hits). Anchor it to GTEST_SKIP(), DISABLED_ and .only(, and skip
+  comment lines. Each needs audit fixtures for the new cases.
+  **Layman:** Three audit checks flag harmless things, such as a security workflow whose name contains 'secret', which wastes the reader's time.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md (Vestige audit triage 2026-11-22).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6897] **audit_run with scope:"files" scans the paths it is given, or refuses saying which input it reads.**
+  Vestige at f1179b4: audit_run {tools:[cppcheck], scope:"files",
+  paths:[engine/audio/acoustic_bake.cpp, engine/editor/entity_actions.cpp]}
+  returned findings only for the three test files in HEAD's commit;
+  the same call with scope omitted scanned the two paths
+  (paths_given_total 2). ok:true either way. Suggested: under
+  scope:"files" use paths when given, or refuse bad_args.
+  **Layman:** Asking the audit to check two named files can silently check different files instead and still report success.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md (Vestige audit triage 2026-11-22).
+  Lanes: audit-engine, claude-integration.
 
 ### ⚡ Other improvements (performance, security, optimisations)
 
