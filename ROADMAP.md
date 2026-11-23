@@ -108340,13 +108340,18 @@ worked after these.
   Source: build-warning-2026-10-23.
   Lanes: review-engines.
 
-- 📋 [ANTS-6214] **Build roadmap_log's link-type schema enum from RoadmapParse::authoredLinkTypes().**
+- ✅ [ANTS-6214] **Build roadmap_log's link-type schema enum from RoadmapParse::authoredLinkTypes().**
   From ANTS-6120 (L11 MEDIUM F5). The lane pass folded the parser's
   copies onto authoredLinkTypes(); claudeintegration.cpp's op:"link"
   schema enum still spells the four types itself. Left out because that
   file is another lane's.
   Hot reload: a verb schema change reaches clients on their next
   reconnect to a rebuilt ants-mcpd.
+  claudeintegration_store.cpp builds the enum with
+  QJsonArray::fromStringList(RoadmapParse::authoredLinkTypes());
+  tool_info's roadmap_log inputSchema is identical before and after.
+  roadmapcheck.cpp's acyclicTypes copy stays: it is § 6's own rule by
+  design.
   **Layman:** The list of roadmap link kinds is still typed out by hand in one more place; it should come from the shared list.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L11-F5).

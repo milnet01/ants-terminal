@@ -1,5 +1,6 @@
 // ANTS-1677 claudeintegration piece 7/9 — the roadmap and store tool descriptors
 #include "claudeintegration_internal.h"
+#include "roadmapparse.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -1508,9 +1509,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     {   // ANTS-4079 — op:"link" / op:"unlink" operands.
                         QJsonObject linkTypeProp;
                         linkTypeProp["type"] = "string";
-                        linkTypeProp["enum"] = QJsonArray{
-                            QStringLiteral("splits-from"), QStringLiteral("blocked-by"),
-                            QStringLiteral("duplicate-of"), QStringLiteral("supersedes")};
+                        linkTypeProp["enum"] = QJsonArray::fromStringList(
+                            RoadmapParse::authoredLinkTypes());
                         linkTypeProp["description"] = QStringLiteral(
                             "op:\"link\" / \"unlink\" — the relationship `id` has "
                             "to each of `targets`. relates-to and specified-by are "
