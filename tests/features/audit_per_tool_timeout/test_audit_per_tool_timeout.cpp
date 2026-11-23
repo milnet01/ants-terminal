@@ -113,44 +113,41 @@ TEST(AuditPerToolTimeout, Main) {
              "the field exists in the header but the .cpp never reads it.");
     }
 
-    // INV-4 — at least one slow-tool calibration override above 30000.
-    // Look for any of the known-slow tool IDs adjacent to a `timeoutMs = `
-    // assignment with a value > 30000. We check a conservative window
-    // (±200 chars) because the loop body is short.
-    static const char *slowTools[] = {
-        "cppcheck", "semgrep", "osv_scanner", "trufflehog",
-        "clang_tidy", "clazy",
-    };
-    // ANTS-1677 — the overrides live in populateChecks(); bounding the scan to
-    // its body keeps a window from reading whatever file of the class follows.
+    // INV-4 — ANTS-6197: each known-slow tool sets a cap above 30000 on the
+    // line after its registration, and no loop overrides caps by id.
+    // ANTS-1677 — bounded to populateChecks()' body.
     const std::string checks =
         ants_test::slurpFunctionBody(dialogCpp, "void AuditDialog::populateChecks(");
     if (checks.empty())
         fail("precondition: populateChecks body not located in the AuditDialog sources.");
-    bool foundOverride = false;
+    static const char *slowTools[] = {
+        "cppcheck", "cppcheck_unused", "clang_tidy", "clazy",
+        "semgrep", "osv_scanner", "trufflehog", "compiler_warnings",
+    };
+    static const std::regex capLine(
+        R"(^\}\);\s*m_checks\.last\(\)\.timeoutMs\s*=\s*([0-9][0-9 *]*);)");
     for (const char *tool : slowTools) {
-        std::string needle = std::string("\"") + tool + "\"";
-        size_t pos = checks.find(needle);
-        while (pos != std::string::npos) {
-            size_t windowStart = pos > 200 ? pos - 200 : 0;
-            size_t windowEnd = std::min(pos + 200, checks.size());
-            std::string window = checks.substr(windowStart, windowEnd - windowStart);
-            std::regex assign(R"(timeoutMs\s*=\s*(\d+))");
-            std::smatch m;
-            if (std::regex_search(window, m, assign)) {
-                int v = std::stoi(m[1].str());
-                if (v > 30000) { foundOverride = true; break; }
+        const size_t at = checks.find(std::string("\"") + tool + "\", \"");
+        const size_t end = at == std::string::npos ? at : checks.find("});", at);
+        std::smatch m;
+        const std::string after = end == std::string::npos ? std::string()
+                                                           : checks.substr(end, 160);
+        long long ms = 0;
+        if (std::regex_search(after, m, capLine)) {
+            ms = 1;
+            std::string expr = m[1].str();
+            for (size_t p = 0; p <= expr.size();) {
+                const size_t star = std::min(expr.find('*', p), expr.size());
+                ms *= std::stoll(expr.substr(p, star - p));
+                p = star + 1;
             }
-            pos = checks.find(needle, pos + 1);
         }
-        if (foundOverride) break;
+        if (ms <= 30000)
+            fail((std::string("INV-4: ") + tool + " sets no cap above 30000 "
+                  "on the line after its registration").c_str());
     }
-    if (!foundOverride) {
-        fail("INV-4: no slow-tool ID (cppcheck / semgrep / osv_scanner / "
-             "trufflehog / clang_tidy / clazy) found adjacent to a "
-             "`timeoutMs = ` assignment with a value above 30000. The "
-             "structural fix is incomplete without calibrated defaults.");
-    }
+    if (checks.find("c.timeoutMs =") != std::string::npos)
+        fail("INV-4: populateChecks still overrides caps in an id-matching loop");
 
     if (failures > 0) {
         std::fprintf(stderr,

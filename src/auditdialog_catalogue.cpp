@@ -852,6 +852,7 @@ void AuditDialog::populateChecks() {
             CheckType::Bug, Severity::Major, { {}, "", {}, 100 },
             toolExists("cppcheck"), toolExists("cppcheck"), nullptr
         });
+        m_checks.last().timeoutMs = 60000;  // AST per TU; per-TU latency dominates
 
         m_checks.append({
             "cppcheck_unused", "Dead Code Detection",
@@ -867,6 +868,7 @@ void AuditDialog::populateChecks() {
             CheckType::CodeSmell, Severity::Minor, { {}, "", {}, 50 },
             false, toolExists("cppcheck"), nullptr
         });
+        m_checks.last().timeoutMs = 60000;  // unusedFunction is single-threaded whole-program
 
         // clang-tidy — needs a compile_commands.json to resolve Qt
         // system headers. Without one it emits `'QString' file not found`
@@ -913,6 +915,7 @@ void AuditDialog::populateChecks() {
             { {}, R"(^(?!\S+:\d+:\d+: (?:warning|error): |clang-tidy: ))", {}, 100 },
             false, hasClangTidy && !tidyBuildDir.isEmpty(), nullptr
         });
+        m_checks.last().timeoutMs = 60000;  // re-parses every TU; worse on Qt-heavy code
 
         // 2026-04-17: widened from `head -5` + `_H` suffix to `head -30` +
         // any `#ifndef <token>`. 2026-05-20 (ANTS-1707): self-audit caught
@@ -950,9 +953,9 @@ void AuditDialog::populateChecks() {
             " && cmake --build \"$d\" -j$(( ($(nproc)+3)/4 )) 2>&1 | grep -E '(warning:|error:)' | head -60;"
             " fi",
             CheckType::Bug, Severity::Major, { {}, "", {}, 60 },
-            false, true, nullptr, {},
-            20 * 60 * 1000  // a full build is the whole job; the check is opt-in
+            false, true, nullptr
         });
+        m_checks.last().timeoutMs = 20 * 60 * 1000;  // a full build is the whole job; the check is opt-in
 
         // Memory pattern check — Qt-aware. The old approach matched any
         // `new ` / `malloc` / `calloc` / `realloc` and relied on a long
@@ -1058,6 +1061,7 @@ void AuditDialog::populateChecks() {
             hasClazy && !clazyBuildDir.isEmpty(),
             nullptr
         });
+        m_checks.last().timeoutMs = 60000;  // clang AST walk over the same TU set
 
         // OSC 8 / URL scheme allowlist — not covered by clazy; project-specific
         // invariant (we always front-load a scheme allowlist before openUrl).
@@ -1250,6 +1254,7 @@ void AuditDialog::populateChecks() {
               "", {}, 120 },
             false, true, nullptr
         });
+        m_checks.last().timeoutMs = 90000;  // rule-pack compile + AST walk over the tree
     }
 
     // ========== ast-grep — polyglot structural search (opt-in) ==========
@@ -1295,6 +1300,7 @@ void AuditDialog::populateChecks() {
               "", {}, 80 },
             true, true, nullptr
         });
+        m_checks.last().timeoutMs = 120000;  // network-bound by OSV.dev rate limits
     }
 
     // ========== trufflehog — verified secret scanning ==========
@@ -1317,6 +1323,7 @@ void AuditDialog::populateChecks() {
               "", {}, 60 },
             false, true, nullptr
         });
+        m_checks.last().timeoutMs = 120000;  // verifies each hit live
     }
 
     // ========== hadolint — Dockerfile linter ==========
@@ -1523,29 +1530,5 @@ void AuditDialog::populateChecks() {
             CheckType::Bug, Severity::Major, { {}, "", {}, 80 },
             false, hasSpotbugs, nullptr
         });
-    }
-
-    // Per-tool timeout overrides — global default is 30 s but a few
-    // tools genuinely need longer on real-world projects:
-    //   - cppcheck full-tree: AST per TU, parallel but per-TU latency dominates
-    //   - cppcheck_unused: --enable=unusedFunction is single-threaded whole-program
-    //   - clang_tidy: re-parses every TU; worse on Qt-heavy code
-    //   - clazy: clang-based AST walk over the same TU set
-    //   - semgrep: rule-pack compile + AST traversal across language tree
-    //   - osv_scanner: network-bound by OSV.dev rate limits
-    //   - trufflehog: filesystem scan with live verification of each hit
-    // Without these, the slow tools false-positive on the 30 second
-    // default and pollute the report with tool-health warnings instead
-    // of findings. compiler_warnings sets its own cap at its registration
-    // instead (ANTS-6197).
-    for (auto &c : m_checks) {
-        if (c.id == "cppcheck" || c.id == "cppcheck_unused" ||
-            c.id == "clang_tidy" || c.id == "clazy") {
-            c.timeoutMs = 60000;
-        } else if (c.id == "semgrep") {
-            c.timeoutMs = 90000;
-        } else if (c.id == "osv_scanner" || c.id == "trufflehog") {
-            c.timeoutMs = 120000;
-        }
     }
 }

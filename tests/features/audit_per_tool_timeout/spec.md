@@ -64,18 +64,18 @@ Source-grep: the previous literal `"Timed out (30s)"` must not appear
 verbatim; the warning construction must reference a numeric variable
 or computed value.
 
-**INV-4 — At least one known-slow tool gets a > 30 s override.**
-Source-grep: at least one of `cppcheck`, `semgrep`, `osv_scanner`,
-`trufflehog`, `clang_tidy`, or `clazy` must appear adjacent (within
-±2 lines) to a `timeoutMs = ` assignment whose value is > 30000.
-This locks the calibration intent so a future refactor that strips
-the per-check defaults gets caught.
+**INV-4 — each known-slow tool sets a > 30 s cap at its registration
+(ANTS-6197).** Source-grep over `populateChecks`: `cppcheck`,
+`cppcheck_unused`, `clang_tidy`, `clazy`, `semgrep`, `osv_scanner`,
+`trufflehog` and `compiler_warnings` each follow their `m_checks.append`
+block with `m_checks.last().timeoutMs = <value>;`, the value above 30000.
+No loop overrides caps by id (`c.timeoutMs =` is absent).
 
 ## Scope
 
 ### In scope
 - Source-grep regression test pinning the struct field, the use site,
-  the message-format change, and at least one calibration override.
+  the message-format change, and each slow tool's cap.
 
 ### Out of scope
 - Behavioral test that runs an actual long-running tool. Would require

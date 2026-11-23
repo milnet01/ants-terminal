@@ -108124,7 +108124,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L07-F23).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6197] **Set each audit tool's timeoutMs at its registration and drop populateChecks' id-matching override loop.**
+- ✅ [ANTS-6197] **Set each audit tool's timeoutMs at its registration and drop populateChecks' id-matching override loop.**
   From ANTS-6116 (L07 MEDIUM F24). compiler_warnings passes its cap at
   registration; six tools get theirs from a loop at the end of
   populateChecks. The lane pass added a pointer between the two. Not
@@ -108134,6 +108134,13 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 592
   `src/auditdialog_catalogue.cpp:1507`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-23: every slow tool (cppcheck, cppcheck_unused, clang_tidy,
+  clazy, semgrep, osv_scanner, trufflehog, compiler_warnings) sets
+  m_checks.last().timeoutMs on the line after its registration; the
+  id-matching loop is gone and the values are unchanged.
+  audit_per_tool_timeout INV-4 now requires each of them;
+  audit_compiler_warnings_check INV-1's scrape reads the statement after
+  the block.
   **Layman:** Slow audit tools get their longer time limit in two different ways, so a new slow tool may get neither.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F24).

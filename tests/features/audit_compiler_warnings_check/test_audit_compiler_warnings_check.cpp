@@ -230,8 +230,13 @@ TEST(AuditCompilerWarningsCheck, ExplicitLongTimeout) {
     const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
     const std::string stripped = ants_test::stripComments(src);
-    const std::string block =
-        ants_test::regionBetween(stripped, "\"compiler_warnings\"", "});");
+    // The append block and the statement after it, where ANTS-6197 sets
+    // the cap.
+    const size_t at = stripped.find("\"compiler_warnings\"");
+    const size_t close = at == std::string::npos ? at : stripped.find("});", at);
+    const size_t stmtEnd = close == std::string::npos ? close : stripped.find(';', close + 3);
+    const std::string block = stmtEnd == std::string::npos
+        ? std::string() : stripped.substr(at, stmtEnd - at);
     ASSERT_FALSE(block.empty())
         << "compiler_warnings m_checks.append block not found in "
            "auditdialog.cpp — the source shape changed under this test";

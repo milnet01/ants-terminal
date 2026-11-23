@@ -37,14 +37,14 @@ project, and the only cleanup path is code that a SIGKILL never lets run.
 ## Invariants
 
 - **INV-1 — the check declares an explicit, minutes-scale timeout.** The
-`m_checks.append` block for `compiler_warnings` carries a `timeoutMs`
-reaching at least a few minutes — either a trailing integer in the
-aggregate initializer or an assignment naming `timeoutMs` for this check —
-rather than inheriting `AuditCheck::timeoutMs`'s 30000 ms default. Test
+`m_checks.append` block for `compiler_warnings`, or the statement after
+it, sets a `timeoutMs` reaching at least a few minutes, rather than
+inheriting `AuditCheck::timeoutMs`'s 30000 ms default. Test
 surface: `test_audit_compiler_warnings_check.cpp`,
 `AuditCompilerWarningsCheck.ExplicitLongTimeout` (source-scrape: scans the
-block for the largest integer literal, or product of an adjacent-literal
-multiplicative expression, and requires it to clear a 3-minute floor).
+block and that statement for the largest integer literal, or product of an
+adjacent-literal multiplicative expression, and requires it to clear a
+3-minute floor).
 Current: red — the block's largest such value is `60` (the `OutputFilter`
 `maxLines` field).
 

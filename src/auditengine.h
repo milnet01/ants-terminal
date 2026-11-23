@@ -69,6 +69,8 @@ struct AuditCheck {
     bool available = true;
     ToggleSwitch *toggle = nullptr;  // GUI-side; engine never derefs
     std::function<QString(const QString & /*projectPath*/)> inProcessRunner{};
+    // A slow tool sets more on the line after its registration; at the
+    // default it times out into a tool-health warning instead of findings.
     int timeoutMs = 30000;
     // Drop findings on a line holding no code outside comments and strings
     // (AuditDialog::dropFindingsInCommentsOrStrings). Set where the check
