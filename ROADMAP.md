@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6905 -->
+<!-- ants-roadmap-id-high-water: ANTS=6906 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97151,6 +97151,20 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: doc-fix.
   Source: self-found 2026-11-07 (ANTS-6437 edit).
   Lanes: claude-session-widgets.
+
+- ✅ [ANTS-6906] **The read-seam test spec says a dropped item renders as a 🚫 record, as its test asserts.**
+  tests/features/roadmap_read_seam/spec.md still says the dropped item
+  is absent because emojiFor() returns an empty string for it, and that
+  statusFromMarker() cannot produce `dropped`. Both stopped being true
+  with ANTS-4977: emojiFor("dropped") is 🚫, statusFromMarker maps 🚫 to
+  dropped, and test_roadmap_read_seam.cpp asserts the item is present.
+  Hot reload: none needed; a document.
+  2026-11-23: spec.md's Inv2Membership passages and the test's comment
+  now say the dropped item is present as 🚫.
+  **Layman:** A test's description still says dropped items are hidden, which stopped being true when they got their own 🚫 mark.
+  Kind: doc-fix.
+  Source: self: ANTS-6215 Phase 0 read 2026-11-23.
+  Lanes: roadmap-parse-render.
 
 ### Duplicate folding (2026-11-06 review)
 

@@ -689,9 +689,8 @@ TEST(RoadmapReadSeam, Inv2Membership) {
     ASSERT_TRUE(dir.isValid());
 
     // Populated DIRECTLY and not by migration, because migration cannot produce
-    // any of the three shapes this case is about: `visibility` defaults to
-    // public and no migration path writes it, statusFromMarker() cannot produce
-    // `dropped`, and every migrated item is filed.
+    // an `internal` or an unfiled item: `visibility` defaults to public and no
+    // migration path writes it, and every migrated item is filed.
     auto store = openStore(dir.filePath(QStringLiteral("store.sqlite")),
                            RoadmapStore::Access::Interactive);
     ASSERT_NE(store, nullptr);

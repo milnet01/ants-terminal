@@ -22,7 +22,7 @@ changing what a record contains.
 |---|---|---|
 | `Inv1DispatchMarker` | INV-1 | five dispatch outcomes in one process |
 | `Inv2BackendsAgree` | INV-2 | record-for-record equality, store vs the rendered file |
-| `Inv2Membership` | INV-2's membership half | `dropped` excluded, `internal` kept, unfiled kept and last |
+| `Inv2Membership` | INV-2's membership half | `dropped` kept, `internal` kept, unfiled kept and last |
 | `Inv3Ceiling` | INV-3's refusal | one item over `kItemCeiling` refuses, exactly `kItemCeiling` does not |
 | `Inv3Latency` | INV-3's budget | p95 < 50 ms on a corpus-sized project |
 | `Ants3863Inv1DispatchReadsOnlyTheDetectorWindow` | 3863 INV-1 | a migrated dispatch over a 3 MiB roadmap reads only the detector's window (`perf`) |
@@ -108,14 +108,13 @@ that decide what `bulletsFromStore()` returns would otherwise ship with no case
 at all.
 
 Populates a store **directly**, not via migration, because migration cannot
-produce any of the three: `visibility` defaults to `public` and no migration
-path writes it, `statusFromMarker()` cannot produce `dropped`, and every
-migrated item is filed. One `internal`, one `dropped` and one unfiled item
-beside two ordinary ones, at `includeArchive == false`:
+produce an `internal` or an unfiled item: `visibility` defaults to `public` and
+no migration path writes it, and every migrated item is filed. One `internal`,
+one `dropped` and one unfiled item beside two ordinary ones, at
+`includeArchive == false`:
 
-- the `dropped` item is **absent** — `emojiFor()` returns an empty string for it
-  by design, so its head line carries no status marker and the parser declines
-  it exactly as a document walk would skip it;
+- the `dropped` item is **present** — `emojiFor()` gives it 🚫 (ANTS-4977), so
+  its head line carries a status marker and the parser reads it as a record;
 - the `internal` item is **present** — `BulletRecord` has no visibility field,
   so the record is well-formed, and filtering here would give `roadmap_query` a
   visibility concept it has never had;
@@ -134,7 +133,7 @@ project over the ceiling never materialises the bodies the ceiling exists to
 bound.
 
 The count is a deliberately over-inclusive proxy for ANTS-3793 § 4's record
-budget: it counts every item row, including the `internal` and `dropped` ones
+budget: it counts every item row, including the `internal` ones
 the reader does not return. No case measures resident bytes — the budget is a
 sizing input, not
 something this invariant asserts.
@@ -184,7 +183,7 @@ when* mutation before the implementation is restored.
 |---|---|
 | `Inv1DispatchMarker` | resolve the marker once and cache it; fall back silently when the store will not open; refuse a recognisable foreign dialect instead of serving it markdown; look the project up by its raw path instead of its canonical one |
 | `Inv2BackendsAgree` | order by `item_pk` instead of § 2.1.3's walk; return `item.body` raw; fill `id`/`idToken` from the `id` column; copy `status` verbatim instead of the emoji; drop `headline`'s 120-character ellipsis; copy a `level == 0` root's title into `sectionHeading`; slug sections statelessly |
-| `Inv2Membership` | return `dropped` items; filter `internal` ones; drop unfiled items, or emit them before the filed ones |
+| `Inv2Membership` | drop `dropped` items; filter `internal` ones; drop unfiled items, or emit them before the filed ones |
 | `Inv3Ceiling` | test `>=` instead of `>`; test the ceiling after the item bodies are already resident |
 | `Ants4426AppendAdvisoryReadsNoBody` | re-introduce a `storeText.full()` read in `roadmap_log`'s store block — verified red 2026-08-18 |
 | `Ants4431RoadmapQueryConstructsOneProvider` | construct a second `RoadmapText` in a branch; read `ROADMAP.md` with a raw `QFile` + `readAll()` — the second verified red 2026-10-01 against the four such reads it replaced |
