@@ -4279,9 +4279,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetLegend(const QJsonObject &req) {
     // The migration recognises a legend line by its first word, so a wording
     // that does not open with one would come back as narration on the next
     // import (looksLikeLegendLine in roadmapmigrate.cpp).
-    static const QRegularExpression kLegendLine(
-        QStringLiteral("^(Done|In progress|Planned|Considered|Dropped)\\b"),
-        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression &legendLine = RoadmapParse::legendLinePattern();
 
     const QJsonValue legendArg = req.value(QStringLiteral("legend"));
     if (!legendArg.isObject() || legendArg.toObject().isEmpty())
@@ -4303,7 +4301,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetLegend(const QJsonObject &req) {
         const QString w = it.value().toString().trimmed();
         if (w.isEmpty()) continue;   // removes the entry
         if (w.contains(QChar('\n')) || w.size() >= 160 ||
-            !kLegendLine.match(w).hasMatch())
+            !legendLine.match(w).hasMatch())
             return rcSectionOpErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: set_legend: the wording for \"%1\" "
                                "must be one line under 160 characters opening "

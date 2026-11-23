@@ -901,21 +901,9 @@ parsePassHeadingBullets(const QStringList &lines) {
             const QRegularExpressionMatch pm = passStatusLinePattern().match(peek);
             if (pm.hasMatch()) {
                 const QString value = pm.captured(2);
-                const QRegularExpressionMatch sm = passStatusValuePattern().match(value);
-                const QString emoji = sm.captured(1);
-                statusWord = sm.captured(2).simplified().toLower();
-                // ANTS-2039 — a bare status emoji with no trailing
-                // keyword (`- **Status**: ✅`) is authoritative: map the
-                // glyph straight to its canonical keyword so the
-                // emoji→status branch below classifies it. Keyword wins
-                // when both are present (`✅ Done` → "done").
-                if (statusWord.isEmpty() && !emoji.isEmpty()) {
-                    if      (emoji == QString::fromUtf8(kEmojiDone))       statusWord = QStringLiteral("done");
-                    else if (emoji == QString::fromUtf8(kEmojiInProgress)) statusWord = QStringLiteral("in-progress");
-                    else if (emoji == QString::fromUtf8(kEmojiConsidered)) statusWord = QStringLiteral("deferred");
-                    else if (emoji == QString::fromUtf8(kEmojiPlanned))    statusWord = QStringLiteral("todo");
-                    else if (emoji == QString::fromUtf8(kEmojiDropped))    statusWord = QStringLiteral("dropped");   // ANTS-4977
-                }
+                // ANTS-2039 — a bare status emoji (`- **Status**: ✅`) is
+                // authoritative; passStatusKeywordIn maps it to its keyword.
+                statusWord = passStatusKeywordIn(value);
                 // A content-free `- **Status**:` line (both groups
                 // empty) is not a classification — keep scanning for a
                 // real status marker within the window.
@@ -971,34 +959,9 @@ parsePassHeadingBullets(const QStringList &lines) {
         rec.lanes        = trailerValuesIn(statusValue).lanesList;
         rec.firstLine    = i + 1;
         rec.lastLine     = lastIdx + 1;
-        if (statusWord == QStringLiteral("done") ||
-            statusWord == QStringLiteral("shipped") ||
-            statusWord == QStringLiteral("completed")) {
-            rec.status = QStringLiteral("✅");
-        } else if (statusWord == QStringLiteral("in-progress") ||
-                   statusWord == QStringLiteral("in_progress") ||
-                   statusWord == QStringLiteral("in progress") ||   // ANTS-5761
-                   statusWord == QStringLiteral("inprogress") ||
-                   statusWord == QStringLiteral("doing") ||
-                   statusWord == QStringLiteral("wip") ||
-                   // ANTS-4071 — `partial` means begun, not not-started. It
-                   // used to reach the else-branch and import as 📋, which says
-                   // "nothing has happened here" about a block whose own Status
-                   // line reads `partial (v3.6.20). Phase A landed`.
-                   statusWord == QStringLiteral("partial")) {
-            rec.status = QStringLiteral("🚧");
-        } else if (statusWord == QStringLiteral("deferred") ||
-                   statusWord == QStringLiteral("considered") ||
-                   statusWord == QStringLiteral("parked")) {
-            rec.status = QStringLiteral("💭");
-        } else if (statusWord == QStringLiteral("dropped") ||      // ANTS-4977
-                   statusWord == QStringLiteral("abandoned") ||
-                   statusWord == QStringLiteral("wontfix")) {
-            rec.status = QString::fromUtf8(kEmojiDropped);
-        } else {
-            // todo / planned / unknown / absent
-            rec.status = QStringLiteral("📋");
-        }
+        // An unnamed or absent keyword falls back to planned.
+        const LifecycleStatus *st = statusByWord(passKeywordStatus(statusWord));
+        rec.status = QString::fromUtf8(st ? st->glyph : kEmojiPlanned);
         // Headline: re-emit the meta in parens so SEVERITY+SIZE
         // survive in headline_oneline (no dedicated bullet fields
         // for them yet; cheapest fidelity-preserving option).
@@ -1712,6 +1675,50 @@ const QRegularExpression &passStatusValuePattern() {
     static const QRegularExpression re(
         QStringLiteral("^([^\\sA-Za-z0-9_-]+)?\\s*"
                        "((?i:in\\s+progress)(?![A-Za-z0-9_-])|[A-Za-z0-9_-]*)"));
+    return re;
+}
+
+QString passStatusKeywordIn(const QString &statusValue) {
+    const QRegularExpressionMatch m = passStatusValuePattern().match(statusValue);
+    QString word = m.captured(2).simplified().toLower();
+    if (!word.isEmpty()) return word;   // `✅ Done` → "done": the keyword wins
+    const LifecycleStatus *st = statusByGlyph(m.captured(1));
+    return st ? QString::fromLatin1(st->passKeyword) : QString();
+}
+
+QString passKeywordStatus(const QString &keyword) {
+    // Every keyword the reader names. Each status's own passKeyword is here,
+    // so a block the writer flips reads back as the status it was given.
+    static const struct { const char *keyword; const char *status; } kWords[] = {
+        {"done", "shipped"}, {"shipped", "shipped"}, {"completed", "shipped"},
+        {"in-progress", "in-progress"}, {"in_progress", "in-progress"},
+        {"in progress", "in-progress"},   // ANTS-5761
+        {"inprogress", "in-progress"}, {"doing", "in-progress"},
+        {"wip", "in-progress"},
+        // ANTS-4071 — `partial` means begun. Read as planned, it would say
+        // nothing had happened about a block whose own Status line reads
+        // `partial (v3.6.20). Phase A landed`.
+        {"partial", "in-progress"},
+        {"deferred", "considered"}, {"considered", "considered"},
+        {"parked", "considered"},
+        {"dropped", "dropped"}, {"abandoned", "dropped"},   // ANTS-4977
+        {"wontfix", "dropped"},
+        {"todo", "planned"}, {"planned", "planned"},
+    };
+    for (const auto &w : kWords)
+        if (keyword == QLatin1String(w.keyword)) return QLatin1String(w.status);
+    return QString();
+}
+
+const QRegularExpression &legendLinePattern() {
+    static const QRegularExpression re = [] {
+        QStringList words;
+        for (const LifecycleStatus &st : kStatuses)
+            words.append(QRegularExpression::escape(QLatin1String(st.legendWord)));
+        return QRegularExpression(
+            QStringLiteral("^(%1)\\b").arg(words.join(QLatin1Char('|'))),
+            QRegularExpression::CaseInsensitiveOption);
+    }();
     return re;
 }
 

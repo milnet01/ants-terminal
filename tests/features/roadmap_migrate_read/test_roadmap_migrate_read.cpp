@@ -779,7 +779,11 @@ TEST(roadmap_migrate_read, Inv6StatusProvenance) {
     for (const QString &word : {QStringLiteral("done"), QStringLiteral("todo"),
                                 QStringLiteral("deferred"),
                                 // ANTS-4071 — named as of 2026-08-09.
-                                QStringLiteral("partial")}) {
+                                QStringLiteral("partial"),
+                                // ANTS-6215 — the reader has named the
+                                // two-word form since ANTS-5761.
+                                QStringLiteral("in progress"),
+                                QStringLiteral("In progress")}) {
         const MigrationPlan p = planText(passDoc(word));
         EXPECT_EQ(prov(p.items[0], "status"), QStringLiteral("asserted"))
             << "INV-6: '" << word.toStdString()

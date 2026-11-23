@@ -46,68 +46,10 @@ bool decodeUtf8(const QByteArray &bytes, QString *out) {
 
 // ---------------------------------------------------------------- status ---
 
+// Any marker outside the five maps to `planned`.
 QString statusFromMarker(const QString &marker) {
-    if (marker == QString::fromUtf8(RoadmapParse::kEmojiDone))
-        return QStringLiteral("shipped");
-    if (marker == QString::fromUtf8(RoadmapParse::kEmojiInProgress))
-        return QStringLiteral("in-progress");
-    if (marker == QString::fromUtf8(RoadmapParse::kEmojiConsidered))
-        return QStringLiteral("considered");
-    if (marker == QString::fromUtf8(RoadmapParse::kEmojiDropped))   // ANTS-4977
-        return QStringLiteral("dropped");
-    return QStringLiteral("planned");
-}
-
-// The keyword the reader classified on, recovered from the value it kept.
-// parsePassHeadingBullets() matches `([^\sA-Za-z0-9_-]+)?\s*([A-Za-z0-9_-]*)`
-// after the colon, lowercases group 2, and — when group 2 is empty — maps a
-// bare status emoji in group 1 to its keyword. It then discards the keyword,
-// so § 2.7's asserted/defaulted split has to re-derive it from `sourceStatus`.
-// This mirrors the reader's two steps exactly; it decides nothing the reader
-// did not already decide, which is what keeps § 2.3's one-parser rule intact.
-QString passKeyword(const QString &sourceStatus) {
-    static const QRegularExpression rx(
-        QStringLiteral("^([^\\sA-Za-z0-9_-]+)?\\s*([A-Za-z0-9_-]*)"));
-    const auto m = rx.match(sourceStatus);
-    if (!m.hasMatch()) return QString();
-    QString word = m.captured(2).trimmed().toLower();
-    if (!word.isEmpty()) return word;
-    const QString glyph = m.captured(1);
-    if (glyph == QString::fromUtf8(RoadmapParse::kEmojiDone))
-        return QStringLiteral("done");
-    if (glyph == QString::fromUtf8(RoadmapParse::kEmojiInProgress))
-        return QStringLiteral("in-progress");
-    if (glyph == QString::fromUtf8(RoadmapParse::kEmojiConsidered))
-        return QStringLiteral("deferred");
-    if (glyph == QString::fromUtf8(RoadmapParse::kEmojiPlanned))
-        return QStringLiteral("todo");
-    if (glyph == QString::fromUtf8(RoadmapParse::kEmojiDropped))    // ANTS-4977
-        return QStringLiteral("dropped");
-    return QString();
-}
-
-// § 2.7's word table, as the set of words the reader NAMES. A named word is a
-// faithful transcription (`asserted`); anything else reached `planned` through
-// the reader's else-branch and is migration's guess (`defaulted`).
-bool keywordIsNamed(const QString &kw) {
-    static const QSet<QString> named = {
-        QStringLiteral("done"),        QStringLiteral("shipped"),
-        QStringLiteral("completed"),   QStringLiteral("in-progress"),
-        QStringLiteral("in_progress"), QStringLiteral("inprogress"),
-        QStringLiteral("doing"),       QStringLiteral("wip"),
-        // ANTS-4071 — named, so the status is recorded `asserted` rather than
-        // as migration's guess. This set and the reader's own branches are two
-        // halves of one table; a word in the reader that is missing here
-        // classifies correctly and is then reported as defaulted.
-        QStringLiteral("partial"),
-        QStringLiteral("deferred"),    QStringLiteral("considered"),
-        QStringLiteral("parked"),      QStringLiteral("todo"),
-        QStringLiteral("planned"),
-        // ANTS-4977 — the reader maps these three to 🚫.
-        QStringLiteral("dropped"),     QStringLiteral("abandoned"),
-        QStringLiteral("wontfix"),
-    };
-    return named.contains(kw);
+    const RoadmapParse::LifecycleStatus *st = RoadmapParse::statusByGlyph(marker);
+    return QLatin1String(st ? st->word : "planned");
 }
 
 // ------------------------------------------------------------------ kind ---
@@ -166,10 +108,7 @@ QStringList tableCells(const QString &line) {
 // legend lacking it, and read as narration it was injected again every cycle.
 bool looksLikeLegendLine(const QString &text) {
     if (text.size() >= 160) return false;
-    static const QRegularExpression rx(
-        QStringLiteral("^(Done|In progress|Planned|Considered|Dropped)\\b"),
-        QRegularExpression::CaseInsensitiveOption);
-    return rx.match(text).hasMatch();
+    return RoadmapParse::legendLinePattern().match(text).hasMatch();
 }
 
 // § 2.4's conjunction, with this spec's own refinement: an id token in the
@@ -352,8 +291,8 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
     // § 3.5's own markers, so the author chose the status and it is `asserted`;
     // only a pass block can carry a word the reader does not name.
     it.status = statusFromMarker(rec.status);
-    it.closed = it.status == QLatin1String("shipped")
-             || it.status == QLatin1String("dropped");   // ANTS-4977
+    const RoadmapParse::LifecycleStatus *st = RoadmapParse::statusByWord(it.status);
+    it.closed = st && !st->open;
     if (!isPass) {
         it.provenance.insert(QStringLiteral("status"), QStringLiteral("asserted"));
     } else if (rec.sourceStatus.isEmpty()) {
@@ -372,7 +311,12 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
         // word would lose `completed` vs `done`, which the write-back being a
         // right-inverse makes unrecoverable.
         it.extras.insert(QStringLiteral("source_status"), rec.sourceStatus);
-        const bool named = keywordIsNamed(passKeyword(rec.sourceStatus));
+        // § 2.7's split: a keyword the reader NAMES is a faithful
+        // transcription (`asserted`); anything else reached `planned` through
+        // the reader's fallback and is migration's guess (`defaulted`). Both
+        // calls are the reader's own, so the two cannot disagree.
+        const bool named = !RoadmapParse::passKeywordStatus(
+            RoadmapParse::passStatusKeywordIn(rec.sourceStatus)).isEmpty();
         it.provenance.insert(QStringLiteral("status"),
                              named ? QStringLiteral("asserted")
                                    : QStringLiteral("defaulted"));

@@ -607,6 +607,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_migrate` records a pass block whose Status reads `In progress` as the author's own status, not as its guess** (ANTS-6215)
+
 - **`roadmap_query` shortens a long body between characters, so an emoji at the cut stays whole and strict JSON readers accept the reply** (ANTS-6904)
 
 - **`audit_run`'s whole-tree bandit scan now skips only the folders on its skip list, so files such as `environment.py` or `metadata.py` are scanned again** (ANTS-6899)

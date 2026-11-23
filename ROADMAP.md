@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6907 -->
+<!-- ants-roadmap-id-high-water: ANTS=6908 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -108371,7 +108371,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L11-F5).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6215] **One shared roadmap status table (word, keyword, glyph, order, open) for the render, the export and the pass writer.**
+- ✅ [ANTS-6215] **One shared roadmap status table (word, keyword, glyph, order, open) for the render, the export and the pass writer.**
   From ANTS-6121 (L12 MEDIUM F3). The lane pass gave passheadingwrite.cpp
   one kPassStatuses table. Still hand-kept: kStatusOrder in
   roadmapexport.cpp and a second kStatusOrder in roadmaprender.cpp (whose
@@ -108386,6 +108386,12 @@ worked after these.
   row 816 `src/remotecontrol_roadmap_log.cpp:1773`; row 867
   `src/remotecontrol_roadmap_log_batch.cpp:33-36`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  2026-11-23: RoadmapParse::kStatuses is the one table. Shipped in three
+  commits: render/export/pass writer; roadmap_log and roadmap_query
+  (rows 816, 867); migration and the pass reader (rows 644, 659, 690),
+  which also fixed `In progress` migrating as defaulted. Row 695 (the
+  dialog) moved to ANTS-6908; schema enums and the store SQL to
+  ANTS-6907.
   **Layman:** The five roadmap statuses are listed by hand in several files; one shared list would stop a new status being missed in one of them.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L12-F3).
@@ -109801,6 +109807,24 @@ worked after these.
   Kind: refactor.
   Source: self: ANTS-6215 sweep 2026-11-23.
   Lanes: roadmap-parse-render, mcp-roadmap-query-log-a.
+
+- 📋 [ANTS-6908] **The Roadmap dialog drives its status filters, counts and labels from one dialog status table.**
+  docs/reviews/close-findings-2026-11-06.md row 695: roadmapdialog.cpp
+  hand-lists the statuses in kStatusLabels, bulletPayload's strip calls,
+  filterFor and kStatusBits, passesFilter, SectionCounts and its tally,
+  the column-head emoji list, the per-section count list, the checkbox
+  block and statusBoxes. Remedy: one dialog table (glyph from
+  RoadmapParse::kStatuses, filter bit, settings key, translated label,
+  checkbox, count field) every list reads.
+  Split from ANTS-6215 because it is GUI work in its own lane: the rows
+  tie to widget members and translations. Two scrape anchors pin current
+  text: tr("✅ Shipped") and the .rm-count CSS (see the review row).
+  Hot reload: none needed; no new running state. The dialog is terminal
+  code, so a build reaches it on the next terminal launch.
+  **Layman:** The Roadmap window lists the five statuses by hand in about ten places; one list would stop a new status being missed in one of them.
+  Kind: refactor.
+  Source: review-readability-2026-11-06 row 695, split from ANTS-6215.
+  Lanes: roadmap-dialog.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

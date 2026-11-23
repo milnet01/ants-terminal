@@ -47,23 +47,42 @@ inline constexpr const char *kEmojiDropped    = "🚫";
 // ANTS-6215 — the five lifecycle statuses, in roadmap-data-model.md § 7.3's
 // declared order, which is the order a legend is rendered and exported in.
 // Each carries its § 3.3 marker, the Status keyword a pass block spells it
-// with (ANTS-2126), and whether § 3.4 counts it open. A new status is added
-// here; every table keyed by status reads this one. The store's SQL cannot:
-// item.status's CHECK constraint in roadmapstore.cpp lists the same words (so
-// a new one is a schema change), and kOpenStatusIn there lists the open ones.
+// with (ANTS-2126), the word a § 5.1 legend line opens with, and whether
+// § 3.4 counts it open. A new status is added here; every table keyed by
+// status reads this one. The store's SQL cannot: item.status's CHECK
+// constraint in roadmapstore.cpp lists the same words (so a new one is a
+// schema change), and kOpenStatusIn there lists the open ones.
 struct LifecycleStatus {
     const char *word;
     const char *glyph;
     const char *passKeyword;
+    const char *legendWord;
     bool open;
 };
 inline constexpr LifecycleStatus kStatuses[] = {
-    {"planned",     kEmojiPlanned,    "todo",        true},
-    {"in-progress", kEmojiInProgress, "in-progress", true},
-    {"shipped",     kEmojiDone,       "done",        false},
-    {"considered",  kEmojiConsidered, "deferred",    true},
-    {"dropped",     kEmojiDropped,    "dropped",     false},
+    {"planned",     kEmojiPlanned,    "todo",        "Planned",     true},
+    {"in-progress", kEmojiInProgress, "in-progress", "In progress", true},
+    {"shipped",     kEmojiDone,       "done",        "Done",        false},
+    {"considered",  kEmojiConsidered, "deferred",    "Considered",  true},
+    {"dropped",     kEmojiDropped,    "dropped",     "Dropped",     false},
 };
+
+// The row for a lifecycle word or a status glyph, or nullptr.
+inline const LifecycleStatus *statusByWord(const QString &word) {
+    for (const LifecycleStatus &st : kStatuses)
+        if (word == QLatin1String(st.word)) return &st;
+    return nullptr;
+}
+inline const LifecycleStatus *statusByGlyph(const QString &glyph) {
+    for (const LifecycleStatus &st : kStatuses)
+        if (glyph == QString::fromUtf8(st.glyph)) return &st;
+    return nullptr;
+}
+
+// A legend line's wording: it opens with a legendWord, case-insensitively.
+// The migration lifts such a line out of the intro (looksLikeLegendLine);
+// set_legend refuses a wording that would not come back as one.
+const QRegularExpression &legendLinePattern();
 
 // ANTS-3771 — a project's DECLARED id format, as read from
 // .ants/project.json's `id_format` (docs/specs/ANTS-3771-id-format-declaration.md).
@@ -508,6 +527,14 @@ const QRegularExpression &passStatusLinePattern();
 // A Status value: group 1 a leading glyph run (✅, `**`), group 2 the keyword.
 // ANTS-5761 — `in progress` is one keyword.
 const QRegularExpression &passStatusValuePattern();
+// ANTS-6215 — the keyword a Status value is classified on: group 2,
+// simplified and lowercased, or, for a bare glyph (ANTS-2039), that glyph's
+// passKeyword. Empty for a content-free value. The reader and the migration
+// both call this, so they cannot disagree on which word was written.
+QString passStatusKeywordIn(const QString &statusValue);
+// The lifecycle word a pass Status keyword names, or an empty string when the
+// reader does not name it and the block falls back to `planned`.
+QString passKeywordStatus(const QString &keyword);
 // A heading of level 1-4 closes a pass block; `#####` does not.
 bool isPassBlockEnd(const QString &line);
 // `PASS-<major>-<minor>[-<sub>]`, the id a pass heading synthesises.
