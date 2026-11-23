@@ -1172,8 +1172,18 @@ struct CompiledIdFormat {
 // native path, its FAILURE is what makes a marker-less bullet produce no
 // record at all. `rec.status`, the section fields and the line span are the
 // caller's; every other member is assigned here.
-void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &body,
-                      bool gfmHere, const CompiledIdFormat &decl) {
+// What a bullet's head says about its id. resolveHeadline reads `boldId`
+// and `declaredRest`; fillBulletRecord copies the rest onto the record.
+struct IdResolution {
+    QString id;             // rec.id; empty when nothing names the item
+    QString idToken;        // rec.idToken: the leading slot as written
+    QString adoptedBoldId;  // rec.boldId: a bold span adopted BY INFERENCE
+    QString boldId;         // the bold lead-in read as an id-label
+    QString declaredRest;   // ANTS-3771 — lead-in text a declared pattern left
+};
+
+IdResolution resolveId(const QString &head, const QString &body, bool gfmHere,
+                       const CompiledIdFormat &decl) {
     // ANTS-1405 — widened from `\[ANTS-(\d+)\]` to accept any
     // `[PROJ-NNNN]` token shape per the shareable
     // docs/standards/roadmap-format.md § 3.5.1 spec. Captures the full
@@ -1183,6 +1193,213 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     // the previous "ANTS-%1".arg(N) shape byte-for-byte.
     static const QRegularExpression rxId(
         QStringLiteral("\\[(") + idTokenPattern() + QStringLiteral(")\\]"));
+
+    QString boldId;      // multi-prefix bold-ID token, e.g. "Sh4"
+    QString bracketId;   // ANTS-1987 — head-anchored bare-bracket id, e.g. "Cl9"
+    QString boldCand;
+    // ANTS-3771 — the id the project's DECLARED pattern resolved out of the
+    // bold lead-in, and the text of that lead-in the pattern did not consume.
+    // Both empty when nothing is declared or the pattern did not match, which
+    // is the whole of INV-1: every branch then reads as it does today.
+    QString declaredId;
+    QString declaredRest;
+    if (gfmHere) {
+        // Bold-ID token preservation. Multi-prefix projects
+        // get their existing ID respected.
+        //
+        // ANTS-3773 — but only when the bold run LOOKS like an id. This
+        // branch used to adopt any bold run at the head of a bullet, on
+        // the stated convention that in GFM the leading bold span is an
+        // ID-label. Measured over the corpus 2026-08-01, that convention
+        // is half true: one project writes this shape, with 288 real ids
+        // (`MT1`, `FW W5`, `Audit X1`) and 166 bold runs that are plain
+        // prose (`Photo mode`, `Aerodynamics`, `Asset-pipeline tooling`).
+        // Prose adopted as an id is not cosmetic — two bullets sharing a
+        // lead-in fold to one identity, which fails ANTS-3756's
+        // UNIQUE (project_id, id_fold) and refuses that project's whole
+        // migration (ANTS-3765 § 2.5). It hit 17 bullets in that project.
+        //
+        // The guard is a TRAILING COLON and nothing more, and the
+        // narrowness is the point. It is not a heuristic:
+        // idTokenPattern() admits only letters, digits, `_` and `-`, so a
+        // colon cannot occur in an id at all, and `**Phase 9E-2:**` is a label
+        // introducing prose rather than a name for the item.
+        //
+        // Two wider rules were tried against the corpus and both are
+        // wrong. The ants-v1 guard below demands a whitespace-free token,
+        // which would lose the real ids `FW W5` and `Audit X1`. Requiring
+        // a DIGIT would drop 133 further prose lead-ins and looked right
+        // on the ten roadmaps measured — but ANTS-1438's own tests carry
+        // a Vestige fixture whose ids are `Terrain System` and
+        // `JustBoldNoSeparator`, digitless and deliberate, so it broke a
+        // shipped contract that measurement of those ten files could not
+        // see.
+        //
+        // So a digitless prose lead-in is still adopted, and two bullets
+        // sharing one still collide (3D_Engine has two `**Photo mode**`
+        // bullets). Nothing in the text can separate that from a real
+        // multi-word id, which is the argument for ANTS-3771: let a
+        // project DECLARE its id format instead of inferring one.
+        //
+        // ANTS-3771 is now buildable, and this is where it lands. A project
+        // that DECLARES its id format has written the rule down, so the
+        // inference above is not consulted for it: the declared pattern is
+        // tried first, and only a non-match falls through to the trailing-colon
+        // guard. `boldId` is still set on a match — it drives
+        // resolveHeadline, which has to keep working — but rec.boldId is NOT,
+        // because that field means "the reader ADOPTED this span as an id" and
+        // under a declaration it adopted nothing (§ 2.2, INV-3).
+        if (extractBoldId(head, &boldCand)) {
+            if (decl.hasPattern) {
+                // Search semantics, not anchored unless the author anchored it
+                // — the same rule spec_conformance uses for a pattern
+                // invariant (specs.md § 3.5.1). The input is extractBoldId()'s
+                // OUTPUT: the span with its one trailing `.` chopped and
+                // trimmed, which is what every project authors its pattern
+                // against.
+                const auto m = decl.rx.match(boldCand);
+                if (m.hasMatch()) {
+                    // Capture group 1 when the pattern HAS one, else the whole
+                    // match. A group that did not participate would empty the
+                    // id, and § 5 excludes emptying an id permanently — so an
+                    // empty resolution is treated as no match at all and the
+                    // bullet keeps what the heuristic gives it (INV-4).
+                    QString cand = decl.rx.captureCount() >= 1 ? m.captured(1)
+                                                               : m.captured(0);
+                    cand = cand.trimmed();
+                    if (!cand.isEmpty()) {
+                        declaredId   = std::move(cand);
+                        declaredRest = boldCand.mid(m.capturedEnd(0)).trimmed();
+                        boldId       = boldCand;
+                    }
+                }
+            }
+            if (declaredId.isEmpty() && !boldCand.endsWith(QLatin1Char(':')))
+                boldId = std::move(boldCand);
+        }
+    } else {
+        // ANTS-1987 — extract a leading bold-ID token here too, not
+        // only on the GFM branch. A native emoji bullet whose ID is
+        // a bold-dotted token (`- 📋 **Cl9.**`) otherwise produced an
+        // empty id (rxId below only matches a bracketed `[PROJ-NNNN]`
+        // with a `-<digits>` tail), so the bullet fell out as a
+        // narrator and vanished from roadmap_query. Unlike the GFM
+        // branch (where the leading bold span is an ID-label by
+        // convention), in ants-v1 the bold span is normally the
+        // HEADLINE (`[ID] **headline**`), so adopt a bold token as
+        // the id ONLY when it is ID-SHAPED — a single whitespace-free
+        // token (`Cl9` / `Sh4` / `Ts20-DE1`). This keeps a bold-prose
+        // narrator bullet (`- 🚧 **In-progress thing.**`) id-less.
+        // extractBoldId is head-anchored, so the standard
+        // `[ID] **headline**` form (head starts with `[`) never fires.
+        if (extractBoldId(head, &boldCand)) {
+            static const QRegularExpression rxIdShaped(
+                QStringLiteral("^[A-Za-z][A-Za-z0-9_.-]*$"));
+            if (rxIdShaped.match(boldCand).hasMatch()) boldId = std::move(boldCand);
+        }
+    }
+
+    IdResolution out;
+    // ANTS-1987 (bracket-ID completion) — index the
+    // `- <emoji> [Cl9] **headline**` form Vestige actually authors
+    // (Cl9 / Cl10 / CE18). After the checkbox/emoji prefix is
+    // stripped, `head` begins with the bracket; the body-wide rxId
+    // only matches a dashed `[PROJ-NNNN]`, so a bare project-local id
+    // (`[Cl9]`) produced an empty id and the bullet fell out as a
+    // narrator — invisible to roadmap_query id/ids/section. Match a
+    // HEAD-ANCHORED bracket whose contents are ID-shaped (single
+    // whitespace-free token) and NOT a markdown link (`](`), so a
+    // mid-prose `[ref]` or a `[label](url)` link can never qualify.
+    // This is a positional signal — it does NOT widen the shared
+    // idTokenPattern (rxId still rejects dash-less brackets in body
+    // prose). Only fills in when no bold-ID was found.
+    if (boldId.isEmpty()) {
+        static const QRegularExpression rxLeadBracketId(
+            QStringLiteral("^\\[([A-Za-z][A-Za-z0-9_.-]*)\\](?!\\()"));
+        const auto lb = rxLeadBracketId.match(head);
+        if (lb.hasMatch()) bracketId = lb.captured(1);
+    }
+
+    // ANTS-3764 — the leading-slot token AS WRITTEN, before any grammar
+    // test (ANTS-3757 § 2.5 / § 2.6). Deliberately more permissive than
+    // rxLeadBracketId above, which feeds `id` and must not change: any
+    // bracketed run without whitespace qualifies, so a digit-led prefix
+    // (`[3D_E-0042]`) and an off-grammar `[Cl9]` both survive to be
+    // classified downstream rather than being decided here. This is the
+    // field `id` cannot stand in for — `id` takes the first
+    // `[<PREFIX>-NNNN]` found ANYWHERE in the body, so a bullet whose
+    // slot says `[Cl9]` and whose prose cites `[ANTS-9999]` reports the
+    // citation, and it conflates conforming with off-grammar ids.
+    // The one thing this DOES decide is the `(?![(:])` guard: a token
+    // followed by `(` or `:` is a markdown link, not an id.
+    static const QRegularExpression rxLeadToken(
+        QStringLiteral("^\\[([^\\]\\s]+)\\](?![(:])"));
+    const auto leadTok = rxLeadToken.match(head);
+    if (leadTok.hasMatch()) {
+        out.idToken = leadTok.captured(1);
+    } else if (!declaredId.isEmpty()) {
+        // ANTS-3771 — the declared id, not the whole bold run. Leaving the run
+        // here would quarantine the very bullet the declaration just resolved:
+        // RoadmapMigrate classifies on this field (§ 2.4).
+        out.idToken = declaredId;
+    } else if (!boldId.isEmpty()) {
+        // The other shape the leading slot takes: `**Sh4.**` / `**FW W5**`
+        // (extractBoldId has already dropped the token's trailing `.`).
+        out.idToken = boldId;
+    }
+
+    // Extract structured fields from body.
+    const auto idMatch = rxId.match(body);
+    if (!declaredId.isEmpty()) {
+        // ANTS-3771 — a declared match wins OUTRIGHT, including over the
+        // body-wide rxId below. Today `- [ ] **AX1. foo** … see [ANTS-9999]`
+        // reports the citation, because rxId takes the first `[PROJ-NNNN]`
+        // anywhere in the body. Under a declaration the project has said which
+        // text names its items, so the lead-in is authoritative and the
+        // citation is a citation. This is the ONE branch other than the bold
+        // fallback that the declaration changes, and INV-2 is scoped to say so.
+        out.id = declaredId;
+    } else if (idMatch.hasMatch()) {
+        // ANTS-1405 — capture group is the full token; assign
+        // verbatim. For `[ANTS-NNNN]` the value is byte-identical
+        // to the pre-1405 `"ANTS-%1".arg(\d+)` form.
+        out.id = idMatch.captured(1);
+    } else if (!boldId.isEmpty()) {
+        // ANTS-1428 — multi-prefix bold-ID preservation.
+        out.id = boldId;
+    } else if (!bracketId.isEmpty()) {
+        // ANTS-1987 — head-anchored bare-bracket id (`[Cl9]`).
+        out.id = std::move(bracketId);
+    }
+    // ANTS-1438 — surface the bold-ID on the record so the
+    // envelope can emit a dedicated `bold_id` field. Keeps the
+    // `id` semantics back-compatible (matches boldId here, but
+    // a synthetic content-hash if boldId was empty, in fillBulletRecord).
+    // ANTS-3771 — deliberately NOT set on a declared match. `bold_id` reports a
+    // span the reader adopted BY INFERENCE (ANTS-1438), and idWasInferred() is
+    // `id == boldId`, so leaving it set would fire `id_inferred` on the very
+    // ids a project declared — including the ordinary bare-token case where the
+    // capture spans the whole span (`**A1**`), which is INV-5's own example.
+    if (declaredId.isEmpty() && !boldId.isEmpty()) out.adoptedBoldId = boldId;
+    out.boldId       = std::move(boldId);
+    out.declaredRest = std::move(declaredRest);
+    return out;
+}
+
+// A headline, and one past the text of the head line it consumed, as
+// assignHeadline takes them.
+struct HeadlineResolution {
+    QString text;
+    int     end = -1;
+};
+
+// The headline a bullet's text gives, or nothing when no rule finds one.
+std::optional<HeadlineResolution> resolveHeadline(const QString &head,
+                                                  const QString &body,
+                                                  bool gfmHere,
+                                                  const IdResolution &ids) {
+    const QString &boldId       = ids.boldId;
+    const QString &declaredRest = ids.declaredRest;
     // ANTS-1547 — lazy `(.+?)` instead of `[^*]+`. Bullets whose bold
     // span wraps inline-code with a literal `*` (e.g. `**Three review
     // surfaces (`cold_eyes_*` / ...)** `) would otherwise fall through
@@ -1274,201 +1491,13 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         return body.mid(m.capStart, m.capEnd - m.capStart).trimmed();
     };
 
-    QString boldId;      // multi-prefix bold-ID token, e.g. "Sh4"
-    QString bracketId;   // ANTS-1987 — head-anchored bare-bracket id, e.g. "Cl9"
-    QString boldCand;
-    // ANTS-3771 — the id the project's DECLARED pattern resolved out of the
-    // bold lead-in, and the text of that lead-in the pattern did not consume.
-    // Both empty when nothing is declared or the pattern did not match, which
-    // is the whole of INV-1: every branch below then reads as it does today.
-    QString declaredId;
-    QString declaredRest;
-    if (gfmHere) {
-        // Bold-ID token preservation. Multi-prefix projects
-        // get their existing ID respected.
-        //
-        // ANTS-3773 — but only when the bold run LOOKS like an id. This
-        // branch used to adopt any bold run at the head of a bullet, on
-        // the stated convention that in GFM the leading bold span is an
-        // ID-label. Measured over the corpus 2026-08-01, that convention
-        // is half true: one project writes this shape, with 288 real ids
-        // (`MT1`, `FW W5`, `Audit X1`) and 166 bold runs that are plain
-        // prose (`Photo mode`, `Aerodynamics`, `Asset-pipeline tooling`).
-        // Prose adopted as an id is not cosmetic — two bullets sharing a
-        // lead-in fold to one identity, which fails ANTS-3756's
-        // UNIQUE (project_id, id_fold) and refuses that project's whole
-        // migration (ANTS-3765 § 2.5). It hit 17 bullets in that project.
-        //
-        // The guard is a TRAILING COLON and nothing more, and the
-        // narrowness is the point. It is not a heuristic:
-        // idTokenPattern() admits only letters, digits, `_` and `-`, so a
-        // colon cannot occur in an id at all, and `**Phase 9E-2:**` is a label
-        // introducing prose rather than a name for the item.
-        //
-        // Two wider rules were tried against the corpus and both are
-        // wrong. The ants-v1 guard below demands a whitespace-free token,
-        // which would lose the real ids `FW W5` and `Audit X1`. Requiring
-        // a DIGIT would drop 133 further prose lead-ins and looked right
-        // on the ten roadmaps measured — but ANTS-1438's own tests carry
-        // a Vestige fixture whose ids are `Terrain System` and
-        // `JustBoldNoSeparator`, digitless and deliberate, so it broke a
-        // shipped contract that measurement of those ten files could not
-        // see.
-        //
-        // So a digitless prose lead-in is still adopted, and two bullets
-        // sharing one still collide (3D_Engine has two `**Photo mode**`
-        // bullets). Nothing in the text can separate that from a real
-        // multi-word id, which is the argument for ANTS-3771: let a
-        // project DECLARE its id format instead of inferring one.
-        //
-        // ANTS-3771 is now buildable, and this is where it lands. A project
-        // that DECLARES its id format has written the rule down, so the
-        // inference above is not consulted for it: the declared pattern is
-        // tried first, and only a non-match falls through to the trailing-colon
-        // guard. `boldId` is still set on a match — it drives the headline
-        // branches below, which have to keep working — but rec.boldId is NOT,
-        // because that field means "the reader ADOPTED this span as an id" and
-        // under a declaration it adopted nothing (§ 2.2, INV-3).
-        if (extractBoldId(head, &boldCand)) {
-            if (decl.hasPattern) {
-                // Search semantics, not anchored unless the author anchored it
-                // — the same rule spec_conformance uses for a pattern
-                // invariant (specs.md § 3.5.1). The input is extractBoldId()'s
-                // OUTPUT: the span with its one trailing `.` chopped and
-                // trimmed, which is what every project authors its pattern
-                // against.
-                const auto m = decl.rx.match(boldCand);
-                if (m.hasMatch()) {
-                    // Capture group 1 when the pattern HAS one, else the whole
-                    // match. A group that did not participate would empty the
-                    // id, and § 5 excludes emptying an id permanently — so an
-                    // empty resolution is treated as no match at all and the
-                    // bullet keeps what the heuristic gives it (INV-4).
-                    QString cand = decl.rx.captureCount() >= 1 ? m.captured(1)
-                                                               : m.captured(0);
-                    cand = cand.trimmed();
-                    if (!cand.isEmpty()) {
-                        declaredId   = std::move(cand);
-                        declaredRest = boldCand.mid(m.capturedEnd(0)).trimmed();
-                        boldId       = boldCand;
-                    }
-                }
-            }
-            if (declaredId.isEmpty() && !boldCand.endsWith(QLatin1Char(':')))
-                boldId = std::move(boldCand);
-        }
-    } else {
-        // ANTS-1987 — extract a leading bold-ID token here too, not
-        // only on the GFM branch. A native emoji bullet whose ID is
-        // a bold-dotted token (`- 📋 **Cl9.**`) otherwise produced an
-        // empty id (rxId below only matches a bracketed `[PROJ-NNNN]`
-        // with a `-<digits>` tail), so the bullet fell out as a
-        // narrator and vanished from roadmap_query. Unlike the GFM
-        // branch (where the leading bold span is an ID-label by
-        // convention), in ants-v1 the bold span is normally the
-        // HEADLINE (`[ID] **headline**`), so adopt a bold token as
-        // the id ONLY when it is ID-SHAPED — a single whitespace-free
-        // token (`Cl9` / `Sh4` / `Ts20-DE1`). This keeps a bold-prose
-        // narrator bullet (`- 🚧 **In-progress thing.**`) id-less.
-        // extractBoldId is head-anchored, so the standard
-        // `[ID] **headline**` form (head starts with `[`) never fires.
-        if (extractBoldId(head, &boldCand)) {
-            static const QRegularExpression rxIdShaped(
-                QStringLiteral("^[A-Za-z][A-Za-z0-9_.-]*$"));
-            if (rxIdShaped.match(boldCand).hasMatch()) boldId = std::move(boldCand);
-        }
-    }
-    rec.format = gfmHere ? QStringLiteral("github-task-list")
-                         : QStringLiteral("ants-v1");
-
-    // ANTS-1987 (bracket-ID completion) — index the
-    // `- <emoji> [Cl9] **headline**` form Vestige actually authors
-    // (Cl9 / Cl10 / CE18). After the checkbox/emoji prefix is
-    // stripped, `head` begins with the bracket; the body-wide rxId
-    // only matches a dashed `[PROJ-NNNN]`, so a bare project-local id
-    // (`[Cl9]`) produced an empty id and the bullet fell out as a
-    // narrator — invisible to roadmap_query id/ids/section. Match a
-    // HEAD-ANCHORED bracket whose contents are ID-shaped (single
-    // whitespace-free token) and NOT a markdown link (`](`), so a
-    // mid-prose `[ref]` or a `[label](url)` link can never qualify.
-    // This is a positional signal — it does NOT widen the shared
-    // idTokenPattern (rxId still rejects dash-less brackets in body
-    // prose). Only fills in when no bold-ID was found.
-    if (boldId.isEmpty()) {
-        static const QRegularExpression rxLeadBracketId(
-            QStringLiteral("^\\[([A-Za-z][A-Za-z0-9_.-]*)\\](?!\\()"));
-        const auto lb = rxLeadBracketId.match(head);
-        if (lb.hasMatch()) bracketId = lb.captured(1);
-    }
-
-    // ANTS-3764 — the leading-slot token AS WRITTEN, before any grammar
-    // test (ANTS-3757 § 2.5 / § 2.6). Deliberately more permissive than
-    // rxLeadBracketId above, which feeds `id` and must not change: any
-    // bracketed run without whitespace qualifies, so a digit-led prefix
-    // (`[3D_E-0042]`) and an off-grammar `[Cl9]` both survive to be
-    // classified downstream rather than being decided here. This is the
-    // field `id` cannot stand in for — `id` takes the first
-    // `[<PREFIX>-NNNN]` found ANYWHERE in the body, so a bullet whose
-    // slot says `[Cl9]` and whose prose cites `[ANTS-9999]` reports the
-    // citation, and it conflates conforming with off-grammar ids.
-    // The one thing this DOES decide is the `(?![(:])` guard: a token
-    // followed by `(` or `:` is a markdown link, not an id.
-    static const QRegularExpression rxLeadToken(
-        QStringLiteral("^\\[([^\\]\\s]+)\\](?![(:])"));
-    const auto leadTok = rxLeadToken.match(head);
-    if (leadTok.hasMatch()) {
-        rec.idToken = leadTok.captured(1);
-    } else if (!declaredId.isEmpty()) {
-        // ANTS-3771 — the declared id, not the whole bold run. Leaving the run
-        // here would quarantine the very bullet the declaration just resolved:
-        // RoadmapMigrate classifies on this field (§ 2.4).
-        rec.idToken = declaredId;
-    } else if (!boldId.isEmpty()) {
-        // The other shape the leading slot takes: `**Sh4.**` / `**FW W5**`
-        // (extractBoldId has already dropped the token's trailing `.`).
-        rec.idToken = boldId;
-    }
-
-    // Extract structured fields from body.
-    const auto idMatch = rxId.match(body);
-    if (!declaredId.isEmpty()) {
-        // ANTS-3771 — a declared match wins OUTRIGHT, including over the
-        // body-wide rxId below. Today `- [ ] **AX1. foo** … see [ANTS-9999]`
-        // reports the citation, because rxId takes the first `[PROJ-NNNN]`
-        // anywhere in the body. Under a declaration the project has said which
-        // text names its items, so the lead-in is authoritative and the
-        // citation is a citation. This is the ONE branch other than the bold
-        // fallback that the declaration changes, and INV-2 is scoped to say so.
-        rec.id = declaredId;
-    } else if (idMatch.hasMatch()) {
-        // ANTS-1405 — capture group is the full token; assign
-        // verbatim. For `[ANTS-NNNN]` the value is byte-identical
-        // to the pre-1405 `"ANTS-%1".arg(\d+)` form.
-        rec.id = idMatch.captured(1);
-    } else if (!boldId.isEmpty()) {
-        // ANTS-1428 — multi-prefix bold-ID preservation.
-        rec.id = boldId;
-    } else if (!bracketId.isEmpty()) {
-        // ANTS-1987 — head-anchored bare-bracket id (`[Cl9]`).
-        rec.id = std::move(bracketId);
-    }
-    // ANTS-1438 — surface the bold-ID on the record so the
-    // envelope can emit a dedicated `bold_id` field. Keeps the
-    // `id` semantics back-compatible (matches boldId here, but
-    // a synthetic content-hash if boldId was empty further down).
-    // ANTS-3771 — deliberately NOT set on a declared match. `bold_id` reports a
-    // span the reader adopted BY INFERENCE (ANTS-1438), and idWasInferred() is
-    // `id == boldId`, so leaving it set would fire `id_inferred` on the very
-    // ids a project declared — including the ordinary bare-token case where the
-    // capture spans the whole span (`**A1**`), which is INV-5's own example.
-    if (declaredId.isEmpty() && !boldId.isEmpty()) rec.boldId = boldId;
     // ANTS-1438-INV-4 — GFM bullets with a bold-ID *and* an
     // em-dash separator have a natural (id, headline) split:
     // `**FW W5 (cont.)** — add a reference-regression spec ...`
     // The em-dash convention is used by every Vestige bullet
     // and any other project that wraps an ID-as-label. When the
     // split matches, set the headline directly from the post-
-    // separator prose; the rxBold-based fallback below stays
+    // separator prose; the rxBold-based rules below stay
     // for INV-5 (no separator) and ants-v1 (no boldId).
     if (gfmHere && !boldId.isEmpty() && declaredRest.isEmpty()) {
         // ANTS-5288 — the separator must FOLLOW the bold caption. A caption
@@ -1484,7 +1513,8 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
             // ANTS-3808 — the bold-ID label and the post-separator
             // headline are both re-emitted by the render (as `[id]` and
             // `**headline**`), so the whole head line is consumed.
-            assignHeadline(rec, h, headLineEnd(body));  // ANTS-2075 / ANTS-1811
+            // An empty tail leaves the headline to the rules below.
+            if (!h.isEmpty()) return HeadlineResolution{h, headLineEnd(body)};
         }
     }
     const auto boldMatch = matchBold(0);   // ANTS-4066, ANTS-6710
@@ -1504,10 +1534,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
             QStringView(body).left(boldMatch.capturedStart())
                 .trimmed().isEmpty();
     }
-    if (!rec.headline.isEmpty()) {
-        // INV-4 already set the headline from the em-dash split;
-        // skip the bold-or-prose fallback for this row.
-    } else if (!declaredRest.isEmpty() && boldMatch.hasMatch()) {
+    if (!declaredRest.isEmpty() && boldMatch.hasMatch()) {
         // ANTS-3771 INV-3 — the pattern consumed a PREFIX of the bold span
         // (`**AX1. Geometric …**` → id `AX1`); what it did not consume is the
         // headline. Without this the span would fall through to the branch
@@ -1518,10 +1545,11 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         // The whole bold span is consumed: the render re-emits it as
         // `[id] **headline**`, which is exactly the case ANTS-3808 § 2.1's
         // table sanctions.
-        assignHeadline(rec, declaredRest,
-                       headlinePrefixEnd(body, boldMatch.capturedStart(),
-                                         boldMatch.capturedEnd()));
-    } else if (boldMatch.hasMatch() &&
+        return HeadlineResolution{
+            declaredRest, headlinePrefixEnd(body, boldMatch.capturedStart(),
+                                            boldMatch.capturedEnd())};
+    }
+    if (boldMatch.hasMatch() &&
                (!gfmHere || boldIsHeadAnchored)) {
         QString h = boldText(boldMatch);   // ANTS-4066 — sliced from `body`
         // ANTS-3808 — one past the text this branch consumes for the head
@@ -1590,10 +1618,10 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
                 consumedEnd = nlAt < 0 ? int(body.size()) : int(nlAt);
             }
         }
-        assignHeadline(rec, h,  // ANTS-2075 / ANTS-1811
-                       headlinePrefixEnd(body, boldMatch.capturedStart(),
-                                         consumedEnd));
-    } else if (gfmHere) {
+        return HeadlineResolution{
+            h, headlinePrefixEnd(body, boldMatch.capturedStart(), consumedEnd)};
+    }
+    if (gfmHere) {
         // ANTS-1428 — GFM bullets often have no `**bold**`
         // formatting at all (Vestige's roadmap is mixed). Use
         // the first line of body, stripped of any trailing
@@ -1613,8 +1641,21 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         // consumed. This is the branch a headline-text match could not
         // strip: `h` has had its `**` markers and caret anchor removed, so
         // it is not a substring of the line it came from.
-        assignHeadline(rec, h, headLineEnd(body));  // ANTS-2075 / ANTS-1811
+        return HeadlineResolution{h, headLineEnd(body)};
     }
+    return std::nullopt;
+}
+
+void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &body,
+                      bool gfmHere, const CompiledIdFormat &decl) {
+    IdResolution ids = resolveId(head, body, gfmHere, decl);
+    rec.format = gfmHere ? QStringLiteral("github-task-list")
+                         : QStringLiteral("ants-v1");
+    if (const auto h = resolveHeadline(head, body, gfmHere, ids))
+        assignHeadline(rec, h->text, h->end);  // ANTS-2075 / ANTS-1811
+    rec.id      = std::move(ids.id);
+    rec.idToken = std::move(ids.idToken);
+    rec.boldId  = std::move(ids.adoptedBoldId);
     // ANTS-1428 — synthetic ID when GFM bullet has no bold-ID
     // and no `[ANTS-NNNN]` legacy token. Stable across line
     // reorders (depends only on the normalised headline).

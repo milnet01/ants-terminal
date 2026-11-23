@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6903 -->
+<!-- ants-roadmap-id-high-water: ANTS=6904 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92892,6 +92892,18 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: Snatch_Ants_MCP_Feedback.md (snatch full review 2026-11-23).
 
+- 📋 [ANTS-6904] **roadmap_query's elided body keeps whole characters at both cuts, so a reply never carries half an emoji.**
+  rcElideBody (src/remotecontrol.cpp) cuts with body.left(headLen) and
+  body.right(tailLen), which count UTF-16 units. A cut inside a surrogate
+  pair leaves a lone half: ANTS-4891's body, listed with the default
+  2000 cap, came back with `\udcad` (the low half of U+1F4AD) at the
+  start of its tail. Python's json writer refuses that string. Both cuts,
+  and the fromEnd branch, need to step back to a character boundary.
+  Hot reload: none needed; ants-mcpd rebuild reaches clients on reconnect.
+  **Layman:** When a long roadmap entry is shortened in a list, the cut could land in the middle of an emoji and leave a broken character that strict JSON readers reject.
+  Kind: fix.
+  Source: self: ANTS-6212 parser differential 2026-11-23.
+
 ### Ants MCP feedback from CC sessions — 2026-11-05 triage
 
 - ✅ [ANTS-6380] **spec_log append_loop writes to the first table in a loop log that holds two, not the live last one.**
@@ -108288,7 +108300,7 @@ worked after these.
   Source: build-warning-2026-10-23.
   Lanes: mcp-content-verbs-a.
 
-- 📋 [ANTS-6212] **Split RoadmapParse's fillBulletRecord into a resolve-id step and a resolve-headline step that return values.**
+- ✅ [ANTS-6212] **Split RoadmapParse's fillBulletRecord into a resolve-id step and a resolve-headline step that return values.**
   From ANTS-6120 (L11 MEDIUM F8). fillBulletRecord carries five id
   candidates (boldId, bracketId, boldCand, declaredId, declaredRest)
   through one long body, and its headline chain opens with an empty
@@ -108298,6 +108310,11 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 666
   `src/roadmapparse.cpp:1472`. Details: docs/reviews/close-findings-2026-11-06.md.
+  fillBulletRecord now calls resolveId (returns id, idToken, adopted
+  bold id, plus the bold lead-in and declared rest) and resolveHeadline
+  (returns headline + consumed end, or nothing); the empty em-dash
+  branch is gone. Old vs new ants-mcpd parsed 57 real roadmaps (21,896
+  bullets, 1,978 GFM) byte-identically.
   **Layman:** The routine that reads one roadmap line is very long and juggles five possible ids at once; splitting it into named steps makes it followable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L11-F8).
