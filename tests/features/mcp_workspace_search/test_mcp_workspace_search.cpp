@@ -309,6 +309,17 @@ TEST(McpWorkspaceSearch, WiringContract) {
            "INV-1452-2b",
            "remotecontrol.cpp does not parse the include_hidden arg "
            "(ANTS-1452 INV-2)");
+    // ANTS-6900 — rg --hidden walks .git/ (ripgrep 15 returned
+    // .git/logs/HEAD, which carries author emails), so the exclusion is
+    // passed after --hidden, past every caller glob: rg's last glob wins.
+    {
+        const size_t hidden = rcCpp.find("\"--hidden\"");
+        const size_t noGit = rcCpp.find("QStringLiteral(\"!.git\")");
+        expect(hidden != std::string::npos && noGit != std::string::npos &&
+                   noGit > hidden,
+               "ANTS-6900",
+               "include_hidden must pass --glob !.git after --hidden");
+    }
 
     // INV-1452-4 — ok:true envelope echoes both filter values.
     expect(contains(rcCpp, "out[\"respect_gitignore\"]"),

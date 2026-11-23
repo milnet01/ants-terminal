@@ -1312,6 +1312,8 @@ for security-relevant changes.
 
 ### Security
 
+- **`workspace_search` with `include_hidden:true` keeps git's own `.git/` folder out of its results, so commit author names and emails no longer reach whoever searched** (ANTS-6900)
+
 - **quotation_check reads a run of stars in an `allowed` glob as `**`, so a long run of stars cannot crash the server.** (ANTS-5444)
 
 - **ci_report reads a workflow file nested more than 64 levels deep as unreadable, so a hostile repository's CI file cannot crash the server.** (ANTS-6866)

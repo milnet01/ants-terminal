@@ -706,10 +706,12 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         argv << QStringLiteral("--no-ignore-vcs")
              << QStringLiteral("--no-ignore");
     }
-    // ANTS-1452-INV-2: opt into dotfile paths. rg still excludes .git/
-    // itself regardless of --hidden.
+    // ANTS-1452-INV-2: opt into dotfile paths. ANTS-6900 — --hidden also
+    // walks .git/, whose logs carry author names and emails, so it is
+    // excluded here, after every caller glob: rg's last matching glob wins.
     if (include_hidden) {
-        argv << QStringLiteral("--hidden");
+        argv << QStringLiteral("--hidden")
+             << QStringLiteral("--glob") << QStringLiteral("!.git");
     }
     argv << QStringLiteral("--") << rgPattern << laneAbs;
 

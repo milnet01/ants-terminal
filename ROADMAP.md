@@ -92845,13 +92845,20 @@ measured Ants adding about 5,250 tokens to every request.
   Source: split-from-ANTS-6374-2026-11-15.
   Lanes: mcp.
 
-- 📋 [ANTS-6900] **workspace_search skips .git internals even with include_hidden:true, unless the caller asks for them by name.**
+- ✅ [ANTS-6900] **workspace_search skips .git internals even with include_hidden:true.**
   Snatch, 2026-11-23: a readability lane's include_hidden:true search
   returned .git/logs/HEAD and .git/ci-gate/history.jsonl rows, which
   carry commit author names and emails. Fix: keep .git/ out of the walk
   unless an explicit opt-in (or a glob/lane naming .git) asks for it.
   Hot reload: ants-mcpd serves the verb; a rebuild reaches clients on
   their next reconnect.
+  rg --hidden walks .git/ (ripgrep 15.2: an include_hidden search
+  returned .git/COMMIT_EDITMSG and .git/logs/HEAD), against the schema's
+  "never .git/". include_hidden now adds --glob !.git after every caller
+  glob, so no glob re-includes it; no opt-in, which keeps the documented
+  promise. The git ls-files fallback never lists .git. Test:
+  McpWorkspaceSearch.WiringContract (ANTS-6900 row) plus an ants-mcpd
+  --call repro before and after.
   **Layman:** A code search no longer hands commit author names and emails from git's own files to a review helper.
   Kind: security.
   Source: Snatch_Ants_MCP_Feedback.md (snatch full review 2026-11-23).
