@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6897 -->
+<!-- ants-roadmap-id-high-water: ANTS=6898 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -113944,6 +113944,23 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: fix.
   Source: review-readability-2026-10-22 L10-F1, split from ANTS-6158 on 2026-11-19.
   Lanes: packaging-release.
+
+- 📋 [ANTS-6898] **A Claude Code question shows the bottom bar's Allow / Deny / Add to allowlist buttons, which only fit a tool permission prompt.**
+  User report 2026-11-23: the buttons appear mostly when Claude Code asks a
+  question. Likely cause, not yet seen in a log: the PermissionRequest
+  branch of ClaudeIntegration::processHookEvent (src/claudeintegration.cpp)
+  emits permissionRequested for every tool_name, and Claude Code sends that
+  hook for AskUserQuestion (and likely ExitPlanMode) too. The scroll-scan
+  question path (ANTS-1858) already lights the awaiting-input dot with no
+  buttons. Confirm first: the bar's left text reads "Claude permission:
+  AskUserQuestion", or the Claude debug-log category shows the hook's
+  tool_name. Fix shape: skip the button bar for those two tools and leave
+  the awaiting-input state to the question path. Related: ANTS-5906 (the
+  buttons answer nothing).
+  **Layman:** When Claude asks you a multiple-choice question, the terminal's bottom bar wrongly offers Allow, Deny and Add to allowlist buttons.
+  Kind: fix.
+  Source: user-report-2026-11-23.
+  Lanes: claude-session-widgets.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
