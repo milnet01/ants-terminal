@@ -51,7 +51,7 @@ TEST(AuditScopeAndTriage, FiltersStandDownOnError) {
     EXPECT_TRUE(src.contains(QStringLiteral(
         "if (m_recentOnly && m_recentScopeError.isEmpty() && !f.file.isEmpty())")));
     EXPECT_EQ(src.count(QStringLiteral("visibleSinceBaseline(f, m_recentLines")), 1)
-        << "a Since baseline call site bypasses sinceBaselineVisible";
+        << "a Since baseline call site bypasses passesSinceBaselineFilter";
     const QString render = functionBody(src, QStringLiteral("void AuditDialog::renderResults()"));
     ASSERT_FALSE(render.isEmpty());
     EXPECT_TRUE(render.contains(QStringLiteral("Changed-lines filter off")));

@@ -199,7 +199,7 @@ protected:
         const QSet<QString> &baselineFingerprints);
     // ANTS-5084 — visibleSinceBaseline over this run's sets, keeping only its
     //   baseline half while m_recentScopeError says the sets are unknown.
-    bool sinceBaselineVisible(const Finding &f) const;
+    bool passesSinceBaselineFilter(const Finding &f) const;
     // ANTS-6191 — the results pane's row filter, shared by the pane, the
     //   Fold actionable list and Triage visible: not suppressed, inside the
     //   baseline view, an active severity pill, and matching the text filter.

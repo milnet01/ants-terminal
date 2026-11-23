@@ -108057,7 +108057,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L07-F6).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6194] **Rename AuditDialog::sinceBaselineVisible so it reads as the git-error-aware filter, not a twin of visibleSinceBaseline.**
+- ✅ [ANTS-6194] **Rename AuditDialog::sinceBaselineVisible so it reads as the git-error-aware filter, not a twin of visibleSinceBaseline.**
   From ANTS-6116 (L07 MEDIUM F20). Suggested name:
   passesSinceBaselineFilter. Not done in the lane pass:
   tests/features/audit_scope_and_triage/spec.md names
@@ -108065,6 +108065,8 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 588
   `src/auditdialog.h:182`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Renamed to passesSinceBaselineFilter in src/auditdialog.{h,cpp}, the
+  audit_scope_and_triage spec's INV-3 and its test message (2026-11-23).
   **Layman:** Two audit functions have near-identical names but behave differently while git is still running; a clearer name stops the wrong one being used.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F20).

@@ -14,7 +14,7 @@ diffs against the empty tree (`git hash-object -t tree /dev/null`).
 
 **INV-3 — the recent filters stand down on that error.** `handleCheckOutput`
 applies the recent-files filter only while `m_recentScopeError` is empty.
-Every Since baseline call site goes through `sinceBaselineVisible`, which
+Every Since baseline call site goes through `passesSinceBaselineFilter`, which
 keeps only the baseline half while the error is set. `renderResults`
 prefixes the status line with the reason.
 

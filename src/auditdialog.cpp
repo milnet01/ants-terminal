@@ -1195,14 +1195,14 @@ bool AuditDialog::visibleSinceBaseline(
     return false;   // file not in the changed set
 }
 
-bool AuditDialog::sinceBaselineVisible(const Finding &f) const {
+bool AuditDialog::passesSinceBaselineFilter(const Finding &f) const {
     if (!m_recentScopeError.isEmpty())
         return !m_baselineFingerprints.contains(f.dedupKey);
     return visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints);
 }
 
 bool AuditDialog::inBaselineView(const Finding &f) const {
-    if (m_sinceBaseline) return sinceBaselineVisible(f);
+    if (m_sinceBaseline) return passesSinceBaselineFilter(f);
     return !(m_showNewOnly && m_hasBaseline
              && m_baselineFingerprints.contains(f.dedupKey));
 }
