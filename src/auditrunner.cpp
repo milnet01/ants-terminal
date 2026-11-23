@@ -230,9 +230,24 @@ QStringList toolExclusionArgs(const QString &tool,
         // ruff --extend-exclude ADDS to the default + .gitignore excludes.
         return {QStringLiteral("--extend-exclude"),
                 dirs.join(QLatin1Char(','))};
-    if (tool == QLatin1String("bandit"))
-        // bandit -x matches each comma-listed dir name during its walk.
-        return {QStringLiteral("-x"), dirs.join(QLatin1Char(','))};
+    if (tool == QLatin1String("bandit")) {
+        // ANTS-6899 — bandit -x drops a file when an entry is a SUBSTRING of
+        // its path, so a bare `env` drops src/environment.py. The globs
+        // `*/<d>/*` (under a dir) and `*/<d>` (the file itself) match at a
+        // path-segment boundary and never occur literally in a path. A
+        // caller's path (it holds a `/`) goes as given: bandit turns an
+        // existing dir into `<d>/*`, and a glob would miss `src/<x>` when
+        // bandit scans `src` (its paths then carry no leading segment).
+        QStringList globs;
+        for (const QString &d : dirs) {
+            if (d.contains(QLatin1Char('/')))
+                globs += d;
+            else
+                globs += {QStringLiteral("*/") + d + QStringLiteral("/*"),
+                          QStringLiteral("*/") + d};
+        }
+        return {QStringLiteral("-x"), globs.join(QLatin1Char(','))};
+    }
     if (tool == QLatin1String("semgrep")) {
         // semgrep --exclude skips any path whose name matches; repeatable.
         QStringList a;

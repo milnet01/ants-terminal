@@ -605,6 +605,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`audit_run`'s whole-tree bandit scan now skips only the folders on its skip list, so files such as `environment.py` or `metadata.py` are scanned again** (ANTS-6899)
+
 - **A Claude Code question no longer shows Allow, Deny and Add to allowlist buttons on the bottom bar** (ANTS-6898)
   The tab still turns to its waiting colour and the bar still reads
   "Claude: prompting" while the question is open.

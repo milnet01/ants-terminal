@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6898 -->
+<!-- ants-roadmap-id-high-water: ANTS=6899 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -108159,6 +108159,22 @@ worked after these.
   **Layman:** When an audit tool crashes, the headless audit keeps only half of what the tool printed, unlike a normal finish.
   Kind: fix.
   Source: review-readability-2026-10-22 (L08-F4).
+  Lanes: audit-engine.
+
+- ✅ [ANTS-6899] **audit_run's whole-tree bandit run skips only folders it names, not every file whose path contains a listed name.**
+  Found while working ANTS-6199. bandit's -x excludes a file when any
+  entry is a SUBSTRING of its path (bandit/core/manager.py
+  _is_file_included: `any(x in path for x in excluded_path_strings)`),
+  unless the entry names an existing directory relative to bandit's cwd.
+  toolExclusionArgs passes bare names, so `env` drops src/environment.py,
+  `data` drops metadata.py and `build` drops builder.py. Fix: emit each
+  entry as the globs `*/<d>/*` and `*/<d>`, which fnmatch matches at a
+  path-segment boundary and which never occur literally in a path.
+  Hot reload: ants-mcpd serves audit_run; a rebuild reaches clients on
+  their next reconnect.
+  **Layman:** The headless Python security scan quietly skipped files like environment.py because their name contained a word on the skip list.
+  Kind: fix.
+  Source: self-found-2026-11-23 (ANTS-6199 work).
   Lanes: audit-engine.
 
 - 📋 [ANTS-6199] **Decide whether audit_run's kExclusions joins AuditEngine::excludedDirNames, the declared single source of skipped directories.**

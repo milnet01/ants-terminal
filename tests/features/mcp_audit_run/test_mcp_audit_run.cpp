@@ -640,6 +640,40 @@ TEST(mcp_audit_run, Ants3710CppcheckKeepsNoDefaultExclusions) {
         << "no caller exclusions ⇒ cppcheck argv unchanged";
 }
 
+// ─────────────────────────────────────────── ANTS-6899 ──
+// bandit -x drops a file when an entry fnmatches its whole path OR is a
+// substring of it (bandit/core/manager.py, _is_file_included). Replay that
+// rule over the emitted entries: a listed dir is skipped, a file whose name
+// merely contains a listed word is not.
+TEST(mcp_audit_run, Ants6899BanditSkipsDirsNotSubstrings) {
+    const QStringList a = AuditRunner::internal::toolArgv(
+        "bandit", QStringLiteral("."), {}, {QStringLiteral("src/vendor")});
+    const int flagAt = a.indexOf(QStringLiteral("-x"));
+    ASSERT_GE(flagAt, 0);
+    ASSERT_LT(flagAt + 1, a.size());
+    const QStringList entries = a.at(flagAt + 1).split(QLatin1Char(','));
+    auto excluded = [&](const QString &path) {
+        for (const QString &e : entries) {
+            if (path.contains(e)) return true;
+            // fnmatch: `*` matches any run, `/` included; anchored.
+            QString rx = QRegularExpression::escape(e);
+            rx.replace(QStringLiteral("\\*"), QStringLiteral(".*"));
+            if (QRegularExpression(QRegularExpression::anchoredPattern(rx))
+                    .match(path).hasMatch())
+                return true;
+        }
+        return false;
+    };
+    EXPECT_TRUE(excluded(QStringLiteral("./env/lib/site.py")));
+    EXPECT_TRUE(excluded(QStringLiteral("./src/data/load.py")));
+    EXPECT_FALSE(excluded(QStringLiteral("./src/environment.py")));
+    EXPECT_FALSE(excluded(QStringLiteral("./metadata.py")));
+    EXPECT_FALSE(excluded(QStringLiteral("./builder.py")));
+    // A caller's path still matches where bandit scans src/ and its paths
+    // carry no leading segment.
+    EXPECT_TRUE(excluded(QStringLiteral("src/vendor/lib.py")));
+}
+
 // ──────────────────────────────────────── ANTS-4094 ──
 // `--library=qt` teaches cppcheck that `emit` is a Qt keyword. On a project
 // that is not Qt, an ordinary identifier called `emit` (or signals / slots /
