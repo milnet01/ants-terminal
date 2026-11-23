@@ -605,6 +605,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A Claude Code question no longer shows Allow, Deny and Add to allowlist buttons on the bottom bar** (ANTS-6898)
+  The tab still turns to its waiting colour and the bar still reads
+  "Claude: prompting" while the question is open.
+
 - **The Audit window's trend line keeps comparing with the previous run after a filter or pill change** (ANTS-6195)
   The trend snapshot is read and saved once, when a run ends, instead of
   during each redraw of the results list.

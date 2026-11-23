@@ -218,6 +218,20 @@ TEST(ClaudeStatusBarPerTab, NoClaudeInFocusedTabPermissionRequestFires) {
     EXPECT_EQ(ci.lastHookSessionId(), QString::fromLatin1(kSiblingSession));
 }
 
+TEST(ClaudeStatusBarPerTab, QuestionIsNotAPermission) {
+    // I7 (ANTS-6898) — Claude Code sends PermissionRequest for a question.
+    ClaudeIntegration ci;
+    QSignalSpy permSpy(&ci, &ClaudeIntegration::permissionRequested);
+
+    ci.processHookEventForTest(permissionRequest(kSiblingSession, "AskUserQuestion"));
+    QCoreApplication::processEvents();
+    EXPECT_EQ(permSpy.count(), 0) << "a question shows the Allow/Deny/allowlist bar";
+
+    ci.processHookEventForTest(permissionRequest(kSiblingSession, "Bash"));
+    QCoreApplication::processEvents();
+    EXPECT_EQ(permSpy.count(), 1) << "a real permission prompt no longer fires";
+}
+
 
 TEST(ClaudeStatusBarPerTab, ForeignSessionIsDropped) {
     ASSERT_EQ(runForeignSessionIsDropped(), 0);

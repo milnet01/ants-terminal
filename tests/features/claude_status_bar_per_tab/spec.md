@@ -55,6 +55,11 @@ For every hook event arriving on the singleton's UDS:
   tab's Claude MUST emit `permissionRequested` and commit
   `m_lastHookSessionId`, so the slot routes it to that tab. State
   hooks are still dropped.
+- **I7 — A question is not a permission (ANTS-6898).** Claude Code sends
+  `PermissionRequest` for `AskUserQuestion`. That event MUST NOT emit
+  `permissionRequested`, so no Allow / Deny / Add to allowlist bar
+  appears; the question path (ANTS-1858) shows the tab as awaiting
+  input. Test: `ClaudeStatusBarPerTab.QuestionIsNotAPermission`.
 
 ## Out of scope
 

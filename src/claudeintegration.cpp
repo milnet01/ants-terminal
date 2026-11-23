@@ -376,6 +376,9 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
         emit stateChanged(m_state, "idle");
     } else if (hookName == "PermissionRequest") {
         // Ungated — slot consumes m_lastHookSessionId for per-tab routing.
+        // ANTS-6898 — Claude Code sends this for a question too. A question
+        // has no rule to allow; the question path (ANTS-1858) shows it.
+        if (toolName == QLatin1String("AskUserQuestion")) return;
         QString input = toolInput.value("command").toString();
         if (input.isEmpty())
             input = toolInput.value("file_path").toString();

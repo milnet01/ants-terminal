@@ -113945,7 +113945,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22 L10-F1, split from ANTS-6158 on 2026-11-19.
   Lanes: packaging-release.
 
-- 📋 [ANTS-6898] **A Claude Code question shows the bottom bar's Allow / Deny / Add to allowlist buttons, which only fit a tool permission prompt.**
+- ✅ [ANTS-6898] **A Claude Code question shows the bottom bar's Allow / Deny / Add to allowlist buttons, which only fit a tool permission prompt.**
   User report 2026-11-23: the buttons appear mostly when Claude Code asks a
   question. Likely cause, not yet seen in a log: the PermissionRequest
   branch of ClaudeIntegration::processHookEvent (src/claudeintegration.cpp)
@@ -113957,6 +113957,11 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   tool_name. Fix shape: skip the button bar for those two tools and leave
   the awaiting-input state to the question path. Related: ANTS-5906 (the
   buttons answer nothing).
+  2026-11-23: confirmed by the user's screenshot (bar text "Claude
+  permission: AskUserQuestion"). The PermissionRequest branch now
+  returns for AskUserQuestion; claude_status_bar_per_tab I7.
+  ExitPlanMode was left alone: not yet seen to show the bar, and an
+  allowlist rule for it is a real choice.
   **Layman:** When Claude asks you a multiple-choice question, the terminal's bottom bar wrongly offers Allow, Deny and Add to allowlist buttons.
   Kind: fix.
   Source: user-report-2026-11-23.
