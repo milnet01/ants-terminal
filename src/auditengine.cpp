@@ -176,10 +176,17 @@ QString grepExcludeExpr() {
     return s;
 }
 
+const QStringList &excludedDirGlobs() {
+    static const QStringList kGlobs = [] {
+        QStringList g{QStringLiteral("build"), QStringLiteral("build-*")};
+        g += excludedDirNames();
+        return g;
+    }();
+    return kGlobs;
+}
+
 QString trivySkipDirsCsv() {
-    QStringList parts{QStringLiteral("build"), QStringLiteral("build-*")};
-    parts += excludedDirNames();
-    return parts.join(QLatin1Char(','));
+    return excludedDirGlobs().join(QLatin1Char(','));
 }
 
 QJsonArray flattenTrivyResults(const QJsonArray &results) {

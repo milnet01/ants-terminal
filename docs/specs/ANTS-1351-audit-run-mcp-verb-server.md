@@ -326,7 +326,12 @@ not a pool — see INV-9). Implementation:
   in `kExclusions()` — a file-local accessor function in `auditrunner.cpp`'s
   anonymous namespace, not an externally addressable constant (hardcoded — loop 3 opt M5; the
   list is *de facto* static and shipping a JSON sidecar adds two
-  writers for no win). The `/audit` skill markdown documents an
+  writers for no win). **ANTS-6199 — it starts from
+  `AuditEngine::excludedDirGlobs()`, the GUI audit's set with the
+  `build` / `build-*` family, and adds `_build`, `logs`, `data`,
+  `database` and `env`, which stay out of the shared list because the
+  GUI's `grep --exclude-dir` matches at any depth.** A glob's `*` stays
+  inside one path segment in mypy's regex. The `/audit` skill markdown documents an
   **overlapping superset** inline — it adds `static/images/*` and
   `static/videos/` media dirs that `kExclusions()` does not carry. **ANTS-3394 — the set is wired into each find-everything
   tool's whole-tree (non-scoped) invocation via

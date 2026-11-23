@@ -397,3 +397,4 @@ the rest of its writes, and the log recorded intent rather than verified
 outcome. Both are fixed here. The lesson is the one this log keeps
 re-learning at a different level: "corrected in place" has to mean
 *verified in the file*, not *attempted*.
+- **impl (2026-11-23)** — ANTS-6199 amendment to INV-6: kExclusions() now starts from AuditEngine::excludedDirGlobs() and adds the headless-only names. No reviewer was dispatched (rule 14: an amendment gets no automatic review).

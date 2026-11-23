@@ -674,6 +674,31 @@ TEST(mcp_audit_run, Ants6899BanditSkipsDirsNotSubstrings) {
     EXPECT_TRUE(excluded(QStringLiteral("src/vendor/lib.py")));
 }
 
+// ─────────────────────────────────────────── ANTS-6199 ──
+// The headless set holds every directory the GUI audit skips
+// (AuditEngine's list, build family included) and still anchors each at a
+// path segment.
+TEST(mcp_audit_run, Ants6199HeadlessSetHoldsTheSharedSet) {
+    const QString root = QStringLiteral("/nonexistent-proj");
+    const QStringList shared =
+        AuditEngine::trivySkipDirsCsv().split(QLatin1Char(','));
+    const QStringList trivy = AuditRunner::internal::toolArgv("trivy", root, {});
+    for (const QString &d : shared)
+        EXPECT_TRUE(trivy.contains(QStringLiteral("**/") + d))
+            << "trivy whole-tree run misses " << d.toStdString();
+
+    const QStringList mypy = AuditRunner::internal::toolArgv("mypy", root, {});
+    const int flagAt = mypy.indexOf(QStringLiteral("--exclude"));
+    ASSERT_GE(flagAt, 0);
+    ASSERT_LT(flagAt + 1, mypy.size());
+    const QRegularExpression rx(mypy.at(flagAt + 1));
+    ASSERT_TRUE(rx.isValid()) << rx.errorString().toStdString();
+    EXPECT_TRUE(rx.match(QStringLiteral("build-asan/gen.py")).hasMatch());
+    EXPECT_TRUE(rx.match(QStringLiteral("src/third_party/x.py")).hasMatch());
+    EXPECT_FALSE(rx.match(QStringLiteral("builders/x.py")).hasMatch());
+    EXPECT_FALSE(rx.match(QStringLiteral("build-asan.py")).hasMatch());
+}
+
 // ──────────────────────────────────────── ANTS-4094 ──
 // `--library=qt` teaches cppcheck that `emit` is a Qt keyword. On a project
 // that is not Qt, an ordinary identifier called `emit` (or signals / slots /

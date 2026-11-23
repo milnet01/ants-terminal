@@ -108177,7 +108177,7 @@ worked after these.
   Source: self-found-2026-11-23 (ANTS-6199 work).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6199] **Decide whether audit_run's kExclusions joins AuditEngine::excludedDirNames, the declared single source of skipped directories.**
+- ✅ [ANTS-6199] **Decide whether audit_run's kExclusions joins AuditEngine::excludedDirNames, the declared single source of skipped directories.**
   From ANTS-6117 (L08 MEDIUM F5). kExclusions (auditrunner.cpp, the
   ANTS-1351 section 8 'hardcoded in engine' set) and
   AuditEngine::excludedDirNames (auditengine.cpp) hold different
@@ -108186,6 +108186,13 @@ worked after these.
   both lists. Building one from the other changes which directories a
   headless run skips, so it needs a decision and a test.
   Hot reload: none needed; no new running state.
+  Decided: kExclusions() joins the shared set. It starts from the new
+  AuditEngine::excludedDirGlobs() (excludedDirNames() with build,
+  build-*), which trivySkipDirsCsv() now also builds from, and adds
+  _build, logs, data, database, env. Those stay out of the shared list
+  because the GUI's grep --exclude-dir matches at any depth. mypy's
+  regex keeps a glob's * inside one path segment. Test:
+  mcp_audit_run.Ants6199HeadlessSetHoldsTheSharedSet.
   **Layman:** The headless audit and the audit window skip different folders, though one list claims to be the only one.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L08-F5).

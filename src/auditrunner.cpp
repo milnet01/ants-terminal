@@ -9,7 +9,7 @@
 //     with 60 s TTL cache (INV-10)
 //   * Per-tool wall-clock cap with SIGTERM/SIGKILL (INV-5)
 //   * Aggregate cap of min(N*cap*1.5, 900 s) (INV-1; ANTS-3585)
-//   * Hardcoded kExclusions list (INV-6)
+//   * kExclusions list, built on AuditEngine's (INV-6)
 //   * Per-call SARIF path (INV-12)
 //   * Per-sample 256 B message cap + bottom-up trim cascade (INV-13)
 //   * `scope:"since-tag:<X>"` argv-safe (INV-15)
@@ -159,27 +159,21 @@ constexpr int kSarifNotificationMaxChars = 64 * 1024;
 
 // ───────────────────────────── ANTS-1351-INV-6 (kExclusions) ──
 // Hardcoded — see § 8 decision "Exclusion list hardcoded in engine".
-// Skill markdown documents the same set inline. ANTS-3394 — this set is now
-// wired into the whole-tree (non-scoped) invocation of each find-everything
-// tool via toolExclusionArgs(); a scope:"full" sweep no longer drowns the
-// real findings in build-output / vendored noise (a Flask app's dist/ +
-// node_modules/ flooded mypy with 130+ stub-file findings).
-// Not the same set as AuditEngine::excludedDirNames(), which the GUI
-// audit's find/grep checks use (ANTS-6199).
+// ANTS-3394 — wired into the whole-tree (non-scoped) invocation of each
+// find-everything tool via toolExclusionArgs(), so a scope:"full" sweep is
+// not drowned in build-output / vendored noise.
+// ANTS-6199 — the GUI audit's set (AuditEngine::excludedDirGlobs()) plus
+// names only this run skips. Those stay out of the shared list because the
+// GUI's grep --exclude-dir matches at any depth and would skip a source
+// folder such as src/data/.
 const QStringList &kExclusions() {
-    static const QStringList v = {
-        QStringLiteral("logs"),
-        QStringLiteral("data"),
-        QStringLiteral("database"),
-        QStringLiteral("node_modules"),
-        QStringLiteral("dist"),
-        QStringLiteral("build"),
-        QStringLiteral("_build"),
-        QStringLiteral("__pycache__"),
-        QStringLiteral(".venv"),
-        QStringLiteral("venv"),
-        QStringLiteral("env"),
-    };
+    static const QStringList v = [] {
+        QStringList s = AuditEngine::excludedDirGlobs();
+        s += {QStringLiteral("_build"), QStringLiteral("logs"),
+              QStringLiteral("data"),   QStringLiteral("database"),
+              QStringLiteral("env")};
+        return s;
+    }();
     return v;
 }
 
@@ -263,10 +257,12 @@ QStringList toolExclusionArgs(const QString &tool,
         return a;
     }
     if (tool == QLatin1String("mypy")) {
-        // mypy --exclude is one regex matched against each file path.
+        // mypy --exclude is one regex matched against each file path. A
+        // glob's `*` (build-*) stays inside one path segment.
         QStringList escaped;
         for (const QString &d : dirs)
-            escaped += QRegularExpression::escape(d);
+            escaped += QRegularExpression::escape(d).replace(
+                QStringLiteral("\\*"), QStringLiteral("[^/]*"));
         return {QStringLiteral("--exclude"),
                 QStringLiteral("(^|/)(") + escaped.join(QLatin1Char('|'))
                     + QStringLiteral(")/")};

@@ -250,6 +250,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`audit_run`'s whole-tree scans now skip every folder the Audit dialog skips — vendored code (`vendor`, `third_party`, `external`), every `build-*` preset, `.git`, `target` and the Python caches — plus the folders they skipped before** (ANTS-6199)
+
 - **More Audit grep checks ignore matches that sit only in a comment or a string** (ANTS-6196)
   Silent catch, shell -c, ssh argv, callback payload, QNetworkReply,
   QImage load and setPermissions checks now drop comment-only and
