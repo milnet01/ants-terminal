@@ -103350,6 +103350,11 @@ a modern terminal" release.
   project (`quiet-machine check` exits 1 then), which would also cover
   jobs a person or script starts. Recommended: yes, as `cc-job start
   --after-hold` first, so nothing that runs today changes.
+  2026-11-23: claude-config shipped `quiet-machine run REASON --
+  COMMAND` (commit b650e09 in ~/.claude) as a stopgap at the user's
+  request: one project runs heavy work at a time, on a 10-minute lease
+  renewed while the command runs. When this item replaces it, tell
+  claude-config so it retires `run`.
   **Layman:** Builds and big test runs wait in line instead of all starting at once and freezing the machine.
   Kind: feature.
   Source: user-request-2026-10-15.
