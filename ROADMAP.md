@@ -108099,7 +108099,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L07-F22).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6196] **Mark comment/string filtering on each audit check at registration, and review the grep checks left out of kSourceScannedChecks.**
+- ✅ [ANTS-6196] **Mark comment/string filtering on each audit check at registration, and review the grep checks left out of kSourceScannedChecks.**
   From ANTS-6116 (L07 MEDIUM F23). The lane pass stated the inclusion
   rule beside the list. Still open: a flag on AuditCheck set where each
   check registers, and a decision for each grep check not on the list
@@ -108108,6 +108108,17 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 593
   `src/auditdialog.cpp:3036`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-23: AuditCheck::codeLinesOnly replaces kSourceScannedChecks;
+  addGrepCheck sets it, and debug_leftovers, cmd_injection_dyn and
+  unsafe_deser set it beside their registration. Decisions for the grep
+  checks that were off the list: silent_catch, bash_c_non_literal,
+  ssh_argv_dash_host, unbounded_callback_payloads,
+  qnetworkreply_no_abort, qimage_load_without_peek and
+  setPermissions_pair_no_helper now filter (lineHasCode keeps any line
+  with code on it, so only comment- or string-only mentions drop);
+  conflict_markers stays unfiltered (a marker inside a comment is still
+  unresolved). A user rule replacing a built-in check keeps its value.
+  audit_dialog_lows INV-13.
   **Layman:** A hidden list decides which audit checks ignore matches inside comments; a new check is easy to leave off it by mistake.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F23).

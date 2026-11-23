@@ -70,6 +70,10 @@ struct AuditCheck {
     ToggleSwitch *toggle = nullptr;  // GUI-side; engine never derefs
     std::function<QString(const QString & /*projectPath*/)> inProcessRunner{};
     int timeoutMs = 30000;
+    // Drop findings on a line holding no code outside comments and strings
+    // (AuditDialog::dropFindingsInCommentsOrStrings). Set where the check
+    // registers; addGrepCheck sets it. AST-aware tools leave it false.
+    bool codeLinesOnly = false;
 };
 
 struct Finding {

@@ -403,6 +403,8 @@ void AuditDialog::populateChecks() {
                  "Unresolved merge conflicts in source", "General",
                  "'^(<{7}|\\|{7}|={7}|>{7})(\\s|$)'",
                  CheckType::Bug, Severity::Blocker, true);
+    // A marker inside a comment or string is still unresolved.
+    m_checks.last().codeLinesOnly = false;
 
     // 2026-04-17: prefer `git ls-files` for the same reason as dup_files.
     // The triage on Vestige showed 30/30 binary_in_repo hits were
@@ -468,6 +470,7 @@ void AuditDialog::populateChecks() {
             /*contextWindow*/ 8 },
         false, true, nullptr
     });
+    m_checks.last().codeLinesOnly = true;
 
     // ========== Security ==========
 
@@ -633,6 +636,7 @@ void AuditDialog::populateChecks() {
         { {}, "", {}, 40 },
         true, true, nullptr
     });
+    m_checks.last().codeLinesOnly = true;
 
     addGrepCheck("format_string", "Format String Risks",
                  "printf-family with non-literal format argument", "Security",
@@ -695,6 +699,7 @@ void AuditDialog::populateChecks() {
         { {}, "", {}, 40 },
         true, true, nullptr
     });
+    m_checks.last().codeLinesOnly = true;
 
     // hardcoded_ips: drop version strings, license dates, checksums.
     // ANTS-1710 — each group is constrained to a valid octet (0-255). A

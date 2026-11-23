@@ -54,6 +54,15 @@ dialog loaded for itself when it was given none.
 re-render never compares the run with itself.
 *Test:* `AuditDialogLows.TrendSnapshotIsTakenOncePerRun`.
 
+**INV-13 — each check says at registration whether comments are filtered
+(ANTS-6196).** `handleCheckOutput` runs `dropFindingsInCommentsOrStrings`
+when `AuditCheck::codeLinesOnly` is set, and no id list decides it.
+`addGrepCheck` sets it; `conflict_markers` clears it, since a marker inside
+a comment is still unresolved. `debug_leftovers`, `cmd_injection_dyn` and
+`unsafe_deser` set it beside their registration. A user rule that replaces
+a built-in check keeps that check's value.
+*Test:* `AuditDialogLows.CommentFilterIsSetAtRegistration`.
+
 ## Rationale
 
 The ANTS-5084 performance pass found each of these. The detection walk
@@ -72,3 +81,6 @@ test's own path) and checks the named regions.
 - **ANTS-5084:** the six defects above. Locked by this spec.
 - **ANTS-6195:** a re-render after the run's own save compared the run with
   itself. Locked by INV-12.
+- **ANTS-6196:** an id list beside `handleCheckOutput` chose the comment
+  filter, and grep checks were off it with no recorded reason.
+  Locked by INV-13.

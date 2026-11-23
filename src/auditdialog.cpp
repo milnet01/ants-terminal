@@ -407,6 +407,8 @@ void AuditDialog::addGrepCheck(const QString &id, const QString &name,
         "grep -rnI" + kGrepExcl + kGrepIncludeSource + extra +
         kGrepFileExclSec + " -E " + pattern + " . 2>/dev/null";
     AuditCheck c{id, name, desc, category, cmd, type, sev, filter, autoSelect, true, nullptr};
+    // A source pattern matched inside a comment or string is noise.
+    c.codeLinesOnly = true;
     // Apply the common-noise filter on top of the caller's excludes.
     for (const QString &n : kCommonNoiseExcludes) {
         if (!c.filter.dropIfContains.contains(n))
@@ -1018,6 +1020,7 @@ int AuditDialog::loadUserRules() {
         bool replaced = false;
         for (int i = 0; i < m_checks.size(); ++i) {
             if (m_checks[i].id == id) {
+                c.codeLinesOnly = m_checks[i].codeLinesOnly;
                 m_checks[i] = c;
                 replaced = true;
                 break;
@@ -2972,23 +2975,9 @@ void AuditDialog::handleCheckOutput(const QString &output) {
         r.findings.append(f);
     }
 
-    // Comment/string-aware filtering for source-pattern checks. External
-    // static analyzers (cppcheck, clang-tidy, pylint, …) already understand
-    // comments, so skip them — applying the filter could remove real
-    // findings that point to comment-adjacent declarations.
-    // A new grep check belongs here when its matches inside a comment or a
-    // string literal are noise. The grep checks not listed have no recorded
-    // reason for their absence (ANTS-6196).
-    static const QSet<QString> kSourceScannedChecks = {
-        "secrets_scan", "unsafe_c_funcs", "cmd_injection", "cmd_injection_dyn",
-        "format_string", "insecure_http", "unsafe_deser", "hardcoded_ips",
-        "weak_crypto", "memory_patterns", "debug_leftovers", "todo_scan",
-        "qt_openurl_unchecked",
-        // clazy is NOT in this set — it's already AST-aware and understands
-        // comment/string contexts natively.
-    };
-    if (kSourceScannedChecks.contains(check.id))
-        dropFindingsInCommentsOrStrings(r);
+    // Comment/string-aware filtering, for the checks that set codeLinesOnly
+    // where they register (ANTS-6196).
+    if (check.codeLinesOnly) dropFindingsInCommentsOrStrings(r);
 
     // Fold mypy "Library stubs not installed" repeats into one Info hint so
     // a missing-types nag doesn't eat 20 finding slots. When the

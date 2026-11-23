@@ -158,3 +158,34 @@ TEST(AuditDialogLows, TrendSnapshotIsTakenOncePerRun) {
     EXPECT_LT(load, save) << "the previous snapshot is read after this run's is saved";
     EXPECT_LT(load, draw) << "the run's first render has no previous snapshot to compare with";
 }
+
+// INV-13 — ANTS-6196
+TEST(AuditDialogLows, CommentFilterIsSetAtRegistration) {
+    const QString src = QString::fromStdString(
+        ants_test::stripComments(ants_test::slurpAuditDialog()));
+    EXPECT_FALSE(src.contains(QStringLiteral("kSourceScannedChecks")))
+        << "an id list, kept apart from the checks, decides the comment filter";
+    EXPECT_TRUE(src.contains(QStringLiteral(
+        "if (check.codeLinesOnly) dropFindingsInCommentsOrStrings(r);")));
+    const QString grep = between(src,
+        QStringLiteral("void AuditDialog::addGrepCheck("), QStringLiteral("\n}\n"));
+    ASSERT_FALSE(grep.isEmpty()) << "addGrepCheck not found";
+    EXPECT_TRUE(grep.contains(QStringLiteral("c.codeLinesOnly = true;")))
+        << "a grep check is not comment-filtered by default";
+    const QString marker = between(src,
+        QStringLiteral("addGrepCheck(\"conflict_markers\""), QStringLiteral("m_checks.append"));
+    ASSERT_FALSE(marker.isEmpty()) << "conflict_markers not found";
+    EXPECT_TRUE(marker.contains(QStringLiteral("m_checks.last().codeLinesOnly = false;")))
+        << "a conflict marker inside a block comment is dropped";
+    for (const char *id : {"debug_leftovers", "cmd_injection_dyn", "unsafe_deser"}) {
+        const QString reg = between(src,
+            QStringLiteral("\"%1\", \"").arg(QLatin1String(id)), QStringLiteral("m_checks.append"));
+        EXPECT_TRUE(reg.contains(QStringLiteral("m_checks.last().codeLinesOnly = true;")))
+            << id << " lost its comment filter";
+    }
+    const QString rules = between(src,
+        QStringLiteral("int AuditDialog::loadUserRules()"), QStringLiteral("\n}\n"));
+    ASSERT_FALSE(rules.isEmpty()) << "loadUserRules not found";
+    EXPECT_TRUE(rules.contains(QStringLiteral("c.codeLinesOnly = m_checks[i].codeLinesOnly;")))
+        << "a user rule replacing a built-in check drops its comment filter";
+}

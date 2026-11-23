@@ -250,6 +250,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **More Audit grep checks ignore matches that sit only in a comment or a string** (ANTS-6196)
+  Silent catch, shell -c, ssh argv, callback payload, QNetworkReply,
+  QImage load and setPermissions checks now drop comment-only and
+  string-only lines, as the security grep checks already did. Conflict
+  markers are still reported wherever they sit.
+
 - **Ctrl+Shift+C right after selecting reuses the text the selection already built** (ANTS-5791)
   Selecting fills the middle-click buffer, which builds the selected
   text. Copying straight after now reuses it instead of building it a
