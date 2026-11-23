@@ -55,7 +55,7 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "roadmap-format spec, and inserts at the end "
                         "of `section` (slug from roadmap_query). "
                         "Required: caller_cwd, section, status "
-                        "(planned/in-progress/shipped/considered), "
+                        "(planned/in-progress/shipped/considered/dropped), "
                         "headline, kind, source. Optional: body, "
                         "layman, lanes[], id_hint, id_prefix, dry_run. "
                         "ID prefix (ANTS-2076): counter IDs render as "

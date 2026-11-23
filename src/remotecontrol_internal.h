@@ -78,7 +78,7 @@ struct GfmBullet {
     int     headlineLine  = -1;
     QString boldId;
     QString anchor;
-    QString status;        // an emoji from kRcStatuses (remotecontrol.cpp)
+    QString status;        // a glyph from RoadmapParse::kStatuses
     QString headline;      // first non-empty line text (post-strip)
     bool    insideFenced   = false;
     int     fenceOpenLine  = -1;
@@ -92,11 +92,11 @@ struct GfmBullet {
 //
 // Recognised line shape:
 //   `- <emoji> [<PREFIX-NNNN>] <headline...>`
-// where <emoji> is a status emoji from kRcStatuses (remotecontrol.cpp).
+// where <emoji> is a status glyph from RoadmapParse::kStatuses.
 struct AntsV1Bullet {
     int     firstLine    = -1;
     QString id;            // e.g. "ANTS-1394"
-    QString status;        // an emoji from kRcStatuses (remotecontrol.cpp)
+    QString status;        // a glyph from RoadmapParse::kStatuses
     QString headline;      // post-strip; "**" wrappers removed
     bool    insideFenced   = false;
     int     fenceOpenLine  = -1;   // ANTS-3640 — see GfmBullet
@@ -627,6 +627,9 @@ bool rcReturnHeadlineOnly(const QJsonObject &req);
 QJsonObject rcCompactBullet(const QString &id, const QString &statusWord, const QString &headline);
 QString rcStatusWord(const QString &emoji);
 QString rcStatusEmoji(const QString &word);
+bool rcResolveStatus(const QString &s, QString *emoji, QString *word);
+QStringList rcStatusWords();
+QStringList rcStatusGlyphs();
 QString rcSanitizeBulletField(const QString &in, int maxLen);
 QString rcComputeSectionEtag(const QString &slice);
 QJsonObject rcSectionShape(const QString &slice);

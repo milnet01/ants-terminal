@@ -1027,7 +1027,7 @@ void rcMaybeEmitComposedTrailers(QJsonObject &o,
 // carries `post_bullets`: the just-touched bullet(s) in the same compact
 // {id, status, headline_oneline} shape roadmap_query mode:headline_only
 // emits — folding the verify read into the write. `status` is the word
-// form (planned / in-progress / shipped / considered), not the emoji.
+// form (planned, in-progress and so on), not the emoji.
 bool rcReturnHeadlineOnly(const QJsonObject &req) {
     return req.value(QStringLiteral("return")).toString() ==
            QStringLiteral("headline_only");
@@ -1041,24 +1041,15 @@ QJsonObject rcCompactBullet(const QString &id, const QString &statusWord,
     return o;
 }
 
-// ANTS-4977 — the five lifecycle statuses, word and emoji, in one table.
-// Every walker, flipper and mapper in this file reads it, so a new status
-// is added here once.
-namespace {
-struct RcStatus { const char *word; const char *emoji; };
-}  // namespace
-constexpr RcStatus kRcStatuses[] = {
-    {"shipped",     RoadmapParse::kEmojiDone},
-    {"planned",     RoadmapParse::kEmojiPlanned},
-    {"in-progress", RoadmapParse::kEmojiInProgress},
-    {"considered",  RoadmapParse::kEmojiConsidered},
-    {"dropped",     RoadmapParse::kEmojiDropped},
-};
+// Every status walker, flipper and mapper in the roadmap verbs reads
+// RoadmapParse::kStatuses (ANTS-6215), so a new status is added there once.
+using RoadmapParse::LifecycleStatus;
+using RoadmapParse::kStatuses;
 
 // The status emoji that starts at `pos` in `line`, or empty.
 static QString rcStatusEmojiAt(const QString &line, int pos) {
-    for (const RcStatus &st : kRcStatuses) {
-        const QString e = QString::fromUtf8(st.emoji);
+    for (const LifecycleStatus &st : kStatuses) {
+        const QString e = QString::fromUtf8(st.glyph);
         if (QStringView(line).mid(pos, e.size()) == e) return e;
     }
     return QString();
@@ -1068,8 +1059,8 @@ static QString rcStatusEmojiAt(const QString &line, int pos) {
 // (rcCompactBullet wants the word). Already-word / unknown input passes
 // through unchanged.
 QString rcStatusWord(const QString &emoji) {
-    for (const RcStatus &st : kRcStatuses)
-        if (emoji == QString::fromUtf8(st.emoji)) return QLatin1String(st.word);
+    for (const LifecycleStatus &st : kStatuses)
+        if (emoji == QString::fromUtf8(st.glyph)) return QLatin1String(st.word);
     return emoji;
 }
 
@@ -1081,13 +1072,38 @@ QString rcStatusWord(const QString &emoji) {
 // 📋, and the envelope said 📋 while the render correctly restored ✅).
 //
 // Pass-through on already-emoji / unknown input, mirroring rcStatusWord's own
-// contract. Deliberately NOT reused for op:append's word→emoji map: that one
-// also has to REFUSE an unknown status (bad_status), and a mapper that both
-// converts and refuses is two jobs.
+// contract; a caller that must refuse an unknown status tests for that.
 QString rcStatusEmoji(const QString &word) {
-    for (const RcStatus &st : kRcStatuses)
-        if (word == QLatin1String(st.word)) return QString::fromUtf8(st.emoji);
+    for (const LifecycleStatus &st : kStatuses)
+        if (word == QLatin1String(st.word)) return QString::fromUtf8(st.glyph);
     return word;
+}
+
+// ANTS-5358 — a lifecycle word or emoji to the (emoji, word) pair a flip
+// target carries; false on anything else. Shared by op:"flip" and
+// op:"flip_batch", so the two cannot accept different spellings.
+bool rcResolveStatus(const QString &s, QString *emoji, QString *word) {
+    for (const LifecycleStatus &st : kStatuses) {
+        const QString w = QLatin1String(st.word);
+        const QString e = QString::fromUtf8(st.glyph);
+        if (s == w || s == e) { *emoji = e; *word = w; return true; }
+    }
+    return false;
+}
+
+// The lifecycle words, or their emoji, in § 7.3's order, for the "expected …"
+// text of a bad_status refusal.
+QStringList rcStatusWords() {
+    QStringList out;
+    for (const LifecycleStatus &st : kStatuses)
+        out.append(QLatin1String(st.word));
+    return out;
+}
+QStringList rcStatusGlyphs() {
+    QStringList out;
+    for (const LifecycleStatus &st : kStatuses)
+        out.append(QString::fromUtf8(st.glyph));
+    return out;
 }
 
 // ANTS-1743 — sanitise a single-line bullet field (headline / layman /
@@ -2093,8 +2109,8 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
             }
             return false;
         };
-        for (const RcStatus &st : kRcStatuses)
-            if (tryStrip(st.emoji)) break;
+        for (const LifecycleStatus &st : kStatuses)
+            if (tryStrip(st.glyph)) break;
 
         QString boldId;
         if (rcExtractBoldId(head, &boldId)) {
@@ -2171,8 +2187,8 @@ void applyGfmFlip(QStringList &lines,
     // Trim a leading space to normalise — re-added on emit.
     while (!head.isEmpty() && head.front().isSpace()) head.remove(0, 1);
     // Strip any inline status emoji prefix.
-    for (const RcStatus &st : kRcStatuses) {
-        const QString e = QString::fromUtf8(st.emoji);
+    for (const LifecycleStatus &st : kStatuses) {
+        const QString e = QString::fromUtf8(st.glyph);
         if (head.startsWith(e)) {
             head.remove(0, e.size());
             while (!head.isEmpty() && head.front().isSpace())

@@ -141,8 +141,8 @@ static PassAppendItem rcRenderPassBullet(const QJsonObject &b,
     const QString keyword = PassHeadingWrite::passStatusKeyword(status);
     if (keyword.isEmpty()) {
         it.code = QStringLiteral("bad_status");
-        it.error = QStringLiteral("unknown status \"%1\" — expected "
-            "planned / in-progress / shipped / considered / dropped").arg(status);
+        it.error = QStringLiteral("unknown status \"%1\" — expected %2")
+            .arg(status, rcStatusWords().join(QStringLiteral(" / ")));
         return it;
     }
     if (pass.isEmpty()) {

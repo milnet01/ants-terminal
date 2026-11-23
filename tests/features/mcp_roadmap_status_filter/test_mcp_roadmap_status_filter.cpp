@@ -150,8 +150,10 @@ TEST(mcp_roadmap_status_filter, Ants3400GranularLifecycleFilters) {
            "ANTS-3400: bad_status envelope echoes the accepted set");
     expect(contains(cpp, "QLatin1String(\"in-progress\")"),
            "ANTS-3400: in-progress granular filter branch present");
-    expect(contains(cpp, "consideredEmoji"),
-           "ANTS-3400: considered (💭) filter emoji present");
+    // ANTS-6215 — the lifecycle words, considered among them, come from
+    // RoadmapParse::kStatuses through rcStatusWords().
+    expect(contains(cpp, "QStringLiteral(\"active\")} + rcStatusWords()"),
+           "ANTS-3400: the accepted set takes every lifecycle word, considered included");
     expect(contains(cpp, "sectionFilter"),
            "ANTS-3400: section_index collapses granular names to aggregate");
     // Schema surfaces the granular enum values + max_body_bytes (ANTS-3402).
@@ -176,8 +178,9 @@ TEST(mcp_roadmap_status_filter, Ants3408GranularFiltersInBothBranches) {
     const std::string cpp = ants_test::slurpRemoteControl();
     expect(countOccurrences(cpp, "keepStatus(s)") >= 2,
            "ANTS-3408: both emission branches call the shared status predicate");
-    expect(contains(cpp, "QLatin1String(\"considered\")  && (s == consideredEmoji)"),
-           "ANTS-3408: the predicate carries the considered arm");
+    // ANTS-6215 — one arm matches each lifecycle word to its own glyph.
+    expect(contains(cpp, "(f == word && word != s)"),
+           "ANTS-3408: the predicate carries the lifecycle-word arm, considered included");
     expect(contains(cpp, "ANTS-3408"),
            "ANTS-3408 anchor comment present");
     EXPECT_EQ(0, expect_failures());

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6906 -->
+<!-- ants-roadmap-id-high-water: ANTS=6907 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -109780,6 +109780,27 @@ worked after these.
   **Layman:** Several parts of the program each carry their own copy of the same "shorten text without breaking an emoji" step; one shared copy is easier to keep right.
   Kind: refactor.
   Source: self: ANTS-6904 fix 2026-11-23.
+
+- 📋 [ANTS-6907] **The roadmap tool schemas and the store's open-status SQL read their status lists from RoadmapParse::kStatuses.**
+  ANTS-6215 moved the render, export, pass writer, roadmap_log and
+  roadmap_query code onto RoadmapParse::kStatuses. Still hand-kept:
+  - claudeintegration_terminal.cpp: roadmap_query's statusEnum and its
+    emoji loop. test_mcp_roadmap_status_filter.cpp scrapes the literal
+    statusEnum.append lines, so its anchors move with the change.
+  - claudeintegration_store.cpp: roadmap_log's lifecycleEnum.
+  - claudeintegration.cpp: the roadmap_log status arg descriptions
+    (140-char cap; McpEagerLoad test).
+  - roadmapstore.cpp: kOpenStatusIn's SQL list (the item.status CHECK
+    stays literal: changing it is a schema change).
+  - roadmapwrite.cpp contentKey's kStatusWords mixes the lifecycle words
+    with pass keywords and synonyms; decide whether it should read the
+    table or stays its own vocabulary.
+  Hot reload: none needed; ants-mcpd clients see new schemas on
+  reconnect.
+  **Layman:** A few more places still list the five roadmap statuses by hand; they should read the one shared list too.
+  Kind: refactor.
+  Source: self: ANTS-6215 sweep 2026-11-23.
+  Lanes: roadmap-parse-render, mcp-roadmap-query-log-a.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

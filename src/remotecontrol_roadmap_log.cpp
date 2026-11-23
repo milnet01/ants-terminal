@@ -338,14 +338,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
     }
 
     // ANTS-1424-INV-5: status → emoji map. Word form is the wire
-    // contract; the verb writes the emoji. The map is kRcStatuses
-    // (remotecontrol.cpp); rcStatusEmoji returns an unknown word unchanged.
+    // contract; the verb writes the emoji. The map is
+    // RoadmapParse::kStatuses; rcStatusEmoji returns an unknown word unchanged.
     const QString statusEmoji = rcStatusEmoji(status);
     if (statusEmoji == status) {
         return rlErr(QStringLiteral("bad_status"),
-            QStringLiteral("roadmap_log: unknown status \"%1\" — "
-                           "expected planned / in-progress / "
-                           "shipped / considered / dropped").arg(rcdetail::ceSanitiseEcho(status)));
+            QStringLiteral("roadmap_log: unknown status \"%1\" — expected %2")
+                .arg(rcdetail::ceSanitiseEcho(status),
+                     rcStatusWords().join(QStringLiteral(" / "))));
     }
 
     // ANTS-1424 — kind enum check, against the one canonical list
@@ -1887,26 +1887,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         // names + emojis remain the documented API; synonyms are accept-only.
         // ANTS-2126 — extracted to rlCanonicalToStatus (shared with the
         // pass-headings flip path).
-        const QString toStatusResolved = rlCanonicalToStatus(toStatus);
-        if      (toStatusResolved == QStringLiteral("planned")     ||
-                 toStatusResolved == QStringLiteral("📋")) { targetEmoji = QStringLiteral("📋"); targetStatusWord = QStringLiteral("planned"); }
-        else if (toStatusResolved == QStringLiteral("in-progress") ||
-                 toStatusResolved == QStringLiteral("🚧")) { targetEmoji = QStringLiteral("🚧"); targetStatusWord = QStringLiteral("in-progress"); }
-        else if (toStatusResolved == QStringLiteral("shipped")     ||
-                 toStatusResolved == QStringLiteral("✅")) { targetEmoji = QStringLiteral("✅"); targetStatusWord = QStringLiteral("shipped"); }
-        else if (toStatusResolved == QStringLiteral("considered")  ||
-                 toStatusResolved == QStringLiteral("💭")) { targetEmoji = QStringLiteral("💭"); targetStatusWord = QStringLiteral("considered"); }
-        else if (toStatusResolved == QStringLiteral("dropped")     ||   // ANTS-4977
-                 toStatusResolved == QStringLiteral("🚫")) { targetEmoji = QStringLiteral("🚫"); targetStatusWord = QStringLiteral("dropped"); }
-        else {
+        if (!rcResolveStatus(rlCanonicalToStatus(toStatus), &targetEmoji,
+                             &targetStatusWord)) {
             return rlErr(QStringLiteral("bad_status"),
                 QStringLiteral("roadmap_log: unknown to_status \"%1\" — "
-                               "expected planned / in-progress / shipped "
-                               "/ considered / dropped (or one of 📋/🚧/✅/💭/🚫); "
+                               "expected %2 (or one of %3); "
                                "synonyms also accepted: done/complete/completed "
                                "→ shipped, wip/in_progress → in-progress, "
                                "todo/open → planned, maybe/idea → considered")
-                    .arg(rcdetail::ceSanitiseEcho(toStatus)));
+                    .arg(rcdetail::ceSanitiseEcho(toStatus),
+                         rcStatusWords().join(QStringLiteral(" / ")),
+                         rcStatusGlyphs().join(QLatin1Char('/'))));
         }
     }
 
@@ -4676,14 +4667,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
         return QJsonDocument(mcp::refusal(QStringLiteral("body_shadowed"),
             QStringLiteral("roadmap_log: %1").arg(shadowErr)));
     const QString status = req.value(QStringLiteral("status")).toString();
-    static const QStringList kStatuses{
-        QStringLiteral("planned"), QStringLiteral("in-progress"),
-        QStringLiteral("shipped"), QStringLiteral("considered"),
-        QStringLiteral("dropped")};
-    if (!status.isEmpty() && !kStatuses.contains(status))
+    const QStringList words = rcStatusWords();
+    if (!status.isEmpty() && !words.contains(status))
         return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `status` must be one of %1; got \"%2\"")
-                .arg(kStatuses.join(QStringLiteral(", ")), status)));
+                .arg(words.join(QStringLiteral(", ")), status)));
 
     QString root, roadmapPath;
     QJsonDocument refusal;

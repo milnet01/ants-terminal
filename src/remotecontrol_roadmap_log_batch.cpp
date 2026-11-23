@@ -28,22 +28,6 @@ using namespace rcdetail;  // ANTS-3833
 
 namespace {
 
-// ANTS-5358 — one lifecycle word or emoji to the (emoji, word) pair a
-// flip_batch target carries. Shared by the call-level to_status and the
-// per-locator one, so the two cannot accept different spellings.
-bool rlResolveBatchStatus(const QString &s, QString *emoji, QString *word) {
-    static const struct { const char *word; const char *emoji; } kStatuses[] = {
-        {"planned",     "📋"}, {"in-progress", "🚧"}, {"shipped", "✅"},
-        {"considered",  "💭"}, {"dropped",     "🚫"},   // ANTS-4977
-    };
-    for (const auto &st : kStatuses) {
-        const QString w = QString::fromUtf8(st.word);
-        const QString e = QString::fromUtf8(st.emoji);
-        if (s == w || s == e) { *emoji = e; *word = w; return true; }
-    }
-    return false;
-}
-
 // ANTS-4109, ANTS-5094/5095 — flip_batch's reply when no locator resolved,
 // shared by the markdown and store paths. Nothing resolved is a refusal, not
 // a partial success: ok:true read as "flipped three bullets" to a caller that
@@ -231,12 +215,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     else if (!toStatus.isEmpty() &&
              // Same synonyms as op:"flip" (rlCanonicalToStatus: done / wip /
              // todo …), then the canonical word or emoji.
-             !rlResolveBatchStatus(rlCanonicalToStatus(toStatus),
-                                   &targetEmoji, &targetStatusWord))
+             !rcResolveStatus(rlCanonicalToStatus(toStatus),
+                              &targetEmoji, &targetStatusWord))
         return rlErr(QStringLiteral("bad_status"),
-            QStringLiteral("roadmap_log: unknown to_status \"%1\" — expected "
-                           "planned / in-progress / shipped / considered / dropped")
-                .arg(toStatus));
+            QStringLiteral("roadmap_log: unknown to_status \"%1\" — expected %2")
+                .arg(toStatus, rcStatusWords().join(QStringLiteral(" / "))));
 
     // 2. locators array (required, non-empty).
     if (!req.value(QStringLiteral("locators")).isArray())
@@ -503,11 +486,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 continue;
             }
             // The single flip's synonyms (done / wip / todo …) resolve here too.
-            if (!rlResolveBatchStatus(rlCanonicalToStatus(locTo), &locEmoji, &locWord)) {
+            if (!rcResolveStatus(rlCanonicalToStatus(locTo), &locEmoji, &locWord)) {
                 skip(li, QStringLiteral("bad_status"),
-                     QStringLiteral("unknown to_status \"%1\" — expected planned / "
-                                    "in-progress / shipped / considered / dropped")
-                         .arg(locTo));
+                     QStringLiteral("unknown to_status \"%1\" — expected %2")
+                         .arg(locTo, rcStatusWords().join(QStringLiteral(" / "))));
                 continue;
             }
         }
@@ -3010,7 +2992,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     }
 
     // 6. Per-bullet validation: kinds against RoadmapParse::canonicalKinds(),
-    // statuses through rlResolveBatchStatus(), words only.
+    // statuses through rcResolveStatus(), words only.
 
     QList<Accepted> accepted;
     QJsonArray skipped;
@@ -3142,11 +3124,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             continue;
         }
         QString emoji, statusWord;
-        if (!rlResolveBatchStatus(status, &emoji, &statusWord) || statusWord != status) {
+        if (!rcResolveStatus(status, &emoji, &statusWord) || statusWord != status) {
             skip(QStringLiteral("bad_status"),
-                 QStringLiteral("unknown status \"%1\" — expected "
-                                "planned/in-progress/shipped/considered/dropped")
-                     .arg(status));
+                 QStringLiteral("unknown status \"%1\" — expected %2")
+                     .arg(status, rcStatusWords().join(QLatin1Char('/'))));
             continue;
         }
         if (!RoadmapParse::canonicalKinds().contains(kind)) {
@@ -4294,10 +4275,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntroForTest(const QJsonObject &req
 // each wording replaces that status's line, and an empty string removes it.
 // Statuses not named keep their wording.
 QJsonDocument RemoteControl::cmdRoadmapLogSetLegend(const QJsonObject &req) {
-    static const QStringList kStatuses = {
-        QStringLiteral("planned"), QStringLiteral("in-progress"),
-        QStringLiteral("shipped"), QStringLiteral("considered"),
-        QStringLiteral("dropped")};
+    static const QStringList kStatuses = rcStatusWords();
     // The migration recognises a legend line by its first word, so a wording
     // that does not open with one would come back as narration on the next
     // import (looksLikeLegendLine in roadmapmigrate.cpp).

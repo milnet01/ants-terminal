@@ -1090,12 +1090,7 @@ auto RemoteControl::RoadmapQueryCall::parseStatus() -> std::optional<QJsonDocume
     const auto statusName = [](QString s) {
         s = s.trimmed();
         if (s.endsWith(QChar(0xFE0F))) s.chop(1);
-        if (s == QString::fromUtf8("\xF0\x9F\x93\x8B")) return QStringLiteral("planned");
-        if (s == QString::fromUtf8("\xF0\x9F\x9A\xA7")) return QStringLiteral("in-progress");
-        if (s == QString::fromUtf8("\xE2\x9C\x85"))      return QStringLiteral("shipped");
-        if (s == QString::fromUtf8("\xF0\x9F\x92\xAD")) return QStringLiteral("considered");
-        if (s == QString::fromUtf8("\xF0\x9F\x9A\xAB")) return QStringLiteral("dropped");
-        return s;
+        return rcStatusWord(s);
     };
     QString statusArg = statusVal.toString();
     filter = statusName(statusArg).toLower();
@@ -1131,11 +1126,8 @@ auto RemoteControl::RoadmapQueryCall::parseStatus() -> std::optional<QJsonDocume
     // caller self-corrects without guessing.
     // ANTS-1247-INV-11: <verbatim> echo capped at 64 bytes; bytes
     // < 0x20 replaced with '?' to prevent ANSI/control passthrough.
-    static const QStringList kAcceptedStatusFilters = {
-        QStringLiteral("all"),         QStringLiteral("active"),
-        QStringLiteral("shipped"),     QStringLiteral("planned"),
-        QStringLiteral("in-progress"), QStringLiteral("considered"),
-        QStringLiteral("dropped") };   // ANTS-4977
+    static const QStringList kAcceptedStatusFilters =
+        QStringList{QStringLiteral("all"), QStringLiteral("active")} + rcStatusWords();
     // ANTS-5376 — the first element outside the accepted set, or an empty
     // array, which would otherwise read as "all".
     QString unknownStatus;
@@ -1199,19 +1191,13 @@ auto RemoteControl::RoadmapQueryCall::parseStatus() -> std::optional<QJsonDocume
 // ANTS-3408 / ANTS-5376 — one status predicate for both emission paths,
 // over the whole set. It had been written out twice, once per path.
 bool RemoteControl::RoadmapQueryCall::keepStatus(const QString &s) {
-    static const QString plannedEmoji    = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
-    static const QString progressEmoji   = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
-    static const QString doneEmoji       = QString::fromUtf8("\xE2\x9C\x85");     // ✅
-    static const QString consideredEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
-    static const QString droppedEmoji    = QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫
+    // `s` is a bullet's glyph; a lifecycle word in the set keeps that word's
+    // glyph. `active` is 📋 and 🚧 only: 💭 is open but is not active work.
+    const QString word = rcStatusWord(s);
     for (const QString &f : filterSet) {
-        if ((f == QLatin1String("all")) ||
-            (f == QLatin1String("active")      && (s == plannedEmoji || s == progressEmoji)) ||
-            (f == QLatin1String("shipped")     && (s == doneEmoji)) ||
-            (f == QLatin1String("planned")     && (s == plannedEmoji)) ||
-            (f == QLatin1String("in-progress") && (s == progressEmoji)) ||
-            (f == QLatin1String("considered")  && (s == consideredEmoji)) ||
-            (f == QLatin1String("dropped")     && (s == droppedEmoji)))
+        if (f == QLatin1String("all") || (f == word && word != s) ||
+            (f == QLatin1String("active") && (word == QLatin1String("planned") ||
+                                              word == QLatin1String("in-progress"))))
             return true;
     }
     return false;
