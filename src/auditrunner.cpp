@@ -2071,83 +2071,64 @@ void applyBaseline(const QString &canonProject, const RunRequest &req,
     r.baselineSaved = std::move(saved);
 }
 
-}  // namespace
+// Records a refusal on `r`. Returns false, so a check can end in
+// `return refuse(…);`.
+bool refuse(RunResult &r, const QString &code, const QString &error) {
+    r.ok    = false;
+    r.code  = code;
+    r.error = error;
+    return false;
+}
 
-RunResult runAudit(const RunRequest &req) {
-    RunResult r;
-    QElapsedTimer elapsed;
-    elapsed.start();
-
+// Refuses the first argument that is out of range or unsafe. It does no
+// filesystem or process work, so it runs before the concurrency slot is
+// taken and a malformed request is refused whether or not the host is busy.
+bool validateRequest(const RunRequest &req, const QString &canonProject,
+                     RunResult &r) {
     // ── INV-2 / PathValidation. caller_cwd → canonical projectRoot.
-    QFileInfo callerFi(req.projectRoot);
-    const QString canonProject = callerFi.canonicalFilePath();
-    if (canonProject.isEmpty() || !QFileInfo(canonProject).isDir()) {
-        r.ok = false;
-        r.code  = QStringLiteral("bad_path");
-        r.error = QStringLiteral(
+    if (canonProject.isEmpty() || !QFileInfo(canonProject).isDir())
+        return refuse(r, QStringLiteral("bad_path"), QStringLiteral(
             "audit_run: caller_cwd \"%1\" does not canonicalise to "
-            "an existing directory").arg(req.projectRoot);
-        return r;
-    }
+            "an existing directory").arg(req.projectRoot));
 
     // ── INV-16 / range checks.
     if (req.capPerToolSeconds < kCapPerToolMin ||
-        req.capPerToolSeconds > kCapPerToolMax) {
-        r.ok = false;
-        r.code  = QStringLiteral("bad_args");
-        r.error = QStringLiteral(
+        req.capPerToolSeconds > kCapPerToolMax)
+        return refuse(r, QStringLiteral("bad_args"), QStringLiteral(
             "audit_run: cap_per_tool_seconds %1 out of [%2, %3]")
                 .arg(req.capPerToolSeconds)
-                .arg(kCapPerToolMin).arg(kCapPerToolMax);
-        return r;
-    }
+                .arg(kCapPerToolMin).arg(kCapPerToolMax));
     if (req.topFindingsCount < kTopFindingsMin ||
-        req.topFindingsCount > kTopFindingsMax) {
-        r.ok = false;
-        r.code  = QStringLiteral("bad_args");
-        r.error = QStringLiteral(
+        req.topFindingsCount > kTopFindingsMax)
+        return refuse(r, QStringLiteral("bad_args"), QStringLiteral(
             "audit_run: top_findings_count %1 out of [%2, %3]")
                 .arg(req.topFindingsCount)
-                .arg(kTopFindingsMin).arg(kTopFindingsMax);
-        return r;
-    }
-
-    if (req.minConfidence < 0 || req.minConfidence > 100) {
-        r.ok = false;
-        r.code  = QStringLiteral("bad_args");
-        r.error = QStringLiteral(
+                .arg(kTopFindingsMin).arg(kTopFindingsMax));
+    if (req.minConfidence < 0 || req.minConfidence > 100)
+        return refuse(r, QStringLiteral("bad_args"), QStringLiteral(
             "audit_run: min_confidence %1 out of [0, 100]")
-                .arg(req.minConfidence);
-        return r;
-    }
+                .arg(req.minConfidence));
+
     // ── ANTS-1706 — a baseline pinned from a narrowed run would hold only
     // part of the tree, so every finding outside it would read as new.
     if (req.saveBaseline) {
         const bool wholeTree = req.scope.isEmpty()
             || req.scope == QLatin1String("auto")
             || req.scope == QLatin1String("full");
-        if (!wholeTree || !req.paths.isEmpty() || !req.checks.isEmpty()) {
-            r.ok = false;
-            r.code  = QStringLiteral("bad_args");
-            r.error = QStringLiteral(
+        if (!wholeTree || !req.paths.isEmpty() || !req.checks.isEmpty())
+            return refuse(r, QStringLiteral("bad_args"), QStringLiteral(
                 "audit_run: save_baseline needs a whole-tree run (scope "
-                "auto or full, no paths, no checks)");
-            return r;
-        }
+                "auto or full, no paths, no checks)"));
     }
 
     // ── INV-15 / scope tag sanitisation.
     if (req.scope.startsWith(QLatin1String("since-tag:"))) {
         const QString tag = req.scope.mid(10);
-        if (!isScopeTagSafe(tag)) {
-            r.ok = false;
-            r.code  = QStringLiteral("bad_scope");
-            r.error = QStringLiteral(
+        if (!isScopeTagSafe(tag))
+            return refuse(r, QStringLiteral("bad_scope"), QStringLiteral(
                 "audit_run: scope \"%1\" fails since-tag sanitisation "
                 "(must match ^[A-Za-z0-9._/+-]{1,128}$ and not start "
-                "with '-')").arg(req.scope);
-            return r;
-        }
+                "with '-')").arg(req.scope));
     }
 
     // ── ANTS-1512 / scoped-paths sanitisation. Each path is run through
@@ -2156,75 +2137,378 @@ RunResult runAudit(const RunRequest &req) {
     // mask a typo + still run the unscoped tool, which violates "narrow
     // means narrow".
     for (const QString &p : req.paths) {
-        if (!isAuditArgSafe(p)) {
-            r.ok = false;
-            r.code  = QStringLiteral("bad_args");
-            r.error = QStringLiteral(
+        if (!isAuditArgSafe(p))
+            return refuse(r, QStringLiteral("bad_args"), QStringLiteral(
                 "audit_run: paths entry \"%1\" fails argv-safety "
-                "sanitisation").arg(p);
-            return r;
-        }
+                "sanitisation").arg(p));
     }
     // ── ANTS-3710 / exclude-paths sanitisation. Same gate and same
     // refuse-the-whole-call posture as `paths` above: a typo'd exclusion that
     // was silently dropped would leave the caller reading a noisy result as
     // if it had been filtered.
     for (const QString &p : req.excludePaths) {
-        if (!isAuditArgSafe(p)) {
-            r.ok = false;
-            r.code  = QStringLiteral("bad_args");
-            r.error = QStringLiteral(
+        if (!isAuditArgSafe(p))
+            return refuse(r, QStringLiteral("bad_args"), QStringLiteral(
                 "audit_run: exclude_paths entry \"%1\" fails argv-safety "
-                "sanitisation").arg(p);
-            return r;
-        }
+                "sanitisation").arg(p));
     }
     // ── ANTS-1512 / scoped-checks sanitisation + tool-compatibility
     // gate. checks is honoured by clang-tidy only; refuse for other
     // tools rather than silently ignore.
     for (const QString &c : req.checks) {
-        if (!isAuditCheckSafe(c)) {
-            r.ok = false;
-            r.code  = QStringLiteral("bad_args");
-            r.error = QStringLiteral(
+        if (!isAuditCheckSafe(c))
+            return refuse(r, QStringLiteral("bad_args"), QStringLiteral(
                 "audit_run: checks entry \"%1\" fails sanitisation "
-                "(allowed: ^-?[A-Za-z0-9_*.,-]+$, length ≤ 128)").arg(c);
-            return r;
-        }
+                "(allowed: ^-?[A-Za-z0-9_*.,-]+$, length ≤ 128)").arg(c));
     }
     if (!req.checks.isEmpty()) {
         for (const QString &t : req.tools) {
-            if (!toolHonoursChecks(t)) {
-                r.ok = false;
-                r.code  = QStringLiteral("bad_args");
-                r.error = QStringLiteral(
+            if (!toolHonoursChecks(t))
+                return refuse(r, QStringLiteral("bad_args"), QStringLiteral(
                     "audit_run: checks parameter is honoured only by "
                     "clang-tidy; requested tool \"%1\" does not support "
                     "it. Pass tools=[\"clang-tidy\"] or drop checks=.")
-                        .arg(t);
-                return r;
+                        .arg(t));
+        }
+    }
+    // ── ANTS-3626 — an unrecognised `formats` entry is refused: it would
+    // suppress the ["sarif"] default and match neither writer, so the run
+    // would write no artifact and still report ok:true. An EMPTY array is
+    // valid and keeps the default (writeArtifacts).
+    for (const QString &f : req.formats) {
+        if (f != QLatin1String("sarif") && f != QLatin1String("html"))
+            return refuse(r, QStringLiteral("bad_args"), QStringLiteral(
+                "audit_run: formats entry \"%1\" not recognised "
+                "(accepted: \"sarif\", \"html\")").arg(f));
+    }
+    return true;
+}
+
+// What the scope step hands the run: each tool's positional file list, and
+// the since-last-run state the findings delta needs after the tools finish.
+struct ScopePlan {
+    // Each tool's scoped list, or the caller's `req.paths` under `auto` or
+    // a demoted full scan.
+    QHash<QString, QStringList> perToolPaths;
+    // ANTS-1870 — `sinceLastRunActive` is set only for an actually-narrowed,
+    // non-empty `since-last-run`; `priorFindingsFile` is the prior run's
+    // sidecar basename (empty → no baseline → no_prior_findings).
+    QSet<QString> sinceLastRunChangedFiles;
+    bool          sinceLastRunActive = false;
+    QString       priorFindingsFile;
+    // ANTS-3605 — set true only under a narrowed (file-diff) scope with
+    // changes; gates OFF the whole-project in-process drift lanes, which
+    // would otherwise report drift unrelated to the changed-file set
+    // (mirroring the not_file_scoped skip of repo-global tools like gitleaks).
+    bool          scopeNarrowed = false;
+};
+
+// ── ANTS-1504 — narrowing-scope resolution. A narrowing scope
+// (since-last-run / files / branch-diff / since-tag) resolves the
+// changed-file set and runs each file-oriented tool against only its
+// matching files; repo-global tools (gitleaks/trivy) and tools with no
+// matching changed file are skipped and removed from `toolAbsPath`.
+// `auto` (default) keeps the full tree. Returns false when the changeset
+// is empty: `r` then holds the finished reply.
+bool resolveScope(const RunRequest &req, const QString &canonProject,
+                  QHash<QString, QString> &toolAbsPath, ScopePlan &plan,
+                  RunResult &r) {
+    QHash<QString, QStringList> &perToolPaths = plan.perToolPaths;
+    const auto applyFullScan = [&](const QString &resolvedLabel) {
+        r.scopeResolved = resolvedLabel;
+        for (auto it = toolAbsPath.constBegin();
+             it != toolAbsPath.constEnd(); ++it)
+            perToolPaths[it.key()] = req.paths;
+    };
+
+    // ── ANTS-2015 — `full`: deterministic whole-tree sweep, independent
+    // of git diff state. clazy/clang-tidy need explicit source positionals
+    // or they scan nothing, so `auto` (empty positionals) makes a full
+    // clazy run impossible on a clean tree. Hand the file-scoped tools the
+    // tracked src/ list; the repo-global scanners (gitleaks/trivy) and any
+    // tool whose language has no src/ file fall back to their own full scan
+    // via empty paths. No tool is skipped — full means full.
+    if (req.scope == QLatin1String("full")) {
+        r.scopeResolved = QStringLiteral("full");
+        const QStringList sources =
+            AuditScope::enumerateSourceFiles(canonProject);
+        r.changedFilesCount = static_cast<int>(sources.size());
+        for (auto it = toolAbsPath.constBegin();
+             it != toolAbsPath.constEnd(); ++it) {
+            const QString &tool = it.key();
+            if (!AuditScope::isFileScopedTool(tool)) {
+                perToolPaths[tool] = req.paths;  // gitleaks/trivy: full repo
+                continue;
+            }
+            QStringList safe;
+            for (const QString &p : AuditScope::filterForTool(sources, tool))
+                if (isAuditArgSafe(p)) safe.append(p);
+            perToolPaths[tool] = safe.isEmpty() ? req.paths : safe;
+        }
+        return true;
+    }
+
+    const QJsonObject priorLastRun =
+        AuditCache::loadManifest(canonProject).lastRun;
+    const QString priorCommit =
+        priorLastRun.value(QStringLiteral("commit")).toString();
+    const AuditScope::Resolution sr =
+        AuditScope::resolveChangedFiles(canonProject, req.scope, priorCommit);
+
+    if (!sr.narrowed) {
+        applyFullScan(req.scope.isEmpty() ? QStringLiteral("auto")
+                                          : req.scope);
+        return true;
+    }
+    if (!sr.demotedReason.isEmpty()) {
+        // Stale-cache fallback → full scan (INV-6).
+        r.scopeDemoted       = QStringLiteral("full");
+        r.scopeDemotedReason = sr.demotedReason;
+        applyFullScan(QStringLiteral("full"));
+        return true;
+    }
+    if (sr.noChanges) {
+        // Empty-changeset short-circuit (INV-7): spawn nothing, record
+        // nothing — preserve the prior anchor for the next run.
+        r.ok                = true;
+        r.scopeResolved     = req.scope;
+        r.scopeAnchorCommit = sr.anchorCommit;
+        r.changedFilesCount = 0;
+        r.noChanges         = true;
+        return false;
+    }
+
+    // Narrowed with changes: per-tool filtered file sets
+    // (INV-3 language filter / INV-4 global-tool skip / INV-5 path
+    // safety drop).
+    r.scopeResolved     = req.scope;
+    r.scopeAnchorCommit = sr.anchorCommit;
+    r.changedFilesCount = static_cast<int>(sr.files.size());
+    plan.scopeNarrowed  = true;  // ANTS-3605 — skip whole-project lanes
+    // ANTS-1870 — only `since-last-run` produces a findings delta
+    // (§ 2.8 / INV-10). Capture the changed set + the prior sidecar
+    // basename for the delta computation after the run completes.
+    if (req.scope == QLatin1String("since-last-run")) {
+        plan.sinceLastRunActive = true;
+        for (const QString &f : sr.files)
+            plan.sinceLastRunChangedFiles.insert(f);
+        plan.priorFindingsFile = priorLastRun
+            .value(QStringLiteral("findings_file")).toString();
+    }
+    QStringList toDrop;
+    for (auto it = toolAbsPath.constBegin();
+         it != toolAbsPath.constEnd(); ++it) {
+        const QString &tool = it.key();
+        if (!AuditScope::isFileScopedTool(tool)) {
+            r.toolsSkipped.append({tool,
+                QStringLiteral("not_file_scoped")});
+            toDrop.append(tool);
+            continue;
+        }
+        QStringList safe;
+        for (const QString &p : AuditScope::filterForTool(sr.files, tool))
+            if (isAuditArgSafe(p)) safe.append(p);
+        if (safe.isEmpty()) {
+            r.toolsSkipped.append({tool,
+                QStringLiteral("no_changed_files_for_languages")});
+            toDrop.append(tool);
+            continue;
+        }
+        perToolPaths[tool] = safe;
+    }
+    for (const QString &t : toDrop) toolAbsPath.remove(t);
+    return true;
+}
+
+// ── ANTS-3710 — apply exclude_paths to every positional file list, in
+// one place, after whichever scope branch built it. Prefix match on the
+// project-relative path, at a path-segment boundary so "src/vendor" does
+// not also swallow "src/vendorish.c". The whole-tree half of the feature
+// rides on each tool's native flag (toolExclusionArgs); this half is what
+// covers a project that HAS a positional list.
+void applyExcludePaths(const RunRequest &req,
+                       const QHash<QString, QString> &toolAbsPath,
+                       QHash<QString, QStringList> &perToolPaths,
+                       RunResult &r) {
+    if (req.excludePaths.isEmpty()) return;
+    const auto excluded = [&](const QString &p) {
+        for (const QString &x : req.excludePaths) {
+            const QString pre = x.endsWith(QLatin1Char('/')) ? x
+                                                             : x + QLatin1Char('/');
+            if (p == x || p.startsWith(pre)) return true;
+        }
+        return false;
+    };
+    for (auto it = perToolPaths.begin(); it != perToolPaths.end(); ++it) {
+        QStringList kept;
+        for (const QString &p : it.value())
+            if (!excluded(p)) kept.append(p);
+        it.value() = kept;
+    }
+    r.excludePathsApplied = req.excludePaths;
+    // Name the tools in THIS run that cannot honour it, so a partial
+    // exclusion is visible rather than assumed complete.
+    for (auto it = toolAbsPath.constBegin();
+         it != toolAbsPath.constEnd(); ++it)
+        if (!kExclusionCapableTools().contains(it.key()))
+            r.excludePathsIgnoredBy.append(it.key());
+    r.excludePathsIgnoredBy.sort();
+}
+
+// The findings a run records on disk, as against the ones its reply shows.
+struct RecordedFindings {
+    QJsonArray carriedForwardForSarif;  // priorOnUntouched, tagged in SARIF
+    // The whole-tree set the next sidecar holds: current ∪ priorOnUntouched
+    // under since-last-run, the current set under auto/full.
+    QJsonArray mergedForRecord;
+    bool       mergedTruncated = false;
+};
+
+// ── INV-12 / SARIF + optional HTML, then the run's manifest entry.
+//
+// ANTS-1555 — route through `<root>/.audit_cache/` when the
+// project root is writeable; fall back to /tmp on failure so
+// `sarifPath` stays meaningful for callers. `cachePath` is set
+// only on the cache-hit branch.
+void writeArtifacts(const RunRequest &req, const QString &canonProject,
+                    const QHash<QString, QString> &rawByTool,
+                    const QHash<QString, QJsonArray> &fullFindingsByTool,
+                    const RecordedFindings &recorded,
+                    const QElapsedTimer &elapsed, RunResult &r) {
+    const QStringList formats = req.formats.isEmpty()
+        ? QStringList{QStringLiteral("sarif")} : req.formats;
+
+    const AuditCache::IsoNow iso     = AuditCache::isoNow();
+    const AuditCache::GitInfo gitI   = AuditCache::gitInfo(canonProject);
+
+    bool sarifDocTruncated = false;   // ANTS-3629 — cross-tool shed flag
+    QString cacheSarifAbs;
+    QString cacheHtmlAbs;
+    if (formats.contains(QLatin1String("sarif"))) {
+        cacheSarifAbs = AuditCache::sarifPathFor(canonProject,
+                                                 iso.forFilename,
+                                                 gitI.shortSha);
+        if (!cacheSarifAbs.isEmpty()
+         && ensurePrivateDir(AuditCache::cacheDir(canonProject))  // ANTS-1988 — 0700
+         && writeSarif(cacheSarifAbs, r.byTool, rawByTool, req.projectRoot,
+                       fullFindingsByTool, recorded.carriedForwardForSarif,
+                       &sarifDocTruncated)) {
+            r.sarifPath = cacheSarifAbs;
+            r.cachePath = cacheSarifAbs;
+        } else {
+            // Fall back to legacy /tmp path so callers depending on
+            // sarifPath still work even on read-only roots.
+            cacheSarifAbs.clear();
+            const QString sp = allocSarifPath();
+            if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot,
+                           fullFindingsByTool, recorded.carriedForwardForSarif,
+                           &sarifDocTruncated)) {
+                r.sarifPath = sp;
             }
         }
+        // ANTS-3629 — a cross-tool shed is truncation too. Without this,
+        // N tools each individually under the per-tool cap could sum past
+        // the document ceiling and the envelope would still report
+        // findings_truncated:false.
+        if (sarifDocTruncated) r.findingsTruncated = true;
     }
-    // ── ANTS-3626 — validate `formats`. Before this the field was only
-    // ever probed with contains("sarif") / contains("html"), so a
-    // non-empty unrecognised value (e.g. ["json"]) was simultaneously
-    // non-empty — suppressing the ["sarif"] default — and matched by
-    // neither branch: no artifact written, no sarif_path/cache_path in
-    // the envelope, and still ok:true. A 15-minute sweep could be
-    // discarded on a typo. Same silent-no-op class as ANTS-3615's
-    // `suppressions`. An EMPTY array is valid and keeps the ["sarif"]
-    // default (see the defaulting at the writeSarif site below).
-    for (const QString &f : req.formats) {
-        if (f != QLatin1String("sarif") && f != QLatin1String("html")) {
-            r.ok = false;
-            r.code  = QStringLiteral("bad_args");
-            r.error = QStringLiteral(
-                "audit_run: formats entry \"%1\" not recognised "
-                "(accepted: \"sarif\", \"html\")").arg(f);
-            return r;
+    if (formats.contains(QLatin1String("html"))) {
+        QString hp;
+        if (!r.cachePath.isEmpty()) {
+            cacheHtmlAbs = AuditCache::htmlPathFor(canonProject,
+                                                   iso.forFilename,
+                                                   gitI.shortSha);
+            hp = cacheHtmlAbs;
+        } else if (!r.sarifPath.isEmpty()) {
+            // /tmp fallback: mirror the sibling .html naming.
+            hp = r.sarifPath;
+            hp.chop(static_cast<int>(strlen(".sarif")));
+            hp += QStringLiteral(".html");
+        } else {
+            // No SARIF + no cache: emit HTML alongside a randomised path so
+            // an attacker can't pre-create a symlink at a known location.
+            // ANTS-3614 — this branch allocates a fallback without going
+            // through allocSarifPath(), so trigger the reaper here too.
+            reapFallbackArtifactsOnce();
+            const QString rand =
+                QUuid::createUuid().toRfc4122().toHex().left(16);
+            const QString cacheRoot = QStandardPaths::writableLocation(
+                QStandardPaths::CacheLocation);
+            if (!cacheRoot.isEmpty()
+             && QDir().mkpath(cacheRoot + QLatin1String("/audit"))) {
+                hp = QStringLiteral("%1/audit/audit-%2-%3.html")
+                    .arg(cacheRoot, sessionIdToken(), rand);
+            } else {
+                hp = QStringLiteral("/tmp/audit-%1-%2.html")
+                    .arg(sessionIdToken(), rand);
+            }
         }
+        if (writeHtml(hp, r.byTool)) r.htmlPath = hp;
     }
+
+    // ── ANTS-1555 / record the run in `.audit_cache/index.json`.
+    // Only fires when the cache write succeeded — fallback /tmp
+    // writes don't touch the manifest. priorRun is filled by
+    // recordRun() from the manifest's pre-existing last_run.
+    if (r.cachePath.isEmpty()) return;
+    QJsonObject lastRunJson;
+    lastRunJson[QStringLiteral("iso_timestamp")] = iso.forManifest;
+    lastRunJson[QStringLiteral("commit")]        = gitI.shortSha;
+    if (!gitI.branch.isEmpty()) {
+        lastRunJson[QStringLiteral("branch")] = gitI.branch;
+    }
+    lastRunJson[QStringLiteral("scope")] =
+        req.scope.isEmpty() ? QStringLiteral("auto") : req.scope;
+    // Store sarif/html as basenames inside the manifest; the
+    // reaper resolves them to absolute paths relative to
+    // .audit_cache/ (matches the "self-contained per-project
+    // dir" invariant).
+    lastRunJson[QStringLiteral("sarif")] =
+        QFileInfo(cacheSarifAbs).fileName();
+    if (!cacheHtmlAbs.isEmpty() && !r.htmlPath.isEmpty()
+        && r.htmlPath == cacheHtmlAbs) {
+        lastRunJson[QStringLiteral("html")] =
+            QFileInfo(cacheHtmlAbs).fileName();
+    }
+    lastRunJson[QStringLiteral("elapsed_total_ms")] =
+        static_cast<double>(elapsed.elapsed());
+    lastRunJson[QStringLiteral("total_raw")]        = r.totalRaw;
+    lastRunJson[QStringLiteral("total_actionable")] = r.totalActionable;
+    QJsonObject byToolJson;
+    for (auto it = r.byTool.constBegin();
+         it != r.byTool.constEnd(); ++it) {
+        QJsonObject t;
+        t[QStringLiteral("elapsed_ms")] =
+            static_cast<double>(it->elapsedMs);
+        t[QStringLiteral("raw_count")]  = it->rawCount;
+        t[QStringLiteral("status")]     = it->status;
+        byToolJson[it.key()] = t;
+    }
+    lastRunJson[QStringLiteral("by_tool")] = byToolJson;
+    // ANTS-1870 — the sidecar's `truncated` flag mirrors this; a later
+    // clean run records false and self-heals the baseline (§ 2.6).
+    lastRunJson[QStringLiteral("findings_truncated")] =
+        recorded.mergedTruncated;
+
+    QJsonObject prior;
+    // ANTS-1870 — persist the whole-tree merged findings as the next
+    // sidecar baseline, so the next since-last-run can diff (§ 2.3). A run
+    // with no findings writes no sidecar, and the next since-last-run then
+    // reports no_prior_findings.
+    AuditCache::recordRun(canonProject, lastRunJson, &prior,
+                          recorded.mergedForRecord);
+    r.priorRun = std::move(prior);
+}
+}  // namespace
+
+RunResult runAudit(const RunRequest &req) {
+    RunResult r;
+    QElapsedTimer elapsed;
+    elapsed.start();
+
+    QFileInfo callerFi(req.projectRoot);
+    const QString canonProject = callerFi.canonicalFilePath();
+    if (!validateRequest(req, canonProject, r)) return r;
 
     // ── ANTS-3612 / INV-9 — aggregate concurrency cap. Taken AFTER the
     // cheap argument validation above (a malformed request should get its
@@ -2233,11 +2517,9 @@ RunResult runAudit(const RunRequest &req) {
     // every exit path below.
     RunSlotGuard slot;
     if (!runSlotTryAcquire()) {
-        r.ok = false;
-        r.code  = QStringLiteral("server_busy");
-        r.error = QStringLiteral(
+        refuse(r, QStringLiteral("server_busy"), QStringLiteral(
             "audit_run: %1 audits already running (aggregate concurrency "
-            "cap); retry shortly").arg(kMaxConcurrentRuns);
+            "cap); retry shortly").arg(kMaxConcurrentRuns));
         return r;
     }
     slot.held = true;
@@ -2271,20 +2553,16 @@ RunResult runAudit(const RunRequest &req) {
         if (canonNamed.isEmpty()
             || !(canonNamed == canonProject
                  || canonNamed.startsWith(canonProject + QLatin1Char('/')))) {
-            r.ok = false;
-            r.code  = QStringLiteral("bad_path");
-            r.error = QStringLiteral(
+            refuse(r, QStringLiteral("bad_path"), QStringLiteral(
                 "audit_run: suppressions path \"%1\" does not resolve to an "
-                "existing file under the project root").arg(named);
+                "existing file under the project root").arg(named));
             return r;
         }
         allowlistPath = canonNamed;
     } else {
-        r.ok = false;
-        r.code  = QStringLiteral("bad_args");
-        r.error = QStringLiteral(
+        refuse(r, QStringLiteral("bad_args"), QStringLiteral(
             "audit_run: suppressions \"%1\" unrecognised; expected \"auto\", "
-            "\"none\" or \"path:<file>\"").arg(req.suppressionsMode);
+            "\"none\" or \"path:<file>\"").arg(req.suppressionsMode));
         return r;
     }
 
@@ -2308,11 +2586,9 @@ RunResult runAudit(const RunRequest &req) {
     if (wantedTools.isEmpty()) wantedTools = kAutoDetectTools();  // ANTS-3418
     for (const QString &t : wantedTools) {
         if (!kKnownTools().contains(t)) {
-            r.ok = false;
-            r.code  = QStringLiteral("bad_tool");
-            r.error = QStringLiteral(
+            refuse(r, QStringLiteral("bad_tool"), QStringLiteral(
                 "audit_run: unknown tool \"%1\"; allowed: %2")
-                    .arg(t).arg(kKnownTools().join(QLatin1String(", ")));
+                    .arg(t).arg(kKnownTools().join(QLatin1String(", "))));
             return r;
         }
     }
@@ -2337,10 +2613,8 @@ RunResult runAudit(const RunRequest &req) {
     // explicit-list check below (already guarded by !req.tools.isEmpty())
     // preserves the strict refusal for a named-but-unresolvable tool.
     if (toolAbsPath.isEmpty() && !req.tools.isEmpty()) {
-        r.ok = false;
-        r.code  = QStringLiteral("no_tools_runnable");
-        r.error = QStringLiteral(
-            "audit_run: no requested tools resolved on PATH");
+        refuse(r, QStringLiteral("no_tools_runnable"), QStringLiteral(
+            "audit_run: no requested tools resolved on PATH"));
         return r;
     }
     // When the caller passed an explicit non-empty list and ANY of
@@ -2348,167 +2622,16 @@ RunResult runAudit(const RunRequest &req) {
     if (!req.tools.isEmpty()) {
         for (const QString &t : req.tools) {
             if (!toolAbsPath.contains(t)) {
-                r.ok = false;
-                r.code  = QStringLiteral("no_tools_runnable");
-                r.error = QStringLiteral(
-                    "audit_run: requested tool \"%1\" not runnable").arg(t);
+                refuse(r, QStringLiteral("no_tools_runnable"), QStringLiteral(
+                    "audit_run: requested tool \"%1\" not runnable").arg(t));
                 return r;
             }
         }
     }
 
-    // ── ANTS-1504 — narrowing-scope resolution. A narrowing scope
-    // (since-last-run / files / branch-diff / since-tag) resolves the
-    // changed-file set and runs each file-oriented tool against only its
-    // matching files; repo-global tools (gitleaks/trivy) and tools with no
-    // matching changed file are skipped. `auto` (default) keeps the full
-    // tree. Each tool's scoped list (or the caller's `req.paths` under
-    // `auto` / a demoted full scan) flows through `perToolPaths`.
-    QHash<QString, QStringList> perToolPaths;
-    // ANTS-1870 — captured for the since-last-run findings delta below.
-    // `sinceLastRunActive` is set only for an actually-narrowed, non-empty
-    // `since-last-run`; `priorFindingsFile` is the prior run's sidecar
-    // basename (empty → no baseline → no_prior_findings).
-    QSet<QString> sinceLastRunChangedFiles;
-    bool          sinceLastRunActive = false;
-    QString       priorFindingsFile;
-    // ANTS-3605 — set true only under a narrowed (file-diff) scope with
-    // changes; gates OFF the whole-project in-process drift lanes below, which
-    // would otherwise report drift unrelated to the changed-file set (mirroring
-    // the not_file_scoped skip of repo-global tools like gitleaks).
-    bool          scopeNarrowed = false;
-    {
-        auto applyFullScan = [&](const QString &resolvedLabel) {
-            r.scopeResolved = resolvedLabel;
-            for (auto it = toolAbsPath.constBegin();
-                 it != toolAbsPath.constEnd(); ++it)
-                perToolPaths[it.key()] = req.paths;
-        };
-
-        // ── ANTS-2015 — `full`: deterministic whole-tree sweep, independent
-        // of git diff state. clazy/clang-tidy need explicit source positionals
-        // or they scan nothing, so `auto` (empty positionals) makes a full
-        // clazy run impossible on a clean tree. Hand the file-scoped tools the
-        // tracked src/ list; the repo-global scanners (gitleaks/trivy) and any
-        // tool whose language has no src/ file fall back to their own full scan
-        // via empty paths. No tool is skipped — full means full.
-        if (req.scope == QLatin1String("full")) {
-            r.scopeResolved = QStringLiteral("full");
-            const QStringList sources =
-                AuditScope::enumerateSourceFiles(canonProject);
-            r.changedFilesCount = static_cast<int>(sources.size());
-            for (auto it = toolAbsPath.constBegin();
-                 it != toolAbsPath.constEnd(); ++it) {
-                const QString &tool = it.key();
-                if (!AuditScope::isFileScopedTool(tool)) {
-                    perToolPaths[tool] = req.paths;  // gitleaks/trivy: full repo
-                    continue;
-                }
-                QStringList safe;
-                for (const QString &p : AuditScope::filterForTool(sources, tool))
-                    if (isAuditArgSafe(p)) safe.append(p);
-                perToolPaths[tool] = safe.isEmpty() ? req.paths : safe;
-            }
-        } else {
-        const QJsonObject priorLastRun =
-            AuditCache::loadManifest(canonProject).lastRun;
-        const QString priorCommit =
-            priorLastRun.value(QStringLiteral("commit")).toString();
-        const AuditScope::Resolution sr =
-            AuditScope::resolveChangedFiles(canonProject, req.scope, priorCommit);
-
-        if (!sr.narrowed) {
-            applyFullScan(req.scope.isEmpty() ? QStringLiteral("auto")
-                                              : req.scope);
-        } else if (!sr.demotedReason.isEmpty()) {
-            // Stale-cache fallback → full scan (INV-6).
-            r.scopeDemoted       = QStringLiteral("full");
-            r.scopeDemotedReason = sr.demotedReason;
-            applyFullScan(QStringLiteral("full"));
-        } else if (sr.noChanges) {
-            // Empty-changeset short-circuit (INV-7): spawn nothing, record
-            // nothing — preserve the prior anchor for the next run. Returns
-            // before the SARIF write + recordRun block below.
-            r.ok                = true;
-            r.scopeResolved     = req.scope;
-            r.scopeAnchorCommit = sr.anchorCommit;
-            r.changedFilesCount = 0;
-            r.noChanges         = true;
-            return r;
-        } else {
-            // Narrowed with changes: per-tool filtered file sets
-            // (INV-3 language filter / INV-4 global-tool skip / INV-5 path
-            // safety drop).
-            r.scopeResolved     = req.scope;
-            r.scopeAnchorCommit = sr.anchorCommit;
-            r.changedFilesCount = static_cast<int>(sr.files.size());
-            scopeNarrowed       = true;  // ANTS-3605 — skip whole-project lanes
-            // ANTS-1870 — only `since-last-run` produces a findings delta
-            // (§ 2.8 / INV-10). Capture the changed set + the prior sidecar
-            // basename for the delta computation after the run completes.
-            if (req.scope == QLatin1String("since-last-run")) {
-                sinceLastRunActive = true;
-                for (const QString &f : sr.files)
-                    sinceLastRunChangedFiles.insert(f);
-                priorFindingsFile = priorLastRun
-                    .value(QStringLiteral("findings_file")).toString();
-            }
-            QStringList toDrop;
-            for (auto it = toolAbsPath.constBegin();
-                 it != toolAbsPath.constEnd(); ++it) {
-                const QString &tool = it.key();
-                if (!AuditScope::isFileScopedTool(tool)) {
-                    r.toolsSkipped.append({tool,
-                        QStringLiteral("not_file_scoped")});
-                    toDrop.append(tool);
-                    continue;
-                }
-                QStringList safe;
-                for (const QString &p : AuditScope::filterForTool(sr.files, tool))
-                    if (isAuditArgSafe(p)) safe.append(p);
-                if (safe.isEmpty()) {
-                    r.toolsSkipped.append({tool,
-                        QStringLiteral("no_changed_files_for_languages")});
-                    toDrop.append(tool);
-                    continue;
-                }
-                perToolPaths[tool] = safe;
-            }
-            for (const QString &t : toDrop) toolAbsPath.remove(t);
-        }
-        }
-    }
-
-    // ── ANTS-3710 — apply exclude_paths to every positional file list, in
-    // one place, after whichever scope branch built it. Prefix match on the
-    // project-relative path, at a path-segment boundary so "src/vendor" does
-    // not also swallow "src/vendorish.c". The whole-tree half of the feature
-    // rides on each tool's native flag (toolExclusionArgs); this half is what
-    // covers a project that HAS a positional list.
-    if (!req.excludePaths.isEmpty()) {
-        const auto excluded = [&](const QString &p) {
-            for (const QString &x : req.excludePaths) {
-                const QString pre = x.endsWith(QLatin1Char('/')) ? x
-                                                                 : x + QLatin1Char('/');
-                if (p == x || p.startsWith(pre)) return true;
-            }
-            return false;
-        };
-        for (auto it = perToolPaths.begin(); it != perToolPaths.end(); ++it) {
-            QStringList kept;
-            for (const QString &p : it.value())
-                if (!excluded(p)) kept.append(p);
-            it.value() = kept;
-        }
-        r.excludePathsApplied = req.excludePaths;
-        // Name the tools in THIS run that cannot honour it, so a partial
-        // exclusion is visible rather than assumed complete.
-        for (auto it = toolAbsPath.constBegin();
-             it != toolAbsPath.constEnd(); ++it)
-            if (!kExclusionCapableTools().contains(it.key()))
-                r.excludePathsIgnoredBy.append(it.key());
-        r.excludePathsIgnoredBy.sort();
-    }
+    ScopePlan scope;
+    if (!resolveScope(req, canonProject, toolAbsPath, scope, r)) return r;
+    applyExcludePaths(req, toolAbsPath, scope.perToolPaths, r);
 
     // ── ANTS-1446 — compile_commands.json include-path validation.
     // Only relevant when clazy or clang-tidy is in the resolved tool
@@ -2523,11 +2646,9 @@ RunResult runAudit(const RunRequest &req) {
     if (usesCompileCommands) {
         QString reason;
         if (!validateCompileCommandsImpl(canonProject, &reason)) {
-            r.ok    = false;
-            r.code  = QStringLiteral("compile_commands_escape");
-            r.error = QStringLiteral(
+            refuse(r, QStringLiteral("compile_commands_escape"), QStringLiteral(
                 "audit_run: compile_commands.json validation failed: %1")
-                    .arg(reason);
+                    .arg(reason));
             return r;
         }
     }
@@ -2551,7 +2672,7 @@ RunResult runAudit(const RunRequest &req) {
     // in the cap like tools, so a sweep with no external tool gives them a
     // budget.
     const QList<internal::InProcessLane> inProcess =
-        (req.tools.isEmpty() && !scopeNarrowed) ? inProcessLanes()
+        (req.tools.isEmpty() && !scope.scopeNarrowed) ? inProcessLanes()
                                                : QList<internal::InProcessLane>{};
     const int perToolMs = req.capPerToolSeconds * 1000;
     const int aggCapMs  = std::min(
@@ -2588,8 +2709,8 @@ RunResult runAudit(const RunRequest &req) {
         tr.elapsedMs  = elapsedMs;
         // ANTS-4371 — the coverage evidence, read from the same list that was
         // handed to the process as positionals. No new parsing.
-        tr.pathsGiven   = perToolPaths.value(tool).size();
-        tr.wholeProject = perToolPaths.value(tool).isEmpty();
+        tr.pathsGiven   = scope.perToolPaths.value(tool).size();
+        tr.wholeProject = scope.perToolPaths.value(tool).isEmpty();
         // ANTS-2188 — scrub well-known secret shapes from the raw tool
         // output at this single capture point, before it reaches either
         // sink: rawByTool (→ the SARIF notification text written to
@@ -2738,7 +2859,7 @@ RunResult runAudit(const RunRequest &req) {
         ProcessGroup::startsOwnGroup(*proc);
         proc->start(it.value(),
                     toolArgv(tool, canonProject,
-                             perToolPaths.value(tool), req.checks,
+                             scope.perToolPaths.value(tool), req.checks,
                              gitleaksConfig, req.excludePaths));
     }
 
@@ -2866,13 +2987,13 @@ RunResult runAudit(const RunRequest &req) {
         for (const QJsonValue &v : fullFindingsByTool.value(it.key()))
             currentFindings.append(v);
 
-    QJsonArray carriedForwardForSarif;   // priorOnUntouched, tagged in SARIF
-    QJsonArray mergedForRecord = currentFindings;  // default: auto/full = current
-    bool       mergedTruncated = anyFindingsTruncated;
-    if (sinceLastRunActive) {
-        const AuditCache::SidecarLoad prior =
-            AuditCache::readFindingsSidecar(canonProject, priorFindingsFile);
-        if (priorFindingsFile.isEmpty()) {
+    RecordedFindings recorded;
+    recorded.mergedForRecord = currentFindings;  // default: auto/full = current
+    recorded.mergedTruncated = anyFindingsTruncated;
+    if (scope.sinceLastRunActive) {
+        const AuditCache::SidecarLoad prior = AuditCache::readFindingsSidecar(
+            canonProject, scope.priorFindingsFile);
+        if (scope.priorFindingsFile.isEmpty()) {
             r.deltaUnavailableReason = QStringLiteral("no_prior_findings");
         } else if (!prior.valid) {
             r.deltaUnavailableReason =
@@ -2881,9 +3002,9 @@ RunResult runAudit(const RunRequest &req) {
             // ANTS-6540 — a tool skipped under narrowing (gitleaks, trivy)
             // or one that failed re-checked nothing; its prior findings stay.
             const AuditDelta::DeltaResult d = AuditDelta::computeDelta(
-                currentFindings, prior.findings, sinceLastRunChangedFiles,
-                internal::toolsRanOk(r.byTool));
-            mergedForRecord = d.merged;
+                currentFindings, prior.findings,
+                scope.sinceLastRunChangedFiles, internal::toolsRanOk(r.byTool));
+            recorded.mergedForRecord = d.merged;
             // carriedForward ∖ current = priorOnUntouched ∖ current (the
             // current ∩ prior half is already emitted by the per-tool SARIF
             // runs, so only the untouched-file findings need tagging).
@@ -2893,9 +3014,9 @@ RunResult runAudit(const RunRequest &req) {
             for (const QJsonValue &v : d.carriedForward)
                 if (!curFps.contains(
                         v.toObject().value(QStringLiteral("fp")).toString()))
-                    carriedForwardForSarif.append(v);
-            mergedTruncated = anyFindingsTruncated || prior.truncated
-                || mergedForRecord.size() > kSarifFindingsMax;
+                    recorded.carriedForwardForSarif.append(v);
+            recorded.mergedTruncated = anyFindingsTruncated || prior.truncated
+                || recorded.mergedForRecord.size() > kSarifFindingsMax;
             if (prior.truncated || anyFindingsTruncated) {
                 // Truncated either side → the diff would mis-report; suppress
                 // the envelope delta but still write the merged SARIF/sidecar.
@@ -2916,143 +3037,16 @@ RunResult runAudit(const RunRequest &req) {
     }
     // ANTS-5085 — ANTS-1870 § 2.5 bounds the set the sidecar records,
     // current findings first; it was written whole. A cut marks it truncated.
-    if (AuditDelta::capRecordedFindings(mergedForRecord, kSarifFindingsMax))
-        mergedTruncated = true;
-    r.findingsTruncated = mergedTruncated;
+    if (AuditDelta::capRecordedFindings(recorded.mergedForRecord,
+                                        kSarifFindingsMax))
+        recorded.mergedTruncated = true;
+    r.findingsTruncated = recorded.mergedTruncated;
 
     applyBaseline(canonProject, req, fullFindingsByTool, shownFindingsByTool,
                   anyFindingsTruncated, r);
 
-    // ── INV-12 / SARIF + optional HTML.
-    //
-    // ANTS-1555 — route through `<root>/.audit_cache/` when the
-    // project root is writeable; fall back to /tmp on failure so
-    // `sarifPath` stays meaningful for callers. `cachePath` is set
-    // only on the cache-hit branch.
-    const QStringList formats = req.formats.isEmpty()
-        ? QStringList{QStringLiteral("sarif")} : req.formats;
-
-    const AuditCache::IsoNow iso     = AuditCache::isoNow();
-    const AuditCache::GitInfo gitI   = AuditCache::gitInfo(canonProject);
-
-    bool sarifDocTruncated = false;   // ANTS-3629 — cross-tool shed flag
-    QString cacheSarifAbs;
-    QString cacheHtmlAbs;
-    if (formats.contains(QLatin1String("sarif"))) {
-        cacheSarifAbs = AuditCache::sarifPathFor(canonProject,
-                                                 iso.forFilename,
-                                                 gitI.shortSha);
-        if (!cacheSarifAbs.isEmpty()
-         && ensurePrivateDir(AuditCache::cacheDir(canonProject))  // ANTS-1988 — 0700
-         && writeSarif(cacheSarifAbs, r.byTool, rawByTool, req.projectRoot,
-                       fullFindingsByTool, carriedForwardForSarif,
-                       &sarifDocTruncated)) {
-            r.sarifPath = cacheSarifAbs;
-            r.cachePath = cacheSarifAbs;
-        } else {
-            // Fall back to legacy /tmp path so callers depending on
-            // sarifPath still work even on read-only roots.
-            cacheSarifAbs.clear();
-            const QString sp = allocSarifPath();
-            if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot,
-                           fullFindingsByTool, carriedForwardForSarif,
-                           &sarifDocTruncated)) {
-                r.sarifPath = sp;
-            }
-        }
-        // ANTS-3629 — a cross-tool shed is truncation too. Without this,
-        // N tools each individually under the per-tool cap could sum past
-        // the document ceiling and the envelope would still report
-        // findings_truncated:false.
-        if (sarifDocTruncated) r.findingsTruncated = true;
-    }
-    if (formats.contains(QLatin1String("html"))) {
-        QString hp;
-        if (!r.cachePath.isEmpty()) {
-            cacheHtmlAbs = AuditCache::htmlPathFor(canonProject,
-                                                   iso.forFilename,
-                                                   gitI.shortSha);
-            hp = cacheHtmlAbs;
-        } else if (!r.sarifPath.isEmpty()) {
-            // /tmp fallback: mirror the sibling .html naming.
-            hp = r.sarifPath;
-            hp.chop(static_cast<int>(strlen(".sarif")));
-            hp += QStringLiteral(".html");
-        } else {
-            // No SARIF + no cache: emit HTML alongside a randomised path so
-            // an attacker can't pre-create a symlink at a known location.
-            // ANTS-3614 — this branch allocates a fallback without going
-            // through allocSarifPath(), so trigger the reaper here too.
-            reapFallbackArtifactsOnce();
-            const QString rand =
-                QUuid::createUuid().toRfc4122().toHex().left(16);
-            const QString cacheRoot = QStandardPaths::writableLocation(
-                QStandardPaths::CacheLocation);
-            if (!cacheRoot.isEmpty()
-             && QDir().mkpath(cacheRoot + QLatin1String("/audit"))) {
-                hp = QStringLiteral("%1/audit/audit-%2-%3.html")
-                    .arg(cacheRoot, sessionIdToken(), rand);
-            } else {
-                hp = QStringLiteral("/tmp/audit-%1-%2.html")
-                    .arg(sessionIdToken(), rand);
-            }
-        }
-        if (writeHtml(hp, r.byTool)) r.htmlPath = hp;
-    }
-
-    // ── ANTS-1555 / record the run in `.audit_cache/index.json`.
-    // Only fires when the cache write succeeded — fallback /tmp
-    // writes don't touch the manifest. priorRun is filled by
-    // recordRun() from the manifest's pre-existing last_run.
-    if (!r.cachePath.isEmpty()) {
-        QJsonObject lastRunJson;
-        lastRunJson[QStringLiteral("iso_timestamp")] = iso.forManifest;
-        lastRunJson[QStringLiteral("commit")]        = gitI.shortSha;
-        if (!gitI.branch.isEmpty()) {
-            lastRunJson[QStringLiteral("branch")] = gitI.branch;
-        }
-        lastRunJson[QStringLiteral("scope")] =
-            req.scope.isEmpty() ? QStringLiteral("auto") : req.scope;
-        // Store sarif/html as basenames inside the manifest; the
-        // reaper resolves them to absolute paths relative to
-        // .audit_cache/ (matches the "self-contained per-project
-        // dir" invariant).
-        lastRunJson[QStringLiteral("sarif")] =
-            QFileInfo(cacheSarifAbs).fileName();
-        if (!cacheHtmlAbs.isEmpty() && !r.htmlPath.isEmpty()
-            && r.htmlPath == cacheHtmlAbs) {
-            lastRunJson[QStringLiteral("html")] =
-                QFileInfo(cacheHtmlAbs).fileName();
-        }
-        lastRunJson[QStringLiteral("elapsed_total_ms")] =
-            static_cast<double>(elapsed.elapsed());
-        lastRunJson[QStringLiteral("total_raw")]        = r.totalRaw;
-        lastRunJson[QStringLiteral("total_actionable")] = r.totalActionable;
-        QJsonObject byToolJson;
-        for (auto it = r.byTool.constBegin();
-             it != r.byTool.constEnd(); ++it) {
-            QJsonObject t;
-            t[QStringLiteral("elapsed_ms")] =
-                static_cast<double>(it->elapsedMs);
-            t[QStringLiteral("raw_count")]  = it->rawCount;
-            t[QStringLiteral("status")]     = it->status;
-            byToolJson[it.key()] = t;
-        }
-        lastRunJson[QStringLiteral("by_tool")] = byToolJson;
-        // ANTS-1870 — the sidecar's `truncated` flag mirrors this; a later
-        // clean run records false and self-heals the baseline (§ 2.6).
-        lastRunJson[QStringLiteral("findings_truncated")] = mergedTruncated;
-
-        QJsonObject prior;
-        // ANTS-1870 — persist the whole-tree merged findings as the next
-        // sidecar baseline (current ∪ priorOnUntouched under since-last-run;
-        // the current set under auto/full), so the next since-last-run can
-        // diff (§ 2.3). A run with no findings writes no sidecar, and the
-        // next since-last-run then reports no_prior_findings.
-        AuditCache::recordRun(canonProject, lastRunJson, &prior,
-                              mergedForRecord);
-        r.priorRun = std::move(prior);
-    }
+    writeArtifacts(req, canonProject, rawByTool, fullFindingsByTool, recorded,
+                   elapsed, r);
 
     r.elapsedTotalMs = elapsed.elapsed();
     return r;

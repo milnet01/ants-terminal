@@ -108250,7 +108250,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L08-F5).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6200] **Split AuditRunner::runAudit into argument validation, scope resolution and artifact writing.**
+- ✅ [ANTS-6200] **Split AuditRunner::runAudit into argument validation, scope resolution and artifact writing.**
   From ANTS-6117 (L08 MEDIUM F8). runAudit's scope block ends in an
   unindented else and bare closing braces, and its lambdas capture many
   locals by reference. Not done in the lane pass: audit_run_scoped_check,
@@ -108262,6 +108262,10 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 610
   `src/auditrunner.cpp:2199`. Details: docs/reviews/close-findings-2026-11-06.md.
+  runAudit now calls validateRequest, resolveScope (+ applyExcludePaths)
+  and writeArtifacts; refusals share one refuse() helper. The
+  scoped_check, partial_envelope and delta INV-11 scrapes read the
+  helper that holds their code.
   **Layman:** The headless audit's main routine is very long, with braces that are hard to match; splitting it into named steps makes it followable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L08-F8).

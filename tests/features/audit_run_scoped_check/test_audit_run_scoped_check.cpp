@@ -67,21 +67,25 @@ TEST(AuditRunScopedCheck, RunAuditValidatesPathsAndChecks) {
     const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
-    // INV-5 + INV-6 — runAudit walks req.paths + req.checks and refuses
-    // with code:"bad_args" on unsafe entries or tool/check mismatch.
-    // ANTS-3681 — brace-matched body; the old 6 KB window saw about an
-    // eighth of it.
-    const std::string fnRegion =
+    // INV-5 + INV-6 — runAudit's argument check walks req.paths +
+    // req.checks and refuses with code:"bad_args" on unsafe entries or
+    // tool/check mismatch.
+    const std::string runBody =
         ants_test::slurpFunctionBody(src, "runAudit(const RunRequest");
-    ASSERT_FALSE(fnRegion.empty()) << "runAudit body not found";
+    ASSERT_FALSE(runBody.empty()) << "runAudit body not found";
+    EXPECT_TRUE(contains(runBody, "validateRequest(req, canonProject, r)"))
+        << "runAudit must check its arguments through validateRequest";
+    const std::string fnRegion = ants_test::slurpFunctionBody(
+        src, "bool validateRequest(const RunRequest");
+    ASSERT_FALSE(fnRegion.empty()) << "validateRequest body not found";
     EXPECT_TRUE(contains(fnRegion, "for (const QString &p : req.paths)"))
-        << "runAudit must iterate req.paths";
+        << "validateRequest must iterate req.paths";
     EXPECT_TRUE(contains(fnRegion, "for (const QString &c : req.checks)"))
-        << "runAudit must iterate req.checks";
+        << "validateRequest must iterate req.checks";
     EXPECT_TRUE(contains(fnRegion, "isAuditCheckSafe(c)"))
-        << "runAudit must validate each check entry";
+        << "validateRequest must validate each check entry";
     EXPECT_TRUE(contains(fnRegion, "toolHonoursChecks(t)"))
-        << "runAudit must enforce the tool/check compatibility gate";
+        << "validateRequest must enforce the tool/check compatibility gate";
 }
 
 TEST(AuditRunScopedCheck, ToolArgvBuildsScopedClangTidyInvocation) {

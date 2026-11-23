@@ -114,12 +114,18 @@ TEST(AuditRunDelta, Inv11RecordedFindingsCapped) {
 }
 
 TEST(AuditRunDelta, Inv11RunnerCapsBeforeRecording) {
-    const QString src = QString::fromStdString(
-        ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH));
-    const int cap = src.indexOf(QStringLiteral("capRecordedFindings(mergedForRecord"));
-    const int record = src.indexOf(QStringLiteral("AuditCache::recordRun(canonProject"));
-    ASSERT_GE(record, 0) << "recordRun call not found";
-    ASSERT_GE(cap, 0) << "the recorded sidecar is written uncapped";
+    // runAudit caps the set, then hands it to writeArtifacts, which records.
+    const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string writer =
+        ants_test::slurpFunctionBody(src, "void writeArtifacts(");
+    EXPECT_NE(writer.find("AuditCache::recordRun(canonProject"),
+              std::string::npos) << "recordRun call not found";
+    const std::string run =
+        ants_test::slurpFunctionBody(src, "RunResult runAudit(const RunRequest");
+    const auto cap = run.find("capRecordedFindings(recorded.mergedForRecord");
+    const auto record = run.find("writeArtifacts(");
+    ASSERT_NE(record, std::string::npos) << "writeArtifacts call not found";
+    ASSERT_NE(cap, std::string::npos) << "the recorded sidecar is written uncapped";
     EXPECT_LT(cap, record);
 }
 

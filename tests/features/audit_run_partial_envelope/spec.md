@@ -42,12 +42,14 @@ descriptor advertises them.
 
 ### INV-4 — SARIF is written before the reply is serialised
 
-`writeSarif` is invoked inside `runAudit` (which returns the struct the
-caller then serialises) — verified by source order so the
+`writeSarif` is invoked inside `runAudit`, through `writeArtifacts`
+(`runAudit` returns the struct the caller then serialises) — verified by
+source order so the
 "artifact-before-reply" guarantee can't silently regress.
 
 ## Test plan
 
 INV-1/INV-2 are behavioural over the pure helper (synthetic ToolResult
 maps). INV-3/INV-4 are source-anchored against mainwindow.cpp /
-auditrunner.cpp (the writeSarif call precedes `return r`).
+auditrunner.cpp (`writeArtifacts` holds the writeSarif call, and
+`runAudit` calls it before its last `return r`).

@@ -81,11 +81,19 @@ TEST(AuditRunPartialEnvelope, Inv3EnvelopeSerialisesPartial) {
 // reply still leaves a recoverable artifact. Source-order guarantee.
 TEST(AuditRunPartialEnvelope, Inv4SarifWrittenBeforeReturn) {
     const std::string rn = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
-    const auto writePos = rn.find("writeSarif(cacheSarifAbs");
+    const std::string writer =
+        ants_test::slurpFunctionBody(rn, "void writeArtifacts(");
+    ASSERT_FALSE(writer.empty()) << "writeArtifacts body not found";
+    EXPECT_TRUE(contains(writer, "writeSarif(cacheSarifAbs"))
+        << "INV-4: writeArtifacts writes the SARIF";
+    // runAudit's final `return r;` must come AFTER the artifact write.
+    const std::string run =
+        ants_test::slurpFunctionBody(rn, "RunResult runAudit(const RunRequest");
+    ASSERT_FALSE(run.empty()) << "runAudit body not found";
+    const auto writePos = run.find("writeArtifacts(");
     ASSERT_NE(writePos, std::string::npos)
-        << "INV-4: writeSarif call present in runAudit";
-    // The final `return r;` of runAudit must come AFTER the SARIF write.
-    const auto retPos = rn.rfind("return r;");
+        << "INV-4: runAudit calls writeArtifacts";
+    const auto retPos = run.rfind("return r;");
     ASSERT_NE(retPos, std::string::npos);
     EXPECT_LT(writePos, retPos)
         << "INV-4: SARIF is written before runAudit returns (artifact "
