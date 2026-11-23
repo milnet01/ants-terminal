@@ -33,12 +33,6 @@ struct RoadmapExport::StoreHandle {
 
 namespace {
 
-// § 7.3 of roadmap-data-model.md, in its DECLARED order — which is what § 2.4
-// pins the `legend` record order to, not the alphabetical order the other rows
-// use. The store's CHECK constraint carries the same five values.
-constexpr const char *kStatusOrder[] = {"planned", "in-progress", "shipped",
-                                        "considered", "dropped"};
-
 // The item columns held as JSON text, in the column order both the export's
 // SELECT and the rebuild's INSERT list them.
 constexpr const char *kJsonCols[] = {"lanes", "evidence", "extras", "provenance"};
@@ -362,10 +356,12 @@ bool writeLegend(const QString &legendText, QIODevice *out, QString *error) {
         return false;
     const QJsonObject legend = v.toObject();
     // § 2.4 — a project with no legend emits ZERO legend lines; the rebuild
-    // restores {}, which is the store's default.
+    // restores {}, which is the store's default. Records follow § 7.3's
+    // DECLARED status order (RoadmapParse::kStatuses), which § 2.4 pins here
+    // in place of the alphabetical order the other rows use.
     int emitted = 0;
-    for (const char *status : kStatusOrder) {
-        const QString key = QLatin1String(status);
+    for (const RoadmapParse::LifecycleStatus &st : RoadmapParse::kStatuses) {
+        const QString key = QLatin1String(st.word);
         if (!legend.contains(key))
             continue;
         QJsonObject o;

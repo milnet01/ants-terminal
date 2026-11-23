@@ -44,6 +44,27 @@ inline constexpr const char *kEmojiConsidered = "💭";
 // ANTS-4977 — closed, deliberately not done. U+1F6AB, F0 9F 9A AB.
 inline constexpr const char *kEmojiDropped    = "🚫";
 
+// ANTS-6215 — the five lifecycle statuses, in roadmap-data-model.md § 7.3's
+// declared order, which is the order a legend is rendered and exported in.
+// Each carries its § 3.3 marker, the Status keyword a pass block spells it
+// with (ANTS-2126), and whether § 3.4 counts it open. A new status is added
+// here; every table keyed by status reads this one. The store's SQL cannot:
+// item.status's CHECK constraint in roadmapstore.cpp lists the same words (so
+// a new one is a schema change), and kOpenStatusIn there lists the open ones.
+struct LifecycleStatus {
+    const char *word;
+    const char *glyph;
+    const char *passKeyword;
+    bool open;
+};
+inline constexpr LifecycleStatus kStatuses[] = {
+    {"planned",     kEmojiPlanned,    "todo",        true},
+    {"in-progress", kEmojiInProgress, "in-progress", true},
+    {"shipped",     kEmojiDone,       "done",        false},
+    {"considered",  kEmojiConsidered, "deferred",    true},
+    {"dropped",     kEmojiDropped,    "dropped",     false},
+};
+
 // ANTS-3771 — a project's DECLARED id format, as read from
 // .ants/project.json's `id_format` (docs/specs/ANTS-3771-id-format-declaration.md).
 // Default-constructed means UNDECLARED, which is every project that ships no

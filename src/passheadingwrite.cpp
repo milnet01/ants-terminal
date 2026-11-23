@@ -101,35 +101,20 @@ int locatePass(const QStringList &lines, const QString &locatorId,
     }
     return -1;
 }
-
-// The five statuses as a pass block spells them: the roadmap status, the
-// Status keyword, and its glyph. ANTS-4977 added `dropped`. A new status
-// goes here and nowhere else in this file.
-struct PassStatus {
-    const char *roadmapStatus;
-    const char *keyword;
-    const char *glyph;
-};
-constexpr PassStatus kPassStatuses[] = {
-    {"planned",     "todo",        RoadmapParse::kEmojiPlanned},
-    {"in-progress", "in-progress", RoadmapParse::kEmojiInProgress},
-    {"shipped",     "done",        RoadmapParse::kEmojiDone},
-    {"considered",  "deferred",    RoadmapParse::kEmojiConsidered},
-    {"dropped",     "dropped",     RoadmapParse::kEmojiDropped},
-};
 }  // namespace
 
+// A pass block's Status keyword and glyph come from RoadmapParse::kStatuses.
 QString passStatusKeyword(const QString &roadmapStatus) {
-    for (const PassStatus &p : kPassStatuses)
-        if (roadmapStatus == QLatin1String(p.roadmapStatus))
-            return QString::fromLatin1(p.keyword);
+    for (const RoadmapParse::LifecycleStatus &st : RoadmapParse::kStatuses)
+        if (roadmapStatus == QLatin1String(st.word))
+            return QString::fromLatin1(st.passKeyword);
     return QString();
 }
 
 QString passStatusEmoji(const QString &keyword) {
-    for (const PassStatus &p : kPassStatuses)
-        if (keyword == QLatin1String(p.keyword))
-            return QString::fromUtf8(p.glyph);
+    for (const RoadmapParse::LifecycleStatus &st : RoadmapParse::kStatuses)
+        if (keyword == QLatin1String(st.passKeyword))
+            return QString::fromUtf8(st.glyph);
     return QString();
 }
 
@@ -177,8 +162,8 @@ bool rewriteStatusWord(QStringList &lines, int from, const QString &keyword,
         // A leading run that is not a status glyph (`**`) is the author's
         // decoration: kept, never replaced by an emoji.
         bool glyph = false;
-        for (const PassStatus &p : kPassStatuses)
-            glyph = glyph || lead == QString::fromUtf8(p.glyph);
+        for (const RoadmapParse::LifecycleStatus &st : RoadmapParse::kStatuses)
+            glyph = glyph || lead == QString::fromUtf8(st.glyph);
         if (word.isEmpty() && !glyph) continue;   // content-free: the reader skips it too
         const qsizetype gap = vm.capturedStart(2) - lead.size();
         lines[j] = pm.captured(1)

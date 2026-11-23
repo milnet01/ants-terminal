@@ -41,21 +41,18 @@ bool fail(QString *error, const QString &msg) {
 
 }  // namespace  (ANTS-3793 — emojiFor is exported; see roadmaprender.h)
 
-// roadmap-format.md § 3.3's five status emojis. ANTS-4977 gave `dropped` its
-// 🚫, so a closed-not-done item is published rather than hidden.
 QString emojiFor(const QString &status) {
-    if (status == QLatin1String("shipped"))     return QString::fromUtf8(RoadmapParse::kEmojiDone);
-    if (status == QLatin1String("in-progress")) return QString::fromUtf8(RoadmapParse::kEmojiInProgress);
-    if (status == QLatin1String("considered"))  return QString::fromUtf8(RoadmapParse::kEmojiConsidered);
-    if (status == QLatin1String("planned"))     return QString::fromUtf8(RoadmapParse::kEmojiPlanned);
-    if (status == QLatin1String("dropped"))     return QString::fromUtf8(RoadmapParse::kEmojiDropped);
+    for (const RoadmapParse::LifecycleStatus &st : RoadmapParse::kStatuses)
+        if (status == QLatin1String(st.word))
+            return QString::fromUtf8(st.glyph);
     return QString();
 }
 
 bool isOpen(const QString &status) {
-    // roadmap-data-model.md § 3.4, exactly.
-    return status == QLatin1String("planned") || status == QLatin1String("in-progress")
-        || status == QLatin1String("considered");
+    for (const RoadmapParse::LifecycleStatus &st : RoadmapParse::kStatuses)
+        if (status == QLatin1String(st.word))
+            return st.open;
+    return false;
 }
 
 namespace {
@@ -316,28 +313,27 @@ namespace {
 // The status legend is stored STRUCTURED (roadmap-data-model.md § 5.1 — status
 // value → that project's wording), so rendering it is the inverse of the
 // migration's parse, not a verbatim replay: emitting `project.legend`'s JSON
-// into markdown would publish a JSON object. Key order is the export's
-// kStatusOrder, so two renders of one store agree (INV-7) and a re-load
-// reproduces the same object (INV-1).
+// into markdown would publish a JSON object. Key order is
+// RoadmapParse::kStatuses', which the export also uses, so two renders of one
+// store agree (INV-7) and a re-load reproduces the same object (INV-1).
 //
 // ANTS-4977 — no legend migrated before 🚫 existed holds `dropped`, so a
 // stored legend that lacks it gets a default row. A project with no stored
 // legend still renders none.
 QString renderLegend(const QJsonObject &legend) {
-    static const char *const kStatusOrder[] = {"planned", "in-progress", "shipped",
-                                               "considered", "dropped"};
     QStringList lines;
     if (legend.isEmpty())
         return QString();
-    for (const char *status : kStatusOrder) {
-        const QString key = QLatin1String(status);
+    for (const RoadmapParse::LifecycleStatus &st : RoadmapParse::kStatuses) {
+        const QString key = QLatin1String(st.word);
+        const QString glyph = QString::fromUtf8(st.glyph);
         if (!legend.contains(key)) {
             if (key == QLatin1String("dropped"))
-                lines.append(QStringLiteral("- ") + emojiFor(key)
+                lines.append(QStringLiteral("- ") + glyph
                              + QStringLiteral(" Dropped (closed, not done)"));
             continue;
         }
-        lines.append(QStringLiteral("- ") + emojiFor(key) + QLatin1Char(' ')
+        lines.append(QStringLiteral("- ") + glyph + QLatin1Char(' ')
                      + legend.value(key).toString());
     }
     return lines.join(QLatin1Char('\n'));
