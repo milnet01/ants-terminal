@@ -347,6 +347,25 @@ private:
     void renderResults();
     void finishRun();   // shared end of a finished or cancelled run
 
+    // ANTS-6195 — renderResults' parts, in the order it runs them.
+    struct SummaryCounts {
+        int bySev[5] = {0, 0, 0, 0, 0};
+        int total = 0;       // counted findings, per-check overflow included
+        int fresh = 0;       // not in the baseline
+        int suppressed = 0;  // hidden by this run's suppressions (ANTS-6383)
+    };
+    void enrichFindings();   // cross-tool flag, snippet, blame, confidence
+    SummaryCounts countFindings() const;
+    bool findingIsNew(const Finding &f) const;
+    QString summaryBannerHtml(const SummaryCounts &c, qsizetype checkCount) const;
+    QString trendLineHtml(const SummaryCounts &c) const;
+    QString noiseFloorLineHtml(const SummaryCounts &c) const;
+    void renderCheckSection(const CheckResult &r);
+    QString findingRowHtml(const Finding &f) const;
+    // The previous run's snapshot, read by finishRun before it saves this
+    // run's, so a re-render never compares the run with itself.
+    TrendSnapshot m_trendPrev;
+
     // Baseline support — store last-run findings as JSON at
     //   <projectPath>/.audit_cache/baseline.json
     // On next run, highlight new findings (not present in baseline).
@@ -466,11 +485,8 @@ private:
     // stand down while it is set.
     QString m_recentScopeError;
 
-    // 0.7.55 (2026-04-27 indie-review) — guard against duplicate trend
-    // snapshots. renderResults() runs on every UI filter click, but the
-    // snapshot append must only happen once per audit run. Reset to
-    // false in runAudit(); flipped to true on the first authoritative
-    // render in renderResults().
+    // True once this run's trend snapshot is saved, or must not be: reset
+    // in runAudit(), set by cancelAudit() (ANTS-1136) and by finishRun().
     bool m_snapshotPersisted = false;
 
     // Filter findings whose source location lives inside a comment or string

@@ -24,7 +24,8 @@
   `CheckResult` is unaffected.
 - INV-6: the shift runs once per completed audit run, never once per
   render.
-  - INV-6a: `AuditDialog::renderResults` does not call
+  - INV-6a: neither `AuditDialog::renderResults` nor its
+    `AuditDialog::enrichFindings` pass calls
     `AuditEngine::applyCorroborationShift`. `renderResults` runs on
     every filter keystroke, pill toggle, sort toggle and AI verdict; the
     shift has no repeat guard, so calling it there drifts severity down

@@ -599,6 +599,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Audit window's trend line keeps comparing with the previous run after a filter or pill change** (ANTS-6195)
+  The trend snapshot is read and saved once, when a run ends, instead of
+  during each redraw of the results list.
+
 - **roadmap_log op:"append_batch" cleans a malformed id_prefix before quoting it in the refusal, as op:"append" does: control characters become ?, and the quote stops at 64 characters.** (ANTS-5796)
 
 - **A `roadmap_log` dry run on a project with no `.roadmap-counter` previews the same id the real append hands out, and honours `id_hint`.** (ANTS-5457)

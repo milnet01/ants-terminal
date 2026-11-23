@@ -216,6 +216,15 @@ TEST(AuditCorroborationShift, Inv6aRenderResultsDoesNotCallTheShift) {
            "renderResults() runs on every filter keystroke, pill toggle, "
            "sort toggle and AI verdict, so a shift with no repeat guard "
            "re-applies there and drifts severity further each render.";
+
+    // ANTS-6195 — renderResults' enrichment pass rewrites findings in place.
+    const std::string enrichBody = ants_test::slurpFunctionBody(
+        stripped, "void AuditDialog::enrichFindings(");
+    ASSERT_FALSE(enrichBody.empty())
+        << "precondition: enrichFindings() body not located";
+    EXPECT_EQ(enrichBody.find("applyCorroborationShift("), std::string::npos)
+        << "INV-6a: enrichFindings(), which every render runs, calls "
+           "applyCorroborationShift";
 }
 
 TEST(AuditCorroborationShift, Inv6bRunCompletionShiftsBeforeFirstRender) {

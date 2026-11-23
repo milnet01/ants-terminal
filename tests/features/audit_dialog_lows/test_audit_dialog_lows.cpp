@@ -135,3 +135,26 @@ TEST(AuditDialogLows, SettingsComeFromTheLiveConfig) {
     EXPECT_FALSE(m.hasMatch()) << "a fresh Config local: " << m.captured().toStdString();
     EXPECT_TRUE(src.contains(QStringLiteral("Config &AuditDialog::liveConfig()")));
 }
+
+// INV-12 — ANTS-6195
+TEST(AuditDialogLows, TrendSnapshotIsTakenOncePerRun) {
+    const QString src = QString::fromStdString(
+        ants_test::stripComments(ants_test::slurpAuditDialog()));
+    const QString render = between(src,
+        QStringLiteral("void AuditDialog::renderResults() {"), QStringLiteral("\n}\n"));
+    ASSERT_FALSE(render.isEmpty()) << "renderResults not found";
+    EXPECT_FALSE(render.contains(QStringLiteral("loadLastSnapshot(")))
+        << "a re-render after the run's own save compares the run with itself";
+    EXPECT_FALSE(render.contains(QStringLiteral("appendSnapshot(")))
+        << "the render writes trend.json";
+    const QString finish = between(src,
+        QStringLiteral("void AuditDialog::finishRun() {"), QStringLiteral("\n}\n"));
+    ASSERT_FALSE(finish.isEmpty()) << "finishRun not found";
+    const qsizetype load = finish.indexOf(QStringLiteral("loadLastSnapshot("));
+    const qsizetype save = finish.indexOf(QStringLiteral("appendSnapshot("));
+    const qsizetype draw = finish.indexOf(QStringLiteral("renderResults()"));
+    ASSERT_GE(load, 0) << "finishRun does not read the previous snapshot";
+    ASSERT_GE(save, 0) << "finishRun does not save this run's snapshot";
+    EXPECT_LT(load, save) << "the previous snapshot is read after this run's is saved";
+    EXPECT_LT(load, draw) << "the run's first render has no previous snapshot to compare with";
+}

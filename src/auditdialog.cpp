@@ -2705,6 +2705,19 @@ void AuditDialog::finishRun() {
     if (m_qualityTracker)
         for (const QString &id : m_qualityTracker->noisyRuleIds()) noisy.insert(id);
     AuditEngine::applyCorroborationShiftAcross(m_completedResults, noisy);
+    // ANTS-6195 — the trend line's previous snapshot, read once per run and
+    // before this run's is saved. A cancelled run (ANTS-1136) or a New-only
+    // view saves nothing: neither is a full count.
+    m_trendPrev = loadLastSnapshot();
+    if (!m_snapshotPersisted && !m_showNewOnly) {
+        const SummaryCounts c = countFindings();
+        TrendSnapshot s;
+        s.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
+        s.total = c.total;
+        std::copy(std::begin(c.bySev), std::end(c.bySev), s.bySev);
+        appendSnapshot(s);
+    }
+    m_snapshotPersisted = true;
     renderResults();
     m_runBtn->setEnabled(true);
     if (m_cancelBtn)  m_cancelBtn->setVisible(false);
@@ -3077,28 +3090,72 @@ Finding AuditDialog::findingForKey(const QString &key) const {
 void AuditDialog::renderResults() {
     m_results->clear();
     m_findingIndexByKey.clear();
+    enrichFindings();
 
+    // ANTS-1111's corroboration shift is not applied here. This runs on
+    // every filter keystroke and the shift is not idempotent, so ANTS-5041
+    // moved it to the run-completion paths (cancelAudit, runNextCheck).
+
+    // Key→finding lookup for the anchor click handler.
+    for (qsizetype ri = 0; ri < m_completedResults.size(); ++ri) {
+        const auto &findings = m_completedResults.at(ri).findings;
+        for (qsizetype fi = 0; fi < findings.size(); ++fi)
+            m_findingIndexByKey.insert(findings.at(fi).dedupKey, {ri, fi});
+    }
+
+    // Sort: highest severity first, then by category, then by name.
+    std::vector<CheckResult> sorted(m_completedResults.begin(), m_completedResults.end());
+    std::sort(sorted.begin(), sorted.end(), [](const CheckResult &a, const CheckResult &b) {
+        if (a.severity != b.severity) return a.severity > b.severity;
+        if (a.category != b.category) return a.category < b.category;
+        return a.checkName < b.checkName;
+    });
+
+    const SummaryCounts counts = countFindings();
+    const auto checkCount = static_cast<qsizetype>(sorted.size());
+    m_results->append(summaryBannerHtml(counts, checkCount));
+    for (const auto &r : sorted) renderCheckSection(r);
+
+    auto *sb = m_results->verticalScrollBar();
+    if (sb) sb->setValue(0);
+
+    m_statusLabel->setFullText(
+        (m_recentScopeError.isEmpty()
+             ? QString()
+             : QStringLiteral("Changed-lines filter off (%1). ").arg(m_recentScopeError))
+        + QString("Audit complete — %1 findings across %2 checks%3")
+                           .arg(counts.total).arg(checkCount)
+                           .arg(m_hasBaseline
+                                ? QString(" (%1 new since baseline)").arg(counts.fresh)
+                                : QString()));
+
+    // Keep the batch-triage button label in sync with the visible set —
+    // the count changes with every filter toggle and every triage verdict
+    // applied. Cheap (one scan of findings) so unconditional is fine.
+    refreshBatchTriageButton();
+    refreshFoldRoadmapButton();
+}
+
+void AuditDialog::enrichFindings() {
     // Multi-tool correlation: group findings by {file, line}. When a pair is
     // flagged by two or more distinct tools, mark every finding on that line
     // as high-confidence. Elevates cross-validated findings above single-
     // tool noise and answers the user question "which of these should I
     // trust?" without changing the severity ordering.
-    {
-        struct Bucket { QSet<QString> sources; QList<Finding*> fs; };
-        QHash<QString, Bucket> byLoc;
-        for (auto &r : m_completedResults) {
-            for (Finding &f : r.findings) {
-                if (f.file.isEmpty() || f.line <= 0) continue;
-                const QString k = f.file + ":" + QString::number(f.line);
-                auto &b = byLoc[k];
-                b.sources.insert(f.source);
-                b.fs.append(&f);
-            }
+    struct Bucket { QSet<QString> sources; QList<Finding*> fs; };
+    QHash<QString, Bucket> byLoc;
+    for (auto &r : m_completedResults) {
+        for (Finding &f : r.findings) {
+            if (f.file.isEmpty() || f.line <= 0) continue;
+            const QString k = f.file + ":" + QString::number(f.line);
+            auto &b = byLoc[k];
+            b.sources.insert(f.source);
+            b.fs.append(&f);
         }
-        for (auto it = byLoc.begin(); it != byLoc.end(); ++it) {
-            if (it.value().sources.size() >= 2)
-                for (Finding *p : std::as_const(it.value().fs)) p->highConfidence = true;
-        }
+    }
+    for (auto it = byLoc.begin(); it != byLoc.end(); ++it) {
+        if (it.value().sources.size() >= 2)
+            for (Finding *p : std::as_const(it.value().fs)) p->highConfidence = true;
     }
 
     // Enrichment pass: snippet + blame + confidence score, in place. Expensive
@@ -3125,178 +3182,46 @@ void AuditDialog::renderResults() {
     for (auto &r : m_completedResults)
         for (Finding &f : r.findings)
             f.confidence = computeConfidence(f);
+}
 
-    // ANTS-1111's corroboration shift is not applied here. This runs on
-    // every filter keystroke and the shift is not idempotent, so ANTS-5041
-    // moved it to the run-completion paths (cancelAudit, runNextCheck).
+bool AuditDialog::findingIsNew(const Finding &f) const {
+    return !m_hasBaseline || !m_baselineFingerprints.contains(f.dedupKey);
+}
 
-    // Populate key→finding lookup for the anchor click handler. Done after
-    // correlation so the lookup reflects the highConfidence flag.
-    for (qsizetype ri = 0; ri < m_completedResults.size(); ++ri) {
-        const auto &findings = m_completedResults.at(ri).findings;
-        for (qsizetype fi = 0; fi < findings.size(); ++fi)
-            m_findingIndexByKey.insert(findings.at(fi).dedupKey, {ri, fi});
-    }
-
-    // Sort: highest severity first, then by category, then by name.
-    std::vector<CheckResult> sorted(m_completedResults.begin(), m_completedResults.end());
-    std::sort(sorted.begin(), sorted.end(), [](const CheckResult &a, const CheckResult &b) {
-        if (a.severity != b.severity) return a.severity > b.severity;
-        if (a.category != b.category) return a.category < b.category;
-        return a.checkName < b.checkName;
-    });
-
-    // Baseline comparison is now per-finding (via dedupKey), not per-check.
-    auto findingIsNew = [this](const Finding &f) {
-        if (!m_hasBaseline) return true;
-        return !m_baselineFingerprints.contains(f.dedupKey);
-    };
-    auto checkHasNew = [&](const CheckResult &r) {
-        if (!m_hasBaseline) return true;
-        for (const Finding &f : r.findings)
-            if (findingIsNew(f)) return true;
-        return false;
-    };
-
-    // Counts by severity. Only isFindingVisible's suppression and baseline
-    // halves apply: a severity pill hidden would zero its own count, and the
-    // trend snapshot written below must not depend on the pills or the text
-    // filter.
-    int bySev[5] = {0, 0, 0, 0, 0};
-    int totalFindings = 0;
-    int totalNew = 0;
-    int totalSuppressed = 0;    // ANTS-6383 — findings this run's suppressions hid
-    for (const auto &r : sorted) {
+// Counts by severity. Only isFindingVisible's suppression and baseline
+// halves apply: a severity pill hidden would zero its own count, and the
+// trend snapshot finishRun saves must not depend on the pills or the text
+// filter.
+AuditDialog::SummaryCounts AuditDialog::countFindings() const {
+    SummaryCounts c;
+    for (const auto &r : m_completedResults) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (isSuppressed(f)) { ++totalSuppressed; continue; }
+            if (isSuppressed(f)) { ++c.suppressed; continue; }
             if (!inBaselineView(f)) continue;
-            ++bySev[static_cast<int>(f.severity)];
-            ++totalFindings;
-            if (findingIsNew(f)) ++totalNew;
+            ++c.bySev[static_cast<int>(f.severity)];
+            ++c.total;
+            if (findingIsNew(f)) ++c.fresh;
         }
         if (r.omittedCount > 0 && !m_showNewOnly) {
             // overflow beyond per-check cap — count toward its severity
-            bySev[static_cast<int>(r.severity)] += r.omittedCount;
-            totalFindings += r.omittedCount;
+            c.bySev[static_cast<int>(r.severity)] += r.omittedCount;
+            c.total += r.omittedCount;
         }
     }
+    return c;
+}
 
-    // Compute trend delta against the last saved snapshot BEFORE writing our
-    // own, so the user sees "vs previous run" rather than "vs this run".
-    // Persist the new snapshot afterward.
-    const TrendSnapshot prev = loadLastSnapshot();
-    TrendSnapshot curr;
-    curr.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
-    curr.total     = totalFindings;
-    for (int i = 0; i < 5; ++i) curr.bySev[i] = bySev[i];
-
-    auto delta = [](int cur, int was) {
-        if (cur == was) return QString("±0");
-        const int d = cur - was;
-        return QString(d > 0 ? "+%1" : "%1").arg(d);
-    };
-    auto deltaColor = [](int cur, int was, bool higherIsWorse = true) {
-        if (cur == was) return QStringLiteral("#888");
-        const bool worse = higherIsWorse ? (cur > was) : (cur < was);
-        return worse ? QStringLiteral("#E74856") : QStringLiteral("#4CAF50");
-    };
-
-    QString trendLine;
-    if (!prev.timestamp.isEmpty() && !m_showNewOnly) {
-        trendLine = QString(
-            "<br><span style='font-size:10px;'>"
-            "Trend vs %1:  "
-            "Total <span style='color:%2;'>%3</span>  ·  "
-            "<span style='color:#8B0000;'>BLK</span> <span style='color:%4;'>%5</span>  ·  "
-            "<span style='color:#E74856;'>CRT</span> <span style='color:%6;'>%7</span>  ·  "
-            "<span style='color:#FFA500;'>MAJ</span> <span style='color:%8;'>%9</span>"
-            "</span>"
-        ).arg(prev.timestamp.left(10),
-              deltaColor(curr.total, prev.total),
-              delta(curr.total, prev.total),
-              deltaColor(curr.bySev[4], prev.bySev[4]),
-              delta(curr.bySev[4], prev.bySev[4]),
-              deltaColor(curr.bySev[3], prev.bySev[3]),
-              delta(curr.bySev[3], prev.bySev[3]),
-              deltaColor(curr.bySev[2], prev.bySev[2]),
-              delta(curr.bySev[2], prev.bySev[2]));
-    }
-
-    // Noise-floor stat (0.6.44) — actionable% for this run plus a rolling
-    // 30-day average pulled from RuleQualityTracker. Denominator is every
-    // finding the pipeline surfaced BEFORE suppressions + AI-FALSE_POSITIVE
-    // verdicts were subtracted; numerator is what's left. This is the "how
-    // much of the output was signal?" single-number answer users keep
-    // asking for during review. Anchor from the 10th audit: 0/55
-    // actionable = 0% signal, which is the exact regime where deeper
-    // scrutiny is a waste — the stat makes that visible at a glance.
-    int aiFalsePositiveCount = 0;
-    for (const auto &r : sorted) {
-        if (r.warning) continue;
-        for (const Finding &f : r.findings) {
-            if (isSuppressed(f)) continue;
-            if (f.aiVerdict == "FALSE_POSITIVE") ++aiFalsePositiveCount;
-        }
-    }
-    const int denominator = totalFindings + totalSuppressed;
-    const int noiseCount  = totalSuppressed + aiFalsePositiveCount;
-    const int signalCount = std::max(0, totalFindings - aiFalsePositiveCount);
-    int actionablePct = -1;  // sentinel: show "–" when there's no data
-    if (denominator > 0)
-        actionablePct = (100 * signalCount) / denominator;
-
-    // 30-day rolling average across RuleQualityTracker — sums the last
-    // 30 days of fires vs suppressions to give "how noisy has this
-    // project been lately?" as a peer comparison point.
-    int history30dPct = -1;
-    int history30dFires = 0;
-    if (m_qualityTracker) {
-        const auto stats = m_qualityTracker->report();
-        int fires = 0, suppressed = 0;
-        for (const auto &s : stats) {
-            fires      += s.fires30d;
-            suppressed += s.suppressions30d;
-        }
-        if (fires > 0) {
-            history30dPct = (100 * std::max(0, fires - suppressed)) / fires;
-            history30dFires = fires;
-        }
-    }
-
-    QString noiseFloorLine;
-    if (denominator > 0) {
-        QString actionableColor =
-            actionablePct >= 60 ? QStringLiteral("#4CAF50") :
-            actionablePct >= 20 ? QStringLiteral("#FFA500") :
-                                  QStringLiteral("#E74856");
-        QString details;
-        if (totalSuppressed > 0)
-            details += QString(" · %1 suppressed").arg(totalSuppressed);
-        if (aiFalsePositiveCount > 0)
-            details += QString(" · %1 AI-flagged FP").arg(aiFalsePositiveCount);
-        QString historySuffix;
-        if (history30dPct >= 0) {
-            historySuffix = QString(
-                "  <span style='color:#888;'>· 30d avg %1% actionable "
-                "(n=%2 fires)</span>"
-            ).arg(history30dPct).arg(history30dFires);
-        }
-        noiseFloorLine = QString(
-            "<br><span style='font-size:10px;'>Signal: "
-            "<span style='color:%1; font-weight:bold;'>%2% actionable</span> "
-            "(%3 / %4%5)%6</span>"
-        ).arg(actionableColor,
-              QString::number(actionablePct))
-         .arg(signalCount)
-         .arg(denominator)
-         .arg(details)
-         .arg(historySuffix);
-    }
-    (void)noiseCount;  // retained for future use; computed for symmetry
-
-    // Summary banner.
-    QString banner = QString(
+QString AuditDialog::summaryBannerHtml(const SummaryCounts &c, qsizetype checkCount) const {
+    const QString baselineLine = c.suppressed > 0
+        ? QString("<br><span style='color:#888; font-size:10px;'>"
+                  "%1 finding(s) suppressed · "
+                  "%2 new since baseline</span>")
+              .arg(c.suppressed).arg(m_hasBaseline ? c.fresh : 0)
+        : (m_hasBaseline ? QString("<br><span style='color:#888; font-size:10px;'>"
+                                   "%1 new since baseline</span>").arg(c.fresh)
+                         : QString());
+    return QString(
         "<div style='background:#222; color:#eee; padding:6px 10px; border-radius:4px;"
         " margin-bottom:10px; font-family:monospace;'>"
         "<b>Audit Summary</b> — %1 checks, %2 findings"
@@ -3309,268 +3234,318 @@ void AuditDialog::renderResults() {
         "<span style='color:#4CAF50;'>INFO: %8</span>"
         "%9"
         "</div>"
-    ).arg(sorted.size())
-     .arg(totalFindings)
+    ).arg(checkCount)
+     .arg(c.total)
      .arg(m_showNewOnly ? " (new since baseline only)" : "")
-     .arg(bySev[(int)Severity::Blocker])
-     .arg(bySev[(int)Severity::Critical])
-     .arg(bySev[(int)Severity::Major])
-     .arg(bySev[(int)Severity::Minor])
-     .arg(bySev[(int)Severity::Info])
-     .arg((totalSuppressed > 0
-          ? QString("<br><span style='color:#888; font-size:10px;'>"
-                    "%1 finding(s) suppressed · "
-                    "%2 new since baseline</span>")
-              .arg(totalSuppressed).arg(m_hasBaseline ? totalNew : 0)
-          : (m_hasBaseline ? QString("<br><span style='color:#888; font-size:10px;'>"
-                                     "%1 new since baseline</span>").arg(totalNew)
-                           : QString()))
-          + noiseFloorLine
-          + trendLine);
-    m_results->append(banner);
+     .arg(c.bySev[(int)Severity::Blocker])
+     .arg(c.bySev[(int)Severity::Critical])
+     .arg(c.bySev[(int)Severity::Major])
+     .arg(c.bySev[(int)Severity::Minor])
+     .arg(c.bySev[(int)Severity::Info])
+     .arg(baselineLine + noiseFloorLineHtml(c) + trendLineHtml(c));
+}
 
-    // Persist the snapshot for next run's trend line. Skip if we're in
-    // showNewOnly mode — that's a filtered view, not an authoritative count.
-    //
-    // 0.7.55 (2026-04-27 indie-review) — also gate on m_snapshotPersisted
-    // so re-renders triggered by severity-pill toggles, baseline switches,
-    // or other UI filter actions don't append duplicate snapshots. Was a
-    // fresh appendSnapshot per filter click before — the .audit_history
-    // file accumulated 10+ "snapshots" per audit run.
-    // m_snapshotPersisted is reset to false in runAudit() at the start of
-    // each new run, then flipped to true here on the first authoritative
-    // render. UI-only re-renders find it true and skip.
-    if (!m_showNewOnly && !m_snapshotPersisted) {
-        appendSnapshot(curr);
-        m_snapshotPersisted = true;
+// "Trend vs <date>": these counts against the previous run's snapshot,
+// which finishRun read before saving this run's.
+QString AuditDialog::trendLineHtml(const SummaryCounts &c) const {
+    const TrendSnapshot &prev = m_trendPrev;
+    if (prev.timestamp.isEmpty() || m_showNewOnly) return QString();
+    auto delta = [](int cur, int was) {
+        if (cur == was) return QString("±0");
+        const int d = cur - was;
+        return QString(d > 0 ? "+%1" : "%1").arg(d);
+    };
+    auto deltaColor = [](int cur, int was) {
+        if (cur == was) return QStringLiteral("#888");
+        return cur > was ? QStringLiteral("#E74856") : QStringLiteral("#4CAF50");
+    };
+    return QString(
+        "<br><span style='font-size:10px;'>"
+        "Trend vs %1:  "
+        "Total <span style='color:%2;'>%3</span>  ·  "
+        "<span style='color:#8B0000;'>BLK</span> <span style='color:%4;'>%5</span>  ·  "
+        "<span style='color:#E74856;'>CRT</span> <span style='color:%6;'>%7</span>  ·  "
+        "<span style='color:#FFA500;'>MAJ</span> <span style='color:%8;'>%9</span>"
+        "</span>"
+    ).arg(prev.timestamp.left(10),
+          deltaColor(c.total, prev.total),
+          delta(c.total, prev.total),
+          deltaColor(c.bySev[4], prev.bySev[4]),
+          delta(c.bySev[4], prev.bySev[4]),
+          deltaColor(c.bySev[3], prev.bySev[3]),
+          delta(c.bySev[3], prev.bySev[3]),
+          deltaColor(c.bySev[2], prev.bySev[2]),
+          delta(c.bySev[2], prev.bySev[2]));
+}
+
+// Noise-floor stat (0.6.44) — actionable% for this run plus a rolling
+// 30-day average pulled from RuleQualityTracker. Denominator is every
+// finding the pipeline surfaced BEFORE suppressions + AI-FALSE_POSITIVE
+// verdicts were subtracted; numerator is what's left. This is the "how
+// much of the output was signal?" single-number answer users keep
+// asking for during review. Anchor from the 10th audit: 0/55
+// actionable = 0% signal, which is the exact regime where deeper
+// scrutiny is a waste — the stat makes that visible at a glance.
+QString AuditDialog::noiseFloorLineHtml(const SummaryCounts &c) const {
+    const int denominator = c.total + c.suppressed;
+    if (denominator <= 0) return QString();
+    int aiFalsePositiveCount = 0;
+    for (const auto &r : m_completedResults) {
+        if (r.warning) continue;
+        for (const Finding &f : r.findings) {
+            if (isSuppressed(f)) continue;
+            if (f.aiVerdict == "FALSE_POSITIVE") ++aiFalsePositiveCount;
+        }
+    }
+    const int signalCount = std::max(0, c.total - aiFalsePositiveCount);
+    const int actionablePct = (100 * signalCount) / denominator;
+
+    // 30-day rolling average across RuleQualityTracker — sums the last
+    // 30 days of fires vs suppressions to give "how noisy has this
+    // project been lately?" as a peer comparison point.
+    QString historySuffix;
+    if (m_qualityTracker) {
+        int fires = 0, suppressed = 0;
+        for (const auto &s : m_qualityTracker->report()) {
+            fires      += s.fires30d;
+            suppressed += s.suppressions30d;
+        }
+        if (fires > 0) {
+            historySuffix = QString(
+                "  <span style='color:#888;'>· 30d avg %1% actionable "
+                "(n=%2 fires)</span>"
+            ).arg((100 * std::max(0, fires - suppressed)) / fires).arg(fires);
+        }
     }
 
-    // Per-check sections.
-    for (const auto &r : sorted) {
-        if (m_showNewOnly && !checkHasNew(r)) continue;
-        const bool clean = r.findings.isEmpty() && r.omittedCount == 0 && !r.warning;
-        const QString color = r.warning ? "#E74856" : severityColor(r.severity);
+    const QString actionableColor =
+        actionablePct >= 60 ? QStringLiteral("#4CAF50") :
+        actionablePct >= 20 ? QStringLiteral("#FFA500") :
+                              QStringLiteral("#E74856");
+    QString details;
+    if (c.suppressed > 0)
+        details += QString(" · %1 suppressed").arg(c.suppressed);
+    if (aiFalsePositiveCount > 0)
+        details += QString(" · %1 AI-flagged FP").arg(aiFalsePositiveCount);
+    return QString(
+        "<br><span style='font-size:10px;'>Signal: "
+        "<span style='color:%1; font-weight:bold;'>%2% actionable</span> "
+        "(%3 / %4%5)%6</span>"
+    ).arg(actionableColor,
+          QString::number(actionablePct))
+     .arg(signalCount)
+     .arg(denominator)
+     .arg(details)
+     .arg(historySuffix);
+}
 
-        // Corroborated-finding count — same signal as the ★ badge, summarised
-        // at the category level so the reader can prioritise at a glance.
-        int corroborated = 0;
-        for (const Finding &f : r.findings)
-            if (f.highConfidence) ++corroborated;
-        const QString corroSuffix = corroborated > 0
-            ? QString(" <span title='Cross-validated by ≥2 tools' "
-                      "style='color:#FFD700; font-size:10px;'>"
-                      "(%1 corroborated)</span>").arg(corroborated)
-            : QString();
+void AuditDialog::renderCheckSection(const CheckResult &r) {
+    if (m_showNewOnly && m_hasBaseline
+        && std::none_of(r.findings.cbegin(), r.findings.cend(),
+                        [this](const Finding &f) { return findingIsNew(f); }))
+        return;
+    const bool clean = r.findings.isEmpty() && r.omittedCount == 0 && !r.warning;
+    const QString color = r.warning ? "#E74856" : severityColor(r.severity);
 
-        // Header
-        m_results->append(QString(
-            "<div style='margin-bottom:4px;'>"
-            "<span style='color:%1; font-weight:bold;'>[%2] %3 — %4%5</span>%8"
-            "<span style='color:#888; font-size:10px;'>  · %6 · %7</span>"
-            "</div>"
-        ).arg(color,
-              severityLabel(r.severity),
-              typeLabel(r.type).toUpper(),
-              r.checkName.toHtmlEscaped(),
-              r.warning ? " (tool issue)" : "",  // timeout or failed start (ANTS-5084)
-              r.category.toHtmlEscaped(),
-              r.source,
-              corroSuffix));
+    // Corroborated-finding count — same signal as the ★ badge, summarised
+    // at the category level so the reader can prioritise at a glance.
+    int corroborated = 0;
+    for (const Finding &f : r.findings)
+        if (f.highConfidence) ++corroborated;
+    const QString corroSuffix = corroborated > 0
+        ? QString(" <span title='Cross-validated by ≥2 tools' "
+                  "style='color:#FFD700; font-size:10px;'>"
+                  "(%1 corroborated)</span>").arg(corroborated)
+        : QString();
 
-        if (r.warning) {
-            m_results->append(QString("<pre style='margin:2px 0 10px 10px; color:#c00;'>%1</pre>")
-                              .arg(r.output.toHtmlEscaped()));
-            continue;
-        }
-        if (clean) {
-            m_results->append("<div style='margin:2px 0 10px 10px; color:#888;'>"
-                              "No issues found.</div>");
-            continue;
-        }
+    // Header
+    m_results->append(QString(
+        "<div style='margin-bottom:4px;'>"
+        "<span style='color:%1; font-weight:bold;'>[%2] %3 — %4%5</span>%8"
+        "<span style='color:#888; font-size:10px;'>  · %6 · %7</span>"
+        "</div>"
+    ).arg(color,
+          severityLabel(r.severity),
+          typeLabel(r.type).toUpper(),
+          r.checkName.toHtmlEscaped(),
+          r.warning ? " (tool issue)" : "",  // timeout or failed start (ANTS-5084)
+          r.category.toHtmlEscaped(),
+          r.source,
+          corroSuffix));
 
-        // Build findings body. Each finding row now carries:
-        //   confidence pip + file:line · message                  (header)
-        //   ★ cross-tool hit · NEW · blame tag                    (inline tags)
-        //   [details] snippet (±3) + ai triage button             (collapsed)
-        //
-        // Sorting: within a check, higher confidence first when m_sortByConfidence.
-        // Filtering: respects active severity pills and the text filter input.
-        std::vector<const Finding*> sortedFindings;
-        sortedFindings.reserve(r.findings.size());
-        for (const Finding &f : r.findings) sortedFindings.push_back(&f);
-        if (m_sortByConfidence) {
-            std::stable_sort(sortedFindings.begin(), sortedFindings.end(),
-                [](const Finding *a, const Finding *b) {
-                    return a->confidence > b->confidence;
-                });
-        }
+    if (r.warning) {
+        m_results->append(QString("<pre style='margin:2px 0 10px 10px; color:#c00;'>%1</pre>")
+                          .arg(r.output.toHtmlEscaped()));
+        return;
+    }
+    if (clean) {
+        m_results->append("<div style='margin:2px 0 10px 10px; color:#888;'>"
+                          "No issues found.</div>");
+        return;
+    }
 
-        QStringList rows;
-        // Hoisted out of the loop below per clazy container-inside-loop:
-        // reused across iterations via clear() to avoid per-finding alloc.
+    // Sorting: within a check, higher confidence first when m_sortByConfidence.
+    // Filtering: respects active severity pills and the text filter input.
+    std::vector<const Finding*> sortedFindings;
+    sortedFindings.reserve(r.findings.size());
+    for (const Finding &f : r.findings) sortedFindings.push_back(&f);
+    if (m_sortByConfidence) {
+        std::stable_sort(sortedFindings.begin(), sortedFindings.end(),
+            [](const Finding *a, const Finding *b) {
+                return a->confidence > b->confidence;
+            });
+    }
+
+    QStringList rows;
+    for (const Finding *pf : sortedFindings) {
+        const Finding &f = *pf;
+        if (!isFindingVisible(f)) continue;
+        rows << findingRowHtml(f);
+    }
+    if (r.omittedCount > 0 && !m_showNewOnly) {
+        rows << QString("<span style='color:#FFA500;'>… and %1 more (capped at %2 per check)</span>")
+                .arg(r.omittedCount).arg(kMaxFindingsPerCheck);
+    }
+    if (rows.isEmpty()) return;  // everything filtered out — hide the check
+    m_results->append("<div style='margin:0 0 10px 10px;'><div style='white-space:pre-wrap; margin:0;'>"
+                      + rows.join("<br>") + "</div></div>");
+}
+
+// One finding's row:
+//   confidence pip + file:line · message                  (header)
+//   ★ cross-tool hit · NEW · blame tag                    (inline tags)
+//   [details] snippet (±3) + ai triage button             (collapsed)
+QString AuditDialog::findingRowHtml(const Finding &f) const {
+    const bool isNew = m_hasBaseline && findingIsNew(f);
+    const QString loc = f.file.isEmpty()
+                      ? QString()
+                      : (f.line >= 0
+                         ? QString("<span style='color:#89B4FA;'>%1:%2</span>  ")
+                             .arg(f.file.toHtmlEscaped()).arg(f.line)
+                         : QString("<span style='color:#89B4FA;'>%1</span>  ")
+                             .arg(f.file.toHtmlEscaped()));
+
+    // Confidence pip — small colored dot with the numeric score on hover.
+    QString pipColor = "#4CAF50";  // green ≥70
+    if (f.confidence < 40)      pipColor = "#E74856";
+    else if (f.confidence < 70) pipColor = "#FFA500";
+    const QString pip = QString(
+        "<span title='Confidence %1/100' style='color:%2; "
+        "font-family:monospace; font-size:11px; font-weight:bold;'>"
+        "●</span><span style='color:#666; font-size:9px;'>%1</span>  ")
+        .arg(f.confidence).arg(pipColor);
+
+    // Dedup-key suppress anchor.
+    const QString keyAnchor = QString(
+        "<a href='ants-suppress://%1' style='color:#666; "
+        "font-size:9px; text-decoration:none;' "
+        "title='Click to suppress this finding'>%1</a>")
+        .arg(f.dedupKey);
+    const QString confTag = f.highConfidence
+        ? QStringLiteral(" <span style='color:#FFD700; font-weight:bold;'"
+                         " title='Flagged by 2+ tools'>★</span>")
+        : QString();
+    // Blame tag — "by <author> · <date> · <sha>"
+    QString blameTag;
+    if (!f.blameSha.isEmpty()) {
         QStringList parts;
-        for (const Finding *pf : sortedFindings) {
-            const Finding &f = *pf;
-            if (!isFindingVisible(f)) continue;
-            const bool isNew = m_hasBaseline && findingIsNew(f);
-            const QString loc = f.file.isEmpty()
-                              ? QString()
-                              : (f.line >= 0
-                                 ? QString("<span style='color:#89B4FA;'>%1:%2</span>  ")
-                                     .arg(f.file.toHtmlEscaped()).arg(f.line)
-                                 : QString("<span style='color:#89B4FA;'>%1</span>  ")
-                                     .arg(f.file.toHtmlEscaped()));
-
-            // Confidence pip — small colored dot with the numeric score on hover.
-            QString pipColor = "#4CAF50";  // green ≥70
-            if (f.confidence < 40)      pipColor = "#E74856";
-            else if (f.confidence < 70) pipColor = "#FFA500";
-            const QString pip = QString(
-                "<span title='Confidence %1/100' style='color:%2; "
-                "font-family:monospace; font-size:11px; font-weight:bold;'>"
-                "●</span><span style='color:#666; font-size:9px;'>%1</span>  ")
-                .arg(f.confidence).arg(pipColor);
-
-            // Dedup-key suppress anchor.
-            const QString keyAnchor = QString(
-                "<a href='ants-suppress://%1' style='color:#666; "
-                "font-size:9px; text-decoration:none;' "
-                "title='Click to suppress this finding'>%1</a>")
-                .arg(f.dedupKey);
-            const QString confTag = f.highConfidence
-                ? QStringLiteral(" <span style='color:#FFD700; font-weight:bold;'"
-                                 " title='Flagged by 2+ tools'>★</span>")
-                : QString();
-            // Blame tag — "by <author> · <date> · <sha>"
-            QString blameTag;
-            if (!f.blameSha.isEmpty()) {
-                parts.clear();
-                if (!f.blameAuthor.isEmpty()) parts << f.blameAuthor;
-                if (!f.blameDate.isEmpty())   parts << f.blameDate;
-                parts << f.blameSha;
-                blameTag = QString(" <span style='color:#888; font-size:9px;' "
-                                   "title='git blame'>[%1]</span>")
-                               .arg(parts.join(" · ").toHtmlEscaped());
-            }
-            // AI triage verdict badge (if previously triaged).
-            QString verdictBadge;
-            if (!f.aiVerdict.isEmpty()) {
-                QString vc = "#888";
-                if (f.aiVerdict == "TRUE_POSITIVE")  vc = "#E74856";
-                if (f.aiVerdict == "FALSE_POSITIVE") vc = "#4CAF50";
-                if (f.aiVerdict == "NEEDS_REVIEW")   vc = "#FFA500";
-                QString verdictLabel = f.aiVerdict;
-                verdictLabel.replace('_', ' ');
-                // ANTS-1830 — double-quote the title attribute. toHtmlEscaped()
-                // escapes " but NOT ', so the untrusted aiReasoning (from the AI
-                // endpoint, reachable via prompt-injection from the audited
-                // project's own source) could break out of a single-quoted
-                // attribute. Double quotes + the existing escaping close that.
-                verdictBadge = QString(
-                    " <span style=\"color:%1; font-size:9px; font-weight:bold;\" "
-                    "title=\"AI triage: %2/100 — %3\">%4</span>")
-                    .arg(vc, QString::number(f.aiConfidence),
-                         f.aiReasoning.left(160).toHtmlEscaped(),
-                         verdictLabel);
-            }
-
-            // Clickable "details" toggle — shows snippet + AI-triage link.
-            const bool expanded = m_expandedKeys.contains(f.dedupKey);
-            const QString toggleAnchor = QString(
-                " <a href='ants-expand://%1' style='color:#666; font-size:9px; "
-                "text-decoration:none;' title='%2 context'>%3</a>")
-                .arg(f.dedupKey,
-                     expanded ? "Hide" : "Show",
-                     expanded ? "[hide]" : "[details]");
-
-            QString header = QString("%1%2%3%4%5%6  %7%8")
-                                .arg(pip, loc,
-                                     f.message.toHtmlEscaped(),
-                                     confTag, blameTag, verdictBadge,
-                                     keyAnchor, toggleAnchor);
-            if (isNew)
-                header += " <span style='color:#4CAF50; font-weight:bold;'>NEW</span>";
-
-            if (expanded && (!f.snippet.isEmpty() || !f.aiVerdict.isEmpty())) {
-                QString body;
-                if (!f.snippet.isEmpty()) {
-                    // Render snippet with line numbers; highlight the finding line.
-                    QStringList lines = f.snippet.split('\n');
-                    QStringList numbered;
-                    for (int i = 0; i < lines.size(); ++i) {
-                        const int ln = f.snippetStart + i;
-                        const bool hit = (ln == f.line);
-                        const QString marker = hit ? "▸" : " ";
-                        const QString bg = hit
-                            ? "background:#2a1a1a; color:#e0e0e0;"
-                            : "color:#999;";
-                        numbered << QString(
-                            "<span style='%1 font-family:monospace; "
-                            "font-size:11px;'>%2 %3 %4</span>")
-                            .arg(bg,
-                                 QString::number(ln).rightJustified(5),
-                                 marker,
-                                 lines[i].toHtmlEscaped());
-                    }
-                    body += "<div style='margin:4px 0 4px 24px; padding:6px; "
-                            "background:#151515; border-left:2px solid #444;'>"
-                            + numbered.join("<br>") + "</div>";
-                }
-                // AI triage action link (always shown when expanded) — sends
-                // the finding to the configured AI endpoint on click.
-                QString triageLink;
-                if (f.aiVerdict.isEmpty()) {
-                    triageLink = QString(
-                        "<a href='ants-triage://%1' style='color:#89B4FA; "
-                        "font-size:10px;'>🧠 Triage with AI</a>").arg(f.dedupKey);
-                } else {
-                    triageLink = QString(
-                        "<span style='color:#888; font-size:10px;'>"
-                        "AI triage: %1 (%2/100) — %3</span>")
-                        .arg(f.aiVerdict, QString::number(f.aiConfidence),
-                             f.aiReasoning.left(220).toHtmlEscaped());
-                }
-                // ANTS-1257 — "Allow this finding" — appends a matching
-                // entry to .audit_allowlist.json so future runs drop it.
-                const QString allowLink = QString(
-                    "  <a href='ants-allow://%1' style='color:#FFA500; "
-                    "font-size:10px;' title='Permanently allowlist this "
-                    "finding (writes .audit_allowlist.json)'>📥 Allow "
-                    "this finding</a>").arg(f.dedupKey);
-                body += "<div style='margin:2px 0 6px 24px; font-size:10px;'>"
-                      + triageLink + allowLink + "</div>";
-                header += "<br>" + body;
-            }
-
-            rows << header;
-        }
-        if (r.omittedCount > 0 && !m_showNewOnly) {
-            rows << QString("<span style='color:#FFA500;'>… and %1 more (capped at %2 per check)</span>")
-                    .arg(r.omittedCount).arg(kMaxFindingsPerCheck);
-        }
-        if (rows.isEmpty()) continue;  // everything filtered out — hide the check
-        m_results->append("<div style='margin:0 0 10px 10px;'><div style='white-space:pre-wrap; margin:0;'>"
-                          + rows.join("<br>") + "</div></div>");
+        if (!f.blameAuthor.isEmpty()) parts << f.blameAuthor;
+        if (!f.blameDate.isEmpty())   parts << f.blameDate;
+        parts << f.blameSha;
+        blameTag = QString(" <span style='color:#888; font-size:9px;' "
+                           "title='git blame'>[%1]</span>")
+                       .arg(parts.join(" · ").toHtmlEscaped());
+    }
+    // AI triage verdict badge (if previously triaged).
+    QString verdictBadge;
+    if (!f.aiVerdict.isEmpty()) {
+        QString vc = "#888";
+        if (f.aiVerdict == "TRUE_POSITIVE")  vc = "#E74856";
+        if (f.aiVerdict == "FALSE_POSITIVE") vc = "#4CAF50";
+        if (f.aiVerdict == "NEEDS_REVIEW")   vc = "#FFA500";
+        QString verdictLabel = f.aiVerdict;
+        verdictLabel.replace('_', ' ');
+        // ANTS-1830 — double-quote the title attribute. toHtmlEscaped()
+        // escapes " but NOT ', so the untrusted aiReasoning (from the AI
+        // endpoint, reachable via prompt-injection from the audited
+        // project's own source) could break out of a single-quoted
+        // attribute. Double quotes + the existing escaping close that.
+        verdictBadge = QString(
+            " <span style=\"color:%1; font-size:9px; font-weight:bold;\" "
+            "title=\"AI triage: %2/100 — %3\">%4</span>")
+            .arg(vc, QString::number(f.aiConfidence),
+                 f.aiReasoning.left(160).toHtmlEscaped(),
+                 verdictLabel);
     }
 
-    auto *sb = m_results->verticalScrollBar();
-    if (sb) sb->setValue(0);
+    // Clickable "details" toggle — shows snippet + AI-triage link.
+    const bool expanded = m_expandedKeys.contains(f.dedupKey);
+    const QString toggleAnchor = QString(
+        " <a href='ants-expand://%1' style='color:#666; font-size:9px; "
+        "text-decoration:none;' title='%2 context'>%3</a>")
+        .arg(f.dedupKey,
+             expanded ? "Hide" : "Show",
+             expanded ? "[hide]" : "[details]");
 
-    m_statusLabel->setFullText(
-        (m_recentScopeError.isEmpty()
-             ? QString()
-             : QStringLiteral("Changed-lines filter off (%1). ").arg(m_recentScopeError))
-        + QString("Audit complete — %1 findings across %2 checks%3")
-                           .arg(totalFindings).arg(sorted.size())
-                           .arg(m_hasBaseline
-                                ? QString(" (%1 new since baseline)").arg(totalNew)
-                                : QString()));
+    QString header = QString("%1%2%3%4%5%6  %7%8")
+                        .arg(pip, loc,
+                             f.message.toHtmlEscaped(),
+                             confTag, blameTag, verdictBadge,
+                             keyAnchor, toggleAnchor);
+    if (isNew)
+        header += " <span style='color:#4CAF50; font-weight:bold;'>NEW</span>";
 
-    // Keep the batch-triage button label in sync with the visible set —
-    // the count changes with every filter toggle and every triage verdict
-    // applied. Cheap (one scan of findings) so unconditional is fine.
-    refreshBatchTriageButton();
-    refreshFoldRoadmapButton();
+    if (expanded && (!f.snippet.isEmpty() || !f.aiVerdict.isEmpty())) {
+        QString body;
+        if (!f.snippet.isEmpty()) {
+            // Render snippet with line numbers; highlight the finding line.
+            QStringList lines = f.snippet.split('\n');
+            QStringList numbered;
+            for (int i = 0; i < lines.size(); ++i) {
+                const int ln = f.snippetStart + i;
+                const bool hit = (ln == f.line);
+                const QString marker = hit ? "▸" : " ";
+                const QString bg = hit
+                    ? "background:#2a1a1a; color:#e0e0e0;"
+                    : "color:#999;";
+                numbered << QString(
+                    "<span style='%1 font-family:monospace; "
+                    "font-size:11px;'>%2 %3 %4</span>")
+                    .arg(bg,
+                         QString::number(ln).rightJustified(5),
+                         marker,
+                         lines[i].toHtmlEscaped());
+            }
+            body += "<div style='margin:4px 0 4px 24px; padding:6px; "
+                    "background:#151515; border-left:2px solid #444;'>"
+                    + numbered.join("<br>") + "</div>";
+        }
+        // AI triage action link (always shown when expanded) — sends
+        // the finding to the configured AI endpoint on click.
+        QString triageLink;
+        if (f.aiVerdict.isEmpty()) {
+            triageLink = QString(
+                "<a href='ants-triage://%1' style='color:#89B4FA; "
+                "font-size:10px;'>🧠 Triage with AI</a>").arg(f.dedupKey);
+        } else {
+            triageLink = QString(
+                "<span style='color:#888; font-size:10px;'>"
+                "AI triage: %1 (%2/100) — %3</span>")
+                .arg(f.aiVerdict, QString::number(f.aiConfidence),
+                     f.aiReasoning.left(220).toHtmlEscaped());
+        }
+        // ANTS-1257 — "Allow this finding" — appends a matching
+        // entry to .audit_allowlist.json so future runs drop it.
+        const QString allowLink = QString(
+            "  <a href='ants-allow://%1' style='color:#FFA500; "
+            "font-size:10px;' title='Permanently allowlist this "
+            "finding (writes .audit_allowlist.json)'>📥 Allow "
+            "this finding</a>").arg(f.dedupKey);
+        body += "<div style='margin:2px 0 6px 24px; font-size:10px;'>"
+              + triageLink + allowLink + "</div>";
+        header += "<br>" + body;
+    }
+    return header;
 }
 
 // ---------------------------------------------------------------------------

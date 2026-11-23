@@ -238,6 +238,15 @@ TEST(AuditBlameBulkAsync, NoSynchronousWaitInTheBlamePath) {
         blocks = true;
         detail += "AuditDialog::renderResults() itself calls waitForFinished. ";
     }
+    // ANTS-6195 — renderResults' enrichment pass, which starts the blame.
+    const std::string enrichPass =
+        ants_test::slurpFunctionBody(stripped, "void AuditDialog::enrichFindings(");
+    ASSERT_FALSE(enrichPass.empty())
+        << "AuditDialog::enrichFindings() body not found — anchor moved?";
+    if (enrichPass.find("waitForFinished") != std::string::npos) {
+        blocks = true;
+        detail += "AuditDialog::enrichFindings() calls waitForFinished. ";
+    }
 
     EXPECT_FALSE(blocks)
         << "ANTS-5040 INV-2: the blame path reachable from renderResults() "

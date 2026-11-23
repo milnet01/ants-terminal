@@ -48,6 +48,12 @@ sources declare no local `Config`; every read goes through
 `AuditDialog::liveConfig()`, which returns `m_config`, or one Config the
 dialog loaded for itself when it was given none.
 
+**INV-12 — the trend snapshot is taken once per run (ANTS-6195).**
+`renderResults` neither reads nor writes `trend.json`. `finishRun` calls
+`loadLastSnapshot` before both `appendSnapshot` and `renderResults()`, so a
+re-render never compares the run with itself.
+*Test:* `AuditDialogLows.TrendSnapshotIsTakenOncePerRun`.
+
 ## Rationale
 
 The ANTS-5084 performance pass found each of these. The detection walk
@@ -64,3 +70,5 @@ test's own path) and checks the named regions.
 ## Regression history
 
 - **ANTS-5084:** the six defects above. Locked by this spec.
+- **ANTS-6195:** a re-render after the run's own save compared the run with
+  itself. Locked by INV-12.

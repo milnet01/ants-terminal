@@ -67,8 +67,8 @@ keep painting the dialog.
   the GUI thread on `git blame`, and the process it starts is batched per
   file rather than per finding. Neither `AuditDialog::enrichWithBlame`
   (while it still exists — the intended fix may fold it into an async
-  helper and this invariant tolerates that) nor `AuditDialog::renderResults`
-  itself calls `QProcess::waitForFinished` on the blame path. The `git
+  helper and this invariant tolerates that), `AuditDialog::renderResults`
+  itself, nor its `AuditDialog::enrichFindings` pass calls `QProcess::waitForFinished` on the blame path. The `git
   blame` argv built anywhere in the file uses `--line-porcelain` (not the
   single-line `--porcelain` form) and constructs more than one `-L` range
   per process invocation — the loop-based construction the fix note

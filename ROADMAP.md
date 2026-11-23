@@ -108072,7 +108072,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L07-F20).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6195] **Split AuditDialog::renderResults into enrich, count, summarise and render, and write trend.json from the run-completion paths.**
+- ✅ [ANTS-6195] **Split AuditDialog::renderResults into enrich, count, summarise and render, and write trend.json from the run-completion paths.**
   From ANTS-6116 (L07 MEDIUM F22). The noise-floor block computes
   noiseCount and discards it, and adds totalSuppressed (keys in the
   suppression file) to this run's finding count. Not done in the lane
@@ -108083,6 +108083,17 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 589
   `src/auditdialog.cpp:3245`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-23: renderResults split into enrichFindings, countFindings,
+  summaryBannerHtml (trendLineHtml, noiseFloorLineHtml),
+  renderCheckSection and findingRowHtml; the unused noiseCount is gone.
+  The body's two premises were out of date: the snapshot save was
+  already once per run, and totalSuppressed already counted this run's
+  findings (ANTS-6383). The real defect: after the run's first render
+  saved its snapshot, later renders loaded that same snapshot, so the
+  trend line compared the run with itself. finishRun now reads the
+  previous snapshot, then saves this run's (audit_dialog_lows INV-12). A
+  run that finishes in New-only view saves no snapshot, even if the view
+  is switched back afterwards.
   **Layman:** One long audit-window routine does six jobs, including saving a file on every filter keystroke; splitting it makes each job findable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F22).
