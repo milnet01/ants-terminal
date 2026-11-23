@@ -607,6 +607,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_query` shortens a long body between characters, so an emoji at the cut stays whole and strict JSON readers accept the reply** (ANTS-6904)
+
 - **`audit_run`'s whole-tree bandit scan now skips only the folders on its skip list, so files such as `environment.py` or `metadata.py` are scanned again** (ANTS-6899)
 
 - **A Claude Code question no longer shows Allow, Deny and Add to allowlist buttons on the bottom bar** (ANTS-6898)

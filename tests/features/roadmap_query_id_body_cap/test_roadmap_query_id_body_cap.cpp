@@ -677,6 +677,52 @@ TEST(roadmap_query_id_body_cap, Ants4904InertOnAShortBody) {
         << "nothing was elided, so nothing may claim to have been";
 }
 
+// ANTS-6904 — an elided body is cut between characters, never inside one. Each
+// 💭 is two UTF-16 units, so in a body made of them every odd cut point falls
+// inside a pair. Four neighbouring caps take both parities at the head cut and
+// the tail cut, in both elision directions. A lone half is invalid Unicode, and
+// a strict JSON reader refuses the reply.
+TEST(roadmap_query_id_body_cap, Ants6904ElisionKeepsWholeCharacters) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QByteArray md =
+        "# Roadmap\n\n## Work\n\n"
+        "- \xF0\x9F\x93\x8B [ANTS-7777] **Emoji epic.**\n";
+    for (int i = 0; i < 400; ++i)
+        md += "  " + QByteArray("\xF0\x9F\x92\xAD").repeated(20) + "\n";
+    md += "  Kind: feature.\n  Source: test.\n";
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), md));
+
+    const auto hasLoneSurrogate = [](const QString &s) {
+        for (qsizetype i = 0; i < s.size(); ++i) {
+            if (s.at(i).isLowSurrogate()) return true;
+            if (!s.at(i).isHighSurrogate()) continue;
+            if (i + 1 >= s.size() || !s.at(i + 1).isLowSurrogate()) return true;
+            ++i;
+        }
+        return false;
+    };
+    RemoteControl rc(nullptr);
+    for (const bool fromEnd : {false, true}) {
+        for (const int cap : {2500, 2501, 2502, 2503}) {
+            QJsonObject req;
+            req[QStringLiteral("caller_cwd")]     = tmp.path();
+            req[QStringLiteral("id")]             = QStringLiteral("ANTS-7777");
+            req[QStringLiteral("max_body_bytes")] = cap;
+            req[QStringLiteral("include_body")]   = true;
+            req[QStringLiteral("body_from_end")]  = fromEnd;
+            const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+            ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+            const QJsonObject b =
+                resp.value(QStringLiteral("bullets")).toArray().at(0).toObject();
+            ASSERT_TRUE(b.value(QStringLiteral("body_truncated")).toBool())
+                << "the fixture body is far past every cap";
+            EXPECT_FALSE(hasLoneSurrogate(b.value(QStringLiteral("body")).toString()))
+                << "cap " << cap << (fromEnd ? ", from end" : ", head and tail");
+        }
+    }
+}
+
 // ANTS-4981 — a max_body_bytes below the floor is raised, and the reply says
 // so. It was raised silently, so a caller keeping the reply small got a larger
 // one with nothing naming the override.

@@ -439,8 +439,13 @@ static const QString &kBodyElisionMarker() {
 // so a small cap still leads with the head rather than becoming tail-only.
 constexpr int kRoadmapQueryBodyTailCap = 1024;
 
-// head + marker + tail, sized to land exactly on `cap`. Falls back to a plain
-// head clip when `cap` is too small to carry both ends plus the marker.
+// head + marker + tail, sized to land on `cap`. Falls back to a plain head clip
+// when `cap` is too small to carry both ends plus the marker.
+//
+// ANTS-6904 — the lengths count UTF-16 units, so a cut can fall inside a
+// surrogate pair. Each cut steps back off the pair instead, landing one unit
+// under `cap`: a lone half is invalid Unicode, and a strict JSON reader
+// refuses the whole reply.
 //
 // ANTS-4904 — `fromEnd` keeps the END instead, with the marker at the FRONT.
 // A long-lived bullet is an append-only progress log, so the sentence a
@@ -452,15 +457,24 @@ constexpr int kRoadmapQueryBodyTailCap = 1024;
 // guessed too high misses the note with nothing in the envelope saying so.
 static QString rcElideBody(const QString &body, int cap, bool fromEnd = false) {
     const QString &marker = kBodyElisionMarker();
+    const auto head = [&body](qsizetype n) {
+        if (n > 0 && n < body.size() && body.at(n - 1).isHighSurrogate()) --n;
+        return body.left(n);
+    };
+    const auto tail = [&body](qsizetype n) {
+        const qsizetype start = body.size() - n;
+        if (n > 0 && start > 0 && body.at(start).isLowSurrogate()) --n;
+        return body.right(n);
+    };
     if (fromEnd) {
         const int tailLen = cap - marker.size();
-        if (tailLen <= 0) return body.right(cap);
-        return marker + body.right(tailLen);
+        if (tailLen <= 0) return tail(cap);
+        return marker + tail(tailLen);
     }
     const int tailLen = qMin(kRoadmapQueryBodyTailCap, cap / 3);
     const int headLen = cap - tailLen - marker.size();
-    if (headLen <= 0) return body.left(cap);
-    return body.left(headLen) + marker + body.right(tailLen);
+    if (headLen <= 0) return head(cap);
+    return head(headLen) + marker + tail(tailLen);
 }
 
 // Always populate body + body_truncated on every cached bullet

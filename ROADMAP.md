@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6904 -->
+<!-- ants-roadmap-id-high-water: ANTS=6905 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92892,7 +92892,7 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: Snatch_Ants_MCP_Feedback.md (snatch full review 2026-11-23).
 
-- 📋 [ANTS-6904] **roadmap_query's elided body keeps whole characters at both cuts, so a reply never carries half an emoji.**
+- ✅ [ANTS-6904] **roadmap_query's elided body keeps whole characters at both cuts, so a reply never carries half an emoji.**
   rcElideBody (src/remotecontrol.cpp) cuts with body.left(headLen) and
   body.right(tailLen), which count UTF-16 units. A cut inside a surrogate
   pair leaves a lone half: ANTS-4891's body, listed with the default
@@ -92900,6 +92900,9 @@ measured Ants adding about 5,250 tokens to every request.
   start of its tail. Python's json writer refuses that string. Both cuts,
   and the fromEnd branch, need to step back to a character boundary.
   Hot reload: none needed; ants-mcpd rebuild reaches clients on reconnect.
+  rcElideBody's head and tail cuts step back off a surrogate pair.
+  roadmap_query_id_body_cap.Ants6904ElisionKeepsWholeCharacters: red on
+  5 of 8 cap/direction cases before, green after.
   **Layman:** When a long roadmap entry is shortened in a list, the cut could land in the middle of an emoji and leave a broken character that strict JSON readers reject.
   Kind: fix.
   Source: self: ANTS-6212 parser differential 2026-11-23.
@@ -109744,6 +109747,20 @@ worked after these.
   Kind: fix.
   Source: ants-terminal-session-2026-11-21 (split from ANTS-6846).
   Lanes: mainwindow, statusbar.
+
+- 📋 [ANTS-6905] **One shared helper cuts a QString to N UTF-16 units without splitting a surrogate pair, in place of the private copies.**
+  Each of these steps a cut back off a high surrogate in its own words:
+  leftWhole (src/aidialog.cpp), surrogateAwareTruncate
+  (src/falseposledger.cpp), truncateEllipsis (src/roadmapparse.cpp),
+  clipSnippet (src/knowhowstore.cpp), and rcElideBody's head and tail
+  cuts (src/remotecontrol.cpp, ANTS-6904). utf8cut.h already holds the
+  byte-level twin (Utf8Cut::prefix); a QString prefix/suffix pair beside
+  it would serve every site. Check each site's edge cases (an empty
+  string, a cut at 0 or past the end) before folding it.
+  Hot reload: none needed; no new running state.
+  **Layman:** Several parts of the program each carry their own copy of the same "shorten text without breaking an emoji" step; one shared copy is easier to keep right.
+  Kind: refactor.
+  Source: self: ANTS-6904 fix 2026-11-23.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
