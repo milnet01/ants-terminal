@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6899 -->
+<!-- ants-roadmap-id-high-water: ANTS=6903 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92844,6 +92844,46 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: split-from-ANTS-6374-2026-11-15.
   Lanes: mcp.
+
+- 📋 [ANTS-6900] **workspace_search skips .git internals even with include_hidden:true, unless the caller asks for them by name.**
+  Snatch, 2026-11-23: a readability lane's include_hidden:true search
+  returned .git/logs/HEAD and .git/ci-gate/history.jsonl rows, which
+  carry commit author names and emails. Fix: keep .git/ out of the walk
+  unless an explicit opt-in (or a glob/lane naming .git) asks for it.
+  Hot reload: ants-mcpd serves the verb; a rebuild reaches clients on
+  their next reconnect.
+  **Layman:** A code search no longer hands commit author names and emails from git's own files to a review helper.
+  Kind: security.
+  Source: Snatch_Ants_MCP_Feedback.md (snatch full review 2026-11-23).
+
+- 📋 [ANTS-6901] **test_audit_partition's setenv_call pre-pass skips pytest's monkeypatch.setenv and monkeypatch.delenv, which undo themselves.**
+  Snatch, 2026-11-23: 29 of 32 pre-pass candidates were
+  monkeypatch.setenv hits; 1 of 32 held. Fix: drop monkeypatch.* calls
+  (and pytest's other auto-undone fixtures) from the setenv_call
+  pattern. Hot reload: ants-mcpd; next reconnect.
+  **Layman:** The test review stops flagging a safe pytest idiom as a leaked environment change.
+  Kind: fix.
+  Source: Snatch_Ants_MCP_Feedback.md (snatch full review 2026-11-23).
+
+- 📋 [ANTS-6902] **indie_review_partition without a module map groups a flat package by imports or co-change, and names the files its suffix filter dropped.**
+  Snatch, 2026-11-23: with no module map it paired downloader.py with
+  logging_setup.py, and its suffix_filter left .ps1, .spec and _service
+  files unassigned. Both review-code and review-readability built
+  partitions by hand. Related: ANTS-5409 (tracked source outside every
+  lane). Hot reload: ants-mcpd; next reconnect.
+  **Layman:** Splitting a project for review without a map gives lanes of related files instead of alphabetical neighbours.
+  Kind: enhancement.
+  Source: Snatch_Ants_MCP_Feedback.md (snatch full review 2026-11-23).
+
+- 📋 [ANTS-6903] **roadmap_query flags an empty literal body_match that holds regex metacharacters, so a zero reads as a likely misuse, not as no match.**
+  Snatch, 2026-11-23: body_match:'cookie|playlist' without
+  body_match_regex returned zero rows. ANTS-6203's hint was present but
+  the empty result read as 'no duplicate exists'. Fix: a top-level
+  flag (e.g. likely_literal_misuse:true) on that reply. Hot reload:
+  ants-mcpd; next reconnect.
+  **Layman:** A roadmap search that silently matched nothing because of a | now says so plainly.
+  Kind: enhancement.
+  Source: Snatch_Ants_MCP_Feedback.md (snatch full review 2026-11-23).
 
 ### Ants MCP feedback from CC sessions — 2026-11-05 triage
 
