@@ -11,6 +11,7 @@
 #include "feedbackstore.h"       // ANTS-4513 — feedback_pending from the store
 #include "findsources.h"
 #include "readregion.h"
+#include "mcpdsocket.h"  // ANTS-6222 — the server's peer-UID check
 #include "secretredact.h"        // ANTS-4448 — strip credentials from a
                                  // SARIF-carried remote URL on read-back
 #include "specparse.h"           // ANTS-3665 — hoisted spec-body parser
@@ -35,7 +36,6 @@
 #include <QScopedValueRollback>
 #include <QThread>
 #include <algorithm>
-#include <sys/socket.h>
 #include "build_info.h"
 #include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 #include <unistd.h>
@@ -114,20 +114,12 @@ int RemoteControl::runClient(const QString &command,
     // connection and harvest the request body (caller_cwd, file paths,
     // notes) we are about to write. Mirror the server's fail-closed check
     // and abort on any mismatch before write().
-    {
-        const qintptr fd = socket.socketDescriptor();
-        struct ucred cred{};
-        socklen_t len = sizeof(cred);
-        if (fd < 0 ||
-            ::getsockopt(static_cast<int>(fd), SOL_SOCKET, SO_PEERCRED,
-                         &cred, &len) != 0 ||
-            len != sizeof(cred) || cred.uid != ::getuid()) {
-            fprintf(stderr,
-                "ants-terminal --remote: server peer-credential check "
-                "failed — refusing to send request (suspect socket "
-                "hijack via ANTS_REMOTE_SOCKET)\n");
-            return 1;
-        }
+    if (!mcpd::peerUidIs(static_cast<int>(socket.socketDescriptor()), ::getuid())) {
+        fprintf(stderr,
+            "ants-terminal --remote: server peer-credential check "
+            "failed — refusing to send request (suspect socket "
+            "hijack via ANTS_REMOTE_SOCKET)\n");
+        return 1;
     }
     socket.write(payload);
     if (!socket.waitForBytesWritten(2000)) {

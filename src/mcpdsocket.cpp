@@ -9,6 +9,7 @@
 
 #include <cerrno>
 #include <csignal>
+#include <cstring>
 #include <sys/socket.h>
 #include <sys/stat.h>
 
@@ -47,14 +48,24 @@ bool socketOwnedBy(const QString &path, uid_t expectedUid) {
     return S_ISSOCK(st.st_mode) && st.st_uid == expectedUid;
 }
 
-bool peerUidIs(int fd, uid_t expectedUid) {
-    if (fd < 0) return false;
+bool peerUidIs(int fd, uid_t expectedUid, QString *whyNot) {
+    const auto fail = [whyNot](const QString &why) {
+        if (whyNot) *whyNot = why;
+        return false;
+    };
+    if (fd < 0) return fail(QStringLiteral("no socket fd for the peer check"));
     struct ucred cred{};
     socklen_t len = sizeof(cred);
-    if (::getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0 ||
-        len != sizeof(cred))
-        return false;
-    return cred.uid == expectedUid;
+    // The syscall's own error is reported, never a zero-filled cred.uid,
+    // which would read as "root tried to connect".
+    if (::getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0)
+        return fail(QStringLiteral("SO_PEERCRED failed (%1)")
+                        .arg(QString::fromLocal8Bit(std::strerror(errno))));
+    if (len != sizeof(cred)) return fail(QStringLiteral("SO_PEERCRED returned a short credential"));
+    if (cred.uid != expectedUid)
+        return fail(QStringLiteral("peer UID mismatch (peer=%1 self=%2)")
+                        .arg(cred.uid).arg(expectedUid));
+    return true;
 }
 
 QString pickTerminalSocket(uid_t expectedUid, QString *whyNot) {

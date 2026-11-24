@@ -11,6 +11,7 @@
 #include "mcpspill.h"          // ANTS-2094 — result offload
 #include "mcptoolinfo.h"       // ANTS-6829 — tool_info's per-op slice
 #include "mcpundeclaredargs.h"  // ANTS-4659 — undeclared-argument survey
+#include "mcpdsocket.h"         // ANTS-6222 — the peer-UID check
 #include "secureio.h"
 #include "verifytrustprompt.h"  // ANTS-5464 — the method name
 
@@ -36,7 +37,6 @@
 #include <atomic>
 #include <memory>
 #include <utility>
-#include <sys/socket.h>
 
 // ANTS-1356 — monotonic clock used by rateLimitCheck in production.
 // Started once in the ClaudeIntegration constructor; tests bypass via
@@ -173,22 +173,9 @@ void ClaudeIntegration::onHookConnection() {
         // as this user (a browser plugin included) is admitted and can
         // send hook events; that is the same-UID trust model
         // (ADR-0004), not a gap this check closes.
-        // ANTS-1797 — fail CLOSED: an unavailable socket fd means the peer
-        // UID cannot be verified, so the connection must be refused rather
-        // than served unauthenticated. (A bare `if (fd >= 0)` guard would
-        // skip the check entirely on fd<0.)
-        const qintptr fd = socket->socketDescriptor();
-        bool peerVerified = false;
-        if (fd >= 0) {
-            struct ucred cred{};
-            socklen_t len = sizeof(cred);
-            if (::getsockopt(static_cast<int>(fd), SOL_SOCKET,
-                             SO_PEERCRED, &cred, &len) == 0 &&
-                len == sizeof(cred) && cred.uid == ::getuid()) {
-                peerVerified = true;
-            }
-        }
-        if (!peerVerified) {
+        // ANTS-1797 — fail CLOSED: peerUidIs refuses an unavailable fd, since
+        // the peer UID cannot then be verified.
+        if (!mcpd::peerUidIs(static_cast<int>(socket->socketDescriptor()), ::getuid())) {
             socket->disconnectFromServer();
             socket->deleteLater();
             continue;
@@ -1329,22 +1316,9 @@ void ClaudeIntegration::onMcpConnection() {
         // onHookConnection. MCP socket carries higher-leverage
         // verbs (filesystem reads, git status, environment),
         // peer-cred check is more important here.
-        // ANTS-1797 — fail CLOSED: an unavailable socket fd means the peer
-        // UID cannot be verified, so the connection must be refused rather
-        // than served unauthenticated. (A bare `if (fd >= 0)` guard would
-        // skip the check entirely on fd<0.)
-        const qintptr fd = socket->socketDescriptor();
-        bool peerVerified = false;
-        if (fd >= 0) {
-            struct ucred cred{};
-            socklen_t len = sizeof(cred);
-            if (::getsockopt(static_cast<int>(fd), SOL_SOCKET,
-                             SO_PEERCRED, &cred, &len) == 0 &&
-                len == sizeof(cred) && cred.uid == ::getuid()) {
-                peerVerified = true;
-            }
-        }
-        if (!peerVerified) {
+        // ANTS-1797 — fail CLOSED: peerUidIs refuses an unavailable fd, since
+        // the peer UID cannot then be verified.
+        if (!mcpd::peerUidIs(static_cast<int>(socket->socketDescriptor()), ::getuid())) {
             socket->disconnectFromServer();
             socket->deleteLater();
             continue;

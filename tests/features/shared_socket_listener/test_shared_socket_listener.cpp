@@ -366,15 +366,17 @@ TEST(SharedSocketListener, Inv7AcceptChecksStayInTheHandlers) {
     ASSERT_FALSE(hub.empty());
 
     const auto checkHandler = [](const std::string &src, const std::string &sig) {
-        const std::string body = ants_test::slurpFunctionBody(src, sig);
+        // Comments stripped: a comment naming the check is not the check.
+        const std::string body =
+            ants_test::stripComments(ants_test::slurpFunctionBody(src, sig));
         ASSERT_FALSE(body.empty()) << sig << " not found";
-        const size_t cred = body.find("SO_PEERCRED");
+        const size_t cred = body.find("mcpd::peerUidIs(");
         const size_t idle = body.find("setInterval(5000)");
         const size_t read = body.find("&QLocalSocket::readyRead");
-        ASSERT_NE(cred, std::string::npos) << sig << ": no SO_PEERCRED check";
+        ASSERT_NE(cred, std::string::npos) << sig << ": no peerUidIs (SO_PEERCRED) check";
         ASSERT_NE(idle, std::string::npos) << sig << ": no 5 s idle timer";
         ASSERT_NE(read, std::string::npos) << sig << ": no readyRead connection";
-        EXPECT_LT(cred, read) << sig << ": SO_PEERCRED follows readyRead";
+        EXPECT_LT(cred, read) << sig << ": the peer check follows readyRead";
         EXPECT_LT(idle, read) << sig << ": the idle timer follows readyRead";
     };
     checkHandler(ci, "void ClaudeIntegration::onMcpConnection() {");

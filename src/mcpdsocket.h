@@ -23,7 +23,9 @@ bool socketOwnedBy(const QString &path, uid_t expectedUid);
 
 // INV-11 — the peer on the connected socket `fd` runs as `expectedUid`
 // (SO_PEERCRED). False when the credential cannot be read: fail closed.
-bool peerUidIs(int fd, uid_t expectedUid);
+// `whyNot` (optional) receives the reason when false. ANTS-6222 — every
+// socket handler in the terminal makes its peer check through this.
+bool peerUidIs(int fd, uid_t expectedUid, QString *whyNot = nullptr);
 
 // ANTS-5236 § 2.2 — remove terminal MCP sockets left by dead processes in
 // the runtime directory. Skips `self`, a live

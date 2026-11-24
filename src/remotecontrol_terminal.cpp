@@ -12,6 +12,7 @@
 #include "claudeintegration.h"
 #include "tokenusageengine.h"
 #include "guithread.h"
+#include "mcpdsocket.h"  // ANTS-6222 — the peer-UID check
 #include "debuglog.h"
 #include "localsockethub.h"   // ANTS-4932 — the --remote socket moved here
 #include "roadmapparse.h"
@@ -31,10 +32,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 
-#include <cerrno>
 #include <memory>
-#include <cstring>
-#include <sys/socket.h>
 #include <unistd.h>
 
 using namespace rcdetail;  // ANTS-3833
@@ -195,41 +193,13 @@ void RemoteControl::onNewConnection() {
         // ever moved (ANTS_REMOTE_SOCKET env override, abstract
         // socket migration), the file ACL stops applying and only
         // the peer-cred check holds the line.
-        // ANTS-1797 — fail CLOSED: if the socket fd is unavailable we cannot
-        // verify the peer UID, so the connection must be refused rather than
-        // served unauthenticated. (A bare `if (fd >= 0)` guard would skip the
-        // whole check on fd<0 — exactly the moved-socket scenario the comment
-        // above names as the case where only peer-cred holds the line.)
-        const qintptr fd = socket->socketDescriptor();
-        bool peerVerified = false;
-        if (fd >= 0) {
-            struct ucred cred{};
-            socklen_t len = sizeof(cred);
-            const int gscRet = ::getsockopt(static_cast<int>(fd), SOL_SOCKET,
-                                            SO_PEERCRED, &cred, &len);
-            if (gscRet == 0 && len == sizeof(cred) && cred.uid == ::getuid()) {
-                peerVerified = true;
-            } else {
-                // getsockopt failed OR truncated struct OR UID mismatch.
-                // Log strerror on the syscall-failure path so a zero-init
-                // cred.uid isn't reported as a fake "root tried to connect".
-                if (gscRet != 0 || len != sizeof(cred))
-                    ANTS_LOG(DebugLog::Network,
-                        "remote-control: SO_PEERCRED failed (%s) — disconnecting",
-                        std::strerror(errno));
-                else
-                    ANTS_LOG(DebugLog::Network,
-                        "remote-control: peer UID mismatch "
-                        "(peer=%d self=%d) — disconnecting",
-                        static_cast<int>(cred.uid),
-                        static_cast<int>(::getuid()));
-            }
-        } else {
-            ANTS_LOG(DebugLog::Network,
-                "remote-control: no socket fd for peer-cred check — "
-                "disconnecting (fail-closed)");
-        }
-        if (!peerVerified) {
+        // ANTS-1797 — fail CLOSED: peerUidIs refuses an unavailable fd, the
+        // moved-socket case above where only peer-cred holds the line.
+        QString whyNot;
+        if (!mcpd::peerUidIs(static_cast<int>(socket->socketDescriptor()),
+                             ::getuid(), &whyNot)) {
+            ANTS_LOG(DebugLog::Network, "remote-control: %s — disconnecting",
+                     qUtf8Printable(whyNot));
             socket->disconnectFromServer();
             socket->deleteLater();
             continue;

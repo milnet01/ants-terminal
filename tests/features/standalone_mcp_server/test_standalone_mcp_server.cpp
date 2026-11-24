@@ -377,6 +377,12 @@ TEST(StandaloneMcpServer, Inv11UidChecksRefuseAnotherUid) {
     EXPECT_TRUE(mcpd::peerUidIs(fds[0], me));
     EXPECT_FALSE(mcpd::peerUidIs(fds[0], me + 1));
     EXPECT_FALSE(mcpd::peerUidIs(-1, me)) << "an unreadable peer must fail closed";
+    // ANTS-6222 — the reason the remote-control log prints.
+    QString why;
+    EXPECT_FALSE(mcpd::peerUidIs(fds[0], me + 1, &why));
+    EXPECT_TRUE(why.startsWith(QStringLiteral("peer UID mismatch"))) << qPrintable(why);
+    EXPECT_FALSE(mcpd::peerUidIs(-1, me, &why));
+    EXPECT_TRUE(why.startsWith(QStringLiteral("no socket fd"))) << qPrintable(why);
     ::close(fds[0]);
     ::close(fds[1]);
 }
