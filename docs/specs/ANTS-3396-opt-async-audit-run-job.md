@@ -31,7 +31,7 @@ for callers that don't ask for the ticket.
 the whole sweep, and **joins** on it before returning the envelope:
 
 ```cpp
-// src/mainwindow.cpp:4579-4586
+// the synchronous audit_run handler, as it stood
 AuditRunner::RunResult r;
 {
     QThread *worker = QThread::create(
@@ -218,8 +218,8 @@ prefer it for an unambiguous read.
 
 A new bounded, mutex-guarded registry on `ClaudeIntegration`, modelled
 exactly on the existing in-flight gate
-(`verbInFlightTryAcquire`/`Release`, `src/claudeintegration.cpp:9997`,
-members `src/claudeintegration.h:606-617`):
+(`verbInFlightTryAcquire`/`Release` in `src/claudeintegration_callpolicy.cpp`,
+members in `src/claudeintegration.h`):
 
 ```cpp
 struct AuditJob {
@@ -243,10 +243,9 @@ QMutex m_auditJobsMutex;
   `last_audit_summary`'s `audit-<iso>-<sha>.sarif` cache basenames —
   they share the `audit-` prefix in logs but never collide as keys.
 - The registry `root` is the **canonical** root (`canon`, the in-flight
-  key — used at `src/mainwindow.cpp:4511`, declared at `:4504`), NOT the
-  raw `req.projectRoot` (= `callerCwd`, `:4534`). `cachePath` is copied
-  verbatim from `r.cachePath`/`r.sarifPath` by the completion slot —
-  never re-derived from a root.
+  key in `runAuditRun`, `src/mcptoolregistry.cpp`), NOT the raw
+  `req.projectRoot` (= `callerCwd`). `cache_path` comes from the stored
+  done fields — never re-derived from a root.
 - **Bound:** keep at most `kAuditJobsMax = 16` entries. On insert, apply
   three ordered steps: (1) reap entries older than `kAuditJobReapMs`;
   (2) if still at the cap, evict the oldest terminal entry; (3) if there
@@ -268,7 +267,7 @@ QMutex m_auditJobsMutex;
   each hold a running entry. If a 17th `audit_run {async:true}` arrives
   with no evictable terminal entry, it refuses with
   `ok:false, code:"too_many_jobs", retry_after_ms: 5000` (reusing the
-  `already_running` hint value at `mainwindow.cpp:4521`); the
+  `already_running` hint value in `runAuditRun`); the
   synchronous path stays available. (In practice this host runs one
   project; the cap is a backstop, not an expected state.)
 - **RAM budget:** ≤ 16 records × a handful of short strings
@@ -284,12 +283,11 @@ worker that posts its result back to the **main thread** on completion:
 
 - **The in-flight slot must outlive the handler.** The sync path
   releases it via `qScopeGuard` on scope exit
-  (`src/mainwindow.cpp:4528-4531`). The guard arms at line 4528 —
-  *before* the `async` arg is read or branched on — so the single safe
-  contract is: on the async branch, after reading `async:true`, call
+  (`inFlightGuard` in `runAuditRun`). The guard arms *before* the
+  `async` arg is read or branched on — so the single safe contract is:
+  on the async branch, after reading `async:true`, call
   `inFlightGuard.dismiss()` and let the completion slot own the release.
-  (The current binding is `const auto inFlightGuard` at :4528;
-  `dismiss()` is non-const, so the implementer must drop the `const`.)
+  `dismiss()` is non-const, so the binding is not `const`.
   Leaving the guard armed would free the slot the moment the handler
   returns the job handle — allowing a duplicate concurrent sweep, then a
   double-release at completion. Do NOT instead try to "return before the
@@ -312,9 +310,8 @@ worker that posts its result back to the **main thread** on completion:
   the post is drained on a normal event-loop turn, never nested inside
   another in-flight `audit_run` dispatch. This is distinct from the
   ANTS-2103 hazard, which was *pumping the main event loop at all* while
-  a foreign MCP socket call was mid-dispatch (the rationale in the
-  `src/mainwindow.cpp:4566-4578` comment: the sync `wait()` is a join
-  that does NOT pump events). The worker touches only its own result
+  a foreign MCP socket call was mid-dispatch (the ANTS-2103 comment in
+  `runAuditRun`). The worker touches only its own result
   struct — it never touches `m_auditJobs`. Both the initial `running`
   insert (dispatch thread) and the terminal flip (completion slot) run
   on the main thread, so `m_auditJobsMutex` is defensive: it matches the
@@ -336,7 +333,7 @@ worker that posts its result back to the **main thread** on completion:
 ### 2.5 In-flight gate composition
 
 `async:true` acquires the same `(verb="audit_run", root)` in-flight slot
-the sync path uses (`mainwindow.cpp:4508-4531`). A second concurrent
+the sync path uses (the gate at the top of `runAuditRun`). A second concurrent
 `audit_run` (sync or async) for the same root returns the existing
 `already_running` envelope. The slot is released by the completion slot
 (§2.4), not on handler return. The job thus *is* the in-flight slot for
@@ -389,7 +386,7 @@ its lifetime.
   a normal main-loop turn (never nested inside another `audit_run`
   dispatch — distinct from the ANTS-2103 pumping hazard); the registry
   is mutated only under `m_auditJobsMutex`. The async branch
-  **dismisses the sync `qScopeGuard`** (`mainwindow.cpp:4528`) so the
+  **dismisses the sync `qScopeGuard`** (`inFlightGuard` in `runAuditRun`) so the
   in-flight slot is released exactly once, by the completion slot.
   *Test:* source-grep for the queued-connection idiom + mutex guard +
   guard dismissal on the async branch; ThreadSanitizer-clean under the
