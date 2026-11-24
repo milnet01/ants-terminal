@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6911 -->
+<!-- ants-roadmap-id-high-water: ANTS=6912 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70817,6 +70817,8 @@ minor tag (next: pre-0.8.0).
   src/claudeintegration.cpp in ants_mcpcore_lib (-O3 -Wnull-dereference)
   at 9fc1e51f emits no warning; the ten seen 2026-11-05 are gone. Reopen
   if a build shows them again.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** Clear a compiler warning that shows up in every build of the MCP server code.
   Kind: fix.
   Source: build warning seen in ANTS-4919, session 224, 2026-11-05.
@@ -70855,6 +70857,8 @@ minor tag (next: pre-0.8.0).
   failed mcp_rate_limit's two windows; the new one holds. Limit: an
   assertion that text is ABSENT from such a window could flip unseen.
   Test: split_motion_scrapes INV-2.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** The tool that checks code moves raised a false alarm on two tests that read to the end of the file, when new files were only added after what they check.
   Kind: fix.
   Source: self-found-2026-11-06 (ANTS-4919 kind A move).
@@ -71323,6 +71327,8 @@ minor tag (next: pre-0.8.0).
   so mcpLaunchCommand takes the sibling before PATH. Checked:
   ~/.local/share/ants-terminal/bin/ants-mcpd reports commit 7684f338,
   built 2026-11-15 11:42.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — closed
+  without code; shipped by ANTS-6720 and ANTS-6728.
   **Layman:** Connecting the MCP from Preferences no longer picks an old copy that cannot open your roadmap.
   Kind: fix.
   Source: user report 2026-11-07.
@@ -71926,6 +71932,8 @@ extends an existing item, that item carries it instead.
   config.json, so under --gtest_repeat the positive case read it and
   failed every iteration after the first. Fixed 2026-11-22: the positive
   case clears the key first; ReviewDialogBase.* passes 20 of 20 repeats.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  test-only work.
   **Layman:** A review-dialog test no longer fails when run twice in a row.
   Kind: test.
   Source: ANTS-5624 build, 2026-11-22.
@@ -73136,6 +73144,8 @@ class; the deferrals below cover the rest.
   claudeintegration.cpp and test_build_target_for.cpp printed none
   before the change. Not measured: a whole-tree build from clean, so
   another file may still warn.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — compiler
+  warning cleanup.
   **Layman:** Clear the leftover compiler warnings so a new one stands out.
   Kind: fix.
   Source: in-session-2026-10-19 (full build during ANTS-2107).
@@ -73613,6 +73623,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   two connect() forms, so no single anchor keeps their meaning). Four
   rows had been anchored on comments and one (mcp_build_status INV-9)
   was failing silently; that test class is ANTS-6376.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  test-only work.
 
 - ✅ [ANTS-3691] **`doc_dedup` and `spec_lint` state no finding-emission order, which ANTS-3663 INV-7 depends on.**
   ANTS-3663 INV-7 makes findings totally ordered, with the producer's own
@@ -73753,6 +73765,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   (default 30, clamped 10-500) and paths; § 2.1 names the opt-in passes
   and ANTS-4386, 4637, 4638, 4639, 4640, 4696, 5296; INV-22 lists the
   twelve properties its test asserts. Loop-log row "impl (2026-11-09)".
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** The design document for the citation checker leaves out a feature that already ships, so anyone reading it gets an incomplete picture.
   Kind: doc-fix.
   Source: review-contract-2026-09-14 ANTS-3636 loop 1.
@@ -73795,6 +73809,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   passes on current code, so it is unproven against the original fault.
   An out-of-band mutation probe killed both mutants: the exit guard
   raised to >= 3, and the hard-kill guard disabled. Spec row 5226-1.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — test
+  added for an already-fixed fault.
   **Layman:** Searching the code for text containing a bracket can wrongly report that nothing was found.
   Kind: fix.
   Source: in-session-2026-09-17.
@@ -74467,6 +74483,8 @@ suppression that survives line drift.
   Shipped 2026-11-21: .gitignore lists audit_rule_quality.json.lock
   beside the json. Other audited projects still get both files in their
   root; that is a separate item.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  repository .gitignore entry only.
   **Layman:** Running an audit no longer leaves a stray file that blocks pushing.
   Kind: fix.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
@@ -74479,6 +74497,8 @@ suppression that survives line drift.
   tests/features/mcp_ci_report/test_mcp_ci_report.cpp (QElapsedTimer).
   Shipped 2026-11-21: the four files include the Qt classes they use.
   clang-tidy over a PCH-free compile database reports no errors in them.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** The code builds even when the shared precompiled header is turned off.
   Kind: fix.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
@@ -75082,6 +75102,8 @@ indie-review finding.
   mcp-tools.md is a standard, so its edit runs its own gate.
   Shipped 2026-11-05 (fc08e358): all three passages now name the
   overload, not the authoring style, as what picks the thread.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** The notes for people adding Claude commands still say something that stopped being true.
   Kind: doc-fix.
   Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 1 sweep).
@@ -75667,6 +75689,8 @@ that shipped 6+ months ago — pure self-reference).
   Shipped 2026-11-05 (3b5ade2d) together with ANTS-3681: every
   fixed-window scrape in tests/features now uses slurpFunctionBody or
   regionBetween.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   Kind: refactor.
   Source: in-session-2026-05-15 (ANTS-1348 implementation).
 
@@ -75704,6 +75728,8 @@ that shipped 6+ months ago — pure self-reference).
   Small.
   Shipped 2026-11-05 (83b8f375): tests/features/README.md § Bundles
   states test_core's link closure and the VtStream → ants_vt_lib trap.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
 
 #### 🔌 MCP cross-project isolation (caller_cwd) — Phase 1 + Phase 2
 
@@ -75911,6 +75937,8 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   expect_failures()). Revealed McpInvariantCheck INV-4b matching a
   comment; now reads comment-stripped source. The lint row suggested
   above was not built: nothing yet stops a new test from repeating this.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — test
+  fix, no user-facing change.
   **Layman:** Some automated checks print a failure but still report success, so a real break would go unnoticed.
   Kind: fix.
   Source: in-session-2026-11-05 (ANTS-1386 sweep).
@@ -76321,6 +76349,8 @@ gets one CHANGELOG section + one drift cycle + one push.
   seventeen identical per-family helpers are gone and their call sites
   use it. Replies are byte-identical (QJsonObject sorts keys).
   Remaining drift and the tidy-ups: ANTS-6379.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  buffer and refusal-helper cleanup; replies identical.
   **Layman:** Two leftover code-tidy jobs from a security sweep: make all the Claude-link error replies use one shared shape, and stop a socket buffer from copying itself over and over.
   Kind: refactor.
   Source: ANTS-1671 fold-out (verified in-session 2026-06-27).
@@ -78651,6 +78681,8 @@ against current source before filing.
   goes stale without announcing it" bans census counts and keeps only
   dated or command-sourced figures. The shared standard owns the rule;
   nothing is left to build here.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
 
 - ✅ [ANTS-3760] **ANTS-3756 deferred tail — verified findings left unfixed at the cold-eyes cap, plus the split recommendation.**
   These are VERIFIED and UNFIXED. Do NOT re-review to rediscover them — a
@@ -78924,6 +78956,8 @@ against current source before filing.
   budget and must never be judged against it; /cold-eyes is retired. The
   two files disagree on what that unit is (final-turn context vs
   cumulative); reported to claude-config.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** Each reviewer we send out costs about twice what the recipe says it should, even after we did the thing that was supposed to fix it.
   Kind: investigate.
   Source: in-session-2026-08-02, ANTS-3786 cold-eyes gate.
@@ -79463,6 +79497,8 @@ against current source before filing.
   Decided (2026-11-20, user): record the figure, add no latency test.
   Shipped 2026-11-20: ANTS-3855 § 4 carries the 2026-11-05 measurement
   (about 1.7 s end to end) and says no latency invariant is added.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** We know how long the roadmap import takes once it's started, but not how long the whole command takes. Measure it properly before promising a number.
   Kind: perf.
   Source: in-session-2026-08-07, ANTS-3855 § 4.
@@ -79936,6 +79972,8 @@ against current source before filing.
   0.8.0 bump (ANTS-3749). A `rotate_minor` dry run for 0.7 succeeded and
   reported 51 sections moved, so rotating in one move works. Nothing to
   split or retitle.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** Nearly all of the oversized roadmap file is two sections that were never marked finished, so the tidy-up mechanism will never touch them.
   Kind: investigate.
   Source: in-session-2026-08-09.
@@ -80855,6 +80893,8 @@ in each bullet, not just the reporter's symptom.
   interrupted marker when the container exits 125 or above. Contract:
   tests/features/qt62_guard_interrupt/spec.md INV-6 and INV-7, run
   against a stub podman (ctest qt62_guard_markers).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** Two copies of the Qt 6.2 check running at once can report a misleading failure and wipe each other's progress marker.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #16; ledger TL-29).
@@ -80939,6 +80979,8 @@ in each bullet, not just the reporter's symptom.
   suite 187 s -> 115-118 s. Sanitizer suite unchanged on GitHub (1288 s
   -j2 vs 1237 s -j4; likely 2 physical cores), so its budget went 30m ->
   38m. Push gate's sanitizer leg: 532 s at -j4. All runs green.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — CI
+  timing change, no user-facing change.
   **Layman:** Tests in CI and in the local push check run four at a time instead of two, roughly halving their wait.
   Kind: perf.
   Source: user-request-2026-11-05.
@@ -81165,6 +81207,8 @@ in each bullet, not just the reporter's symptom.
   logs, short-lived, and history is a QJsonObject); mainwindow_repo's
   parseGithubOriginSlug stays apart (it reads origin's slug, not a
   remote count).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The same small pieces of code are written several times in the CI report tool; one copy each would stop them drifting apart.
   Kind: refactor.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
@@ -81181,6 +81225,8 @@ in each bullet, not just the reporter's symptom.
   warning-only annotations, CTEST_PARALLEL_LEVEL in workflow and step
   env), each seen to fail against a mutated boundary. Folded
   parallelismFires, putFirstJobsPage and Project::save.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  test-only work.
   **Layman:** Some CI report checks are only tested for being present, not for firing at exactly the right point.
   Kind: test.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
@@ -82295,6 +82341,8 @@ whole files.
   half was fixed by ANTS-5083); v1 baseline read as v2 (ANTS-6385); six
   fresh-Config sites (ANTS-6386). FIXED already: auto-fix on CRLF files
   (ANTS-5085 opens binary).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** A list of possible problems in the code-audit feature, still to be checked.
   Kind: investigate.
   Source: cold-sweep-2026-08-18 lanes audit-dialog + audit-engine + audit-ledgers (UNVERIFIED — triage before work).
@@ -82716,6 +82764,8 @@ whole files.
   default; the section check now runs whenever docs/standards/specs.md
   carries its required-sections block. Reword each as a condition.
   Shipped 2026-11-05 (7de1ce95).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Three design documents describe an old default the tool no longer has.
   Kind: doc-fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
@@ -82742,6 +82792,8 @@ whole files.
   Shipped 2026-11-05 (e84a0850): the row carries note_failed +
   note_code. Defensive: annotatePass fails only with bullet_not_found on
   a locator the flip just resolved, so no test can make it fire today.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  defensive fix, cannot fire today.
   **Layman:** In a batch status change, a note that failed to save is dropped without a word.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
@@ -83385,6 +83437,8 @@ are closed inline in the feedback files rather than filed here.
   The open question (is a source symbol named in prose a seventh
   always-declare entry?) is answered to claude-config, not decided here.
   ANTS-4915 (the Colony standard) stays open.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** The plan for renaming things says you only need to search files of the same programming language. But a renamed function is also named in documents and test data, so that search would miss them.
   Kind: doc-fix.
   Source: cc-feedback-2026-09-21 (claude-config), from three cold-reader gate loops on the derived standard.
@@ -83496,6 +83550,8 @@ are closed inline in the feedback files rather than filed here.
   summarised", are conventions for every project: sent to claude-config
   as a proposed standard (message 1842, 2026-11-12). Their call to place
   or decline.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — closed
+  by existing session_message; no code.
   **Layman:** Projects write down what they measured about these tools and then act on it for months. When a tool is fixed, nothing tells them, so they keep avoiding a problem that no longer exists.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts), shapes proposed by them.
@@ -84832,6 +84888,8 @@ filed below.
   inert/survived verdicts, since 2026-08-22 — after this item's firings.
   A session doing mutation testing loads that skill, so the SessionStart
   prelude cap needs neither a raise nor an eviction for this verb.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation closed, no code change.
   **Layman:** A fix that pointed people at a tool from a different place still isn't reaching them.
   Kind: investigate.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20 (fifth and sixth firings).
@@ -85336,6 +85394,8 @@ Three were reproduced directly in this session rather than taken on report.
   the hand-rolled half, and the blocker has changed" — the trigger was
   acted on in the config repo; the new blocker is no_target attribution.
   No Ants change owed.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A checklist elsewhere says to keep doing a job by hand until a certain fix lands. It landed today, so that instruction is now out of date.
   Kind: doc.
   Source: in-session-2026-08-25.
@@ -85383,6 +85443,8 @@ Three were reproduced directly in this session rather than taken on report.
   files:["src/projectsettings.cpp"] returns matched_count 3 and
   basename_matches carrying ANTS-2161-auto-detect-non-standard-layout.
   The symbol-only case stays with ANTS-4972's scope_note.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  duplicate of shipped ANTS-4566.
   **Layman:** The contract check now rescues "no rules found", but if it finds three rules it stops looking — and a fourth, more important one stays hidden.
   Kind: enhancement.
   Source: in-session-2026-08-25 (found while measuring ANTS-4644).
@@ -85484,6 +85546,8 @@ it.
   Closed 2026-11-11: rechecked every listed id — all shipped except
   ANTS-4670, which is considered (parked). The partition has nothing
   left to steer.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — feedback
+  backlog triage, roadmap housekeeping.
   **Layman:** The long list of outstanding reports is really a handful of underlying problems; this records which is which.
   Kind: chore.
   Source: in-session-2026-08-25, derived while answering how to clear the backlog.
@@ -85594,6 +85658,8 @@ it.
   each naming the test that asserts it (4386, 4664, 4697, 4637, 4638,
   4639, 4640, 4696, 4706, 4939). Transcribed from the tests' assertions;
   no INV ids, for the collision reason the section already gives.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A feature built over six changes has no written contract, so the only description of how it should behave is the code.
   Kind: doc.
   Source: in-session-2026-08-25 (noticed while shipping ANTS-4664).
@@ -86456,6 +86522,8 @@ two projects).
   weighed this item's explicit-null route and declined it: a third
   stored state every reader must handle, for information the split
   already gives.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  duplicate of shipped ANTS-4815.
   **Layman:** A project that has decided it needs no specs folder is told forever that it has not set one up.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 perch.
@@ -86842,6 +86910,8 @@ rather than refiled.
   Shipped 2026-11-13 (5b25b5fc): the corpus calibration reports no
   invariants_unparsed. ANTS-1446 only cites its test spec, so its lines
   were reworded instead.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Five old design documents write their rules in a layout the checking tools skip, so nothing checks those rules.
   Kind: doc-fix.
   Source: ANTS-4998 corpus measurement, 2026-11-02.
@@ -87988,6 +88058,8 @@ than re-filed; everything else lands here.
   QRegularExpression: 38.6 s → 0.51 s under ASan, 0.59 s → 0.06 s in
   Release. A mutation probe (the INV-6 pattern broken) went red. Other
   tests with the same pattern: ANTS-6366.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  test-only work.
   **Layman:** One slow test can fail the pre-push check on a busy machine even when nothing is wrong.
   Kind: test.
   Source: in-session-2026-11-03, push gate on 8697fec1.
@@ -88063,6 +88135,8 @@ than re-filed; everything else lands here.
   McpVerbOffthreadGuard 10.4 s → 1.2 s. The other 78 files are left as
   they are: none ran slowly. The slowest tests that do not use regex are
   ANTS-6367.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  test-only work.
   **Layman:** More tests may be slow enough to fail the pre-push check on a busy machine for the same reason as ANTS-6362.
   Kind: test.
   Source: in-session-2026-11-03, found while fixing ANTS-6362.
@@ -88133,6 +88207,8 @@ than re-filed; everything else lands here.
   both in tests/slow_test_timeouts.cmake, labels unchanged. Reading
   fewer files (C/C++ only) was not done: it halves the reads but the
   cold cost stays.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  test-only work.
   **Layman:** Two tests read every file in the project; on the spinning disk, right after a big build, that takes over a minute and they time out.
   Kind: test.
   Source: in-session-2026-11-04, push gate on 78a20c98.
@@ -88626,6 +88702,8 @@ finish it and to make it the default rather than the alternative.
   What-checks-this rows follow. § 5.7's gate paragraph now defers to
   CLAUDE.md rule 14. No review-contract run: since 2026-10-31 rule 14
   gives a standard no automatic review.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Our rule says review history normally stays inside the document. We want the opposite: it moves out and leaves a pointer.
   Kind: doc.
   Source: user-request-2026-09-07.
@@ -88658,6 +88736,8 @@ finish it and to make it the default rather than the alternative.
   are, with nothing to move: ANTS-1455 and ANTS-1457 (an unfilled "To be
   filled" placeholder), ANTS-1555 § 7 (design notes, not a log), and
   docs/plans/ANTS-1160 (history-only folder, top-level heading).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Move the review history out of the documents that still hold it, leaving a pointer behind — but the copied-in standards have to be fixed in the place they are copied from.
   Kind: doc-fix.
   Source: user-request-2026-09-07.
@@ -89895,6 +89975,8 @@ project. Reported causes are claims until checked in source.
   local-archive/.
   Shipped 2026-11-13: doc_integrity table_columns reports none outside
   local-archive/.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Some tables in the project's documents show a cell in the wrong column on GitHub, usually because a | character inside the text splits it.
   Kind: doc-fix.
   Source: doc_integrity table_columns first run 2026-11-12.
@@ -89963,6 +90045,8 @@ project. Reported causes are claims until checked in source.
   symbol:"_ALIAS_RE" lang:"py" in OneUp returns oneup/gui/repos.py:37;
   _QUALIFIED in tools/rc-namespace-scan.py also resolves. Fixed by
   earlier work; no change needed.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — already
+  fixed by earlier work; verified only.
   **Layman:** Stops the definition finder reporting a real Python constant as missing.
   Kind: fix.
   Source: OneUp feedback 2026-09-27.
@@ -90311,6 +90395,8 @@ project. Reported causes are claims until checked in source.
   are gone. (2) ANTS-3533 INV-6: the handler pages itself through
   PaginationEngine::pageBullets. (3) ANTS-3533 § 2.2 names softCapBytes().
   An amend row in each loop log; no reviewer dispatched.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Tidy three out-of-date sentences in the design notes for how roadmap and changelog lookups split results into pages.
   Kind: doc-fix.
   Source: review-contract-2026-10-12 ANTS-5651 tail.
@@ -90456,6 +90542,8 @@ project. Reported causes are claims until checked in source.
   UT_MonsterHunt GAME-0190 spec, 22 unresolved → 0 (22 referenced). .uc
   files were already walked (ANTS-4902); engine natives and `var` names
   they use now come back referenced.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — shipped
+  through ANTS-5357; no separate change.
   **Layman:** Spec checks on the Unreal game project stop flagging real game code names as missing just because the tool cannot read that language.
   Kind: fix.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-10-06 (GAME-0190 spec).
@@ -91701,6 +91789,8 @@ measured Ants adding about 5,250 tokens to every request.
   repository that commits parser.c, and that swift, sql and perl wait on a
   generate step their own batch adds. No script change. My call, not a
   user ruling: it records what the script does and leaves swift open.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  review fix, no user-visible change.
   **Layman:** A grammar repository that does not ship its generated parser cannot be vendored yet, though the design says it can.
   Kind: review-fix.
   Source: review-contract-ANTS-5734-2026-10-16.
@@ -91873,6 +91963,8 @@ measured Ants adding about 5,250 tokens to every request.
   ClaudeIntegration::handleMcpRequest refuses an empty caller_cwd for a
   Required verb before the handler runs, so cmdQuotationCheck never sees
   one.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  review fix, no user-visible change.
   **Layman:** The quote-checking tool's design promises one safety check that its tests never actually try.
   Kind: review-fix.
   Source: review-contract ANTS-5502 loop 3, 2026-10-22 (out of blast radius).
@@ -91983,6 +92075,8 @@ measured Ants adding about 5,250 tokens to every request.
   McpdSession counts id:null replies; both oversized-request tests
   assert exactly one. A server made to refuse twice fails the in-pieces
   test.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  test-only work.
   **Layman:** One check in a server test looks at an old saved answer, so it would pass even if the bug it guards against came back.
   Kind: test.
   Source: in-session-2026-10-21, found while fixing ANTS-4709.
@@ -92495,6 +92589,8 @@ measured Ants adding about 5,250 tokens to every request.
   7000); 50 repeats of the bundle's mcpd tests and the full suite are
   green. procDiagnosis stays, so a recurrence names its cause; reopen
   then.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — test
+  flake fix.
   **Layman:** A test that looks for a running helper program failed once for no clear reason, which blocked a push.
   Kind: fix.
   Source: in-session-2026-10-31.
@@ -92545,6 +92641,8 @@ measured Ants adding about 5,250 tokens to every request.
   The call test's six-second limit is gone, so its helper's 20 s default
   applies. The oversize-refusal waits go from 5 s to 60 s as hang
   detectors. Not re-run under heavy load.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — test
+  flake fix.
   **Layman:** A test gave a helper program too little time to finish on a very busy machine, and failed once.
   Kind: fix.
   Source: in-session-2026-10-31.
@@ -92687,6 +92785,8 @@ measured Ants adding about 5,250 tokens to every request.
   The citation sat in loop 2's log row and dated from before
   remotecontrol.cpp was split. Dropped, since the row's sentence stands
   without it.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A design document points at a line in a code file that no longer exists.
   Kind: doc-fix.
   Source: in-session-2026-11-01.
@@ -92992,6 +93092,8 @@ measured Ants adding about 5,250 tokens to every request.
   Hot reload: ants-mcpd rebuild, then /mcp reconnect.
   Shipped 2026-11-13 (01eb4748): the description states the rule. The
   outlier finding for one long wait was not built.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** The CI report never says how long a wait must be before it warns.
   Kind: doc-fix.
   Source: contact-list feedback 2026-11-06.
@@ -93130,6 +93232,8 @@ measured Ants adding about 5,250 tokens to every request.
   buckets), 6735 (docs). Dismissed 2: L14-06 (id_fold and foldId are
   both ASCII-only and ids are ASCII-only) and L14-18 (backup_to is
   unconfined by documented choice, remotecontrol_roadmap_migrate.cpp).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  review fix, no user-visible change.
   **Layman:** A measurement run for another project also reviewed two parts of this one; its findings need sorting into fixes.
   Kind: review-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892).
@@ -93367,6 +93471,8 @@ measured Ants adding about 5,250 tokens to every request.
     plan_failed and roadmap_write_failed.
   Shipped 2026-11-11. Also documents body_match_ambiguous and
   headline_match_not_found (same gap); dry_run list adds run_trace too.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Four places in the docs that no longer match what the roadmap code does.
   Kind: doc-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
@@ -94024,6 +94130,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   the continuation when auto mode is on and a turn is active
   (shouldContinueAfterUnarmedConfirm). Reword to say when it does.
   Shipped 2026-11-13 (d1df54e8).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** One settings note says a model switch never sends a follow-up message, but sometimes it does.
   Kind: doc-fix.
   Source: close-findings sweep 2026-11-06 (out of scope, found next door).
@@ -94142,6 +94250,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Shipped 2026-11-07 with ANTS-6441:
   packaging/shell-integration/README.md now says the HMAC stops forged
   markers in printed output, not programs run as the user.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — README
+  wording fix, shipped with ANTS-6441.
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 24-shell-surface (Medium).
@@ -94545,6 +94655,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Shipped 2026-11-07: the root is stripped only at a path boundary.
   Reachable through the feedback-file carve-out; no observable effect,
   so no test.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  path-boundary hardening, no observable effect.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-readability 2026-11-06, lane 26-mcp-state-workspace-a (Info).
@@ -95725,6 +95837,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-06 review): appendMessage calls trimHistory(document,
   kMaxHistoryChars); tests/features/ai_chat_history_cap covers it.
   Nothing new shipped here, so no CHANGELOG entry. Checked 2026-11-16.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — already
+  fixed by ANTS-5200; closed.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 23-model-switching (Low).
@@ -97119,6 +97233,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1253 `tools/install-hooks.sh:184` (Low)
   2026-11-18: rows 1246, 1249 in 021edae4; 1243, 1244, 1250, 1251, 1253
   in a0a27287; row 1248's comment was already gone from qt62-guard.sh.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -97134,6 +97250,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1269 `tools/quote-displacement-survey.py:10` (Low)
   2026-11-18, e701b5cd: all six rows fixed (1258, 1259, 1260 and 1268
   with ANTS-6151).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -97161,6 +97279,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   (model_switch_confirm spec INV-8, ANTS-1969). Rewrite the clause.
   Shipped 2026-11-13 (d1df54e8): the same sentence as ANTS-6438, fixed
   once.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A settings document says Ants never sends a follow-up message after confirming a model switch, but sometimes it does.
   Kind: doc-fix.
   Source: self-found 2026-11-07 (ANTS-6437 edit).
@@ -97175,6 +97295,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Hot reload: none needed; a document.
   2026-11-23: spec.md's Inv2Membership passages and the test's comment
   now say the dropped item is present as 🚫.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A test's description still says dropped items are hidden, which stopped being true when they got their own 🚫 mark.
   Kind: doc-fix.
   Source: self: ANTS-6215 Phase 0 read 2026-11-23.
@@ -97656,6 +97778,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1262 `tools/spec-header-survey.py:285` (Low)
   2026-11-18: row 1254 (one kind list, tools/roadmap_kinds.py) in
   e701b5cd; row 1262 (--values in Usage) in d862def1.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -98970,6 +99094,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   (check_scrapes extractions) fixed in efbdeb02 with ANTS-6153.
   2026-11-18: rows 1266 and 1270 fixed in e14c9f2b with ANTS-6155.
   All five rows done.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Code here is harder to follow than it needs to be.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (readability).
@@ -99123,6 +99249,8 @@ volume classes, and the tooling/documentation gaps the run exposed.
   the hot paths named here — paint, VT and roadmap write — were measured
   and fixed (cdc0786e, 4a9bfe31). The remaining sites are cold; a future
   hot path found by profiling gets its own item.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** Loops over Qt lists quietly copy the whole list because the loop is not marked read-only.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
@@ -99459,10 +99587,24 @@ volume classes, and the tooling/documentation gaps the run exposed.
   The audit_run code moved to src/mcptoolregistry.cpp (ANTS-4932) and the
   registry to src/claudeintegration_callpolicy.cpp. Fix: cite by symbol.
   Shipped 2026-11-24: citations by symbol; check-doc.py clean.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** The design note for background audits points at code locations that no longer exist.
   Kind: doc-fix.
   Source: in-session-2026-11-24, check-doc.py while shipping ANTS-6221.
   Lanes: specs.
+
+- 📋 [ANTS-6912] **check-shipped-coverage.sh counts an id cited on a bullet's continuation line or inside an "ANTS-A to ANTS-B" range.**
+  Seen 2026-11-24 preparing 0.7.116: 17 security items read as uncited,
+  yet [Unreleased] cites them, e.g. "(ANTS-6449, ANTS-6450, ANTS-6453 to
+  ANTS-6464)" on the second line of its bullet. The grep only matches a
+  line that starts a bullet, and never expands a range. Fix: read each
+  bullet's whole text and expand ranges; keep continuation-prose
+  cross-references out by requiring the id list to close the bullet.
+  **Layman:** The pre-release check wrongly reports some finished work as missing from the release notes.
+  Kind: fix.
+  Source: in-session-2026-11-24, 0.7.116 release prep.
+  Lanes: tools.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
@@ -101319,6 +101461,8 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   The welcome window's button registers it, and README "Connect Claude
   Code to it" gives the command for a source build and the AppImage. No
   python3 dependency is needed. No edit made.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — already
+  resolved by ants-mcpd work; closed without code.
   **Layman:** People who install Ants from a package or the AppImage have no way to hook Claude Code up to its money-saving tools.
   Kind: fix.
   Source: in-session-2026-09-15 (README getting-started check).
@@ -102421,6 +102565,8 @@ that extend an earlier perf-pass bundle name it.
   24 h old can sit inside that cap until the next terminal start. That
   is inside the cap, so no edit made. readSpillRows was already called
   low (bounded by kStructuredParseMaxBytes).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — already
+  bounded; closed without code.
   **Layman:** Large MCP results saved to disk are cleaned only at startup, by age, and the folder is on the system drive.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.
@@ -103875,6 +104021,8 @@ a modern terminal" release.
   so a drag re-wraps at most twice, not once per step. ANTS-6851
   (2026-11-21) cut one 50k re-wrap to ~34 ms. Not done: an off-thread
   re-wrap; ANTS-6851 holds it until a user hits it.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  delivered under other ids; closed.
   **Layman:** Resizing the window with a long history makes it stutter, because each step of the drag rewraps every stored line before the next frame can draw.
   Kind: perf.
   Source: in-session-2026-10-20 (ANTS-5134 benchmarks).
@@ -105480,6 +105628,8 @@ here.)
   once, in that builder; section_index INV-7 asserts every fill calls
   it. The bundles member object (buildRoadmapBundlesEnvelope) is a
   different, deliberately smaller shape, not a bullet row.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The code that turns a roadmap item into a reply is copy-pasted five times, so a new detail can appear in some answers and be missing from others.
   Kind: refactor.
   Source: in-session-2026-09-09 (hit while building ANTS-4985).
@@ -106735,6 +106885,8 @@ worked after these.
   constants (same text); stdin handling pulled out of main into
   RequestLineFramer. Suite 5962/5962. No CHANGELOG entry: readability
   work, no change a user sees. ANTS-6231, 6232 and 6233 stay queued.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the connection Claude Code sessions use so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107378,6 +107530,8 @@ worked after these.
   tomorrow" aside; the marshal depth is named once as kMarshalMaxDepth;
   an empty table marshals as []; dispatchTo is the GUI-thread entry that
   queues and never blocks. No behaviour change.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the plugin system so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107532,6 +107686,8 @@ worked after these.
   re-verified first. F22's suggested reason was false (the pty check
   runs before fork); "keep in step" comments on both sides instead.
   Correctness leads stay filed as ANTS-6042 to ANTS-6045.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy shared helper code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107554,6 +107710,8 @@ worked after these.
   (the gate runs build-test via --run-job / --check-warm). The trap
   twins got the comment fix; local-ci.sh's foreground build stays with
   ANTS-6050.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the local CI scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107572,6 +107730,8 @@ worked after these.
   2026-11-18, a0a27287: all twelve findings and rows 1241, 1242 closed.
   The missing theme claim is documented as optional rather than made a
   failure (no test runs check-readme-claims.sh).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the check scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107596,6 +107756,8 @@ worked after these.
   ID-grammar, XDG and fence findings change output, so they stay with
   ANTS-6065, ANTS-6069 and ANTS-6066, and import-verify's KIND with
   ANTS-6064.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the roadmap helper scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107620,6 +107782,8 @@ worked after these.
   spec-header-survey.py. Replaying the helper on the pre-ANTS-1382 and
   pre-ANTS-1385 test trees gives byte-identical rewrites. The lane's
   correctness leads are ANTS-6071 to ANTS-6076.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the migration and survey scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107642,6 +107806,8 @@ worked after these.
   2026-11-18: shipped in efbdeb02. Mediums and lows fixed, row 1267
   included. L05-F4 dismissed: slurpClaudeIntegration now exists in
   srcgrep.h. Output byte-identical on 11 split commits, both modes.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the split-motion checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107657,6 +107823,8 @@ worked after these.
   2026-11-18: shipped in e4f034d3. All four fixed; the effort is now
   read from each README's Model line. Row 467 (git clean tests) stays
   with ANTS-6630.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the token benchmark so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107678,6 +107846,8 @@ worked after these.
   2026-11-18: shipped. tools/measure half in e14c9f2b, tools/e2e half
   (rows 1236 and 1252 included) in f7b33689. Shared e2e helpers live in
   run.sh; smoke case 1 now fails when its command never runs.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the end-to-end and measuring scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107701,6 +107871,8 @@ worked after these.
   Dismissed: F16 — renaming ANTS_PRECOMMIT_NO_MIRRORS breaks every
   citation of a bypass switch, and the hook's header already says it
   covers both checks.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the git and Claude hook scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107717,6 +107889,8 @@ worked after these.
   F5 covered four refusals, not three: ANTS-6171 had added one since the
   review. The lane's correctness lead (a reconfigure resetting the expected
   Qt version) was already closed by ANTS-6171.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the build configuration so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107737,6 +107911,8 @@ worked after these.
   copies of the required-files list; the audit's shorter list is queued as
   ANTS-6837. The lane's four correctness leads were already filed as
   ANTS-6100 to ANTS-6103.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the release scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107760,6 +107936,8 @@ worked after these.
   2026-11-06 reviews. F1 and F2 were 629d80a9. F7 names the twins and the
   B-timing difference; whether to reconcile it stays with ANTS-6107. The
   lane's correctness leads were already filed as ANTS-6104 to ANTS-6109.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Tidy the package recipes so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107787,6 +107965,8 @@ worked after these.
   and after; fast suite green. Nine source-reading tests had anchors on
   moved text and now name the new shape. The file is longer than before:
   method headers and the field list cost more lines than the fold saved.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The roadmap search code is one very long function; break it into smaller named pieces a newcomer can follow.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107801,6 +107981,8 @@ worked after these.
   sweep. Fix: amend the sample, or replace it with a pointer to
   srcgrep.h. A spec edit: rule 14 decides whether it gates.
   Shipped 2026-11-13 (b4d7161b).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A design document shows an older version of a test helper; bring it up to date.
   Kind: doc-fix.
   Source: close-findings sweep 2026-10-23 (ANTS-6153 L05-F1).
@@ -107883,6 +108065,8 @@ worked after these.
   both triage paths call it. Four scrape contracts now read its body
   (audit_dialog_render_hardening INV-3, llm_client INV-8,
   audit_scope_and_triage INV-4/5), comments stripped where they counted.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The two AI-triage paths still each set up their network request by hand; make that one piece of code once the tests allow it.
   Kind: refactor.
   Source: review-readability-2026-10-22 L07.
@@ -107906,6 +108090,8 @@ worked after these.
   (src/claudeintegration_codenav.cpp), called only when the process
   registered trace. tools/list's live response is byte-identical
   (ANTS-1677 INV-6). The branch's post-processing tail is ANTS-6223's.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Every tool's description is built in one huge block of code; give each tool its own small piece so a reader does not get lost.
   Kind: refactor.
   Source: review-readability-2026-10-22 L15.
@@ -107981,6 +108167,8 @@ worked after these.
   line of the top counts as current); no reason is recorded in history.
   INV-11 now pins the helper's updateScrollBar() and forbids a direct
   m_scrollOffset write in the four bodies.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Jumping to a prompt, a bookmark or a search hit would all use one piece of code, so a fix to scrolling lands everywhere at once.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L03-F7).
@@ -108008,6 +108196,8 @@ worked after these.
   paintCellDecorations, the text-run draw to drawTextRuns, the highlight
   lookup to highlightSpansForLine. A 20-state pixel render of the real
   widget is byte-identical before and after.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The function that draws the terminal is about a thousand lines long; splitting it lets a newcomer change one part without breaking another.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L03-F9).
@@ -108029,6 +108219,8 @@ worked after these.
   comment; palette comment corrected). Found on the way: ANTS-6846
   (plugin signals lost during a permission prompt), ANTS-6847
   (split-motion-check markers).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The window's start-up code is one very long function; splitting it shows a newcomer where each part goes and which order matters.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L04-F14).
@@ -108046,6 +108238,8 @@ worked after these.
   Shipped e7eda4d8: MainWindow::mcpGetScrollback holds the body; the
   three scrapes share ants_test::scrollbackProviderBody(), which returns
   it only when the registration calls it.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** One tool's code is a hundred-line block buried in a list of registrations; giving it its own function makes it findable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L04-F16).
@@ -108064,6 +108258,8 @@ worked after these.
   and the reload rebuild. The check mark follows m_currentTheme (the
   theme on screen); theme_switch_popup_defer INV-4 and its spec moved
   with it.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The theme menu is built by two copies of the same code that have started to differ; one copy would keep them the same.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L04-F17).
@@ -108104,6 +108300,8 @@ worked after these.
   Shipped e34bea2f: failPermanently drops queued binds, latches, emits;
   the session handle is kept so the destructor closes the session.
   portal_failure_paths INV-6 locks it.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** When the desktop's global-shortcut service fails, six places each clean up slightly differently; one shared routine would make them agree.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L05-F3).
@@ -108124,6 +108322,8 @@ worked after these.
   Shipped d478164e: AuditDialog::isFindingVisible, with inBaselineView
   as its baseline half; the summary counts apply that half alone and say
   why.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Three places in the audit window decide which findings are on screen, each with its own copy of the rule; a new filter would make their counts disagree.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F3).
@@ -108158,6 +108358,8 @@ worked after these.
   Hot reload: none needed; no new running state.
   Shipped: AuditDialog::saveReportPrivately in auditdialog_export.cpp;
   audit_dialog_lows INV-5 reads its body.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The two report-export buttons repeat the same private-file save code, so a privacy fix could reach one and miss the other.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F6).
@@ -108173,6 +108375,8 @@ worked after these.
   `src/auditdialog.h:182`. Details: docs/reviews/close-findings-2026-11-06.md.
   Renamed to passesSinceBaselineFilter in src/auditdialog.{h,cpp}, the
   audit_scope_and_triage spec's INV-3 and its test message (2026-11-23).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Two audit functions have near-identical names but behave differently while git is still running; a clearer name stops the wrong one being used.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F20).
@@ -108247,6 +108451,8 @@ worked after these.
   audit_per_tool_timeout INV-4 now requires each of them;
   audit_compiler_warnings_check INV-1's scrape reads the statement after
   the block.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Slow audit tools get their longer time limit in two different ways, so a new slow tool may get neither.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F24).
@@ -108320,6 +108526,8 @@ worked after these.
   and writeArtifacts; refusals share one refuse() helper. The
   scoped_check, partial_envelope and delta INV-11 scrapes read the
   helper that holds their code.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The headless audit's main routine is very long, with braces that are hard to match; splitting it into named steps makes it followable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L08-F8).
@@ -108357,6 +108565,8 @@ worked after these.
   (returns headline + consumed end, or nothing); the empty em-dash
   branch is gone. Old vs new ants-mcpd parsed 57 real roadmaps (21,896
   bullets, 1,978 GFM) byte-identically.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The routine that reads one roadmap line is very long and juggles five possible ids at once; splitting it into named steps makes it followable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L11-F8).
@@ -108374,6 +108584,8 @@ worked after these.
   2026-11-01) removed the `const Lane whole = out.first();` split. A
   fresh compile of indiereviewengine.cpp with -O3 -Wnull-dereference
   emits no warning.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** A compiler warning in the review partitioner says a list might be read through an empty pointer.
   Kind: fix.
   Source: build-warning-2026-10-23.
@@ -108391,6 +108603,8 @@ worked after these.
   tool_info's roadmap_log inputSchema is identical before and after.
   roadmapcheck.cpp's acyclicTypes copy stays: it is § 6's own rule by
   design.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — schema
+  enum built from one list; output identical.
   **Layman:** The list of roadmap link kinds is still typed out by hand in one more place; it should come from the shared list.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L11-F5).
@@ -108446,6 +108660,8 @@ worked after these.
   cheatsheet keeps Highlight/HighlightedText. The placeholder claim
   above did not hold: each copy started from the palette install() had
   set, so PlaceholderText survived; no visible change.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Two roadmap windows set their own background colours on top of the shared theme code, so a theme change has three places to edit.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F4).
@@ -108462,6 +108678,8 @@ worked after these.
   2026-11-24, 4daa7d58: the recent-commits rule won. Only FailedToStart
   ends a run from the error handler; the blame handler now matches.
   Locked by test_roadmap_last_touch_async INV-8.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  error-path alignment in an internal dialog, no user-facing change.
   **Layman:** Two background git jobs in the roadmap window handle errors differently, and nothing says whether that is on purpose.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F5).
@@ -108479,6 +108697,8 @@ worked after these.
   2026-11-24, e6b09f8c: emitSectionHeader takes `expanded`; its
   column-head flag is its own init-capture; tableOpen's one writer and
   two readers are named.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The roadmap card renderer is very long and its helper pieces quietly change shared state, which makes it hard to follow.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F6).
@@ -108495,6 +108715,8 @@ worked after these.
   2026-11-24, 292fb070: named @token@ slots filled by fillCssTokens();
   the card test's CssTokens check catches an unfilled one. The
   duplicate-id banner's inline style was left as is.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** The roadmap window's style sheet fills 24 numbered gaps in order, so adding one style means renumbering the rest by hand.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F7).
@@ -108512,6 +108734,8 @@ worked after these.
   2026-11-24, 617ff7f7: renamed to collectCurrentWorkSignals() /
   currentWorkSignals across code, tests and specs; history files keep
   the old names.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** A roadmap window function is named as if it returns roadmap items, but it returns recent changelog lines and commits.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F23).
@@ -108604,6 +108828,8 @@ worked after these.
   mcp_output_sanitisation's chokepoint is ClaudeIntegration::wrapMcpData
   in claudeintegration_callpolicy.cpp, not the dispatcher, so that one
   names wrapMcpData.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Two test descriptions still state old rules for counting calls and limiting their rate.
   Kind: doc-fix.
   Source: review-readability-2026-10-22 (L14 sweep).
@@ -109113,6 +109339,8 @@ worked after these.
   Hot reload: ants-mcpd rebuild + /mcp reconnect.
   Shipped 2026-11-05 with ANTS-6379 (8709d05e), which filed the same
   defect without seeing this item.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — shipped
+  within the ANTS-6379 entry.
   **Layman:** When the code-check tool refuses a request, it puts the short error code where every other tool puts the human message, so a caller reading the message gets a code instead.
   Kind: fix.
   Source: review-readability-2026-10-22 (L23-F3).
@@ -109362,6 +109590,8 @@ worked after these.
   without a test;
   SpecParseTestSurface.Ants6278TwoSpaceBulletEndsThePreviousBody now
   pins it, and fails with the old literal search put back.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — fix
+  landed earlier; this adds a test.
   **Layman:** If a spec's invariant line has an extra space after the dash, the reader merges it into the invariant above.
   Kind: fix.
   Source: review-readability-2026-10-22 L27.
@@ -109587,6 +109817,8 @@ worked after these.
   (ANTS-6119); it predates that change. A spec edit: name the tables
   rather than a count, and ask rule 14's question.
   Shipped 2026-11-13 (1aeb45c3).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A test's description of project removal names the wrong set of database tables.
   Kind: doc-fix.
   Source: close-findings-sweep-2026-10-29.
@@ -109739,6 +109971,8 @@ worked after these.
   still matches what the paragraph says.
   Shipped: Invariant 3 names setTabLabel; its grep rule names the two
   checks the test runs.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A test's description lists five places that may set a tab's title; the code now has only one, so the description misleads.
   Kind: doc-fix.
   Source: in-session-2026-11-20 (session 302 handoff).
@@ -109781,6 +110015,8 @@ worked after these.
   Shipped: ANTS-1677 INV-7 numbers every listed file, so the markers
   were renumbered (tablist 8/9, repo 9/9); the checker is unchanged and
   HOLDS on the commit.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** A checker that proves code was only moved, not changed, fails on files added later without its numbering line, so every future move check starts red.
   Kind: fix.
   Source: ants-terminal-session-2026-11-20 (found in ANTS-6184).
@@ -110383,6 +110619,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   readability fixes land (user, 2026-10-22).
   2026-11-13: confirmed by reading runNextCheck, and fixed by ANTS-6192:
   the row is now built by makeToolHealthWarning, so it is Info.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — fixed by
+  ANTS-6192; investigation closed.
   **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -113342,6 +113580,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   2026-11-18: fixed in 1d5afd13 (ANTS-6153's HIGH): class_texts()
   appends src/mcptoolregistry.cpp for mainwindow, as slurpMainWindow()
   does. Verified in efbdeb02's tree.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -113628,6 +113868,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   passes its id through ants_validate_session_id, which rejects as
   precompact does, so one id names one snapshot file. f9cbcfb7 put the
   inbox hook on the same validator.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** A possible bug in the git and Claude hook scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -115497,6 +115739,8 @@ reports are asked for separately, each time.
   classify ants-v1, and numbers by hand from the floor § 3.5.1's counter
   row states, which on a store-migrated project is the store's
   id_high_water. No edit needed.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** The steps for converting an old-style roadmap give a reason that the same section later says may not be true.
   Kind: doc-fix.
   Source: review-contract loop 3 on roadmap-format.md, 2026-09-14 (ANTS-4955 gate, filed at cap).
@@ -115573,6 +115817,8 @@ reports are asked for separately, each time.
     File-static has the same internal linkage, and the mcp_rate_limit
     and mcp_tabspecific_contract specs and tests quote the static form.
   Other clangd warnings seen: ANTS-6717.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  lint cleanup.
   **Layman:** Tidy up warnings a code checker raises in the Claude integration code; two may hide number overflows.
   Kind: audit-fix.
   Source: in-session-2026-09-19.
@@ -115659,6 +115905,8 @@ reports are asked for separately, each time.
   The 2026-11-21 sweep found 280 hits, every one `const QJsonValue &`
   over a QJsonArray. QJsonValueConstRef, the type the check asks for, is
   not in Qt 6.2 (the CI floor), and the copy is a reference-count bump.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Loops that quietly copy each item instead of looking at it in place.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115670,6 +115918,8 @@ reports are asked for separately, each time.
   The 2026-11-21 sweep found 217 hits, all flag and byte masks. The
   check guards behaviour older C++ left to the implementation; C++20
   (CMAKE_CXX_STANDARD 20) defines it.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Bit operations done on signed numbers, which C++ treats loosely.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115681,6 +115931,8 @@ reports are asked for separately, each time.
   The 2026-11-21 sweep found 234 hits: 232 `static` functions and 2 `static` variables.
   `static` and an anonymous namespace give the same internal linkage,
   and no project standard prefers one.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** File-private helpers written in an older style than the project's newer code.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115696,6 +115948,8 @@ reports are asked for separately, each time.
   loop counters and fixture sizes. In src, the two runtime ones cannot
   overflow: mcpspill.cpp's `offloadHeadBytes() * 2` (head clamped to at
   most 16384) and verifyengine.cpp's `2 * keep` (a constant).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Multiplications done in a small number type and widened afterwards, which can overflow first.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115708,6 +115962,8 @@ reports are asked for separately, each time.
   (clang-tidy's own fix), and 21 structs, classes and enums sit in an
   anonymous namespace. No name was defined twice, so no live clash was
   found. The check stays on and reports 0 in those files.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Helpers visible to the whole program that only one file uses.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115723,6 +115979,8 @@ reports are asked for separately, each time.
   sites (the 77th in the 2026-11-21 sweep is gone from the tree). Each
   changed line differs only by `std::move(x)` for `x`. The check stays
   on and reports 0 in those files.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** Values copied where they could simply be handed over.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115736,6 +115994,8 @@ reports are asked for separately, each time.
   QStringList and the like); the one file-scope std::regex is a literal
   in a test. Proof: src/auditdialog.cpp reports 6 hits under the old
   config, 0 under the new one.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Global values built at startup in a way that could, in theory, throw before the program begins.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115749,6 +116009,8 @@ reports are asked for separately, each time.
   test_shared_socket_listener.cpp's handler lambda returns a captured
   value on every call, so a move would empty it. The check reports 0 in
   those files.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** Return values that get copied because they were declared const.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115765,6 +116027,8 @@ reports are asked for separately, each time.
   after Type sits at offset 4 either way (checked by static_assert).
   Proof: src/vtparser.cpp reports 2 hits under the old config, 0 under
   the new one.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Small lists of named options stored in a bigger number type than they need.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115780,6 +116044,8 @@ reports are asked for separately, each time.
   witness would alias the input. Capture-only locals moved into the
   lambda captures; the eight copy-then-store blocks in
   claudeintegration_store.cpp fold to one line each.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** Local copies of values that are only read.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115794,6 +116060,8 @@ reports are asked for separately, each time.
   registerProjectScopedVerbs' RegistryHost (once per process; ANTS-4932
   quotes it). test_indie_review_dispatch now anchors on the function
   name, not its parameter list.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** Functions that take a copy of an argument they only read.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115805,6 +116073,8 @@ reports are asked for separately, each time.
   parameter at that position (durUs for durationUs, h1 for h1Heading),
   so no swapped arguments. Comments now carry the full names; clang-tidy
   reports 0 over the five test files.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Inline comments naming an argument that no longer match the parameter's name.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115818,6 +116088,8 @@ reports are asked for separately, each time.
   dependencyinventory.cpp; a bare `=` typo is caught by -Wparentheses
   under -Wall. Proof: src/dependencyinventory.cpp reports 4 hits under
   the old config, 0 under the new one.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Assignments written inside an if test, easy to misread as a comparison.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115832,6 +116104,8 @@ reports are asked for separately, each time.
   per-case tables, documented fallbacks or branches split for a comment,
   and carry NOLINT(bugprone-branch-clone). The check stays enabled;
   clang-tidy reports 0.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** If/else or switch branches that do exactly the same thing.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115845,6 +116119,8 @@ reports are asked for separately, each time.
   states that run() fills textHolder first (one NOLINT).
   roadmapmigrateverb.cpp's three `*opened` carry a NOLINT: openBulkStore
   always emplaces. The 596 hits under tests/ stay with ANTS-4783.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** Reading an optional value without checking it is there.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115876,6 +116152,8 @@ reports are asked for separately, each time.
   loop sets. Behaviour is unchanged: a switch with no matching case
   already skipped its body. clang-tidy reports 0; ctest --preset=default
   6599/6599.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** Switch statements with no fallback for a value nobody listed.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115890,6 +116168,8 @@ reports are asked for separately, each time.
   tests/perf/perf_env.h (std::from_chars, whole value or unset). Before,
   "12abc" read as 12 and "99999999999" as 1215752191. clang-tidy reports
   0 for both checks on the 11 files.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** Text turned into numbers without checking the text was a number.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115903,6 +116183,8 @@ reports are asked for separately, each time.
   with `<<`. REQUIRE_OPENSSL (self_update) declares variables named by
   its arguments, so it is suppressed with that reason. clang-tidy
   reports 0 on the 7 files; 46/46 tests pass.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Macros whose arguments are not bracketed, so an expression passed in can group wrongly.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115913,6 +116195,8 @@ reports are asked for separately, each time.
   Shipped 2026-11-22: five sites at HEAD. The four eventFilter overrides
   are public, as in QObject; the indie_review_dialog test spy widens
   onAllReportsCollected on purpose and is suppressed with that reason.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Overridden methods that are public in one class and private in another.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115922,6 +116206,8 @@ reports are asked for separately, each time.
   performance-prefer-single-char-overloads flags the same 7; one item.
   Shipped 2026-11-22: seven sites at HEAD (terminalgrid.cpp and five
   tests) now pass a char, not a one-character string.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** Searching text for a one-letter string instead of a single character.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115933,6 +116219,8 @@ reports are asked for separately, each time.
   Replace with std::lround.
   Shipped 2026-11-13 (426bfddf): three sites were left; the other three
   no longer round that way.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  clang-tidy rounding cleanup.
   **Layman:** Numbers rounded with a +0.5 trick that rounds some values the wrong way.
   Kind: fix.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115941,6 +116229,8 @@ reports are asked for separately, each time.
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it). Fix as one class.
   Shipped 2026-11-22: test_vtparser_simd's fixture buffers. Fixed-byte
   runs are built at size; the varying ones reserve first.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** Lists grown one item at a time without reserving room first.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115952,6 +116242,8 @@ reports are asked for separately, each time.
   Shipped 2026-11-22: four sites at HEAD, each already checked before
   the unwrap; the optional is now passed through. test_roadmap_render no
   longer flags.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** An optional value unwrapped and immediately re-wrapped.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115965,6 +116257,8 @@ reports are asked for separately, each time.
   groupLayout (settingsdialog.cpp), the test's QApplication lives for
   the process. Marked for the analyzer with the reason. mainwindow.cpp's
   stayOpen no longer flags.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** Places the analyzer thinks memory is allocated and never freed.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115976,6 +116270,8 @@ reports are asked for separately, each time.
   one per audit run, RoadmapQueryCall one per call, RoadmapText one per
   read, TerminalGrid one per tab), so each is suppressed with that
   reason, as the item allowed.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** Data structures with wasted gaps between their fields.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115987,6 +116283,8 @@ reports are asked for separately, each time.
   Shipped 2026-11-22: neither hid a lost assertion. hdr was never
   searched (INV-2's body is in the .cpp); makeCurrentCall was superseded
   by the callStmt check that implements spec INV-4. Both removed.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — lint
+  cleanup, no user-visible change.
   **Layman:** Two tests build a value and never use it.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -115995,6 +116293,8 @@ reports are asked for separately, each time.
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt. Uppercase the suffix.
   Shipped 2026-11-22: one site at HEAD (claudeintegration_sessions.cpp,
   100ll → 100LL).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — lint
+  cleanup, no user-visible change.
   **Layman:** Number literals ending in a lowercase l, which reads like a 1.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -116018,6 +116318,8 @@ reports are asked for separately, each time.
   decstr test Harness are explicit; CellColor's two conversions are
   wanted (a drop-in for QColor), so their existing NOLINT also names
   misc-explicit-constructor.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Constructors that let one type silently turn into another.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -116028,6 +116330,8 @@ reports are asked for separately, each time.
   (mcp_project_conventions, mcp_provider_registry, two in
   threaded_parse_equivalence); each builds its string with += / append /
   insert.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  tidy-up, no user-visible change.
   **Layman:** Text joined with + in a loop, making a new copy each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -116035,6 +116339,8 @@ reports are asked for separately, each time.
 - ✅ [ANTS-5460] **clang-tidy bugprone-casting-through-void: 1 test site.**
   test_shared_socket_listener.cpp:138. Use reinterpret_cast as the check suggests.
   Shipped 2026-11-22: reinterpret_cast<sockaddr *>(&addr).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — lint
+  cleanup, no user-visible change.
   **Layman:** A socket address converted through void* instead of the usual cast.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -116046,6 +116352,8 @@ reports are asked for separately, each time.
   QThread pointer only as a QSet key. But on an early ASSERT return the
   guard ran after the unique_ptr freed the thread. The guard is now
   declared after the worker, so it is destroyed first.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  investigation, no user-visible change.
   **Layman:** A test may touch memory after it has been freed.
   Kind: investigate.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -116056,6 +116364,8 @@ reports are asked for separately, each time.
   Shipped 2026-11-22: TerminalWidgetAccessible pairs QAccessibleWidget
   with QAccessibleTextInterface as Qt's accessibility API requires;
   suppressed with that reason.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** One class inherits from two classes that both carry code.
   Kind: refactor.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -116065,6 +116375,8 @@ reports are asked for separately, each time.
   the first test is implied by the second. Harmless; simplify.
   Shipped 2026-11-22: kLongToolUseMs is positive, so the >= 0 test was
   implied; removed, with a comment that the -1 sentinel never passes.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — lint
+  cleanup, no user-visible change.
   **Layman:** A comparison that can never change the result.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -116091,6 +116403,8 @@ reports are asked for separately, each time.
   docs/specs/ANTS-1337-first-run-trust-gate-ants.md, each read against
   the source first. Its two `remotecontrol.cpp:2539` line citations are
   stale and left for ANTS-3647.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** The design document for the project-trust check describes an older version of the code in seven places.
   Kind: doc-fix.
   Source: review-contract ANTS-1337 loop 2, 2026-09-26 (filed at the blast-radius exit).
@@ -116137,6 +116451,8 @@ reports are asked for separately, each time.
   Comments and the ANTS-1248, ANTS-1304 and ANTS-1452 specs corrected;
   INV-9 now asserts the flag is absent (red on the old code, green on
   the fix).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — removes
+  an inert ripgrep flag; no behaviour change.
   **Layman:** A size limit on long lines in the code-search tool never takes effect, so a huge generated file is read in full on every search that hits it.
   Kind: perf.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
@@ -116211,6 +116527,8 @@ reports are asked for separately, each time.
   namespaces; the three QJsonValue loops take `const auto &`.
   resolveFeedbackPath's comment moves back above its function. clang-tidy
   on the file for both checks: 11 warnings before, 0 after.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  refactor, no behaviour change.
   **Layman:** Two helper functions in the code-search file are declared in an older style the linter flags.
   Kind: refactor.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
@@ -116232,6 +116550,8 @@ reports are asked for separately, each time.
   result; run both ways). Left as correct: ANTS-1895, ANTS-1896 and
   ANTS-5719 name tests for features not built yet; ANTS-3653 keeps its
   parent's ids. Three checker false positives filed as ANTS-6765.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Tidy the handful of design-document mistakes the checker found, without rewriting old documents for shipped features.
   Kind: doc-fix.
   Source: user-request-2026-09-29.
@@ -116323,6 +116643,8 @@ reports are asked for separately, each time.
   a spec's shape. 6: the sign-off line says it does not hold up the
   list. install-hooks.sh installs the Claude hook pack and
   setup-git-hooks.sh the git hooks; two tools, nothing to change.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** Three small statements in the project's instruction file no longer match the code, found while reviewing the release section.
   Kind: doc-fix.
   Source: review-contract-2026-09-30 CLAUDE.md loop 1.
@@ -116384,6 +116706,8 @@ reports are asked for separately, each time.
   inline handler, so INV-11 no longer counts it; the four inline
   handlers in mcptoolregistry.cpp are still scanned. Test-only change,
   no CHANGELOG entry.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** One automated check meant to guard a tool's code reads the wrong stretch of code for the last tool in the list.
   Kind: fix.
   Source: in-session-2026-10-09 (ANTS-1043 window audit).
@@ -116407,6 +116731,8 @@ reports are asked for separately, each time.
   proposed empty-list return and the caller audit: the reader fails the
   caller itself. Contract: tests/features/srcgrep_region_bounds/spec.md
   INV-6. Test-only change, no CHANGELOG entry.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** A test helper that reads the program's own source files quietly skips any file it cannot open, so some checks could pass while reading less than they should.
   Kind: fix.
   Source: cold-read 2026-10-09 by the RetroArch session (ANTS-1043).
@@ -116473,6 +116799,8 @@ reports are asked for separately, each time.
   doc_symbols reports it. Found 2026-10-13; not fixed then because that
   line was outside the ANTS-1061 edit.
   Shipped 2026-11-13 (8eef6c34).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A test's description names the wrong function for Kitty images.
   Kind: doc-fix.
   Source: in-session-2026-10-13 (doc_lint while shipping ANTS-1061).
@@ -116508,6 +116836,8 @@ reports are asked for separately, each time.
   writeMcpRequestError. Not new from that edit.
   Shipped: all nine clang-tidy warnings named here cleared; INV-16's
   anchor follows the clock into its anonymous namespace.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  lint cleanup.
   **Layman:** Small speed and tidiness warnings a code checker raises in the Claude integration code.
   Kind: audit-fix.
   Source: in-session-2026-11-09 (ANTS-5243 clangd run).
@@ -116535,6 +116865,8 @@ reports are asked for separately, each time.
   pointer to its spec when it shipped, and ANTS-5262 (2026-11-09) now
   also gives each ants-mcpd client its own session's figures.
   Shipped 2026-11-13 (bf5d15e9).
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** A design document still describes a gap in the token report that was closed weeks ago.
   Kind: doc-fix.
   Source: in-session-2026-11-09 (ANTS-5262).
@@ -116677,6 +117009,8 @@ reports are asked for separately, each time.
   appeared, which then stands.
   Shipped 2026-11-17: the link-back result is tested in an if, which GCC
   accepts as a use.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** The build printed a warning about an ignored result in the roadmap lock code; the result is now checked explicitly.
   Kind: fix.
   Source: in-session-2026-11-17 (ANTS-6797 build).
@@ -116761,6 +117095,8 @@ reports are asked for separately, each time.
   remotecontrol_roadmap_release.cpp. itemAt checks constFind against
   constEnd() and falls back to a static empty row it never reaches.
   Recompiling the file alone: 14 warnings before, 0 after.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** Clear a compiler warning in the release-placement roadmap tool.
   Kind: fix.
   Source: in-session-2026-11-17 (ANTS-6130).
@@ -116881,6 +117217,8 @@ reports are asked for separately, each time.
   Shipped 2026-11-22: loopLogPointer checks the iterator against
   constEnd() (the ANTS-5217 pattern). Recompiling speclog.cpp alone: 1
   warning before, 0 after.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — internal
+  build or tooling fix, no user-visible change.
   **Layman:** The build prints one warning from the spec-log code; clear it so real warnings stand out.
   Kind: fix.
   Source: build-warning-2026-11-21.
@@ -117455,6 +117793,8 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   2026-11-16: the script is at
   ~/.config/ants-terminal/hooks/mcp-orientation.sh and settings.json
   points there; no old folder remains.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately —
+  documentation fix.
   **Layman:** One helper script is saved in a differently named settings folder than the code's notes say; it still runs.
   Kind: doc-fix.
   Source: in-session-2026-10-30.

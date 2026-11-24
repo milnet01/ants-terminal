@@ -12,7 +12,14 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+**Theme:** Terminal history uses far less memory and resizes faster; the window
+can be sized in columns and rows and the tab list can sit on the right; Claude
+sessions get tools for CI history and session cost; and windows and sessions
+that save the same files at once now keep each other's changes.
+
 ### Added
+
+- **Running the AppImage adds Ants Terminal to your app menu, and the taskbar shows its icon.** (ANTS-6711)
 
 - **`token_usage` shows a session's raw grep and cat calls beside its verb calls** (ANTS-5776)
   Through `ants-mcpd`, the reply's `raw_side` block counts the raw source
@@ -249,6 +256,8 @@ for security-relevant changes.
 - **workspace_search runs a regex with look-around or a backreference through ripgrep's PCRE2 engine** (ANTS-6207)
 
 ### Changed
+
+- **Nine more read verbs, among them `doc_symbols`, `trace`, `doc_lint` and `comment_claims`, can hand back an oversized reply as a saved file.** (ANTS-5292)
 
 - **`audit_poll` reports a finished background audit in full: its `done` reply carries every field a synchronous `audit_run` reply does, such as `by_tool`, `sarif_path`, `top_findings` and `delta`.** (ANTS-6221)
 
@@ -608,6 +617,22 @@ for security-relevant changes.
 - **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
+
+- **`roadmap_log` accepts a status word in any letter case, such as "Shipped".** (ANTS-6287)
+
+- **`token_usage` ignores an out-of-range call count in a peer's usage snapshot, so its totals stay positive.** (ANTS-6288)
+
+- **A large MCP reply sent in full saves no copy to disk, so the older saved replies stay.** (ANTS-6289)
+
+- **`ci_report` pairs each job with its own later run, matches matrix jobs by name, and reads paginated job lists.** (ANTS-6402)
+
+- **`ci_report` reads continued and wrapped ctest commands, every job page and commented flow maps.** (ANTS-6405)
+
+- **The roadmap store replaces its snapshot atomically, reports a failed duplicate-link query, and accepts a feedback entry with no heading.** (ANTS-6733)
+
+- **A plugin that asks for permissions at first start leaves every other plugin's palette entries in place.** (ANTS-6846)
+
+- **`resize_window` applies each terminal's new grid size before it replies.** (ANTS-6864)
 
 - **`comment_claims` reads `.jsonc` and `.json5` files named in `paths`, so the claims in a config such as `wrangler.jsonc` get checked.** (ANTS-6909)
 
