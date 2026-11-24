@@ -12,6 +12,8 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.116] - 2026-11-24
+
 **Theme:** Terminal history uses far less memory and resizes faster; the window
 can be sized in columns and rows and the tab list can sit on the right; Claude
 sessions get tools for CI history and session cost; and windows and sessions
