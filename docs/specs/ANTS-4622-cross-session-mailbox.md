@@ -56,7 +56,7 @@ second channel cheap rather than duplicative.
 
 **A CC session is not addressable.** `ClaudeIntegration` identifies a session
 by shell PID and clears its per-session state on PID change
-(`src/claudeintegration.cpp`, the `m_changedFiles.clear()` branch, ANTS-1168).
+(`src/claudeintegration_sessions.cpp`, the `m_touchedFiles.clear()` branch, ANTS-1168).
 A PID is ephemeral, per-tab, and reused by the OS, so mail addressed to one is
 undeliverable the moment that session ends — which is most of the time.
 

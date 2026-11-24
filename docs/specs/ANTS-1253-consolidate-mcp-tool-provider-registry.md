@@ -136,7 +136,7 @@ plus 11 `else if (toolName == "X" && m_XProvider)`) collapse to:
 
 The `get_session_info` branch (lines 1563-1572 today) stays inline —
 it's the only tool that reads `ClaudeIntegration`'s own private state
-(`m_state`, `m_currentTool`, `m_contextPercent`, `m_changedFiles`,
+(`m_state`, `m_currentTool`, `m_contextPercent`, `m_touchedFiles`,
 `m_activeSessionId`) rather than delegating outward. Routing it through
 the registry would require capturing `this` in a self-referential
 lambda registered on itself — adds noise without consolidation gain.

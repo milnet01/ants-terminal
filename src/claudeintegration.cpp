@@ -350,7 +350,7 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
         emit toolFinished(toolName, true);
         emit stateChanged(m_state, "thinking");
         // Hook dialect: already extracted from tool_name/tool_input above.
-        updateChangedFiles(toolName, toolInput);
+        updateTouchedFiles(toolName, toolInput);
     } else if (hookName == "PostToolUseFailure") {
         if (!isFocused) return;
         emit toolFinished(toolName, false);
@@ -3114,7 +3114,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 }
                 // ANTS-1253: get_session_info stays inline — it reads
                 // ClaudeIntegration's own private state (m_state,
-                // m_currentTool, m_contextPercent, m_changedFiles,
+                // m_currentTool, m_contextPercent, m_touchedFiles,
                 // m_activeSessionId) rather than delegating to an
                 // external provider. All outward-delegate tools
                 // dispatch via the registry below. Guard widened to
@@ -3127,7 +3127,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         info["state"] = static_cast<int>(m_state);
                         info["current_tool"] = m_currentTool;
                         info["context_percent"] = m_contextPercent;
-                        info["changed_files"] = QJsonArray::fromStringList(m_changedFiles);
+                        info["changed_files"] = QJsonArray::fromStringList(m_touchedFiles);
                         info["session_id"] = m_activeSessionId;
                         // ANTS-1952 — re-surface build identity here too, so a
                         // session that has already handshaked can confirm the

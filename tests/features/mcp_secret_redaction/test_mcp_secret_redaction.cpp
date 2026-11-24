@@ -203,10 +203,10 @@ TEST(McpSecretRedaction, Inv5SecretFileNames) {
 TEST(McpSecretRedaction, Inv6ReadOfSecretFileWarns) {
     const std::string ci = ants_test::stripComments(
         ants_test::slurpClaudeIntegration());
-    const std::string body = between(ci, "void ClaudeIntegration::updateChangedFiles(",
+    const std::string body = between(ci, "void ClaudeIntegration::updateTouchedFiles(",
                                      "\n}\n");
     ASSERT_FALSE(body.empty());
-    EXPECT_TRUE(before(body, "emit sensitiveFileRead(", "m_changedFiles.contains("));
+    EXPECT_TRUE(before(body, "emit sensitiveFileRead(", "m_touchedFiles.contains("));
     EXPECT_TRUE(has(body, "isSecretFileName("));
 
     const std::string sw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/claudestatuswidgets.cpp");

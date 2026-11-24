@@ -668,7 +668,7 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
             QStringLiteral("⚠ Claude read a secrets file: %1").arg(path), 10000);
     });
 
-    connect(m_integration, &ClaudeIntegration::fileChanged,
+    connect(m_integration, &ClaudeIntegration::fileTouched,
             this, [this](const QString &path) {
         emit statusMessageRequested(QString("Claude edited: %1").arg(path), 3000);
         // 0.6.22 — refreshReviewButton decides visibility + enabled state:

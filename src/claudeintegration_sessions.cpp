@@ -123,10 +123,10 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
             m_transcriptWatcher.removePath(m_transcriptPath);
             m_transcriptPath.clear();
         }
-        // ANTS-1168: m_changedFiles is per-tab/per-session; clearing it
+        // ANTS-1168: m_touchedFiles is per-tab/per-session; clearing it
         // on PID change keeps MCP `get_session_info` from returning the
         // prior tab's touched-file list to the new tab's queries.
-        m_changedFiles.clear();
+        m_touchedFiles.clear();
         emit stateChanged(ClaudeState::NotRunning, QString());
         emit contextUpdated(0);
     }
@@ -1174,7 +1174,7 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
 
     if (!snap.toolUseBlock.isEmpty()) {
         // Transcript dialect: a tool_use content block spells them name/input.
-        updateChangedFiles(snap.toolUseBlock.value("name").toString(),
+        updateTouchedFiles(snap.toolUseBlock.value("name").toString(),
                            snap.toolUseBlock.value("input").toObject());
     }
 
@@ -1210,7 +1210,7 @@ bool ClaudeIntegration::isSecretFileName(const QString &path)
         || name.startsWith(QLatin1String("id_"));
 }
 
-void ClaudeIntegration::updateChangedFiles(const QString &toolName,
+void ClaudeIntegration::updateTouchedFiles(const QString &toolName,
                                            const QJsonObject &toolInput) {
     QString filePath;
     if (toolName == "Edit" || toolName == "Write" || toolName == "Read") {
@@ -1225,11 +1225,11 @@ void ClaudeIntegration::updateChangedFiles(const QString &toolName,
     if (toolName == "Read" && isSecretFileName(filePath))
         emit sensitiveFileRead(filePath);
 
-    if (!filePath.isEmpty() && !m_changedFiles.contains(filePath)) {
-        m_changedFiles.append(filePath);
-        if (m_changedFiles.size() > 50)
-            m_changedFiles.removeFirst();
-        emit fileChanged(filePath);
+    if (!filePath.isEmpty() && !m_touchedFiles.contains(filePath)) {
+        m_touchedFiles.append(filePath);
+        if (m_touchedFiles.size() > 50)
+            m_touchedFiles.removeFirst();
+        emit fileTouched(filePath);
     }
 }
 

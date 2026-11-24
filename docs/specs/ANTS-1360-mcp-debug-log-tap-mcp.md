@@ -349,7 +349,7 @@ Cap 200 → **~50 KB ceiling**. Peer comparisons:
 
 - `m_idempotentReadCache` cap 32 × 600 B = ~19 KB.
 - `m_planModeByPid` is sparse; effectively a handful of bytes.
-- `m_changedFiles` grows with /audit-touched files (unbounded
+- `m_touchedFiles` grows with /audit-touched files (unbounded
   in scope, capped in practice at low hundreds).
 
 Recording one record is `O(1)` (push_back + pop_front if over

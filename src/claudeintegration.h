@@ -87,7 +87,7 @@ struct ClaudeTranscriptSnapshot {
     bool contextEstimated = false;
     bool planMode = false;         // result of the latch + most-recent permission-mode
     bool auditing = false;         // /audit turn in flight
-    QJsonObject toolUseBlock;      // raw tool_use block for updateChangedFiles; empty if N/A
+    QJsonObject toolUseBlock;      // raw tool_use block for updateTouchedFiles; empty if N/A
 };
 
 // ANTS-4932 — where MCP replies go. The terminal makes one per connected
@@ -698,11 +698,11 @@ signals:
     void toolFinished(const QString &toolName, bool success);
     void sessionStarted(const QString &sessionId);
     void sessionStopped(const QString &reason);
-    // Despite the name, fires for a file Claude read as well as one it
-    // edited or wrote (updateChangedFiles); m_changedFiles likewise.
-    void fileChanged(const QString &filePath);
+    // The first time Claude reads, edits or writes a file this session
+    // (updateTouchedFiles); m_touchedFiles holds the recent ones.
+    void fileTouched(const QString &filePath);
     // ANTS-5169 — Claude read a file isSecretFileName() matches. Fires on
-    // every read, not once per path like fileChanged.
+    // every read, not once per path like fileTouched.
     void sensitiveFileRead(const QString &filePath);
     void contextUpdated(int percent);
     // ANTS-3572 — MCP tokens-saved surfacing. tokensSavedUpdated drives the
@@ -758,7 +758,7 @@ private:
     // The two callers speak different dialects: a transcript tool_use block
     // carries name/input, a hook event carries tool_name/tool_input. Taking
     // one object here meant one of them was always read with the wrong keys.
-    void updateChangedFiles(const QString &toolName,
+    void updateTouchedFiles(const QString &toolName,
                             const QJsonObject &toolInput);
     // ANTS-1161 — gate hook events on the focused tab's session.
     // The hook server is one UDS shared across every Claude under any
@@ -781,7 +781,7 @@ private:
     qint64 m_contextTokens = 0;
     bool m_contextEstimated = false;
     qint64 m_contextWindowTokens = kDefaultContextWindowTokens;
-    QStringList m_changedFiles;
+    QStringList m_touchedFiles;
     bool m_planMode = false;
     bool m_auditing = false;
     // 0.7.54 (2026-04-27 indie-review) — per-shellPid plan-mode cache.
