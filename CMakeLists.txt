@@ -4230,6 +4230,7 @@ if(ANTS_TESTS)
         SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
         ROADMAPDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapdialog.h"
         ROADMAPDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
+        SRC_DIALOGCHROME_CPP="${CMAKE_SOURCE_DIR}/src/dialogchrome.cpp"
         # ANTS-1405 — source-scrape against claudeintegration.cpp for the
         # roadmap_query descriptor sentence (INV-9).
         "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\""

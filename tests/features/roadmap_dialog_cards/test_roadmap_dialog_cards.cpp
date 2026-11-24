@@ -552,13 +552,21 @@ static int runMain(int argc, char **argv) {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             fail("DialogPalette", "roadmapdialog.cpp not readable");
-        // Dialog gets Window + Base from theme.
-        if (!contains(src, "dp.setColor(QPalette::Window, th.bgPrimary)"))
+        // Dialog gets Window + Base from theme, through the shared
+        // DialogChrome::applyTheme (ANTS-6216), not a copy of its own.
+        if (!contains(src, "DialogChrome::install(this, m_themeName"))
             fail("DialogPalette",
-                "dialog must set QPalette::Window from theme bgPrimary");
-        if (!contains(src, "dp.setColor(QPalette::Base, th.bgPrimary)"))
+                "dialog must theme itself via DialogChrome::install");
+        if (contains(src, "dp.setColor(QPalette::Window"))
             fail("DialogPalette",
-                "dialog must set QPalette::Base from theme bgPrimary");
+                "dialog must not repeat DialogChrome::applyTheme's palette");
+        const std::string chrome = ants_test::slurpFile(SRC_DIALOGCHROME_CPP);
+        if (!contains(chrome, "dp.setColor(QPalette::Window, th.bgPrimary)"))
+            fail("DialogPalette",
+                "applyTheme must set QPalette::Window from theme bgPrimary");
+        if (!contains(chrome, "dp.setColor(QPalette::Base, th.bgPrimary)"))
+            fail("DialogPalette",
+                "applyTheme must set QPalette::Base from theme bgPrimary");
         // Viewer gets Base + Text from theme.
         if (!contains(src, "vp.setColor(QPalette::Base, th.bgPrimary)"))
             fail("DialogPalette",

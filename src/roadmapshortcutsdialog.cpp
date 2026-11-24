@@ -52,22 +52,15 @@ RoadmapShortcutsDialog::RoadmapShortcutsDialog(const QString &themeName,
     }
     table->resizeRowsToContents();
 
-    // Theme palette — match the parent dialog's bgPrimary/textPrimary
-    // pair so the overlay reads as part of the Roadmap window, not a
-    // detached Qt-default popup.
+    // Theme palette — DialogChrome::install above themed the dialog
+    // with the parent's bgPrimary/textPrimary pair, so the overlay reads
+    // as part of the Roadmap window. It sets no Highlight roles; add
+    // them here.
     const Theme &th = Themes::byName(themeName);
     QPalette dp = palette();
-    dp.setColor(QPalette::Window,         th.bgPrimary);
-    dp.setColor(QPalette::WindowText,     th.textPrimary);
-    dp.setColor(QPalette::Base,           th.bgPrimary);
-    dp.setColor(QPalette::AlternateBase,  th.bgSecondary);
-    dp.setColor(QPalette::Text,           th.textPrimary);
-    dp.setColor(QPalette::Button,         th.bgSecondary);
-    dp.setColor(QPalette::ButtonText,     th.textPrimary);
     dp.setColor(QPalette::Highlight,      th.accent);
     dp.setColor(QPalette::HighlightedText, th.bgPrimary);
     setPalette(dp);
-    setAutoFillBackground(true);
 
     QPalette tp = table->palette();
     tp.setColor(QPalette::Base,           th.bgPrimary);

@@ -13,7 +13,6 @@
 #include "roadmapstore.h"
 #include "roadmapshortcutsdialog.h"  // ANTS-1236 — `?` cheatsheet overlay
 #include "themes.h"
-#include "titlebar.h"
 #include "hostexec.h"   // ANTS-5598 — git and gh run on the host inside a Flatpak
 
 #include <QAbstractTextDocumentLayout>
@@ -1958,7 +1957,6 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     auto chrome = DialogChrome::install(this, m_themeName,
                                         /*resizable=*/true,
                                         QStringLiteral("RoadmapDialog"));
-    m_titleBar = chrome.titleBar;
     QWidget *content = chrome.contentArea;
 
     // Find a sibling CHANGELOG.md (case-insensitive) for the
@@ -2228,12 +2226,11 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     m_viewer->setOpenLinks(false);
     m_viewer->setOpenExternalLinks(false);
     // ANTS-1239 / ANTS-1240 — apply the active terminal theme to the
-    // dialog's palette so the Roadmap window blends with the rest of
-    // the app instead of falling through to Qt's default dark palette.
+    // child widgets' palettes so the Roadmap window blends with the rest
+    // of the app instead of falling through to Qt's default dark palette.
+    // DialogChrome::install above has already themed the dialog itself
+    // and its title bar.
     //
-    // - The dialog itself gets Window/WindowText/Base/Text from the
-    //   theme so checkboxes, tabs, labels, splitter, and search box
-    //   all inherit the right colours.
     // - m_viewer (QTextBrowser) gets Base/Text/Link/LinkVisited. Qt's
     //   text engine paints <a> foreground using `QPalette::Link`,
     //   *not* the CSS `color` property — on Qt 6's default palette
@@ -2248,17 +2245,6 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     {
         const Theme &th = Themes::byName(m_themeName);
 
-        QPalette dp = palette();
-        dp.setColor(QPalette::Window, th.bgPrimary);
-        dp.setColor(QPalette::WindowText, th.textPrimary);
-        dp.setColor(QPalette::Base, th.bgPrimary);
-        dp.setColor(QPalette::AlternateBase, th.bgSecondary);
-        dp.setColor(QPalette::Text, th.textPrimary);
-        dp.setColor(QPalette::ButtonText, th.textPrimary);
-        dp.setColor(QPalette::Button, th.bgSecondary);
-        setPalette(dp);
-        setAutoFillBackground(true);
-
         QPalette vp = m_viewer->palette();
         vp.setColor(QPalette::Base, th.bgPrimary);
         vp.setColor(QPalette::Text, th.textPrimary);
@@ -2272,13 +2258,6 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         tp.setColor(QPalette::Highlight, th.accent);
         tp.setColor(QPalette::HighlightedText, th.bgPrimary);
         m_toc->setPalette(tp);
-
-        // ANTS-1242 — the frameless TitleBar paints itself from the
-        // active theme rather than KWin's system colour scheme.
-        if (m_titleBar) {
-            m_titleBar->setThemeColors(th.bgSecondary, th.textPrimary,
-                                       th.accent, th.border);
-        }
     }
     // ANTS-1154: card / section toggle anchors use the `ants://` URL
     // scheme. The handler dispatches by URL verb and mutates the
