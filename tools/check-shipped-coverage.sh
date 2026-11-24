@@ -195,9 +195,84 @@ if [[ ${#SHIPPED[@]} -eq 0 ]]; then
 fi
 
 # --- Which of them a CHANGELOG bullet cites. Position matters: an id in
-#     continuation prose is a cross-reference, not a claim that it shipped, so
-#     only a line STARTING a bullet counts — the same rule cut-release Phase 0f
-#     applies in the other direction.
+#     continuation prose is a cross-reference, not a claim that it shipped. So
+#     an id counts inside a parenthesised group on the line STARTING a bullet
+#     (the rule cut-release Phase 0f applies in the other direction), or
+#     inside the group that CLOSES the bullet, on whichever line it falls
+#     (ANTS-6912: a long bullet's id list wraps onto its last line).
+#     "ANTS-A to ANTS-B" (or "..", an en or em dash) in a group cites every id
+#     from A to B; a span wider than MAX_RANGE cites its two ends only, since
+#     that is a typo rather than a release.
+MAX_RANGE=200
+
+# Print every id one parenthesised group names, ranges expanded.
+ids_in_group() {
+    local g="$1" a b n
+    while [[ "$g" =~ ANTS-([0-9]+)[[:space:]]*(to|\.\.|–|—)[[:space:]]*(ANTS-)?([0-9]+) ]]; do
+        a=$((10#${BASH_REMATCH[1]})); b=$((10#${BASH_REMATCH[4]}))
+        if (( b >= a && b - a <= MAX_RANGE )); then
+            for ((n = a; n <= b; n++)); do echo "ANTS-$n"; done
+        else
+            echo "ANTS-$a"; echo "ANTS-$b"
+        fi
+        g="${g/"${BASH_REMATCH[0]}"/ }"
+    done
+    while [[ "$g" =~ ANTS-([0-9]+) ]]; do
+        echo "${BASH_REMATCH[0]}"
+        g="${g/"${BASH_REMATCH[0]}"/ }"
+    done
+}
+
+# Print the ids one bullet cites: its first line's groups, and its closing group.
+bullet_ids() {
+    local text="$1" rest flat whole inner
+    [[ -z "$text" ]] && return 0
+    rest="${text%%$'\n'*}"
+    while [[ "$rest" =~ \(([^\)]*)\) ]]; do
+        # Copied out first: ids_in_group's own matches overwrite BASH_REMATCH.
+        whole="${BASH_REMATCH[0]}"; inner="${BASH_REMATCH[1]}"
+        ids_in_group "$inner"
+        rest="${rest#*"$whole"}"
+    done
+    flat="${text//$'\n'/ }"
+    if [[ "$flat" =~ \(([^\(\)]*)\)[[:space:]]*$ ]]; then
+        inner="${BASH_REMATCH[1]}"
+        is_id_list "$inner" && ids_in_group "$inner"
+    fi
+    return 0
+}
+
+# True when a group is nothing but ids and the words and marks that join them.
+# A closing group of prose ("(shipped earlier under ANTS-1.)") is a
+# cross-reference, so it cites nothing.
+is_id_list() {
+    local g="$1"
+    while [[ "$g" =~ ANTS-[0-9]+ ]]; do g="${g/"${BASH_REMATCH[0]}"/ }"; done
+    g="${g//and/ }"; g="${g//to/ }"; g="${g//[,;\/+&.–—]/ }"
+    [[ -z "${g//[[:space:]]/}" && "$1" == *ANTS-* ]]
+}
+
+# A bullet runs from its "- " line through the indented lines after it; a
+# blank line keeps it open, and a heading or unindented text ends it.
+declare -A CITED_SET=()
+collect_cited() {
+    local line bullet="" id
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^[[:space:]]*[-*][[:space:]] ]]; then
+            while IFS= read -r id; do CITED_SET["$id"]=1; done < <(bullet_ids "$bullet")
+            bullet="$line"
+        elif [[ -z "${line//[[:space:]]/}" ]]; then
+            :
+        elif [[ -n "$bullet" && "$line" =~ ^[[:space:]] ]]; then
+            bullet+=$'\n'"$line"
+        else
+            while IFS= read -r id; do CITED_SET["$id"]=1; done < <(bullet_ids "$bullet")
+            bullet=""
+        fi
+    done < "$CHANGELOG"
+    while IFS= read -r id; do CITED_SET["$id"]=1; done < <(bullet_ids "$bullet")
+}
+collect_cited
 # --- ANTS-4765: a decision already recorded on the item is not an omission.
 #     An item deliberately kept out of the release notes gets that decision
 #     written into its own roadmap body, where it travels with the item and
@@ -216,10 +291,9 @@ UNCOVERED=()
 DECIDED=()
 for ID in "${SHIPPED[@]}"; do
     [[ -z "$ID" ]] && continue
-    # Audit TL-23 — an id anywhere inside the bullet's parentheses covers it,
-    # so `(ANTS-1, ANTS-2)` covers both; the digit guard stops ANTS-12
-    # matching ANTS-123.
-    grep -qE "^[[:space:]]*[-*][[:space:]].*\([^)]*${ID}([^0-9][^)]*)?\)" "$CHANGELOG" && continue
+    # Audit TL-23 — any id in a group covers it, so `(ANTS-1, ANTS-2)` covers
+    # both; the set holds whole ids, so ANTS-12 never matches ANTS-123.
+    [[ -n "${CITED_SET[$ID]:-}" ]] && continue
     if [[ -n "${DECIDED_SET[$ID]:-}" ]]; then
         DECIDED+=("$ID")
     else
