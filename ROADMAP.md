@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6908 -->
+<!-- ants-roadmap-id-high-water: ANTS=6909 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92906,6 +92906,17 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** When a long roadmap entry is shortened in a list, the cut could land in the middle of an emoji and leave a broken character that strict JSON readers reject.
   Kind: fix.
   Source: self: ANTS-6212 parser differential 2026-11-23.
+
+- 📋 [ANTS-6909] **comment_claims reads .jsonc and .json5 files, whose comments are // and /* */.**
+  Pressless asked comment_claims about relay/wrangler.jsonc and it
+  could not read it: familyOf() in src/commentclaims.cpp has no entry
+  for jsonc or json5, so the file reads as Family::None. Fix: add both
+  suffixes to the C-like set.
+  Hot reload: none needed; ants-mcpd picks it up on rebuild.
+  **Layman:** The comment checker skipped config files written as JSON with comments, such as Cloudflare's wrangler.jsonc.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md (pressless review 2026-11-23).
+  Lanes: claude-integration.
 
 ### Ants MCP feedback from CC sessions — 2026-11-05 triage
 

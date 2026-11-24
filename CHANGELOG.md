@@ -607,6 +607,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`comment_claims` reads `.jsonc` and `.json5` files named in `paths`, so the claims in a config such as `wrangler.jsonc` get checked.** (ANTS-6909)
+
 - **`roadmap_migrate` records a pass block whose Status reads `In progress` as the author's own status, not as its guess** (ANTS-6215)
 
 - **`roadmap_query` shortens a long body between characters, so an emoji at the cut stays whole and strict JSON readers accept the reply** (ANTS-6904)

@@ -322,6 +322,26 @@ TEST(CommentClaims, Inv11MoreSlashCommentSuffixes) {
     EXPECT_FALSE(t.contains(QStringLiteral("ANTS-660")));
 }
 
+// ANTS-6909 — JSON with comments (Cloudflare's wrangler.jsonc), named in
+// `paths`: a directory walk does not reach it, as INV-10's shell files.
+TEST(CommentClaims, Inv12JsonWithCommentsNamedInPaths) {
+    std::unique_ptr<QTemporaryDir> dir(fixture());
+    writeFile(dir->filePath("relay/wrangler.jsonc"),
+              "{\n  // ANTS-670 line comment\n  \"name\": \"relay\"\n}\n");
+    writeFile(dir->filePath("relay/settings.json5"),
+              "{\n  /* ANTS-671 block comment */\n  limit: 5,\n}\n");
+    const QJsonObject r = call(*dir, {{QStringLiteral("paths"),
+        QJsonArray{QStringLiteral("relay/wrangler.jsonc"),
+                   QStringLiteral("relay/settings.json5")}}});
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << QJsonDocument(r).toJson().constData();
+
+    const QStringList t = quotes(rows(r, "findings", QStringLiteral("unknown_ticket")));
+    EXPECT_TRUE(t.contains(QStringLiteral("ANTS-670"))) << QJsonDocument(r).toJson().constData();
+    EXPECT_TRUE(t.contains(QStringLiteral("ANTS-671"))) << QJsonDocument(r).toJson().constData();
+    EXPECT_EQ(r.value(QStringLiteral("scanned")).toObject()
+                  .value(QStringLiteral("unread_files")).toInt(), 0);
+}
+
 TEST(CommentClaims, Inv8Refusals) {
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const auto code = [&](const QJsonObject &args) {

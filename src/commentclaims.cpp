@@ -63,6 +63,7 @@ Family familyOf(const QString &fileName) {
         QStringLiteral("glsl"), QStringLiteral("vert"), QStringLiteral("frag"), QStringLiteral("comp"),
         QStringLiteral("qml"), QStringLiteral("m"), QStringLiteral("mm"), QStringLiteral("zig"),
         QStringLiteral("tsx"), QStringLiteral("jsx"), QStringLiteral("mjs"), QStringLiteral("cjs"),
+        QStringLiteral("jsonc"), QStringLiteral("json5"),   // ANTS-6909 — JSON with comments
         QStringLiteral("uc"), QStringLiteral("vsh"), QStringLiteral("fsh")};
     static const QSet<QString> kHash = {
         QStringLiteral("py"), QStringLiteral("sh"), QStringLiteral("bash"), QStringLiteral("cmake"),
