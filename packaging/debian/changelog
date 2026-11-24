@@ -1,3 +1,39 @@
+ants-terminal (0.7.116-1) unstable; urgency=medium
+
+  * Terminal history uses far less memory and re-wraps faster; the
+    terminal redraws only changed lines; searching long history keeps
+    the window responsive. Size the window in columns and rows; the tab
+    list can sit on the right; each tab's scrollback has a memory
+    limit; the status bar shows the thinking level; the AppImage adds
+    itself to the app menu; the welcome window installs the hook pack.
+    (ANTS-6702, 6703, 6395, 5204, 6851, 3456, 3464, 5418, 6742, 6743,
+    4534, 6749, 6711, 6708, 6806)
+  * Claude tools: ci_report (ANTS-6399); session_cost dollars and
+    per-tool cost (6826, 6697); token_usage raw_side (5776);
+    find_definition lane (5712); tool_info per op (6829); roadmap_log
+    before_id (6828); audit_run confidence floor and baseline (1706);
+    mutation_probe (4768, 4975); apply_edits all_or_nothing (5155);
+    source_scrapes (6782); workspace_search PCRE2 and multiline (6207,
+    4851); cc-job (5701, 6370); session_message (5700, 6720).
+  * Windows and sessions that save the same files at once keep each
+    other's changes: settings, trust, roadmap and changelog edits,
+    self-update. (ANTS-6473, 6475, 6466, 6468, 6467, 6474, 6471, 6483)
+  * Fixes: links stay on their text on resize; a shorter window keeps
+    the newest lines; Alt and modified keys reach the shell; double
+    click reaches mouse apps; theme change recolours everything; the
+    context meter follows /clear. (ANTS-6177, 6530, 6812, 6531, 6532,
+    6788, 6751, 6747)
+  * Security: workspace_search leaves out .git; tools read only files
+    inside the project; shell-integration key in a private file;
+    luacheck and checkov start off; paste and escape sequences hardened;
+    prompt-injection warning on terminal text. (ANTS-6900, 6449, 6450,
+    6441, 6444, 6696, 6442, 6440, 5184)
+  * feedback_log ops compact_resolved, compact_shipped, prune_tracking,
+    append_tracking, migrate_v2 and set_format_version are removed;
+    feedback now lives in the roadmap store. (ANTS-4513)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 24 Nov 2026 00:00:00 +0200
+
 ants-terminal (0.7.115-1) unstable; urgency=medium
 
   * Welcome window offers to install Claude Code and says Ants is an

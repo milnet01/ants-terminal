@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.116" date="2026-11-24">
+      <description>
+        <p>Terminal history uses far less memory and resizes faster; the window can be sized in columns and rows and the tab list can sit on the right; Claude sessions get tools for CI history and session cost; and windows and sessions that save the same files at once now keep each other's changes.</p>
+        <ul>
+          <li><em>Added:</em> Size the window in columns and rows, put the tab list on the right (ANTS-6742, ANTS-6743), and cap each tab's scrollback memory in Settings (ANTS-4534). The status bar shows Claude's thinking level (ANTS-6749). The AppImage adds itself to the app menu (ANTS-6711), and the welcome window installs the Ants hook pack (ANTS-6708). Review Changes names the work in progress (ANTS-6806). Claude tools: ci_report reads CI history (ANTS-6399); session_cost gives dollar cost and per-tool cost (ANTS-6826, ANTS-6697); token_usage counts raw searches (ANTS-5776); find_definition takes lane (ANTS-5712); tool_info answers per op (ANTS-6829); roadmap_log takes before_id (ANTS-6828); audit_run takes a confidence floor and a baseline (ANTS-1706); mutation_probe, apply_edits all_or_nothing, source_scrapes and workspace_search PCRE2 and multiline (ANTS-4768, ANTS-4975, ANTS-5155, ANTS-6782, ANTS-6207, ANTS-4851); cc-job and session_message gain options (ANTS-5701, ANTS-6370, ANTS-5700, ANTS-6720).</li>
+          <li><em>Changed:</em> Scrollback uses less than half the memory (ANTS-6702, ANTS-6703, ANTS-6395, ANTS-5204). Resizing re-wraps about 2.5 times faster, once per drag (ANTS-6851, ANTS-3456). The terminal redraws only the lines that changed (ANTS-3464). Searching a very long scrollback keeps the window responsive (ANTS-5418). The shared MCP feedback files now live in the roadmap store (ANTS-4513).</li>
+          <li><em>Removed:</em> Six feedback_log ops that kept files small or served format version 1: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version (ANTS-4513).</li>
+          <li><em>Fixed:</em> Windows and sessions that save the same files at once keep each other's changes: settings, trust, roadmap and changelog edits, and self-update (ANTS-6473, ANTS-6475, ANTS-6466, ANTS-6468, ANTS-6467, ANTS-6474, ANTS-6471, ANTS-6483). Links stay on their text when the window is resized (ANTS-6177). A shorter window keeps the newest lines (ANTS-6530, ANTS-6812). Alt and modified keys reach the shell, and a double-click reaches mouse apps (ANTS-6531, ANTS-6532). A theme change recolours everything (ANTS-6788). The context meter follows /clear (ANTS-6751, ANTS-6747).</li>
+          <li><em>Security:</em> workspace_search leaves out git's own .git folder (ANTS-6900). Tools, the audit and the review engines read only files inside the project (ANTS-6449, ANTS-6450). The shell-integration key lives in a private file (ANTS-6441, ANTS-6444). The Audit dialog's luacheck and checkov checks start switched off (ANTS-6696). Paste and escape sequences are hardened (ANTS-6442, ANTS-6440). Claude is warned when terminal text looks like orders (ANTS-5184).</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.115" date="2026-10-30">
       <description>
         <p>The welcome window can install Claude Code on a fresh computer; the status bar shows when background work is still running; tabs can be closed from the Tab List Panel; plugins can react to more events; and Claude sessions get a shared notebook and many new tools for checking code, documents and releases.</p>
