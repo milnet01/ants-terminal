@@ -92907,12 +92907,15 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: self: ANTS-6212 parser differential 2026-11-23.
 
-- 📋 [ANTS-6909] **comment_claims reads .jsonc and .json5 files, whose comments are // and /* */.**
+- ✅ [ANTS-6909] **comment_claims reads .jsonc and .json5 files, whose comments are // and /* */.**
   Pressless asked comment_claims about relay/wrangler.jsonc and it
   could not read it: familyOf() in src/commentclaims.cpp has no entry
   for jsonc or json5, so the file reads as Family::None. Fix: add both
   suffixes to the C-like set.
   Hot reload: none needed; ants-mcpd picks it up on rebuild.
+  2026-11-24, fa113134: jsonc/json5 join the C-like set; read when named
+  in paths. A directory walk does not reach them (isIndexableFile admits
+  only what file_outline reads).
   **Layman:** The comment checker skipped config files written as JSON with comments, such as Cloudflare's wrangler.jsonc.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md (pressless review 2026-11-23).
