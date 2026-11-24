@@ -186,10 +186,10 @@ source-grep + pure-helper harness, no full Qt widget tree.
   `ShowConsidered`, `ShowCurrent`) — four map to emoji categories
   and the fifth is the CHANGELOG-derived "currently being tackled"
   signal.
-- INV-4 Current-work highlight: rendering with a `currentBullets` set
+- INV-4 Current-work highlight: rendering with a `currentWorkSignals` set
   whose phrase matches a bullet puts `rm-current` on that card's row.
 - INV-5 Empty signal set means no highlight: the same input with empty
-  `currentBullets` produces no `rm-current` row.
+  `currentWorkSignals` produces no `rm-current` row.
 - INV-6 Button hide-when-no-roadmap: `MainWindow::refreshRoadmapButton`
   source-grep — must contain a path-probe before any
   `m_roadmapBtn->show()` call, must `hide()` on the absence branch.

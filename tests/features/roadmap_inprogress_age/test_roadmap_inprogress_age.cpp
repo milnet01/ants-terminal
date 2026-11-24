@@ -100,7 +100,7 @@ bool runGit(const QString &cwd, const QStringList &args,
 static int runMain() {
     const QString markdown = fixtureMarkdown();
     const unsigned filter = 0x0F;  // all four status categories on
-    const QStringList currentBullets;
+    const QStringList currentWorkSignals;
     const QString theme = QStringLiteral("light");
 
     // -----------------------------------------------------------------
@@ -115,7 +115,7 @@ static int runMain() {
         opts.lastTouchDates.insert(QStringLiteral("ANTS-9999"),
                                    nowSec - 3 * 86400);
         const QString html = RoadmapDialog::renderCardsHtml(
-            markdown, filter, currentBullets, theme,
+            markdown, filter, currentWorkSignals, theme,
             RoadmapDialog::SortOrder::Document,
             QString(), {}, opts);
         if (!html.contains(QStringLiteral(
@@ -138,7 +138,7 @@ static int runMain() {
         opts.lastTouchDates.insert(QStringLiteral("ANTS-9998"),
                                    nowSec - 5 * 86400);
         const QString html = RoadmapDialog::renderCardsHtml(
-            markdown, filter, currentBullets, theme,
+            markdown, filter, currentWorkSignals, theme,
             RoadmapDialog::SortOrder::Document,
             QString(), {}, opts);
         if (html.contains(QStringLiteral(">Updated ")))
@@ -154,7 +154,7 @@ static int runMain() {
         RoadmapDialog::CardRenderOptions opts = makeOptsWithSectionOpen();
         // opts.lastTouchDates is empty by default.
         const QString html = RoadmapDialog::renderCardsHtml(
-            markdown, filter, currentBullets, theme,
+            markdown, filter, currentWorkSignals, theme,
             RoadmapDialog::SortOrder::Document,
             QString(), {}, opts);
         if (html.contains(QStringLiteral(">Updated ")))

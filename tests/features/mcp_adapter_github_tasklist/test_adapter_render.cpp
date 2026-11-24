@@ -16,7 +16,7 @@ namespace {
 QString render(const QString &md,
                const QStringList &expandSlugs = {"phase-11a", "section"}) {
     // Default filter mask shows every status category (matches the
-    // Full preset). Empty currentBullets so the rm-current branch
+    // Full preset). Empty currentWorkSignals so the rm-current branch
     // doesn't decorate anything; default Cozy density. Cards only
     // emit when their section is `expandedSections`; pass the
     // expected slugs so the per-bullet HTML actually appears.
@@ -27,7 +27,7 @@ QString render(const QString &md,
     opts.activePreset = RoadmapDialog::Preset::Full;
     for (const QString &slug : expandSlugs) opts.expandedSections.insert(slug);
     return RoadmapDialog::renderCardsHtml(
-        md, filter, /*currentBullets*/ {}, /*themeName*/ "default",
+        md, filter, /*currentWorkSignals*/ {}, /*themeName*/ "default",
         RoadmapDialog::SortOrder::Document, QString(),
         QSet<QString>(), opts);
 }

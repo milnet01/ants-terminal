@@ -174,7 +174,7 @@ static int runMain() {
     // -----------------------------------------------------------------
     const QString markdown = fixtureMarkdown();
     const unsigned filter = 0x0F;  // all four status categories on
-    const QStringList currentBullets;
+    const QStringList currentWorkSignals;
     const QString theme = QStringLiteral("light");
 
     // Pre-expand the "0.8.0" section so cards actually render. The
@@ -195,7 +195,7 @@ static int runMain() {
         // opts.expandedItems is empty by default; no card is
         // user-expanded.
         const QString html = RoadmapDialog::renderCardsHtml(
-            markdown, filter, currentBullets, theme,
+            markdown, filter, currentWorkSignals, theme,
             RoadmapDialog::SortOrder::Document,
             QStringLiteral("baz"),  // matches body of ANTS-9998 only
             {}, opts);
@@ -216,7 +216,7 @@ static int runMain() {
     {
         RoadmapDialog::CardRenderOptions opts = makeOptsWithSectionOpen();
         const QString html = RoadmapDialog::renderCardsHtml(
-            markdown, filter, currentBullets, theme,
+            markdown, filter, currentWorkSignals, theme,
             RoadmapDialog::SortOrder::Document,
             QStringLiteral("Shipped foo"),  // matches headline
             {}, opts);
@@ -231,7 +231,7 @@ static int runMain() {
     {
         RoadmapDialog::CardRenderOptions opts = makeOptsWithSectionOpen();
         const QString html = RoadmapDialog::renderCardsHtml(
-            markdown, filter, currentBullets, theme,
+            markdown, filter, currentWorkSignals, theme,
             RoadmapDialog::SortOrder::Document,
             QStringLiteral("id:9999"),
             {}, opts);

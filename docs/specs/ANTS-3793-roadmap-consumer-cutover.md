@@ -78,7 +78,7 @@ are named so § 2.3 cannot quietly inherit the wider claim.**
 `ROADMAP.md` — `parseLastTouchDates()`, `extractToc()` and `loadMarkdown()` —
 taking headings, raw bullet lines and file mtimes, and that file keeps existing
 after cutover because ANTS-3758's render writes it. The fourth,
-`collectCurrentBullets()`, **reads no roadmap at all**: it returns
+`collectCurrentWorkSignals()`, **reads no roadmap at all**: it returns
 `readUnreleasedBullets(m_changelogPath)` plus `readRecentCommitSubjects()`, so
 its inputs are `CHANGELOG.md` and `git log`. It is listed only because its name
 invites the opposite assumption.
@@ -872,7 +872,7 @@ failure INV-1 exists to forbid, reintroduced as a wiring bug.
   path — the same scoping ANTS-3758's render made, for the same reason.
 - **The other `roadmapdialog.cpp` readers** — `parseLastTouchDates()`,
   `extractToc()` and `loadMarkdown()` read the *rendered* `ROADMAP.md`, which
-  survives cutover; `collectCurrentBullets()` reads no roadmap at all (§ 1).
+  survives cutover; `collectCurrentWorkSignals()` reads no roadmap at all (§ 1).
   Listed together because none is moved, not because they read the same thing.
 - **The auto-publish cadence and the health checks** — ANTS-3794.
 

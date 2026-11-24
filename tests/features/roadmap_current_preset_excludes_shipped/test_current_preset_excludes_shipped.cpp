@@ -4,7 +4,7 @@
 // Locks the ANTS-1423 fix: the Current preset must not let ✅
 // shipped bullets through via the current-signal rescue. Drives the
 // pure-static `renderCardsHtml` helper against a
-// synthetic markdown fixture and a hand-crafted currentBullets list
+// synthetic markdown fixture and a hand-crafted currentWorkSignals list
 // that targets specific bullet bodies.
 //
 // Repro note: bulletPayload truncates the body at the first `**` so
@@ -28,7 +28,7 @@ ANTS_TEST_SCOPE();
 namespace {
 
 // Fixture with one ✅ + one 🚧 + one 📋. Each bullet's ANTS-NNNN
-// is embedded in a tailored currentBullets entry per test.
+// is embedded in a tailored currentWorkSignals entry per test.
 QString fixtureMarkdown() {
     return QStringLiteral(
         "# Sample Roadmap\n"
@@ -60,8 +60,8 @@ using RD = RoadmapDialog;
 TEST(roadmap_current_preset_excludes_shipped,
      Inv1CardsCurrentPresetDropsShipped) {
     expect_reset();
-    QStringList currentBullets;
-    currentBullets << QStringLiteral(
+    QStringList currentWorkSignals;
+    currentWorkSignals << QStringLiteral(
         "ANTS-1100 — newly shipped widget, Bundle C closeout.");
 
     RD::CardRenderOptions opts;
@@ -71,13 +71,13 @@ TEST(roadmap_current_preset_excludes_shipped,
 
     const unsigned filter = RD::filterFor(RD::Preset::Current);
     const QString html = RD::renderCardsHtml(
-        fixtureMarkdown(), filter, currentBullets,
+        fixtureMarkdown(), filter, currentWorkSignals,
         QStringLiteral("light"), RD::SortOrder::Document,
         QString(), {}, opts);
 
     expect(!contains(html, "ANTS-1100"),
            "INV-1: ✅ ANTS-1100 must NOT appear under Current preset "
-           "even when currentBullets mentions its ANTS-NNNN");
+           "even when currentWorkSignals mentions its ANTS-NNNN");
     EXPECT_EQ(0, expect_failures());
 }
 
@@ -86,8 +86,8 @@ TEST(roadmap_current_preset_excludes_shipped,
 TEST(roadmap_current_preset_excludes_shipped,
      Inv2CardsFullPresetKeepsShipped) {
     expect_reset();
-    QStringList currentBullets;
-    currentBullets << QStringLiteral(
+    QStringList currentWorkSignals;
+    currentWorkSignals << QStringLiteral(
         "ANTS-1100 — newly shipped widget, Bundle C closeout.");
 
     RD::CardRenderOptions opts;
@@ -97,7 +97,7 @@ TEST(roadmap_current_preset_excludes_shipped,
 
     const unsigned filter = RD::filterFor(RD::Preset::Full);
     const QString html = RD::renderCardsHtml(
-        fixtureMarkdown(), filter, currentBullets,
+        fixtureMarkdown(), filter, currentWorkSignals,
         QStringLiteral("light"), RD::SortOrder::Document,
         QString(), {}, opts);
 
@@ -113,8 +113,8 @@ TEST(roadmap_current_preset_excludes_shipped,
 TEST(roadmap_current_preset_excludes_shipped,
      Inv4CardsCurrentPresetKeepsPlannedViaSignal) {
     expect_reset();
-    QStringList currentBullets;
-    currentBullets << QStringLiteral(
+    QStringList currentWorkSignals;
+    currentWorkSignals << QStringLiteral(
         "ANTS-1300 — newly planned bundle work, just queued.");
 
     RD::CardRenderOptions opts;
@@ -124,7 +124,7 @@ TEST(roadmap_current_preset_excludes_shipped,
 
     const unsigned filter = RD::filterFor(RD::Preset::Current);
     const QString html = RD::renderCardsHtml(
-        fixtureMarkdown(), filter, currentBullets,
+        fixtureMarkdown(), filter, currentWorkSignals,
         QStringLiteral("light"), RD::SortOrder::Document,
         QString(), {}, opts);
 

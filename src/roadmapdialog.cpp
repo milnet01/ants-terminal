@@ -559,7 +559,7 @@ RoadmapDialog::SortOrder RoadmapDialog::sortFor(Preset p) {
 }
 
 
-QStringList RoadmapDialog::collectCurrentBullets() {
+QStringList RoadmapDialog::collectCurrentWorkSignals() {
     // ANTS-2012 — rebuild() runs on every search keystroke, so neither signal
     // may be recomputed per call. ANTS-5088 — the CHANGELOG half is keyed on
     // the file's stamp, and the commit half never blocks: it returns what the
@@ -909,7 +909,7 @@ RoadmapDialog::splitHeadingDate(const QString &heading) {
 //        then, expanded only, a body-prose row.
 QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                                        unsigned filter,
-                                       const QStringList &currentBullets,
+                                       const QStringList &currentWorkSignals,
                                        const QString &themeName,
                                        SortOrder sortOrder,
                                        const QString &searchPredicate,
@@ -941,8 +941,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     const bool wantCurrent = (filter & ShowCurrent) != 0;
 
     QStringList signalsFuzzy;
-    signalsFuzzy.reserve(currentBullets.size());
-    for (const QString &s : currentBullets) {
+    signalsFuzzy.reserve(currentWorkSignals.size());
+    for (const QString &s : currentWorkSignals) {
         const QString f = normaliseForMatch(s);
         if (f.size() >= 6) signalsFuzzy.append(f);
     }
@@ -3629,7 +3629,7 @@ void RoadmapDialog::rebuild() {
 
     const unsigned filter = statusMaskFromBoxes();
 
-    const QStringList signals_ = collectCurrentBullets();
+    const QStringList signals_ = collectCurrentWorkSignals();
     const QString predicate = m_searchBox ? m_searchBox->text() : QString();
     // ANTS-1154: refresh the shipped-date cache if CHANGELOG.md has
     // changed since the last render. Cheap stat-only check.

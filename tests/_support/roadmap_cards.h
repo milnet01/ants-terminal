@@ -20,7 +20,7 @@ namespace ants_test {
 
 inline QString cardsAllOpen(
     const QString &markdown, unsigned filter,
-    const QStringList &currentBullets = {},
+    const QStringList &currentWorkSignals = {},
     const QString &theme = QStringLiteral("default"),
     RoadmapDialog::SortOrder sortOrder = RoadmapDialog::SortOrder::Document,
     const QString &search = QString(),
@@ -30,7 +30,7 @@ inline QString cardsAllOpen(
     opts.activePreset = preset;
     for (const auto &section : RoadmapIndex::buildIndex(markdown))
         opts.expandedSections.insert(section.slug);
-    return RoadmapDialog::renderCardsHtml(markdown, filter, currentBullets,
+    return RoadmapDialog::renderCardsHtml(markdown, filter, currentWorkSignals,
                                           theme, sortOrder, search,
                                           kindFilter, opts);
 }

@@ -259,7 +259,7 @@ public:
     // dropped (INV-11); section headers with zero visible bullets
     // under the active filter are suppressed (INV-12).
     //
-    // `currentBullets` is a set of substrings; a bullet whose first 80
+    // `currentWorkSignals` is a set of substrings; a bullet whose first 80
     // characters (post-emoji-strip, normalised) contain one is current
     // work. `sortOrder` DescendingChronological reverses the top-level
     // sections. `searchPredicate` is a case-insensitive substring
@@ -273,7 +273,7 @@ public:
     // — so the TOC sidebar can `scrollToAnchor` to it (ANTS-5597).
     static QString renderCardsHtml(const QString &markdownText,
                                    unsigned filter,
-                                   const QStringList &currentBullets,
+                                   const QStringList &currentWorkSignals,
                                    const QString &themeName,
                                    SortOrder sortOrder = SortOrder::Document,
                                    const QString &searchPredicate = QString(),
@@ -525,10 +525,10 @@ private:
     // (so the next keystroke replaces it). Called from keyPressEvent
     // when `/` arrives without the search box already focused.
     void focusSearchBox();
-    // The current-WORK signals, not roadmap bullets: CHANGELOG
-    // `[Unreleased]` lines plus recent commit subjects, both cached.
-    // renderCardsHtml() takes them as `currentBullets` to mark rm-current.
-    QStringList collectCurrentBullets();
+    // CHANGELOG `[Unreleased]` lines plus recent commit subjects, both
+    // cached. renderCardsHtml() takes them as `currentWorkSignals` to mark
+    // rm-current.
+    QStringList collectCurrentWorkSignals();
     // ANTS-5088 — starts `git log` for the recent-commit signal and returns.
     // The subjects land in m_recentCommits and re-render through the debounce.
     void refreshRecentCommitsIfStale();
@@ -728,7 +728,7 @@ private:
     bool m_lastTouchRan = false;
     // ANTS-5047 — the blame's output is being parsed on a worker.
     bool m_lastTouchParsing = false;
-    // ANTS-2012 / ANTS-5088 — the two external signals collectCurrentBullets()
+    // ANTS-2012 / ANTS-5088 — the two external signals collectCurrentWorkSignals()
     // feeds the current-work highlight. The CHANGELOG's [Unreleased] bullets
     // are re-read only when its mtime or size moves. The commit subjects come
     // from an asynchronous `git log`, re-run at most every

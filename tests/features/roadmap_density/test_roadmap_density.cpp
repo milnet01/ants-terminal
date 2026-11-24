@@ -64,7 +64,7 @@ QString renderAt(RoadmapDialog::Density d) {
     return RoadmapDialog::renderCardsHtml(
         fixtureMarkdown(),
         /*filter*/0x0F,
-        /*currentBullets*/QStringList(),
+        /*currentWorkSignals*/QStringList(),
         QStringLiteral("light"),
         RoadmapDialog::SortOrder::Document,
         QString(), {}, makeOpts(d));
