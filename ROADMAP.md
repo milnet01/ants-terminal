@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6914 -->
+<!-- ants-roadmap-id-high-water: ANTS=6915 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70904,6 +70904,22 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Source: in-session-2026-11-24, found during ANTS-6224.
   Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6915] **Find why the Review Changes memory probe stalls on openSUSE's OBS workers, then run it there again.**
+  ReviewChangesDiffCap.Ants6515DiffProbeMemoryIsBounded took 46 s on
+  openSUSE_Leap_16.0 and passed ctest's 60 s limit on openSUSE_Tumbleweed
+  (twice), against 2 s on Fedora_44 and Mageia_10 and about 1 s locally on
+  the same git 2.56.1 and Qt 6.12.0. It printed nothing before the kill,
+  so the stall sits outside ANTS-6913's timed warm render; locally a 4%
+  CPU cap makes it skip cleanly at 22 s. Suspects: the 30 MiB write or
+  the git probe under the worker's disk or memory limits.
+  packaging/opensuse/ants-terminal.spec leaves it out under suse_version.
+  Done when the cause is known and the exclusion is removed.
+  Hot reload: none needed.
+  **Layman:** One memory test runs very slowly on openSUSE's package build machines only, so it is skipped there until we know why.
+  Kind: investigate.
+  Source: in-session-2026-11-24, 0.7.116 OBS staging.
+  Lanes: tests, packaging.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
