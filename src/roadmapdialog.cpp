@@ -1234,21 +1234,24 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     int walkSlugAt = 0;
     QSet<QString> seenSlugs;   // fallback past the list's end
 
-    // ANTS-5604 — the status emoji head the five count columns once, above
-    // the first heading row.
-    bool colHeadEmitted = false;
     // ANTS-5604 — the view's one table opens at its first row, so the
     // document's title and preamble prose stay above it, on the full width.
+    // openTable() is tableOpen's only writer; emitFullRow and the closing tag
+    // read it.
     bool tableOpen = false;
     auto openTable = [&]() {
         if (tableOpen) return;
         tableOpen = true;
         html += QStringLiteral("<table class=\"rm-cards\">");
     };
-    auto emitSectionHeader = [&](int level, const QString &text,
+    // ANTS-5604 — the status emoji head the five count columns once, above
+    // the first heading row; colHeadEmitted is this lambda's own state.
+    auto emitSectionHeader = [&, colHeadEmitted = false](
+                                 int level, const QString &text,
                                  const QString &slug,
                                  const SectionCounts &c,
-                                 const QString &anchor) {
+                                 const QString &anchor,
+                                 bool expanded) mutable {
         openTable();
         if (!colHeadEmitted) {
             colHeadEmitted = true;
@@ -1262,13 +1265,13 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                 html += QStringLiteral("<td class=\"rm-hd\"></td>");
             html += QStringLiteral("</tr>");
         }
-        const QString chevron = sectionExpanded
+        const QString chevron = expanded
             ? QStringLiteral("▾") : QStringLiteral("▸");
         // ANTS-1277 — the state in words, inside the link, so a screen
         // reader announces it. QTextDocument drops aria-* and role
         // attributes (checked 2026-10-13), so a visible word is the carrier.
-        const QString stateWord = sectionExpanded ? tr("open") : tr("closed");
-        const QString verb = sectionExpanded
+        const QString stateWord = expanded ? tr("open") : tr("closed");
+        const QString verb = expanded
             ? QStringLiteral("collapse-section")
             : QStringLiteral("expand-section");
         // ANTS-5604 — one row of the view's table: chevron, a count per
@@ -1629,7 +1632,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             // parent h2 always heads its visible sub-sections.
             sectionVisible = (opts.activePreset == Preset::Full) || rolled.visible > 0;
             if (sectionVisible) {
-                emitSectionHeader(level, hText, slug, rolled, anchor);
+                emitSectionHeader(level, hText, slug, rolled, anchor,
+                                  sectionExpanded);
                 // If expanded, emit its bullets as cards.
                 if (sectionExpanded) {
                     for (const BulletRecord *rec : bySection.value(slug))
