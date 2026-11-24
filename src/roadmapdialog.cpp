@@ -604,6 +604,8 @@ void RoadmapDialog::refreshRecentCommitsIfStale() {
     });
     connect(git, &QProcess::errorOccurred, this, [git](QProcess::ProcessError e) {
         // A process that never started emits no finished(); release it here.
+        // Any other error ends in finished(). The blame handler shares this
+        // rule (ANTS-6217).
         if (e == QProcess::FailedToStart) git->deleteLater();
     });
     HostExec::start(*git, QStringLiteral("git"),
@@ -3036,7 +3038,11 @@ void RoadmapDialog::refreshLastTouchDatesIfStale() {
         }, Qt::QueuedConnection);
         worker->start();
     });
-    connect(git, &QProcess::errorOccurred, this, [this, git] {
+    connect(git, &QProcess::errorOccurred, this, [this, git](QProcess::ProcessError e) {
+        // ANTS-6217 — the recent-commits rule: only a process that never
+        // started emits no finished(). A crash still emits it, and a read or
+        // write error leaves git running, so those end in finished() above.
+        if (e != QProcess::FailedToStart) return;
         m_lastTouchProc = nullptr;
         // Also "answered". git missing from PATH will not fix itself mid-
         // session, so retrying on every render would spawn a doomed process

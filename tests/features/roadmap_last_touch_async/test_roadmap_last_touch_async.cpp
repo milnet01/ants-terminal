@@ -211,6 +211,45 @@ TEST(RoadmapLastTouchAsync, EmptyResultIsNotRetriedForever) {
            "a real roadmap that is one git blame per keystroke";
 }
 
+// INV-8 — a read error is not the end of a run. Construction starts both git
+// processes without spinning the event loop, so both are still running here.
+TEST(RoadmapLastTouchAsync, ReadErrorLeavesBothGitRunsInFlight) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not on PATH";
+    Harness h;
+    ASSERT_TRUE(makeRepo(h.dir.path(), h.path)) << "fixture repo did not build";
+
+    Config cfg;
+    RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+    ASSERT_TRUE(dlg.lastTouchBlameInFlight()) << "no blame was dispatched";
+    ASSERT_TRUE(dlg.recentCommitsInFlight()) << "no git log was dispatched";
+
+    const auto running = [&](const QString &verb) -> QProcess * {
+        for (QProcess *p : dlg.findChildren<QProcess *>())
+            if (p->arguments().contains(verb) && p->state() != QProcess::NotRunning)
+                return p;
+        return nullptr;
+    };
+    QProcess *blame = running(QStringLiteral("blame"));
+    QProcess *log = running(QStringLiteral("log"));
+    ASSERT_NE(blame, nullptr) << "no running git blame among the dialog's children";
+    ASSERT_NE(log, nullptr) << "no running git log among the dialog's children";
+
+    emit blame->errorOccurred(QProcess::ReadError);
+    emit log->errorOccurred(QProcess::ReadError);
+
+    EXPECT_TRUE(dlg.lastTouchBlameInFlight())
+        << "a read error ended the blame run; only FailedToStart may";
+    EXPECT_TRUE(dlg.recentCommitsInFlight())
+        << "a read error ended the git log run; only FailedToStart may";
+
+    // The blame was left running, so its answer still arrives.
+    ASSERT_TRUE(spinUntil([&] { return !dlg.lastTouchDates().isEmpty(); }))
+        << "the blame never produced a date after the read error";
+    EXPECT_TRUE(spinUntil([&] {
+        return !dlg.lastTouchBlameInFlight() && !dlg.recentCommitsInFlight();
+    })) << "a run never finished after the read error";
+}
+
 // INV-7 — the synchronous form survives for ANTS-1237's tests.
 TEST(RoadmapLastTouchAsync, SynchronousFormStillWorks) {
     if (!gitAvailable()) GTEST_SKIP() << "git not on PATH";

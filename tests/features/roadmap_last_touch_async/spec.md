@@ -71,6 +71,14 @@ of which this roadmap has 4 out of 2,031.
   still honours its 5 s budget. ANTS-1237's tests drive it directly, and a
   caller that genuinely needs the answer before returning still has one.
 
+- **INV-8.** Only `QProcess::FailedToStart` ends a run from the error
+  handler, for the blame and for the recent-commits `git log` alike
+  (ANTS-6217). A crash still emits `finished()`, and a read or write error
+  leaves git running, so after either error the run stays in flight until
+  `finished()`. Asserted by emitting `ReadError` on each running process:
+  the run is still in flight afterwards, and the blame's dates still
+  arrive.
+
 ## Test shape
 
 gtest in the `test_dialogs` bundle. INV-2, INV-3 and INV-5 need a real git
