@@ -156,7 +156,9 @@ itself (RED when authored; fixed 2026-09-12).
   the diff probe's output is read as git writes it and kept to its
   1 MiB cap, so a 30 MiB diff raises peak memory by under 50 MiB, most
   of it the render. The peak is reset through `/proc/self/clear_refs`
-  and read as `VmHWM`; the test skips under ASan.
+  and read as `VmHWM`. The test skips under ASan, and on a host that
+  takes over 20 s to render the diff, since its two renders must finish
+  inside ctest's 60 s hang limit.
 
 ## Rationale
 

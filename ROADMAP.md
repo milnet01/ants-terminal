@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6912 -->
+<!-- ants-roadmap-id-high-water: ANTS=6914 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70881,6 +70881,29 @@ minor tag (next: pre-0.8.0).
   Kind: test.
   Source: push-gate-2026-11-11.
   Lanes: claudeintegration.
+
+- ✅ [ANTS-6913] **The Review Changes memory test skips on a host too slow to render its diff twice inside ctest's 60 s limit.**
+  OBS openSUSE_Tumbleweed timed out ReviewChangesDiffCap.Ants6515DiffProbeMemoryIsBounded
+  in the 0.7.116 staging gate; Leap, Fedora and Mageia passed it, and it
+  takes about 1 s here. The test renders a 30 MiB diff twice and waited up
+  to 120 s for each, past the bundle's 60 s TIMEOUT. It now times the warm
+  render and skips, saying why, when that takes over 20 s.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — a test-only fix.
+  **Layman:** A memory test no longer fails a package build just because the build machine is slow.
+  Kind: fix.
+  Source: in-session-2026-11-24, 0.7.116 OBS staging.
+  Lanes: tests.
+
+- 📋 [ANTS-6914] **The status bar says "Claude edited: <file>" when Claude only read the file.**
+  ClaudeStatusBarController's handler for ClaudeIntegration::fileChanged
+  (fileTouched once ANTS-6224 lands) shows "Claude edited: %1" for every
+  file the signal reports, and the signal fires for Read as well as Edit
+  and Write. Fix: carry the tool name, or word the message for both.
+  Hot reload: none needed.
+  **Layman:** The bottom bar says Claude edited a file when it only looked at it.
+  Kind: fix.
+  Source: in-session-2026-11-24, found during ANTS-6224.
+  Lanes: claude-session-widgets.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 

@@ -497,13 +497,13 @@ TEST(ReviewChangesDiffCap, ClosingDoesNotDestroyRunningProbes) {
 namespace {
 // Opens the dialog on `dir`, waits for its first render, and returns the
 // viewer's text; empty if it never rendered.
-QString renderOnce(const QString &dir) {
+QString renderOnce(const QString &dir, int budgetMs = 120000) {
     QWidget host;
     QDialog *dialog = diffviewer::show(&host, dir, QStringLiteral("Dark"));
     if (!dialog) return {};
     auto *viewer = dialog->findChild<QTextBrowser *>();
     QString text;
-    if (viewer && waitForRealRender(viewer, 120000)) text = viewer->toPlainText();
+    if (viewer && waitForRealRender(viewer, budgetMs)) text = viewer->toPlainText();
     dialog->close();
     QCoreApplication::processEvents();
     return text;
@@ -576,14 +576,23 @@ TEST(ReviewChangesDiffCap, Ants6515DiffProbeMemoryIsBounded) {
             block += QByteArray::number(i).rightJustified(8, '0') + QByteArray(23, 'z') + '\n';
         for (int r = 0; r < 50; ++r) ASSERT_EQ(f.write(block), block.size());   // ~30 MiB
     }
-    renderOnce(tmp.path());   // warm: first-call allocations, fonts, styles
+    // Warm: first-call allocations, fonts, styles. Timed, because the probe
+    // renders twice inside ctest's 60 s hang limit: an OBS build host took
+    // longer than that (openSUSE_Tumbleweed, 0.7.116 staging) where this
+    // machine takes about a second. Memory is the subject, not speed.
+    constexpr int kRenderBudgetMs = 20000;
+    QElapsedTimer warm;
+    warm.start();
+    if (renderOnce(tmp.path(), kRenderBudgetMs).isEmpty() || warm.elapsed() > kRenderBudgetMs)
+        GTEST_SKIP() << "this host took over " << kRenderBudgetMs / 1000
+                     << " s to render the diff; two renders would pass ctest's 60 s limit";
 
     QFile clear(QStringLiteral("/proc/self/clear_refs"));
     if (!clear.open(QIODevice::WriteOnly) || clear.write("5") != 1)
         GTEST_SKIP() << "cannot reset the peak (/proc/self/clear_refs)";
     clear.close();
     const long before = procStatusKiB("VmRSS");
-    const QString text = renderOnce(tmp.path());
+    const QString text = renderOnce(tmp.path(), kRenderBudgetMs);
     const long peak = procStatusKiB("VmHWM");
     ASSERT_FALSE(text.isEmpty()) << "the dialog never rendered";
     ASSERT_GT(before, 0);
