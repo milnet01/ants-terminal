@@ -108475,7 +108475,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L13-F7).
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6220] **Rename RoadmapDialog::collectCurrentBullets() and renderCardsHtml's currentBullets to name current-work signals.**
+- ✅ [ANTS-6220] **Rename RoadmapDialog::collectCurrentBullets() and renderCardsHtml's currentBullets to name current-work signals.**
   From ANTS-6122 (L13 MEDIUM F23). The lane pass documented the method;
   the rename is queued because spec ANTS-3793 names
   collectCurrentBullets(), tests/features/roadmap_viewer/spec.md INV-4
@@ -108484,6 +108484,9 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 709
   `src/roadmapdialog.h:521`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-24, 617ff7f7: renamed to collectCurrentWorkSignals() /
+  currentWorkSignals across code, tests and specs; history files keep
+  the old names.
   **Layman:** A roadmap window function is named as if it returns roadmap items, but it returns recent changelog lines and commits.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F23).
