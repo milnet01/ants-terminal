@@ -108397,7 +108397,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L12-F3).
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6216] **Drop the roadmap dialog's and the shortcuts cheatsheet's own dialog-palette blocks, which repeat DialogChrome::applyTheme().**
+- ✅ [ANTS-6216] **Drop the roadmap dialog's and the shortcuts cheatsheet's own dialog-palette blocks, which repeat DialogChrome::applyTheme().**
   From ANTS-6122 (L13 MEDIUM F4). DialogChrome::install already calls
   applyTheme(), which sets the dialog palette and title-bar colours;
   roadmapdialog.cpp and roadmapshortcutsdialog.cpp set the same palette
@@ -108416,6 +108416,11 @@ worked after these.
   do not, so their placeholder colour misses that fix. The shortcuts
   copy also sets Highlight and HighlightedText, which the shared call
   must keep.
+  2026-11-24, 55b4752d: both dialog-level palette blocks gone, plus the
+  roadmap dialog's title-bar recolour and its now-unused m_titleBar. The
+  cheatsheet keeps Highlight/HighlightedText. The placeholder claim
+  above did not hold: each copy started from the palette install() had
+  set, so PlaceholderText survived; no visible change.
   **Layman:** Two roadmap windows set their own background colours on top of the shared theme code, so a theme change has three places to edit.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F4).
