@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6909 -->
+<!-- ants-roadmap-id-high-water: ANTS=6911 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99453,6 +99453,16 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: feedback-oneup-2026-11-16.
   Lanes: changelog-feedback.
 
+- 📋 [ANTS-6910] **The ANTS-3396 spec cites mainwindow.cpp and claudeintegration.cpp lines past the end of those files.**
+  check-doc.py lineref: the spec names src/mainwindow.cpp lines in the
+  4508-4578 range (the file is shorter) and src/claudeintegration.cpp:9997.
+  The audit_run code moved to src/mcptoolregistry.cpp (ANTS-4932) and the
+  registry to src/claudeintegration_callpolicy.cpp. Fix: cite by symbol.
+  **Layman:** The design note for background audits points at code locations that no longer exist.
+  Kind: doc-fix.
+  Source: in-session-2026-11-24, check-doc.py while shipping ANTS-6221.
+  Lanes: specs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
@@ -108506,7 +108516,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L13-F23).
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6221] **Build audit_run's done envelope in one function that the sync reply and the async poll both call, and move the audit_run handler out of its inline lambda.**
+- ✅ [ANTS-6221] **Build audit_run's done envelope in one function that the sync reply and the async poll both call, and move the audit_run handler out of its inline lambda.**
   From ANTS-6123. mcptoolregistry.cpp's sync audit_run completion and
   claudeintegration.cpp's auditJobPollEnvelope each build the done
   envelope; AuditJob and its term.* mapping are a third copy. The async
@@ -108519,6 +108529,8 @@ worked after these.
   async poll returns, and test_audit_run_incomplete_detail pins
   `incomplete_tools_detail` in both files.
   Hot reload: none needed; ants-mcpd picks it up on rebuild.
+  Shipped 2026-11-24 in 515d7cc8: AuditRunner::doneEnvelope is the one
+  builder; the handler is runAuditRun + auditRunRequest.
   **Layman:** The audit result is assembled in two places that have drifted apart, so a check started in the background reports fewer details than one that waits.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L14-F7, L14-F11).
@@ -115002,6 +115014,26 @@ reports are asked for separately, each time.
   Kind: doc.
   Source: user-request-2026-09-27.
   Lanes: telemetry, docs.
+
+- 📋 [ANTS-6911] **Help → Report an Issue opens a pre-filled GitHub issue form, and warns before any log file is shared.**
+  User request 2026-11-24: let people log issues to GitHub from inside the
+  app, as easily as possible. Decided: no in-app posting, no stored token.
+  - .github/ISSUE_TEMPLATE/ bug and feature forms (what happened, expected,
+    steps).
+  - Help → Report an Issue…: a small dialog (bug or idea, one-line title),
+    then opens issues/new?template=…&title=…&body=… in the browser, with
+    the version, Qt version, distro and desktop filled in. The person
+    submits from their own GitHub account.
+  - Logs: the URL cannot carry a file. If a debug log exists, the dialog
+    says so, warns plainly that a log can hold folder names, commands and
+    other private text, and offers Open log folder so the person can read
+    it and attach it by hand. Nothing is attached without that choice.
+  Hot reload: none needed; a menu action and a dialog with no running
+  state. Code runs in the terminal process (it opens a browser URL).
+  **Layman:** A menu item opens a ready-filled bug report on GitHub, and warns people before they share a log that may hold private details.
+  Kind: feature.
+  Source: user-request-2026-11-24.
+  Lanes: mainwindow.
 
 ### 🔒 Security
 
