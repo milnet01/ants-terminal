@@ -212,7 +212,7 @@ other table. No new `DensityTier` field was required.
   (`td,th { padding:2px 6px; }`, `roadmapdialog.cpp` ~1443). The cards
   renderer no longer carries that rule: ANTS-3392 replaced the old
   unmatched cards `td,th{border:1px solid …;padding:2px 6px;font-size:%15px}`
-  rule with `td{border:none;padding:%18px %19px;vertical-align:top;background:%3}`,
+  rule with `td{border:none;padding:@cardPaddingY@px @cardPaddingX@px;vertical-align:top;background:@cardBg@}`,
   whose padding now **scales** per tier (the `td` card-cell padding row in
   the tier table above) — so the cards `td` padding is intentionally *not*
   in this fixed list.
@@ -709,7 +709,7 @@ commit `dbcdc15`, 2026-05-11).
   test fixture must call `renderCardsHtml`, not `renderHtml`).
 - `src/roadmapdialog.cpp:1077` (all `:10NN` here are `dbcdc15`-relative
   pre-parameterisation lines — the shipped `.rm-state-label` rule is
-  now at ~`:1948` and reads `font-size:%20px` (labelPx), not a literal
+  now at ~`:1948` and reads `font-size:@labelPx@px` (labelPx), not a literal
   `10px`) — at `dbcdc15` `.rm-state-label{font-size:10px;…}` was unique
   among meta classes (siblings at `:1072`/`:1073`/`:1078`/`:1091` were
   11px). Read.

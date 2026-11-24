@@ -655,6 +655,15 @@ QStringList headingSlugsInWalkOrder(const QString &markdownText,
     }
     return out;
 }
+
+// ANTS-6219 — replace each `@name@` in `css` with its value. A token with
+// no entry stays as written, which the card tests catch.
+QString fillCssTokens(QString css,
+                      std::initializer_list<std::pair<QString, QString>> vars) {
+    for (const auto &[name, value] : vars)
+        css.replace(QLatin1Char('@') + name + QLatin1Char('@'), value);
+    return css;
+}
 }  // namespace
 
 // ANTS-3764 — the parser moved to RoadmapParse (ants_core_lib). This
@@ -1089,17 +1098,19 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // (e.g. `rm-state padding-right:6px`, `rm-id padding-left:8px`)
     // stay fixed across all tiers per spec § 2.f.
     const DensityTier &t = tierFor(opts.density);
-    html += QStringLiteral(
+    // ANTS-6219 — named @token@ slots, filled below by fillCssTokens(), so a
+    // new value needs no renumbering.
+    html += fillCssTokens(QStringLiteral(
         "<html><head><style>"
-        "body{font-family:sans-serif;color:%1;font-size:%7px;}"
-        "p{margin:%8px 0;}"
-        "h1,h2,h3,h4{color:%2;font-weight:bold;margin:%9px 0 %10px 0;}"
-        "h1{font-size:%11px;} h2{font-size:%12px;}"
+        "body{font-family:sans-serif;color:@text@;font-size:@bodyPx@px;}"
+        "p{margin:@pMargin@px 0;}"
+        "h1,h2,h3,h4{color:@heading@;font-weight:bold;margin:@hMarginTop@px 0 @hMarginBottom@px 0;}"
+        "h1{font-size:@h1Px@px;} h2{font-size:@h2Px@px;}"
         // ANTS-5572 — h3 indents under its h2. Its cards do not: every
         // card table shares one column grid (ANTS-3762).
-        "h3{font-size:%13px;margin-left:24px;} h4{font-size:%14px;}"
-        "code{background:%3;padding:0 4px;border-radius:3px;font-size:%15px;}"
-        "a{color:%2;text-decoration:none;}"
+        "h3{font-size:@h3Px@px;margin-left:24px;} h4{font-size:@h4Px@px;}"
+        "code{background:@cardBg@;padding:0 4px;border-radius:3px;font-size:@codePx@px;}"
+        "a{color:@heading@;text-decoration:none;}"
         "a:hover{text-decoration:underline;}"
         // ANTS-1239 — Qt's text engine paints <a> foreground with the
         // widget's QPalette::Link role, ignoring the generic `a{color:}`
@@ -1108,13 +1119,13 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // (see RoadmapDialog ctor), but emit explicit class colors here
         // as belt-and-braces so dark-theme section headers stay legible
         // even if a future Qt regression flips the palette path again.
-        ".rm-section-toggle{color:%2;font-weight:normal;font-size:%7px;padding-right:12px;padding-left:4px;}"
+        ".rm-section-toggle{color:@heading@;font-weight:normal;font-size:@bodyPx@px;padding-right:12px;padding-left:4px;}"
         ".rm-section-state{padding-left:4px;}"
         // ANTS-1277 — the chevron and its state word stay on one line: when
         // the first column was fixed at zero, a view of collapsed sections
         // broke "closed" one letter per line.
         ".rm-col-chev{white-space:nowrap;}"
-        ".rm-section-title{color:%2;text-decoration:none;}"
+        ".rm-section-title{color:@heading@;text-decoration:none;}"
         ".rm-section-title:hover{text-decoration:underline;}"
         // ANTS-3392 / ANTS-5604 — the whole view is one
         // `<table class="rm-cards">`: a `<tr class="rm-section">` per heading
@@ -1123,7 +1134,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // row — backgrounds/borders reliably, so the card background lives on
         // the bare `td` rule (the cards path emits no other table, so a bare
         // `td` selector == card cell) and the left accent lives on the first
-        // cell (.rm-col-state). Density scales the cell padding (%18/%19) via
+        // cell (.rm-col-state). Density scales the cell padding (@cardPaddingY@/@cardPaddingX@) via
         // this <style> block only, so ANTS-1238 INV-6 (non-<style> HTML byte-
         // identical across tiers) still holds.
         // ANTS-3762 — the column WIDTHS are not here, deliberately. Measured
@@ -1137,35 +1148,35 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // after the HTML is parsed instead. That also keeps ANTS-1238 INV-6
         // safe by construction rather than by care: no per-tier width ever
         // reaches the HTML.
-        "table.rm-cards{border-collapse:collapse;margin:%17px 0;width:100%;}"
-        "td{border:none;padding:%18px %19px;vertical-align:top;background:%3;}"
+        "table.rm-cards{border-collapse:collapse;margin:@cardMargin@px 0;width:100%;}"
+        "td{border:none;padding:@cardPaddingY@px @cardPaddingX@px;vertical-align:top;background:@cardBg@;}"
         // ANTS-5793 — the state and kind cells wrap inside their column's
         // width (applyCardColumnGrid); a nowrap cell would widen it instead.
-        ".rm-col-state{border-left:3px solid %5;}"
+        ".rm-col-state{border-left:3px solid @border@;}"
         ".rm-col-meta{text-align:right;white-space:nowrap;}"
         // Expanded body row's colspan cell: the <p>s carry their own
         // rm-body-first/line spacing, so drop the cell's top padding.
         ".rm-col-body{padding-top:0;}"
         // ANTS-5604 — heading, prose and column-head rows sit on the page
         // background, not the card background the bare `td` rule paints.
-        ".rm-hd{background:%24;}"
-        ".rm-count{text-align:center;white-space:nowrap;font-size:%16px;color:%6;}"
+        ".rm-hd{background:@pageBg@;}"
+        ".rm-count{text-align:center;white-space:nowrap;font-size:@metaPx@px;color:@muted@;}"
         // ANTS-5610 — no `nowrap` on the two date columns: Qt's import turns
         // a nowrap cell's spaces into no-break spaces, so they could never
         // wrap inside the width applyCardColumnGrid() gives them.
-        ".rm-col-datekind{font-size:%16px;color:%6;}"
+        ".rm-col-datekind{font-size:@metaPx@px;color:@muted@;}"
         // rm-current: tint every cell of the row (class beats the bare `td`
         // background by specificity) + swap the first cell's accent to the
         // current-work colour. rm-card-synthetic: dashed first-cell border
         // (ANTS-1428 INV-10 — GFM bullets with a content-hash ID).
-        ".rm-cur{background:%23;}"
-        ".rm-col-cur{border-left-color:%4;}"
+        ".rm-cur{background:@currentTint@;}"
+        ".rm-col-cur{border-left-color:@currentAccent@;}"
         ".rm-col-syn{border-left-style:dashed;}"
-        ".rm-state{font-size:%7px;padding-right:6px;}"
-        ".rm-state-label{font-size:%20px;color:%6;padding-right:6px;}"
-        ".rm-kind{font-size:%16px;color:%6;padding-right:6px;}"
-        ".rm-summary{font-size:%7px;}"
-        ".rm-toggle{font-size:%15px;color:%6;padding-left:12px;padding-right:4px;}"
+        ".rm-state{font-size:@bodyPx@px;padding-right:6px;}"
+        ".rm-state-label{font-size:@labelPx@px;color:@muted@;padding-right:6px;}"
+        ".rm-kind{font-size:@metaPx@px;color:@muted@;padding-right:6px;}"
+        ".rm-summary{font-size:@bodyPx@px;}"
+        ".rm-toggle{font-size:@codePx@px;color:@muted@;padding-left:12px;padding-right:4px;}"
         // ANTS-1241 — id + shipped-date are now inline on the
         // summary row (after the summary text, before the toggle).
         // Bumping rm-id from the old 10 px to 12 px makes the
@@ -1175,46 +1186,47 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // ANTS-1240, painting a darker band under the ID on dark
         // themes. Inline spans paint over the card's bgSecondary
         // without that frame.
-        ".rm-id{font-family:monospace;font-size:%15px;color:%6;padding-left:8px;}"
-        ".rm-date{font-size:%16px;color:%6;padding-left:6px;}"
+        ".rm-id{font-family:monospace;font-size:@codePx@px;color:@muted@;padding-left:8px;}"
+        ".rm-date{font-size:@metaPx@px;color:@muted@;padding-left:6px;}"
         // ANTS-1240 — body paragraphs are emitted directly inside the
         // card (no wrapping <div>) so Qt's text engine doesn't paint
         // an inner block frame with `QPalette::Base`, which broke the
         // visual continuity with the card's bgSecondary on dark
         // themes. `rm-body-first` carries the divider + extra top
         // padding; `rm-body-line` is plain indent only.
-        ".rm-body-first{padding-top:%21px;padding-left:20px;border-top:1px dotted %5;margin-top:%22px;font-size:%7px;}"
-        ".rm-body-line{padding-left:20px;font-size:%7px;}"
-        "</style></head><body>")
-        .arg(th.textPrimary.name(),         // %1
-             th.textPrimary.name(),         // %2
-             th.bgSecondary.name(),         // %3
-             currentColor,                  // %4
-             th.border.name(),              // %5
-             th.textSecondary.name())       // %6
-        // Density-tier px values. Order maps the %N number → field
-        // by hand so a future tier reorder doesn't silently swap two
-        // CSS rules. Use QString::number to ensure no locale
-        // surprises (QString::arg(int) is locale-aware in some Qt
-        // setups; QString::number defaults to base 10 + C locale).
-        .arg(QString::number(t.bodyPx),              // %7
-             QString::number(t.pMargin),             // %8
-             QString::number(t.hMarginTop),          // %9
-             QString::number(t.hMarginBottom),       // %10
-             QString::number(t.h1Px),                // %11
-             QString::number(t.h2Px),                // %12
-             QString::number(t.h3Px),                // %13
-             QString::number(t.h4Px),                // %14
-             QString::number(t.codePx))              // %15
-        .arg(QString::number(t.metaPx),              // %16
-             QString::number(t.cardMargin),          // %17
-             QString::number(t.cardPaddingY),        // %18
-             QString::number(t.cardPaddingX),        // %19
-             QString::number(t.labelPx),             // %20
-             QString::number(t.bodyFirstPaddingTop), // %21
-             QString::number(t.bodyFirstMarginTop))  // %22
-        .arg(currentWorkTint(),                      // %23
-             th.bgPrimary.name());                   // %24
+        ".rm-body-first{padding-top:@bodyFirstPaddingTop@px;padding-left:20px;border-top:1px dotted @border@;margin-top:@bodyFirstMarginTop@px;font-size:@bodyPx@px;}"
+        ".rm-body-line{padding-left:20px;font-size:@bodyPx@px;}"
+        "</style></head><body>"),
+        {
+            {QStringLiteral("text"), th.textPrimary.name()},
+            {QStringLiteral("heading"), th.textPrimary.name()},
+            {QStringLiteral("cardBg"), th.bgSecondary.name()},
+            {QStringLiteral("currentAccent"), currentColor},
+            {QStringLiteral("border"), th.border.name()},
+            {QStringLiteral("muted"), th.textSecondary.name()},
+            {QStringLiteral("pageBg"), th.bgPrimary.name()},
+            {QStringLiteral("currentTint"), currentWorkTint()},
+            // Density-tier px values. QString::number, not a locale-aware
+            // conversion, so a locale never changes the digits.
+            {QStringLiteral("bodyPx"), QString::number(t.bodyPx)},
+            {QStringLiteral("pMargin"), QString::number(t.pMargin)},
+            {QStringLiteral("hMarginTop"), QString::number(t.hMarginTop)},
+            {QStringLiteral("hMarginBottom"), QString::number(t.hMarginBottom)},
+            {QStringLiteral("h1Px"), QString::number(t.h1Px)},
+            {QStringLiteral("h2Px"), QString::number(t.h2Px)},
+            {QStringLiteral("h3Px"), QString::number(t.h3Px)},
+            {QStringLiteral("h4Px"), QString::number(t.h4Px)},
+            {QStringLiteral("codePx"), QString::number(t.codePx)},
+            {QStringLiteral("metaPx"), QString::number(t.metaPx)},
+            {QStringLiteral("cardMargin"), QString::number(t.cardMargin)},
+            {QStringLiteral("cardPaddingY"), QString::number(t.cardPaddingY)},
+            {QStringLiteral("cardPaddingX"), QString::number(t.cardPaddingX)},
+            {QStringLiteral("labelPx"), QString::number(t.labelPx)},
+            {QStringLiteral("bodyFirstPaddingTop"),
+             QString::number(t.bodyFirstPaddingTop)},
+            {QStringLiteral("bodyFirstMarginTop"),
+             QString::number(t.bodyFirstMarginTop)},
+        });
 
     const QStringList lines = sourceText.split('\n');
     QString currentSlug;

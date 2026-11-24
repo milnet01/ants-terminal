@@ -275,7 +275,7 @@ CSS — `text-transform` is not in QTextDocument's CSS subset.
 | 3  | render | Section count chips MUST emit a text word after the count: `✅ 47 shipped`, `🚧 2 in progress`, `📋 3 planned`, `💭 8 considered`. |
 | 4  | render | Theme glyphs in section headings (`🎨` etc.) MUST NOT be wrapped with a label — the heading text already labels them; double-labelling is noise. |
 | 5  | a11y  | The five filter QCheckBoxes MUST have `setAccessibleName()` called with the form "Show {state} items" — Orca speaks the accessibleName when set and skips the visible label. The visible `tr("✅ Done")` is renamed to `tr("✅ Shipped")` for vocabulary consistency with the rest of the roadmap-format standards (§3.d). |
-| 6  | render | `.rm-state-label` CSS rule MUST use the theme's muted-text colour (the same `%6` placeholder as `.rm-id` / `.rm-date`) so the label inherits theme palette on every theme change. |
+| 6  | render | `.rm-state-label` CSS rule MUST use the theme's muted-text colour (the same `@muted@` token, `%6` before ANTS-6219, as `.rm-id` / `.rm-date`) so the label inherits theme palette on every theme change. |
 | 7  | a11y  | Plain-text extraction from the rendered HTML (`QTextDocument::toPlainText()`) MUST contain the four label words in document order. (This is the behavioural backstop — if a future refactor accidentally drops the spans, this fires.) |
 
 ## 5. Test plan

@@ -532,10 +532,10 @@ static int runMain(int argc, char **argv) {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             fail("LinkColor", "roadmapdialog.cpp not readable");
-        if (!contains(src, ".rm-section-title{color:%2;"))
+        if (!contains(src, ".rm-section-title{color:@heading@;"))
             fail("LinkColor",
                 ".rm-section-title must set explicit color (not inherit)");
-        if (!contains(src, ".rm-section-toggle{color:%2;"))
+        if (!contains(src, ".rm-section-toggle{color:@heading@;"))
             fail("LinkColor",
                 ".rm-section-toggle must set explicit color");
         if (!contains(src, "QPalette::Link"))
@@ -583,6 +583,18 @@ static int runMain(int argc, char **argv) {
                 "m_toc must set QPalette::Highlight from theme accent");
     }
 
+    // ANTS-6219 — every named @token@ in the card stylesheet is filled.
+    {
+        const QString html = RD::renderCardsHtml(
+            fixtureMarkdown(), kAllOn, {}, QStringLiteral("light"),
+            RD::SortOrder::Document, QString(), {}, RD::CardRenderOptions{});
+        const int styleEnd = html.indexOf(QStringLiteral("</style>"));
+        if (styleEnd < 0)
+            fail("CssTokens", "rendered page has no <style> block");
+        else if (html.left(styleEnd).contains(QLatin1Char('@')))
+            fail("CssTokens", "the card stylesheet has an unfilled @token@");
+    }
+
     // ANTS-1240 — INV-16: expanded body is emitted as direct <p>
     // children of the card (no `<div class="rm-body">` wrapper), so
     // Qt's text engine doesn't paint a nested block frame with
@@ -625,7 +637,7 @@ static int runMain(int argc, char **argv) {
         if (src.empty())
             fail("BodyFrame", "roadmapdialog.cpp not readable");
         // ANTS-1238 parameterised the per-tier px values, so the
-        // padding-top literal now reads `%21px` (cozy tier maps to
+        // padding-top literal now reads `@bodyFirstPaddingTop@px` (cozy tier maps to
         // 4 via kDensityTable). Match the CSS rule prefix only;
         // the cozy `4px` value is locked by the renderer's tier
         // test (tests/features/roadmap_density/).
@@ -699,10 +711,10 @@ static int runMain(int argc, char **argv) {
         // assert the rule exists with the monospace font-family and
         // a parameterised font-size placeholder pointing at the
         // codePx tier slot.
-        if (!contains(src, ".rm-id{font-family:monospace;font-size:%15px;"))
+        if (!contains(src, ".rm-id{font-family:monospace;font-size:@codePx@px;"))
             fail("IdInline",
                 ".rm-id CSS rule must declare font-family:monospace + "
-                "font-size:%15px (codePx tier slot — cozy value 12px "
+                "font-size:@codePx@px (codePx tier slot — cozy value 12px "
                 "lives in kDensityTable)");
         // Old meta wrapper rule MUST NOT regress.
         if (contains(src, ".rm-meta{font-size:10px"))
@@ -861,13 +873,13 @@ static int runMain(int argc, char **argv) {
                 "m_filterDone visible label must be \"✅ Shipped\"");
         // INV-23: CSS rule for rm-state-label + nowrap on section counts.
         // ANTS-1238 — `.rm-state-label` font-size was parameterised
-        // to the labelPx tier slot (%20); cozy value (10px) lives in
+        // to the labelPx tier slot (@labelPx@); cozy value (10px) lives in
         // kDensityTable and is locked by tests/features/roadmap_density/.
-        if (!contains(src, ".rm-state-label{font-size:%20px;color:%6;"))
+        if (!contains(src, ".rm-state-label{font-size:@labelPx@px;color:@muted@;"))
             fail("CssRule",
                 ".rm-state-label CSS rule missing or wrong "
-                "(must declare font-size:%20px [labelPx tier slot — "
-                "cozy 10px lives in kDensityTable]; color:%6;)");
+                "(must declare font-size:@labelPx@px [labelPx tier slot — "
+                "cozy 10px lives in kDensityTable]; color:@muted@;)");
         if (!contains(src, ".rm-count{text-align:center;white-space:nowrap;"))
             fail("CssRule",
                 ".rm-count must be centred and nowrap (ANTS-5604)");
