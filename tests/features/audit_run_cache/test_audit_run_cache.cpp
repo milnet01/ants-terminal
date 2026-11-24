@@ -9,6 +9,7 @@
 #include "../../_support/srcgrep.h"
 
 #include "auditcache.h"
+#include "auditrunner.h"
 
 #include <QDir>
 #include <QFile>
@@ -92,29 +93,20 @@ TEST(AuditRunCache, AuditRunnerRoutesThroughAuditCache) {
 }
 
 TEST(AuditRunCache, MainWindowEnvelopeSurfacesCachePathAndPriorRun) {
-    const std::string mw = ants_test::slurpMainWindow();
-    ASSERT_FALSE(mw.empty());
-
-    // Locate the audit_run provider lambda.
-    const auto reg = mw.find("registerToolProvider(\"audit_run\"");
-    ASSERT_NE(reg, std::string::npos);
-    // Slice from the audit_run anchor to the NEXT provider registration
-    // rather than a fixed byte window: a magic window keeps falling short as
-    // the lambda grows (6500 → 7200 for ANTS-2032's partial/incomplete_tools
-    // block, then ANTS-2103's worker-thread wrapper pushed prior_run past
-    // 7200). The whole-lambda slice can't go stale on the next edit.
-    const auto regEnd = mw.find("registerToolProvider(", reg + 1);
-    const std::string region =
-        mw.substr(reg, regEnd == std::string::npos ? std::string::npos : regEnd - reg);
-
-    EXPECT_TRUE(contains(region, "\"cache_path\""))
+    // ANTS-6221 — the reply's fields come from AuditRunner::doneEnvelope.
+    AuditRunner::RunResult r;
+    r.cachePath = QStringLiteral("/p/.audit_cache/audit-x.sarif");
+    r.priorRun  = QJsonObject{{QStringLiteral("commit"), QStringLiteral("abc")}};
+    const QJsonObject env = AuditRunner::doneEnvelope(r);
+    EXPECT_EQ(env.value(QStringLiteral("cache_path")).toString(), r.cachePath)
         << "audit_run envelope must emit cache_path";
-    EXPECT_TRUE(contains(region, "\"prior_run\""))
+    EXPECT_EQ(env.value(QStringLiteral("prior_run")).toObject(), r.priorRun)
         << "audit_run envelope must emit prior_run";
-    EXPECT_TRUE(contains(region, "r.cachePath"))
-        << "envelope must read r.cachePath from RunResult";
-    EXPECT_TRUE(contains(region, "r.priorRun"))
-        << "envelope must read r.priorRun from RunResult";
+    const QJsonObject first = AuditRunner::doneEnvelope(AuditRunner::RunResult{});
+    EXPECT_FALSE(first.contains(QStringLiteral("cache_path")))
+        << "cache_path is set only when the SARIF landed in .audit_cache";
+    EXPECT_FALSE(first.contains(QStringLiteral("prior_run")))
+        << "prior_run is absent on a project's first sweep";
 }
 
 TEST(AuditRunCache, DescriptorMentionsAuditCacheRouting) {

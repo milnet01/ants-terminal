@@ -248,6 +248,12 @@ struct RunResult {
 // empty samples[] — the "crashed" status is the reliable signal.
 RunResult runAudit(const RunRequest &req);
 
+// ANTS-6221 — the fields of a finished run's reply, without `ok`: the one
+// builder both the synchronous audit_run reply and the async audit_poll `done`
+// reply use. A refused run (`!r.ok`) has its own envelope and never comes
+// here. Defined in auditrunenvelope.cpp.
+QJsonObject doneEnvelope(const RunResult &r);
+
 // Pure helpers exposed for the engine test fixtures + the
 // envelope-cap cascade (INV-13). Internal use only.
 namespace internal {

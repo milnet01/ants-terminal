@@ -175,15 +175,21 @@ TEST(AuditRunIncompleteDetail, Inv8ParseFailureDetailsShape) {
     EXPECT_FALSE(d.at(2).toObject().contains(QStringLiteral("reason")));
 }
 
-// INV-9 (ANTS-3706) — both providers emit the detail sibling, and
-// parse_failures[] keeps its bare-path shape (no consumer break).
+// INV-9 (ANTS-3706) — the reply carries the detail sibling, and
+// parse_failures[] keeps its bare-path shape (no consumer break). Both
+// replies build from doneEnvelope; McpAuditRunAsync.Inv3DoneCarriesTheSyncFields
+// holds the poll to it.
 TEST(AuditRunIncompleteDetail, Inv9BothProvidersEmitDetail) {
-    const std::string mw = ants_test::slurpMainWindow();
-    const std::string ci = ants_test::slurpClaudeIntegration();
-    EXPECT_TRUE(contains(mw, "parse_failures_detail"))
-        << "INV-9: sync provider emits parse_failures_detail";
-    EXPECT_TRUE(contains(ci, "parse_failures_detail"))
-        << "INV-9: async-poll done-branch emits parse_failures_detail";
+    AuditRunner::RunResult r;
+    r.parseFailures = {QStringLiteral("src/a.cpp")};
+    r.parseFailuresDetail.append(QJsonObject{{QStringLiteral("file"), QStringLiteral("src/a.cpp")}});
+    const QJsonObject env = AuditRunner::doneEnvelope(r);
+    EXPECT_EQ(env.value(QStringLiteral("parse_failures_detail")).toArray(),
+              r.parseFailuresDetail)
+        << "INV-9: the reply carries parse_failures_detail";
+    EXPECT_EQ(env.value(QStringLiteral("parse_failures")).toArray(),
+              QJsonArray{QStringLiteral("src/a.cpp")})
+        << "INV-9: parse_failures[] stays a list of bare paths";
 }
 
 // INV-4 — extraction is cppcheck-gated: the same [syntaxError] line under a
@@ -213,18 +219,21 @@ TEST(AuditRunIncompleteDetail, Inv5RaisedCeilings) {
         << "INV-5: default per-tool cap unchanged at 30 s";
 }
 
-// INV-6 — both envelope surfaces serialise the new fields.
+// INV-6 — the reply both surfaces share serialises the new fields, and omits
+// each when empty.
 TEST(AuditRunIncompleteDetail, Inv6EnvelopeSurfaces) {
-    const std::string mw = ants_test::slurpMainWindow();
-    EXPECT_TRUE(contains(mw, "incomplete_tools_detail"))
-        << "INV-6: sync provider emits incomplete_tools_detail";
-    EXPECT_TRUE(contains(mw, "parse_failures"))
-        << "INV-6: sync provider emits parse_failures";
-    const std::string ci = ants_test::slurpClaudeIntegration();
-    EXPECT_TRUE(contains(ci, "incomplete_tools_detail"))
-        << "INV-6: async-poll done-branch emits incomplete_tools_detail";
-    EXPECT_TRUE(contains(ci, "parse_failures"))
-        << "INV-6: async-poll done-branch emits parse_failures";
+    AuditRunner::RunResult r;
+    r.incompleteToolsDetail.append(QJsonObject{{QStringLiteral("tool"), QStringLiteral("semgrep")}});
+    r.parseFailures = {QStringLiteral("src/b.cpp")};
+    const QJsonObject env = AuditRunner::doneEnvelope(r);
+    EXPECT_EQ(env.value(QStringLiteral("incomplete_tools_detail")).toArray(),
+              r.incompleteToolsDetail)
+        << "INV-6: the reply carries incomplete_tools_detail";
+    EXPECT_TRUE(env.contains(QStringLiteral("parse_failures")))
+        << "INV-6: the reply carries parse_failures";
+    const QJsonObject empty = AuditRunner::doneEnvelope(AuditRunner::RunResult{});
+    EXPECT_FALSE(empty.contains(QStringLiteral("incomplete_tools_detail")));
+    EXPECT_FALSE(empty.contains(QStringLiteral("parse_failures")));
 }
 
 // INV-10 (ANTS-5044) — a tool the per-tool cap killed is timed_out, not

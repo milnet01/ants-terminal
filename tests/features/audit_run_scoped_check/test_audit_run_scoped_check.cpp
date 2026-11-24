@@ -114,11 +114,10 @@ TEST(AuditRunScopedCheck, MainWindowProviderExtractsParams) {
     const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
 
-    // Locate the audit_run provider lambda.
-    // ANTS-3681 — the registration entry, bounded by the next one.
-    const std::string region = ants_test::regionBetween(
-        mw, "registerToolProvider(\"audit_run\"", "registerToolProvider(");
-    ASSERT_FALSE(region.empty()) << "audit_run registration not found";
+    // ANTS-6221 — the audit_run arguments are read by auditRunRequest.
+    const std::string region = ants_test::slurpFunctionBody(
+        mw, "AuditRunner::RunRequest auditRunRequest(");
+    ASSERT_FALSE(region.empty()) << "auditRunRequest not found";
 
     // INV-8 — extract both paths and checks from args.
     EXPECT_TRUE(contains(region, "\"paths\""))

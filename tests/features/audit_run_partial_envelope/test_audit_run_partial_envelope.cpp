@@ -10,6 +10,8 @@
 #include <string>
 
 #include <QHash>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 
@@ -63,14 +65,21 @@ TEST(AuditRunPartialEnvelope, Inv2PartialDerivation) {
     EXPECT_TRUE(!AuditRunner::internal::incompleteToolNames(mixed).isEmpty());
 }
 
-// INV-3 — the audit_run provider serialises the partial surface, and the
+// INV-3 — the reply builder serialises the partial surface, and the
 // descriptor advertises it.
 TEST(AuditRunPartialEnvelope, Inv3EnvelopeSerialisesPartial) {
-    const std::string mw = ants_test::slurpMainWindow();
-    EXPECT_TRUE(contains(mw, "env[\"partial\"]"))
-        << "INV-3: provider writes the partial flag";
-    EXPECT_TRUE(contains(mw, "incomplete_tools"))
-        << "INV-3: provider writes incomplete_tools[]";
+    AuditRunner::RunResult r;
+    r.partial         = true;
+    r.incompleteTools = {QStringLiteral("cppcheck")};
+    const QJsonObject env = AuditRunner::doneEnvelope(r);
+    EXPECT_TRUE(env.value(QStringLiteral("partial")).toBool())
+        << "INV-3: the reply carries the partial flag";
+    EXPECT_EQ(env.value(QStringLiteral("incomplete_tools")).toArray(),
+              QJsonArray{QStringLiteral("cppcheck")})
+        << "INV-3: the reply lists incomplete_tools[]";
+    EXPECT_FALSE(AuditRunner::doneEnvelope(AuditRunner::RunResult{})
+                     .contains(QStringLiteral("incomplete_tools")))
+        << "INV-3: an empty incomplete_tools is omitted";
     const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_TRUE(contains(ci, "incomplete_tools"))
         << "INV-3: audit_run descriptor advertises incomplete_tools";
@@ -110,15 +119,36 @@ TEST(AuditRunPartialEnvelope, Inv4SarifWrittenBeforeReturn) {
 // It matters because a zero-finding audit is the most consequential result
 // this verb returns: it is what lets a phase close.
 TEST(AuditRunPartialEnvelope, Ants4371CoverageEvidenceIsSerialised) {
-    const std::string mw = ants_test::slurpMainWindow();
-    EXPECT_TRUE(contains(mw, "paths_given"))
+    AuditRunner::RunResult r;
+    AuditRunner::ToolResult whole;  // scope:"full": pointed at the root
+    whole.status       = QStringLiteral("ok");
+    whole.wholeProject = true;
+    AuditRunner::ToolResult narrowed;  // a narrowed scope that matched nothing
+    narrowed.status = QStringLiteral("ok");
+    AuditRunner::ToolResult listed;
+    listed.status     = QStringLiteral("ok");
+    listed.pathsGiven = 3;
+    r.byTool.insert(QStringLiteral("ruff"), whole);
+    r.byTool.insert(QStringLiteral("semgrep"), narrowed);
+    r.byTool.insert(QStringLiteral("cppcheck"), listed);
+    const QJsonObject env = AuditRunner::doneEnvelope(r);
+    const QJsonObject byTool = env.value(QStringLiteral("by_tool")).toObject();
+
+    const QJsonObject ruff = byTool.value(QStringLiteral("ruff")).toObject();
+    EXPECT_EQ(ruff.value(QStringLiteral("paths_given")).toInt(-1), 0)
         << "per-tool: how many explicit paths the tool was handed";
-    EXPECT_TRUE(contains(mw, "scanned_whole_project"))
+    EXPECT_TRUE(ruff.value(QStringLiteral("scanned_whole_project")).toBool())
         << "…and whether it was pointed at the root instead. Under "
            "scope:\"full\" paths_given is legitimately 0, so the count ALONE "
            "would report \"scanned nothing\" for exactly the case this "
            "reassures about — both fields together are the answer";
-    EXPECT_TRUE(contains(mw, "tools_with_no_files"))
+    EXPECT_FALSE(ruff.contains(QStringLiteral("no_files")));
+    EXPECT_TRUE(byTool.value(QStringLiteral("semgrep")).toObject()
+                    .value(QStringLiteral("no_files")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("paths_given_total")).toInt(), 3);
+    EXPECT_TRUE(env.value(QStringLiteral("scanned_whole_project")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("tools_with_no_files")).toArray(),
+              QJsonArray{QStringLiteral("semgrep")})
         << "the top-level roll-up: which tools got an explicitly narrowed but "
            "EMPTY list, which scope:files / since-last-run produce legitimately";
 
@@ -126,11 +156,7 @@ TEST(AuditRunPartialEnvelope, Ants4371CoverageEvidenceIsSerialised) {
     // scope matching no files is a legitimate outcome, and marking it partial
     // would make every narrow scan report a failure it did not have — trading
     // a silent wrong answer for a noisy one.
-    const auto noFilesPos = mw.find("tools_with_no_files");
-    ASSERT_NE(noFilesPos, std::string::npos);
-    const std::string around = mw.substr(noFilesPos > 1200 ? noFilesPos - 1200 : 0,
-                                         1600);
-    EXPECT_TRUE(around.find("incomplete_tools") == std::string::npos ||
-                around.find("NOT folded") != std::string::npos)
+    EXPECT_FALSE(env.value(QStringLiteral("partial")).toBool());
+    EXPECT_FALSE(env.contains(QStringLiteral("incomplete_tools")))
         << "no_files must stay out of incomplete_tools / partial";
 }

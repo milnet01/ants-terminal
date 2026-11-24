@@ -299,13 +299,20 @@ TEST(AuditRunBaseline, Inv8EnvelopeCarriesBlocks) {
     const std::string src = ants_test::slurpFile(SRC_MCPTOOLREGISTRY_CPP_PATH);
     ASSERT_FALSE(src.empty());
     EXPECT_NE(src.find("QStringLiteral(\"save_baseline\")"), std::string::npos);
-    EXPECT_NE(src.find("env[\"since_baseline\"] = r.sinceBaseline"),
-              std::string::npos);
-    EXPECT_NE(src.find("env[\"baseline_saved\"] = r.baselineSaved"),
-              std::string::npos);
     EXPECT_NE(src.find("QStringLiteral(\"min_confidence\")"), std::string::npos);
-    EXPECT_NE(src.find("env[\"below_confidence_floor_count\"]"),
-              std::string::npos);
+    // ANTS-6221 — the reply's fields come from AuditRunner::doneEnvelope.
+    AuditRunner::RunResult r;
+    r.sinceBaseline = QJsonObject{{QStringLiteral("new_count"), 2}};
+    r.baselineSaved = QJsonObject{{QStringLiteral("path"), QStringLiteral("b.json")}};
+    r.minConfidence = 40;
+    r.belowConfidenceFloor = 6;
+    const QJsonObject env = AuditRunner::doneEnvelope(r);
+    EXPECT_EQ(env.value(QStringLiteral("since_baseline")).toObject(), r.sinceBaseline);
+    EXPECT_EQ(env.value(QStringLiteral("baseline_saved")).toObject(), r.baselineSaved);
+    EXPECT_EQ(env.value(QStringLiteral("below_confidence_floor_count")).toInt(), 6);
+    EXPECT_FALSE(AuditRunner::doneEnvelope(AuditRunner::RunResult{})
+                     .contains(QStringLiteral("below_confidence_floor_count")))
+        << "no floor, no count";
 }
 
 // INV-9 — the dialog's formula, fed from a headless finding.

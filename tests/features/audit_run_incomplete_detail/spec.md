@@ -55,8 +55,8 @@ and the two envelope surfaces (mirrors the `audit_run_partial_envelope` /
   to parse yields two rows — the reasons differ. `reason` is omitted, not
   empty, when the tool recorded no diagnostic.
 
-- **INV-9** (ANTS-3706) — both the sync (`mainwindow.cpp`) and async-poll
-  (`claudeintegration.cpp`) providers emit `parse_failures_detail`.
+- **INV-9** (ANTS-3706) — the reply carries `parse_failures_detail`. The sync
+  reply and the async poll both build it with `AuditRunner::doneEnvelope`.
   `parse_failures[]` keeps its ANTS-3585 bare-path shape, so a consumer
   already parsing it is unaffected — the same `X` / X_detail pairing
   ANTS-3585 established with `incomplete_tools`.
@@ -69,9 +69,8 @@ and the two envelope surfaces (mirrors the `audit_run_partial_envelope` /
   failures mean zero coverage).
 - **INV-5** — the ceilings are raised: `kCapPerToolMax` > 60 (== 300) and
   `kAggregateCapMs` > 240'000 (== 900'000). The `RunRequest` default stays 30 s.
-- **INV-6** — both envelope surfaces serialise the new fields: the sync provider
-  (`mainwindow.cpp`) and the async-poll done-branch (`claudeintegration.cpp`)
-  both emit `incomplete_tools_detail` and `parse_failures`.
+- **INV-6** — `AuditRunner::doneEnvelope`, which both replies use, emits
+  `incomplete_tools_detail` and `parse_failures`, and omits each when empty.
 - **INV-10** (ANTS-5044) — a tool the per-tool cap killed is `timed_out`, not
   `crashed`. `internal::toolExitStatus(timedOut, crashExit)` returns
   `timed_out` whenever `timedOut` is set, else `crashed` for a crash exit,

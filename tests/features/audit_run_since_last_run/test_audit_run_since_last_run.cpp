@@ -8,6 +8,7 @@
 // against a real git repo in a QTemporaryDir; the runAudit/envelope wiring
 // is pinned by source-scrape. GUI-free (no QCoreApplication needed).
 
+#include "auditrunner.h"
 #include "auditscope.h"
 
 #include <gtest/gtest.h>
@@ -284,12 +285,20 @@ TEST(AuditScopeSinceLastRun, Inv2And5RunAuditWiring) {
 // ── INV-8 — envelope surfaces the scope fields (source-scrape) ────────
 
 TEST(AuditScopeSinceLastRun, Inv8EnvelopeFields) {
-    const std::string src = ants_test::slurpMainWindow();
-    ASSERT_FALSE(src.empty());
+    // ANTS-6221 — the reply's fields come from AuditRunner::doneEnvelope.
+    AuditRunner::RunResult r;
+    r.scopeResolved      = QStringLiteral("since-last-run");
+    r.changedFilesCount  = 4;
+    r.scopeAnchorCommit  = QStringLiteral("abc123");
+    r.scopeDemoted       = QStringLiteral("full");
+    r.scopeDemotedReason = QStringLiteral("stale cache");
+    r.noChanges          = true;
+    const QJsonObject env = AuditRunner::doneEnvelope(r);
     for (const char *key : {"scope_resolved", "changed_files_count",
                             "scope_anchor_commit", "scope_demoted",
                             "scope_demoted_reason", "no_changes"})
-        EXPECT_TRUE(has(src, key)) << key;
+        EXPECT_TRUE(env.contains(QLatin1String(key))) << key;
+    EXPECT_EQ(env.value(QStringLiteral("changed_files_count")).toInt(), 4);
 }
 
 // ── INV-10 — branch-diff demotes when no "main" ref exists (ANTS-5043) ─

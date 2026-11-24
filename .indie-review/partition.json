@@ -156,6 +156,7 @@
         "src/audithygiene.h",
         "src/auditrulequality.cpp",
         "src/auditrulequality.h",
+        "src/auditrunenvelope.cpp",
         "src/auditrunner.cpp",
         "src/auditrunner.h",
         "src/processgroup.h",

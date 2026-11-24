@@ -55,7 +55,6 @@ line-insensitive `fp` over external tools.
 
 ## Out of scope
 
-AI triage (ANTS-6809). The async `audit_poll` envelope, which carries no
-per-finding blocks, as for ANTS-1870's `delta`. The floor does not touch
+AI triage (ANTS-6809). The floor does not touch
 the SARIF, the run's findings sidecar or the since-last-run `delta`: they
 record the run, not the view of it.

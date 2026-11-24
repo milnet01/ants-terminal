@@ -377,9 +377,20 @@ TEST(AuditRunDelta, Inv678RunAuditWiring) {
 // ── INV-10 — envelope mutual exclusion (source-scrape) ────────────────
 
 TEST(AuditRunDelta, Inv10EnvelopeFields) {
-    const std::string src = ants_test::slurpMainWindow();
-    ASSERT_FALSE(src.empty());
-    for (const char *key : {"delta", "delta_unavailable_reason",
-                            "findings_truncated"})
-        EXPECT_TRUE(has(src, key)) << key;
+    // ANTS-6221 — the reply's fields come from AuditRunner::doneEnvelope.
+    AuditRunner::RunResult r;
+    r.delta = QJsonObject{{QStringLiteral("added_count"), 1}};
+    r.findingsTruncated = true;
+    const QJsonObject withDelta = AuditRunner::doneEnvelope(r);
+    EXPECT_EQ(withDelta.value(QStringLiteral("delta")).toObject(), r.delta);
+    EXPECT_TRUE(withDelta.value(QStringLiteral("findings_truncated")).toBool());
+    EXPECT_FALSE(withDelta.contains(QStringLiteral("delta_unavailable_reason")));
+
+    AuditRunner::RunResult u;
+    u.deltaUnavailableReason = QStringLiteral("no_prior_findings");
+    const QJsonObject without = AuditRunner::doneEnvelope(u);
+    EXPECT_EQ(without.value(QStringLiteral("delta_unavailable_reason")).toString(),
+              u.deltaUnavailableReason);
+    EXPECT_FALSE(without.contains(QStringLiteral("delta")));
+    EXPECT_FALSE(without.contains(QStringLiteral("findings_truncated")));
 }

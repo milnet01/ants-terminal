@@ -58,6 +58,241 @@ bool resolveInflightCallerCwd(const QString &callerCwd, const char *tool,
     return true;
 }
 
+// ANTS-1351 — the audit_run arguments, as the engine's request.
+AuditRunner::RunRequest auditRunRequest(const QJsonObject &args,
+                                        const QString &callerCwd) {
+    AuditRunner::RunRequest req;
+    req.projectRoot = callerCwd;
+    const QJsonArray toolsArr = args.value(
+        QStringLiteral("tools")).toArray();
+    for (const QJsonValue &v : toolsArr)
+        req.tools.append(v.toString());
+    req.scope = args.value(QStringLiteral("scope")).toString();
+    if (args.value(QStringLiteral("cap_per_tool_seconds"))
+            .isDouble()) {
+        req.capPerToolSeconds = args.value(
+            QStringLiteral("cap_per_tool_seconds")).toInt();
+    }
+    req.suppressionsMode =
+        args.value(QStringLiteral("suppressions")).toString();
+    const QJsonArray formatsArr = args.value(
+        QStringLiteral("formats")).toArray();
+    for (const QJsonValue &v : formatsArr)
+        req.formats.append(v.toString());
+    if (args.value(QStringLiteral("top_findings_count"))
+            .isDouble()) {
+        req.topFindingsCount = args.value(
+            QStringLiteral("top_findings_count")).toInt();
+    }
+    // ANTS-1512 — scoped-check mode: narrow the tool's scope
+    // to specific paths and/or a specific check set.
+    const QJsonArray pathsArr = args.value(
+        QStringLiteral("paths")).toArray();
+    for (const QJsonValue &v : pathsArr)
+        req.paths.append(v.toString());
+    const QJsonArray checksArr = args.value(
+        QStringLiteral("checks")).toArray();
+    for (const QJsonValue &v : checksArr)
+        req.checks.append(v.toString());
+    // ANTS-3710 — the negative counterpart to `paths`: drop code
+    // that is present but not ours (a vendored dependency tree)
+    // without also dropping the repo-global tools the way a
+    // narrowing `paths` does.
+    const QJsonArray exclArr = args.value(
+        QStringLiteral("exclude_paths")).toArray();
+    for (const QJsonValue &v : exclArr)
+        req.excludePaths.append(v.toString());
+    // ANTS-1706 — pin this run as the baseline later runs report against.
+    req.saveBaseline =
+        args.value(QStringLiteral("save_baseline")).toBool();
+    // ANTS-1706 — hide findings below this confidence from the reply.
+    if (args.value(QStringLiteral("min_confidence")).isDouble())
+        req.minConfidence =
+            args.value(QStringLiteral("min_confidence")).toInt();
+    return req;
+}
+
+// ANTS-1351 — the audit_run handler: the in-flight gate, then the sweep on its
+// own worker. The async branch replies with a job handle at once; the
+// synchronous one replies from the worker's completion slot (ANTS-2132 § 2.8).
+// Both build a finished run's fields with AuditRunner::doneEnvelope.
+void runAuditRun(ClaudeIntegration *ci, const QJsonObject &args,
+                 const std::function<void(QString)> &reply) {
+    const QString callerCwd = args.value(
+        QStringLiteral("caller_cwd")).toString();
+    // ANTS-1833 — reject a non-existent root before it can
+    // collapse the in-flight key (canon would be empty).
+    QString canon, badEnv;
+    if (!resolveInflightCallerCwd(callerCwd, "audit_run",
+                                  &canon, &badEnv)) {
+        reply(badEnv);
+        return;
+    }
+    // In-flight gate (INV-11).
+    const qint64 existing =
+        ci->verbInFlightTryAcquire(
+            QStringLiteral("audit_run"), canon);
+    if (existing >= 0) {
+        QJsonObject env;
+        env["ok"]               = false;
+        env["code"]             = QStringLiteral("already_running");
+        env["error"]            = QStringLiteral(
+            "audit_run: a sweep is already in flight for this "
+            "project root; retry after it completes");
+        env["running_since_ms"] =
+            QDateTime::currentMSecsSinceEpoch() - existing;
+        env["retry_after_ms"]   = 5000;  // INV-9 hint
+        reply(QString::fromUtf8(
+            QJsonDocument(env).toJson(QJsonDocument::Compact)));
+        return;
+    }
+    // RAII: release the in-flight slot on EVERY exit path (including
+    // an exception or a future early return), honouring the header's
+    // documented guard contract. indie-review-2026-05-21.
+    // Non-const: the ANTS-3396 async branch calls dismiss() to hand
+    // the slot release to the completion slot.
+    auto inFlightGuard = qScopeGuard([ci, &canon] {
+        ci->verbInFlightRelease(
+            QStringLiteral("audit_run"), canon);
+    });
+    const AuditRunner::RunRequest req = auditRunRequest(args, callerCwd);
+    // ANTS-3396 — opt-in async mode: spawn the sweep detached,
+    // register a job, and return a handle immediately so the caller
+    // never blocks on the ~60 s MCP transport cap. Default false →
+    // the synchronous branch below, which replies with the full
+    // result once the sweep ends (ANTS-2132 § 2.8).
+    if (args.value(QStringLiteral("async")).toBool()) {
+        const qint64 startedMs =
+            QDateTime::currentMSecsSinceEpoch();
+        const QString jobId =
+            ci->auditJobRegister(canon, startedMs);
+        if (jobId.isEmpty()) {
+            // Registry saturated (all entries running, none
+            // evictable). The in-flight guard releases the slot on
+            // return; the sync path stays available (INV-8).
+            QJsonObject env;
+            env["ok"]             = false;
+            env["code"]           = QStringLiteral("too_many_jobs");
+            env["error"]          = QStringLiteral(
+                "audit_run: too many audit jobs in flight; retry "
+                "shortly or run synchronously (async:false)");
+            env["retry_after_ms"] = 5000;
+            reply(QString::fromUtf8(
+                QJsonDocument(env).toJson(QJsonDocument::Compact)));
+            return;
+        }
+        // The completion slot now owns the in-flight release
+        // (§2.4 / INV-5) — dismiss the sync scope-guard so the slot
+        // is NOT freed the moment this handler returns the handle.
+        inFlightGuard.dismiss();
+        auto result =
+            std::make_shared<AuditRunner::RunResult>();
+        // Worker created on the main/dispatch thread → its thread
+        // affinity is the main thread, so its own deleteLater() runs
+        // there. `req` copied by value
+        // (the handler's stack frame unwinds before the sweep ends).
+        QThread *worker = QThread::create(
+            [req, result]() { *result = AuditRunner::runAudit(req); });
+        // ANTS-5080 — the worker frees itself. The completion below
+        // has ci as its context and is severed if ci is destroyed
+        // mid-sweep, so freeing the worker there could leave it never
+        // freed. The completion no longer touches the worker, so the
+        // two queued events may run in either order.
+        QObject::connect(worker, &QThread::finished, worker,
+                         &QObject::deleteLater);
+        // Queued completion on the main thread. Context object = ci
+        // so the connection auto-severs if ci is destroyed at
+        // teardown (the QPointer-equivalent shutdown guard, §2.4):
+        // a still-running worker then fires into nothing rather than
+        // touching a freed owner. The worker touches only its own
+        // RunResult; the registry flip + slot release happen here on
+        // the main thread.
+        QObject::connect(worker, &QThread::finished, ci,
+            [ci, result, jobId, canon]() {
+                ClaudeIntegration::AuditJob term;
+                const AuditRunner::RunResult &r = *result;
+                if (!r.ok) {
+                    term.status = QStringLiteral("error");
+                    term.code   = r.code;
+                    term.error  = r.error;
+                } else {
+                    term.status = QStringLiteral("done");
+                    term.done   = AuditRunner::doneEnvelope(r);
+                }
+                ci->auditJobComplete(jobId, term);
+                ci->verbInFlightRelease(
+                    QStringLiteral("audit_run"), canon);
+            }, Qt::QueuedConnection);
+        worker->start();
+        QJsonObject env;
+        env["ok"]            = true;
+        env["async"]         = true;
+        env["job_id"]        = jobId;
+        env["status"]        = QStringLiteral("running");
+        env["started_at_ms"] = startedMs;
+        env["poll_with"]     = QStringLiteral("audit_poll");
+        env["note"]          = QStringLiteral(
+            "Sweep running server-side; poll audit_poll {job_id} or "
+            "read last_audit_summary when done. Results are written "
+            "to .audit_cache regardless of poll.");
+        reply(QString::fromUtf8(
+            QJsonDocument(env).toJson(QJsonDocument::Compact)));
+        return;
+    }
+    // ANTS-2103 — run the audit on a worker thread so its internal
+    // QEventLoop (auditrunner.cpp), which multiplexes the per-tool
+    // QProcesses, lives OFF the main thread. Running it synchronously
+    // here spun that nested QEventLoop on the GUI/MCP thread, which
+    // reentrantly delivered QLocalSocket read-notifications and freed
+    // the live MCP socket mid-dispatch -> use-after-free SIGSEGV (the
+    // ANTS-2101 write-path guard was necessary but not sufficient; the
+    // deeper hazard is pumping the main event loop at all). This
+    // realises the INV-9 worker-thread isolation auditrunner.h already
+    // documents.
+    // ANTS-2132 § 2.8 — and the GUI thread does not join it. The
+    // completion slot builds the envelope and replies, so the window
+    // keeps painting and MCP traffic keeps flowing for the whole sweep.
+    // A second synchronous call for this root now arrives while the
+    // sweep runs and is refused already_running by the gate above.
+    inFlightGuard.dismiss();
+    auto result = std::make_shared<AuditRunner::RunResult>();
+    QThread *worker = QThread::create(
+        [req, result]() { *result = AuditRunner::runAudit(req); });
+    // ANTS-5080 — as the async branch: the worker frees itself, since
+    // the completion below is severed if ci is destroyed mid-sweep.
+    QObject::connect(worker, &QThread::finished, worker,
+                     &QObject::deleteLater);
+    // Context object = ci, so a sweep still running at teardown
+    // replies into nothing, as the async branch's slot does.
+    QObject::connect(worker, &QThread::finished, ci,
+        [ci, result, canon, reply]() {
+            ci->verbInFlightRelease(QStringLiteral("audit_run"), canon);
+            const AuditRunner::RunResult &r = *result;
+            // Serialise envelope.
+            QJsonObject env;
+            if (!r.ok) {
+                env["ok"]    = false;
+                env["code"]  = r.code;
+                env["error"] = r.error;
+                // ANTS-3612 — the aggregate concurrency cap is transient,
+                // so give the caller the same backoff hint the other
+                // busy-style refusals carry (already_running,
+                // too_many_jobs). Every other engine refusal is a hard
+                // input error and gets no retry hint.
+                if (r.code == QLatin1String("server_busy"))
+                    env["retry_after_ms"] = 5000;
+                reply(QString::fromUtf8(
+                    QJsonDocument(env).toJson(QJsonDocument::Compact)));
+                return;
+            }
+            env = AuditRunner::doneEnvelope(r);
+            env["ok"] = true;
+            reply(QString::fromUtf8(
+                QJsonDocument(env).toJson(QJsonDocument::Compact)));
+        }, Qt::QueuedConnection);
+    worker->start();
+}
+
 }  // namespace
 
 RcHandler rcDelegate(RemoteControlGetter rc,
@@ -231,7 +466,8 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // wired — see that spec's INV-12 (corrected 2026-07-25).
     // caller_cwd is Required (ANTS-1404 contract registered in
     // callerCwdContractFor); dispatcher refuses upstream when absent.
-    // ANTS-4682 — STAYS inline, deliberately (ANTS-2132 § 5). Its job registry
+    // ANTS-4682 — STAYS inline on the GUI thread, deliberately (ANTS-2132 § 5),
+    // in runAuditRun above. Its job registry
     // is GUI-thread state and it builds its own worker, and the sweep touches
     // the tree: the § 5 hazard is NOT closed for this verb.
     // ANTS-2132 § 2.8 — it registers as a DeferredToolHandler, so the
@@ -239,390 +475,9 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // sweep on the GUI thread (ANTS-5035).
     sink.registerToolProvider("audit_run",
         ClaudeIntegration::CallerCwdContract::Required,
-        [=](const QJsonObject &args, const std::function<void(QString)> &reply) {
-            const QString callerCwd = args.value(
-                QStringLiteral("caller_cwd")).toString();
-            // ANTS-1833 — reject a non-existent root before it can
-            // collapse the in-flight key (canon would be empty).
-            QString canon, badEnv;
-            if (!resolveInflightCallerCwd(callerCwd, "audit_run",
-                                          &canon, &badEnv)) {
-                reply(badEnv);
-                return;
-            }
-            // In-flight gate (INV-11).
-            const qint64 existing =
-                host.ci->verbInFlightTryAcquire(
-                    QStringLiteral("audit_run"), canon);
-            if (existing >= 0) {
-                QJsonObject env;
-                env["ok"]               = false;
-                env["code"]             = QStringLiteral("already_running");
-                env["error"]            = QStringLiteral(
-                    "audit_run: a sweep is already in flight for this "
-                    "project root; retry after it completes");
-                env["running_since_ms"] =
-                    QDateTime::currentMSecsSinceEpoch() - existing;
-                env["retry_after_ms"]   = 5000;  // INV-9 hint
-                reply(QString::fromUtf8(
-                    QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                return;
-            }
-            // RAII: release the in-flight slot on EVERY exit path (including
-            // an exception or a future early return), honouring the header's
-            // documented guard contract. indie-review-2026-05-21.
-            // Non-const: the ANTS-3396 async branch calls dismiss() to hand
-            // the slot release to the completion slot.
-            auto inFlightGuard = qScopeGuard([&, ci = host.ci] {
-                ci->verbInFlightRelease(
-                    QStringLiteral("audit_run"), canon);
-            });
-            // Build the engine request.
-            AuditRunner::RunRequest req;
-            req.projectRoot = callerCwd;
-            const QJsonArray toolsArr = args.value(
-                QStringLiteral("tools")).toArray();
-            for (const QJsonValue &v : toolsArr)
-                req.tools.append(v.toString());
-            req.scope = args.value(QStringLiteral("scope")).toString();
-            if (args.value(QStringLiteral("cap_per_tool_seconds"))
-                    .isDouble()) {
-                req.capPerToolSeconds = args.value(
-                    QStringLiteral("cap_per_tool_seconds")).toInt();
-            }
-            req.suppressionsMode =
-                args.value(QStringLiteral("suppressions")).toString();
-            const QJsonArray formatsArr = args.value(
-                QStringLiteral("formats")).toArray();
-            for (const QJsonValue &v : formatsArr)
-                req.formats.append(v.toString());
-            if (args.value(QStringLiteral("top_findings_count"))
-                    .isDouble()) {
-                req.topFindingsCount = args.value(
-                    QStringLiteral("top_findings_count")).toInt();
-            }
-            // ANTS-1512 — scoped-check mode: narrow the tool's scope
-            // to specific paths and/or a specific check set.
-            const QJsonArray pathsArr = args.value(
-                QStringLiteral("paths")).toArray();
-            for (const QJsonValue &v : pathsArr)
-                req.paths.append(v.toString());
-            const QJsonArray checksArr = args.value(
-                QStringLiteral("checks")).toArray();
-            for (const QJsonValue &v : checksArr)
-                req.checks.append(v.toString());
-            // ANTS-3710 — the negative counterpart to `paths`: drop code
-            // that is present but not ours (a vendored dependency tree)
-            // without also dropping the repo-global tools the way a
-            // narrowing `paths` does.
-            const QJsonArray exclArr = args.value(
-                QStringLiteral("exclude_paths")).toArray();
-            for (const QJsonValue &v : exclArr)
-                req.excludePaths.append(v.toString());
-            // ANTS-1706 — pin this run as the baseline later runs report against.
-            req.saveBaseline =
-                args.value(QStringLiteral("save_baseline")).toBool();
-            // ANTS-1706 — hide findings below this confidence from the reply.
-            if (args.value(QStringLiteral("min_confidence")).isDouble())
-                req.minConfidence =
-                    args.value(QStringLiteral("min_confidence")).toInt();
-            // ANTS-3396 — opt-in async mode: spawn the sweep detached,
-            // register a job, and return a handle immediately so the caller
-            // never blocks on the ~60 s MCP transport cap. Default false →
-            // the synchronous branch below, which replies with the full
-            // result once the sweep ends (ANTS-2132 § 2.8).
-            if (args.value(QStringLiteral("async")).toBool()) {
-                const qint64 startedMs =
-                    QDateTime::currentMSecsSinceEpoch();
-                const QString jobId =
-                    host.ci->auditJobRegister(canon, startedMs);
-                if (jobId.isEmpty()) {
-                    // Registry saturated (all entries running, none
-                    // evictable). The in-flight guard releases the slot on
-                    // return; the sync path stays available (INV-8).
-                    QJsonObject env;
-                    env["ok"]             = false;
-                    env["code"]           = QStringLiteral("too_many_jobs");
-                    env["error"]          = QStringLiteral(
-                        "audit_run: too many audit jobs in flight; retry "
-                        "shortly or run synchronously (async:false)");
-                    env["retry_after_ms"] = 5000;
-                    reply(QString::fromUtf8(
-                        QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                    return;
-                }
-                // The completion slot now owns the in-flight release
-                // (§2.4 / INV-5) — dismiss the sync scope-guard so the slot
-                // is NOT freed the moment this handler returns the handle.
-                inFlightGuard.dismiss();
-                auto result =
-                    std::make_shared<AuditRunner::RunResult>();
-                // Worker created on the main/dispatch thread → its thread
-                // affinity is the main thread, so its own deleteLater() runs
-                // there. `req` copied by value
-                // (the handler's stack frame unwinds before the sweep ends).
-                QThread *worker = QThread::create(
-                    [req, result]() { *result = AuditRunner::runAudit(req); });
-                ClaudeIntegration *ci = host.ci;
-                // ANTS-5080 — the worker frees itself. The completion below
-                // has ci as its context and is severed if ci is destroyed
-                // mid-sweep, so freeing the worker there could leave it never
-                // freed. The completion no longer touches the worker, so the
-                // two queued events may run in either order.
-                QObject::connect(worker, &QThread::finished, worker,
-                                 &QObject::deleteLater);
-                // Queued completion on the main thread. Context object = ci
-                // so the connection auto-severs if ci is destroyed at
-                // teardown (the QPointer-equivalent shutdown guard, §2.4):
-                // a still-running worker then fires into nothing rather than
-                // touching a freed owner. The worker touches only its own
-                // RunResult; the registry flip + slot release happen here on
-                // the main thread.
-                QObject::connect(worker, &QThread::finished, ci,
-                    [ci, result, jobId, canon]() {
-                        ClaudeIntegration::AuditJob term;
-                        const AuditRunner::RunResult &r = *result;
-                        if (!r.ok) {
-                            term.status = QStringLiteral("error");
-                            term.code   = r.code;
-                            term.error  = r.error;
-                        } else {
-                            term.status = QStringLiteral("done");
-                            // cache-write failure → fall back to the /tmp
-                            // SARIF so the recovery path never breaks.
-                            term.cachePath = r.cachePath.isEmpty()
-                                ? r.sarifPath : r.cachePath;
-                            term.totalRaw        = r.totalRaw;
-                            term.totalActionable = r.totalActionable;
-                            term.partial         = r.partial;
-                            term.noChanges       = r.noChanges;
-                            term.incompleteTools = r.incompleteTools;
-                            // ANTS-3585 — carry the richer surfaces so the
-                            // async-poll done-branch emits them too.
-                            term.incompleteToolsDetail = r.incompleteToolsDetail;
-                            term.parseFailures         = r.parseFailures;
-                            // ANTS-3706 — and the parse-failure reasons.
-                            term.parseFailuresDetail   = r.parseFailuresDetail;
-                        }
-                        ci->auditJobComplete(jobId, term);
-                        ci->verbInFlightRelease(
-                            QStringLiteral("audit_run"), canon);
-                    }, Qt::QueuedConnection);
-                worker->start();
-                QJsonObject env;
-                env["ok"]            = true;
-                env["async"]         = true;
-                env["job_id"]        = jobId;
-                env["status"]        = QStringLiteral("running");
-                env["started_at_ms"] = startedMs;
-                env["poll_with"]     = QStringLiteral("audit_poll");
-                env["note"]          = QStringLiteral(
-                    "Sweep running server-side; poll audit_poll {job_id} or "
-                    "read last_audit_summary when done. Results are written "
-                    "to .audit_cache regardless of poll.");
-                reply(QString::fromUtf8(
-                    QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                return;
-            }
-            // ANTS-2103 — run the audit on a worker thread so its internal
-            // QEventLoop (auditrunner.cpp), which multiplexes the per-tool
-            // QProcesses, lives OFF the main thread. Running it synchronously
-            // here spun that nested QEventLoop on the GUI/MCP thread, which
-            // reentrantly delivered QLocalSocket read-notifications and freed
-            // the live MCP socket mid-dispatch -> use-after-free SIGSEGV (the
-            // ANTS-2101 write-path guard was necessary but not sufficient; the
-            // deeper hazard is pumping the main event loop at all). This
-            // realises the INV-9 worker-thread isolation auditrunner.h already
-            // documents.
-            // ANTS-2132 § 2.8 — and the GUI thread does not join it. The
-            // completion slot builds the envelope and replies, so the window
-            // keeps painting and MCP traffic keeps flowing for the whole sweep.
-            // A second synchronous call for this root now arrives while the
-            // sweep runs and is refused already_running by the gate above.
-            inFlightGuard.dismiss();
-            auto result = std::make_shared<AuditRunner::RunResult>();
-            QThread *worker = QThread::create(
-                [req, result]() { *result = AuditRunner::runAudit(req); });
-            ClaudeIntegration *ci = host.ci;
-            // ANTS-5080 — as the async branch: the worker frees itself, since
-            // the completion below is severed if ci is destroyed mid-sweep.
-            QObject::connect(worker, &QThread::finished, worker,
-                             &QObject::deleteLater);
-            // Context object = ci, so a sweep still running at teardown
-            // replies into nothing, as the async branch's slot does.
-            QObject::connect(worker, &QThread::finished, ci,
-                [ci, result, canon, reply]() {
-                    ci->verbInFlightRelease(QStringLiteral("audit_run"), canon);
-                    const AuditRunner::RunResult &r = *result;
-                    // Serialise envelope.
-                    QJsonObject env;
-                    if (!r.ok) {
-                        env["ok"]    = false;
-                        env["code"]  = r.code;
-                        env["error"] = r.error;
-                        // ANTS-3612 — the aggregate concurrency cap is transient,
-                        // so give the caller the same backoff hint the other
-                        // busy-style refusals carry (already_running,
-                        // too_many_jobs). Every other engine refusal is a hard
-                        // input error and gets no retry hint.
-                        if (r.code == QLatin1String("server_busy"))
-                            env["retry_after_ms"] = 5000;
-                        reply(QString::fromUtf8(
-                            QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                        return;
-                    }
-                    env["ok"] = true;
-                    QJsonObject byTool;
-                    for (auto it = r.byTool.constBegin();
-                         it != r.byTool.constEnd(); ++it) {
-                        QJsonObject t;
-                        t["status"]              = it->status;
-                        t["elapsed_ms"]          = it->elapsedMs;
-                        t["raw_count"]           = it->rawCount;
-                        t["after_filter_count"]  = it->afterFilterCount;
-                        t["samples"]             = it->samples;
-                        // ANTS-4371 — evidence the tool was handed work. A zero-finding
-                        // audit is the most consequential result this verb returns (it
-                        // is what lets a phase close), and "ran across the tree and
-                        // found nothing" was byte-identical to "ran against an empty
-                        // file list". `paths_given` is the explicit positional count;
-                        // `scanned_whole_project` says the tool was pointed at the root
-                        // instead, which under scope:"full" is the normal shape and
-                        // makes paths_given legitimately 0 — so the count alone would
-                        // read as "scanned nothing" for the very case this reassures
-                        // about. `no_files` is the one that matters: a NARROWED scope
-                        // that matched nothing, which scope:"files"/"since-last-run"
-                        // produce legitimately.
-                        t["paths_given"]           = it->pathsGiven;
-                        t["scanned_whole_project"] = it->wholeProject;
-                        const bool noFiles = !it->wholeProject && it->pathsGiven == 0;
-                        if (noFiles) t["no_files"] = true;
-                        byTool[it.key()]         = t;
-                    }
-                    env["by_tool"]          = byTool;
-                    // ANTS-4371 — the top-level roll-up, so a caller reading only the
-                    // summary can tell a real sweep from an empty one without walking
-                    // by_tool. Deliberately NOT folded into `partial` /
-                    // `incomplete_tools`: a narrowed scope matching no files is a
-                    // legitimate outcome, and marking it partial would make every
-                    // narrow scan report a failure it did not have.
-                    {
-                        QJsonArray noFilesTools;
-                        int pathsTotal = 0;
-                        bool anyWholeProject = false;
-                        for (auto it = r.byTool.constBegin();
-                             it != r.byTool.constEnd(); ++it) {
-                            pathsTotal += it->pathsGiven;
-                            if (it->wholeProject) anyWholeProject = true;
-                            else if (it->pathsGiven == 0) noFilesTools.append(it.key());
-                        }
-                        env["paths_given_total"]     = pathsTotal;
-                        env["scanned_whole_project"] = anyWholeProject;
-                        if (!noFilesTools.isEmpty())
-                            env["tools_with_no_files"] = noFilesTools;
-                    }
-                    env["total_raw"]        = r.totalRaw;
-                    env["total_actionable"] = r.totalActionable;
-                    env["noise_rate_pct"]   = r.noiseRatePct;
-                    // ANTS-2032 — explicit partiality signal: true when a tool
-                    // timed out / crashed but the rest of the run still produced
-                    // results (and the SARIF artifact below). `incomplete_tools`
-                    // lists the offenders so the caller need not scan by_tool[].
-                    env["partial"]          = r.partial;
-                    if (!r.incompleteTools.isEmpty()) {
-                        QJsonArray inc;
-                        for (const QString &t : r.incompleteTools) inc.append(t);
-                        env["incomplete_tools"] = inc;
-                    }
-                    // ANTS-3585 — richer partiality (why each tool is incomplete:
-                    // truncated vs crashed + elapsed_ms) and the zero-coverage list
-                    // (source files a tool could not parse). Both omitted when empty.
-                    if (!r.incompleteToolsDetail.isEmpty())
-                        env["incomplete_tools_detail"] = r.incompleteToolsDetail;
-                    if (!r.parseFailures.isEmpty()) {
-                        QJsonArray pf;
-                        for (const QString &f : r.parseFailures) pf.append(f);
-                        env["parse_failures"] = pf;
-                        // ANTS-3706 — why each file failed, so a missing include path
-                        // (fixable) is distinguishable from a frontend limitation
-                        // (route around) without re-running the tool by hand.
-                        if (!r.parseFailuresDetail.isEmpty())
-                            env["parse_failures_detail"] = r.parseFailuresDetail;
-                    }
-                    if (!r.sarifPath.isEmpty())
-                        env["sarif_path"] = r.sarifPath;
-                    if (!r.htmlPath.isEmpty())
-                        env["html_path"] = r.htmlPath;
-                    QJsonArray skipped;
-                    for (const auto &ts : r.toolsSkipped) {
-                        QJsonObject s;
-                        s["tool"]   = ts.tool;
-                        s["reason"] = ts.reason;
-                        skipped.append(s);
-                    }
-                    env["tools_skipped"]    = skipped;
-                    env["elapsed_total_ms"] = r.elapsedTotalMs;
-                    env["samples_truncated"]= r.samplesTruncated;
-                    if (!r.topFindings.isEmpty())
-                        env["top_findings"] = r.topFindings;
-                    // ANTS-1555 — per-project `.audit_cache/` surface.
-                    // `cache_path` is set only when the SARIF landed in
-                    // `<root>/.audit_cache/`; `prior_run` carries the
-                    // pre-existing manifest's last_run snapshot (empty
-                    // object on a project's first sweep). ANTS-1504 reads
-                    // `prior_run.commit` as the since-last-run diff anchor
-                    // (precise findings delta deferred — ANTS-1504 § 5).
-                    if (!r.cachePath.isEmpty())
-                        env["cache_path"] = r.cachePath;
-                    if (!r.priorRun.isEmpty())
-                        env["prior_run"] = r.priorRun;
-                    // ANTS-1504 — narrowing-scope surface.
-                    if (!r.scopeResolved.isEmpty())
-                        env["scope_resolved"] = r.scopeResolved;
-                    if (!r.scopeAnchorCommit.isEmpty())
-                        env["scope_anchor_commit"] = r.scopeAnchorCommit;
-                    if (!r.scopeResolved.isEmpty())
-                        env["changed_files_count"] = r.changedFilesCount;
-                    if (!r.scopeDemoted.isEmpty()) {
-                        env["scope_demoted"] = r.scopeDemoted;
-                        env["scope_demoted_reason"] = r.scopeDemotedReason;
-                    }
-                    if (r.noChanges)
-                        env["no_changes"] = true;
-                    // ANTS-3710 — echo the applied exclusions, and name the tools in
-                    // this run that could not honour them. A silent partial exclusion
-                    // would read as a complete one, which is worse than the noise.
-                    if (!r.excludePathsApplied.isEmpty()) {
-                        QJsonArray xp;
-                        for (const QString &p : r.excludePathsApplied) xp.append(p);
-                        env["exclude_paths_applied"] = xp;
-                        QJsonArray ig;
-                        for (const QString &t : r.excludePathsIgnoredBy) ig.append(t);
-                        if (!ig.isEmpty()) env["exclude_paths_ignored_by"] = ig;
-                    }
-                    // ANTS-1870 — since-last-run findings delta. `delta` and
-                    // `delta_unavailable_reason` are mutually exclusive; exactly one
-                    // appears under a narrowed since-last-run, neither otherwise.
-                    // `findings_truncated` flags a run that hit the per-tool finding
-                    // ceiling (the delta is then suppressed in favour of the reason).
-                    if (!r.delta.isEmpty())
-                        env["delta"] = r.delta;
-                    if (!r.deltaUnavailableReason.isEmpty())
-                        env["delta_unavailable_reason"] = r.deltaUnavailableReason;
-                    if (r.findingsTruncated)
-                        env["findings_truncated"] = true;
-                    // ANTS-1706 — findings new since the pinned baseline, and
-                    // the baseline this run saved. Each absent when empty.
-                    if (!r.sinceBaseline.isEmpty())
-                        env["since_baseline"] = r.sinceBaseline;
-                    if (!r.baselineSaved.isEmpty())
-                        env["baseline_saved"] = r.baselineSaved;
-                    if (r.minConfidence > 0)
-                        env["below_confidence_floor_count"] = r.belowConfidenceFloor;
-                    reply(QString::fromUtf8(
-                        QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                }, Qt::QueuedConnection);
-            worker->start();
+        [ci = host.ci](const QJsonObject &args,
+                       const std::function<void(QString)> &reply) {
+            runAuditRun(ci, args, reply);
         });
     // ANTS-3396 — audit_poll: read the in-memory async-audit job
     // registry. Read-only, cheap, never blocks. Required caller_cwd for

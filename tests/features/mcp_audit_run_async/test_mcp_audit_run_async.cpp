@@ -12,8 +12,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
-#include <algorithm>
 #include <string>
+#include "auditrunner.h"
 #include "claudeintegration.h"
 
 #ifndef ANTS_MAINWINDOW_SOURCES
@@ -50,10 +50,10 @@ bool hasWs(const std::string &hay, const char *needle) {
 // A terminal "done" AuditJob with a cache path + counts.
 ClaudeIntegration::AuditJob doneJob(const QString &cache, int raw, int act) {
     ClaudeIntegration::AuditJob j;
-    j.status          = QStringLiteral("done");
-    j.cachePath       = cache;
-    j.totalRaw        = raw;
-    j.totalActionable = act;
+    j.status = QStringLiteral("done");
+    j.done   = QJsonObject{{QStringLiteral("cache_path"), cache},
+                           {QStringLiteral("total_raw"), raw},
+                           {QStringLiteral("total_actionable"), act}};
     return j;
 }
 
@@ -67,14 +67,10 @@ ClaudeIntegration::AuditJob doneJob(const QString &cache, int raw, int act) {
 
 TEST(McpAuditRunAsync, Inv1SyncPathUnchanged) {
     const std::string mw = mainwindowSrc();
-    const size_t at = mw.find("registerToolProvider(\"audit_run\",");
-    ASSERT_NE(at, std::string::npos) << "audit_run registration not found";
-    // ANTS-4932 § 2.3 — audit_run is registered in mcptoolregistry.cpp, where
-    // the next statement is a `sink.` registration.
-    const size_t end = std::min(mw.find("\n    m_claudeIntegration->", at),
-                                mw.find("\n    sink.", at));
+    // ANTS-6221 — the audit_run registration hands every call to runAuditRun.
     const std::string body =
-        mw.substr(at, end == std::string::npos ? std::string::npos : end - at);
+        ants_test::slurpFunctionBody(mw, "void runAuditRun(");
+    ASSERT_FALSE(body.empty()) << "runAuditRun (the audit_run handler) not found";
 
     // The async branch is gated on the per-call arg (default false).
     const size_t asyncAt = body.find("QStringLiteral(\"async\")).toBool()");
@@ -167,6 +163,46 @@ TEST(McpAuditRunAsync, Inv3RegistryRunningThenDone) {
               QStringLiteral("error"));
     EXPECT_EQ(errEnv.value(QStringLiteral("code")).toString(),
               QStringLiteral("tool_spawn_failed"));
+}
+
+// ---- INV-3 (ANTS-6221) — the poll's done reply carries the sync fields ---
+//
+// The async poll used to build its own, shorter envelope, so a background
+// sweep reported less than one that waited (no by_tool, sarif_path, delta,
+// top_findings, …). Both replies now build from AuditRunner::doneEnvelope.
+TEST(McpAuditRunAsync, Inv3DoneCarriesTheSyncFields) {
+    AuditRunner::RunResult r;
+    AuditRunner::ToolResult t;
+    t.status       = QStringLiteral("ok");
+    t.wholeProject = true;
+    r.byTool.insert(QStringLiteral("ruff"), t);
+    r.totalRaw   = 3;
+    r.sarifPath  = QStringLiteral("/tmp/run.sarif");  // cachePath left empty
+    r.topFindings.append(QJsonObject{{QStringLiteral("rule"), QStringLiteral("r1")}});
+    r.delta = QJsonObject{{QStringLiteral("added_count"), 1}};
+
+    ClaudeIntegration ci;
+    const QString root = QStringLiteral("/root/s");
+    const QString id = ci.auditJobRegister(root, QDateTime::currentMSecsSinceEpoch());
+    ClaudeIntegration::AuditJob term;
+    term.status = QStringLiteral("done");
+    term.done   = AuditRunner::doneEnvelope(r);
+    ci.auditJobComplete(id, term);
+    const QJsonObject poll = ci.auditJobPollEnvelope(id, root);
+
+    const QJsonObject sync = AuditRunner::doneEnvelope(r);
+    ASSERT_TRUE(sync.contains(QStringLiteral("by_tool")));
+    for (auto it = sync.constBegin(); it != sync.constEnd(); ++it)
+        EXPECT_EQ(poll.value(it.key()), it.value())
+            << "the poll's done reply lacks or changes " << it.key().toStdString();
+    // The poll contract's two additions.
+    EXPECT_EQ(poll.value(QStringLiteral("cache_path")).toString(),
+              QStringLiteral("/tmp/run.sarif"))
+        << "a failed cache write falls back to the /tmp SARIF";
+    EXPECT_TRUE(poll.value(QStringLiteral("incomplete_tools")).isArray())
+        << "the poll names incomplete_tools even when it is empty";
+    EXPECT_FALSE(sync.contains(QStringLiteral("incomplete_tools")))
+        << "the sync reply omits an empty incomplete_tools";
 }
 
 // ---- INV-4 — bounded registry, eviction, expiry, saturation --------------

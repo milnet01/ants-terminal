@@ -250,6 +250,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`audit_poll` reports a finished background audit in full: its `done` reply carries every field a synchronous `audit_run` reply does, such as `by_tool`, `sarif_path`, `top_findings` and `delta`.** (ANTS-6221)
+
 - **`audit_run`'s whole-tree scans now skip every folder the Audit dialog skips — vendored code (`vendor`, `third_party`, `external`), every `build-*` preset, `.git`, `target` and the Python caches — plus the folders they skipped before** (ANTS-6199)
 
 - **More Audit grep checks ignore matches that sit only in a comment or a string** (ANTS-6196)

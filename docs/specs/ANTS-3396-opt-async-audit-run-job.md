@@ -128,7 +128,8 @@ scoped to the caller's own project root (see the root-scoping note under
 { "ok": true, "job_id": "audit-7", "status": "running",
   "started_at_ms": …, "elapsed_ms": … }
 
-// done — the worker has flipped the entry and recorded the cache path
+// done — the worker has flipped the entry; every field of a synchronous
+// audit_run reply is present too (by_tool, sarif_path, …), elided here
 { "ok": true, "job_id": "audit-7", "status": "done",
   "cache_path": "<root>/.audit_cache/audit-<iso>-<sha>.sarif",
   "total_raw": 142, "total_actionable": 9, "partial": false,
@@ -167,24 +168,17 @@ refusals (`bad_args`, `mcp_disabled`, `caller_cwd_required`,
 but `RunResult.code` is not — when `r.code` is empty the `status:"error"`
 envelope omits `code` and carries the detail in `error` alone.
 
-**`done`-envelope field mapping** (symbol-anchored — all fields verified
-present in `struct RunResult`, `src/auditrunner.h`, 2026-07-01; cite by
-symbol, not line, since line numbers drift):
-
-| `done` JSON key      | `RunResult` field              |
-|----------------------|--------------------------------|
-| `cache_path`         | `cachePath` ⟶ else `sarifPath` |
-| `total_raw`          | `totalRaw`                     |
-| `total_actionable`   | `totalActionable`              |
-| `partial`            | `partial`                      |
-| `incomplete_tools`   | `incompleteTools`              |
-| `no_changes`         | `noChanges`                    |
+**`done`-envelope fields.** They are `AuditRunner::doneEnvelope(r)`
+(`src/auditrunenvelope.cpp`), the builder the synchronous reply also uses
+(ANTS-6221), so the two replies cannot drift apart. The poll adds two of its
+own: `incomplete_tools` is always present, `[]` when no tool failed, where
+the synchronous reply omits it; and `cache_path` falls back as below.
 
 `cache_path` comes verbatim from `r.cachePath`; **when that is empty
-(cache-write failure) the worker stamps `r.sarifPath` instead** — the
-recovery story breaks otherwise. `elapsed_ms` is intentionally omitted
-on `done` (the authoritative per-tool timings live in the cached SARIF's
-`by_tool`); it appears only on `running` as a liveness hint.
+(cache-write failure) the poll reports `sarif_path` instead** — the
+recovery story breaks otherwise. The top-level `elapsed_ms` appears only
+on `running`, as a liveness hint; a finished run's timings are
+`elapsed_total_ms` and `by_tool[t].elapsed_ms`.
 
 **Refusals.** `audit_poll` is read-only, cheap, and never blocks. A
 missing or non-string `job_id` → `ok:false, code:"bad_args"`; an absent
@@ -233,12 +227,9 @@ struct AuditJob {
                            // ("expired" is synthesised at poll time for
                            //  a registry miss — never stored here)
     QString root;          // canonical project root (== the in-flight key)
-    QString cachePath;     // == r.cachePath on done, else r.sarifPath
     QString code, error;   // set on error
     qint64  startedMs = 0;
-    int     totalRaw = 0, totalActionable = 0;
-    bool    partial = false, noChanges = false;
-    QStringList incompleteTools;
+    QJsonObject done;      // set on done: AuditRunner::doneEnvelope(r)
 };
 QHash<QString /*job_id*/, AuditJob> m_auditJobs;   // guarded by mutex
 QMutex m_auditJobsMutex;
@@ -382,7 +373,9 @@ its lifetime.
   is `r.sarifPath` (the /tmp fallback), never empty when a SARIF exists;
   on an empty changeset the entry carries `no_changes:true` +
   `total_raw:0`. A `runAudit` `ok:false` surfaces as `status:"error"`
-  carrying its `code`.
+  carrying its `code`. ANTS-6221: `done` also carries every field
+  `AuditRunner::doneEnvelope` builds for the synchronous reply. *Test:*
+  `McpAuditRunAsync.Inv3DoneCarriesTheSyncFields`.
 - **INV-4** — the registry is bounded at `kAuditJobsMax = 16` and reaps
   entries older than `kAuditJobReapMs`; a running entry is never
   evicted; an unknown/evicted `job_id` → `status:"expired"` (`ok:true`,

@@ -51,9 +51,8 @@ Full spec: `docs/specs/ANTS-1555-per-project-audit-cache-infrastructure.md`.
   In-process test: pre-write manifest with a known last_run; call
   `recordRun`; `priorRunOut` matches the pre-written last_run
   verbatim (iso_timestamp + commit fields).
-- **Envelope** — `audit_run` MCP provider emits `cache_path` +
-  `prior_run` fields when set. Source-scrape against
-  `mainwindow.cpp`.
+- **Envelope** — `AuditRunner::doneEnvelope` emits `cache_path` +
+  `prior_run` when set, and omits each when empty. Behavioural.
 - **Descriptor** — `audit_run` description mentions
   `.audit_cache/` and `cache_path`. Source-scrape against
   `claudeintegration.cpp`.

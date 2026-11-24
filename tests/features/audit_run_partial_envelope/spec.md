@@ -36,8 +36,8 @@ run is not. (Derivation: `partial = !incompleteTools.isEmpty()`.)
 
 ### INV-3 — envelope serialises the partial surface
 
-The `audit_run` provider writes `partial` (always) and
-`incomplete_tools` (when non-empty) onto the envelope, and the
+`AuditRunner::doneEnvelope` writes `partial` (always) and
+`incomplete_tools` (when non-empty) onto the reply, and the
 descriptor advertises them.
 
 ### INV-4 — SARIF is written before the reply is serialised
@@ -50,6 +50,7 @@ source order so the
 ## Test plan
 
 INV-1/INV-2 are behavioural over the pure helper (synthetic ToolResult
-maps). INV-3/INV-4 are source-anchored against mainwindow.cpp /
-auditrunner.cpp (`writeArtifacts` holds the writeSarif call, and
+maps). INV-3 is behavioural over `AuditRunner::doneEnvelope`, with a
+source check that the descriptor names the fields. INV-4 is source-anchored
+against auditrunner.cpp (`writeArtifacts` holds the writeSarif call, and
 `runAudit` calls it before its last `return r`).

@@ -1045,6 +1045,8 @@ add_library(ants_audit_lib STATIC
     src/auditrulequality.cpp
     # ANTS-1351 — server-side audit runner (Qt6::Core only).
     src/auditrunner.cpp
+    # ANTS-6221 — the finished-run reply fields both audit_run replies share.
+    src/auditrunenvelope.cpp
     # ANTS-1555 — per-project .audit_cache/ manifest + retention reaper.
     src/auditcache.cpp
     # ANTS-1504 — changed-file resolver for audit_run narrowing scopes.

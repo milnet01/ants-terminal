@@ -268,28 +268,19 @@ QJsonObject ClaudeIntegration::auditJobPollEnvelope(
         if (!j.code.isEmpty()) env["code"] = j.code;
         env["error"] = j.error;
     } else {  // "done"
-        if (!j.cachePath.isEmpty()) env["cache_path"] = j.cachePath;
-        env["total_raw"]        = j.totalRaw;
-        env["total_actionable"] = j.totalActionable;
-        env["partial"]          = j.partial;
-        QJsonArray inc;
-        for (const QString &t : j.incompleteTools) inc.append(t);
-        env["incomplete_tools"] = inc;
-        // ANTS-3585 — same richer surfaces as the sync provider (mcptoolregistry.cpp):
-        // per-tool truncated/crashed detail + the zero-coverage parse-failure
-        // list. Omitted when empty.
-        if (!j.incompleteToolsDetail.isEmpty())
-            env["incomplete_tools_detail"] = j.incompleteToolsDetail;
-        if (!j.parseFailures.isEmpty()) {
-            QJsonArray pf;
-            for (const QString &f : j.parseFailures) pf.append(f);
-            env["parse_failures"] = pf;
-            // ANTS-3706 — same detail sibling as the sync provider.
-            if (!j.parseFailuresDetail.isEmpty())
-                env["parse_failures_detail"] = j.parseFailuresDetail;
-        }
-        if (j.noChanges) env["no_changes"] = true;
-        env["read_full_with"]   = QStringLiteral("last_audit_summary");
+        // ANTS-6221 — every field the synchronous reply carries
+        // (AuditRunner::doneEnvelope), then the two the poll contract adds.
+        for (auto f = j.done.constBegin(); f != j.done.constEnd(); ++f)
+            env.insert(f.key(), f.value());
+        // A failed .audit_cache write falls back to the /tmp SARIF, so the
+        // recovery path never breaks.
+        if (!env.contains(QLatin1String("cache_path"))
+                && env.contains(QLatin1String("sarif_path")))
+            env["cache_path"] = env.value(QLatin1String("sarif_path"));
+        // The sync reply omits an empty list; the poll always names it.
+        if (!env.contains(QLatin1String("incomplete_tools")))
+            env["incomplete_tools"] = QJsonArray();
+        env["read_full_with"] = QStringLiteral("last_audit_summary");
     }
     return env;
 }

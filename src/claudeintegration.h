@@ -981,20 +981,12 @@ public:
         QString     status;        // stored: "running" | "done" | "error"
                                    // ("expired" is synthesised at poll time)
         QString     root;          // canonical project root (in-flight key)
-        QString     cachePath;     // r.cachePath on done, else r.sarifPath
         QString     code, error;   // set on error
         qint64      startedMs = 0;
         qint64      startedMonoMs = 0;  // ANTS-5090 — reap and elapsed_ms clock
-        int         totalRaw = 0, totalActionable = 0;
-        bool        partial = false, noChanges = false;
-        QStringList incompleteTools;
-        // ANTS-3585 — carried from RunResult so the async-poll done-branch can
-        // emit the same detail + zero-coverage surface as the sync provider
-        // (the AuditJob keeps compact fields, not the full byTool map).
-        QJsonArray  incompleteToolsDetail;
-        QStringList parseFailures;
-        // ANTS-3706 — the {file, tool, reason} sibling of parseFailures.
-        QJsonArray  parseFailuresDetail;
+        // ANTS-6221 — set on done: AuditRunner::doneEnvelope(r), the fields
+        // the synchronous reply carries, so the poll reports the same run.
+        QJsonObject done;
     };
     // Register a new running job for `root`; returns its "audit-N" id, or
     // an empty string when the bounded registry is saturated with running
