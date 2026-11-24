@@ -143,15 +143,16 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   `encodeProjectPath` to Claude Code's `<dashed-cwd>` directory
   name, and returns the newest `*.jsonl` from the deepest matching
   `~/.claude/projects/<encoded>/`. `ClaudeStatusBarController::refreshBgTasksButton`
-  (moved from MainWindow by ANTS-1146) reads the active tab's
-  cwd via the `m_focusedTerminalProvider` callback (which
-  MainWindow installs as `[]{ return focusedTerminal(); }`) and
-  passes it through. Without all three pieces, the dialog
+  resolves its transcript with `focusedSessionPath()` (ANTS-6227).
+  That helper returns the tab tracker's transcript for the focused
+  shell first, and falls back to `activeSessionPath` on the focused
+  terminal's `shellCwd()`. Nothing else in `claudestatuswidgets.cpp`
+  calls `activeSessionPath`. Without all three pieces, the dialog
   shows the system-wide newest `.jsonl` regardless of the active
   tab's project — visible to the user as "background tasks from
   another window's project leaking into this window's button". The
   source-grep checks the header signature, implementation walk-up,
-  and the call-site wiring.
+  the helper's order, and the call site.
 
 - **INV-12** (liveness sweep, added 0.7.49 — user feedback
   2026-04-27 "Background Tasks are showing 12 tasks but there

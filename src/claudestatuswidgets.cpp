@@ -1137,6 +1137,20 @@ void ClaudeStatusBarController::pinSlots() {
                        /*retainWhenHidden=*/false);
 }
 
+QString ClaudeStatusBarController::focusedSessionPath(TerminalWidget *focused) const {
+    if (!focused) return {};
+    // The tracker binds each shell to the transcript of the Claude process
+    // running in it, and follows /clear to the new one (ANTS-6747).
+    if (m_tracker) {
+        const QString own = m_tracker->transcriptPath(focused->shellPid());
+        if (!own.isEmpty()) return own;
+    }
+    // Not bound yet: the newest session under the shell's project tree
+    // (INV-11), which can be another tab's in the same tree (ANTS-5773).
+    return m_integration ? m_integration->activeSessionPath(focused->shellCwd())
+                         : QString();
+}
+
 void ClaudeStatusBarController::refreshBgTasksButton() {
     if (!m_bgTasksBtn) return;
     // Resolve the focused shell's PID → look up its per-PID tracker.
@@ -1164,21 +1178,16 @@ void ClaudeStatusBarController::refreshBgTasksButton() {
         return;
     }
 
-    // Resolve the transcript path scoped to the active tab's project
-    // tree. activeSessionPath walks up the cwd, encodes each ancestor
-    // to Claude Code's `<dashed-cwd>` form, and returns the newest
-    // `.jsonl` from the deepest matching `~/.claude/projects/<…>/`
-    // subdir. Without this scoping, sessions from *other* projects
-    // (e.g. another tab's tree) would leak into the bg-tasks surface
-    // — which is exactly the user-reported 2026-04-27 bug (INV-11).
+    // Scoped to the focused tab, so other projects' sessions never leak
+    // into the bg-tasks surface (the user-reported 2026-04-27 bug, INV-11).
     QString cwd;
     if (focused) cwd = focused->shellCwd();
-    QString path;
-    if (m_integration) path = m_integration->activeSessionPath(cwd);
+    const QString path = focusedSessionPath(focused);
     const QString prevPath = tracker->transcriptPath();
     // ANTS-5773 § 2.3 — the focused tab's Claude start time retires tasks an
-    // earlier process left, but only on that tab's own transcript: `path`
-    // can be another tab's session, whose tasks it would wrongly retire.
+    // earlier process left, but only on that tab's own transcript: a path
+    // from focusedSessionPath's fallback can be another tab's session,
+    // whose tasks it would wrongly retire.
     // Set before the path, so a re-bind's rescan already uses it.
     tracker->setProcessStartMs(
         m_tracker && !path.isEmpty() && path == m_tracker->transcriptPath(focusedPid)
@@ -1254,20 +1263,17 @@ void ClaudeStatusBarController::refreshTasksButton() {
         return;
     }
 
-    // Resolve transcript path the same way refreshBgTasksButton does
-    // — scope to the focused tab's project tree.
     QString cwd;
     auto *focused = m_focusedTerminalProvider
                         ? m_focusedTerminalProvider() : nullptr;
     if (focused) cwd = focused->shellCwd();
     const bool focusedTabPresent = (focused != nullptr);
-    QString path;
     // ANTS-1219-INV-1: refresh wiring — resolver result becomes the
     // tracker's bound source path on every change. Empty path (no
     // live Claude / freshness floor rejected all candidates) is
     // pushed through identically and clears the tracker, satisfying
     // ANTS-1219-INV-3.
-    if (m_integration) path = m_integration->activeSessionPath(cwd);
+    const QString path = focusedSessionPath(focused);
     const QString prevPath = m_tasks->transcriptPath();
     if (path != prevPath)
         m_tasks->setTranscriptPath(path);
@@ -1735,13 +1741,8 @@ void ClaudeStatusBarController::refreshModelChip()
         return;
     }
 
-    // Resolve transcript path — same pattern as refreshTasksButton.
-    QString cwd;
-    auto *focused = m_focusedTerminalProvider
-        ? m_focusedTerminalProvider() : nullptr;
-    if (focused) cwd = focused->shellCwd();
-    QString transcriptPath;
-    if (m_integration) transcriptPath = m_integration->activeSessionPath(cwd);
+    const QString transcriptPath = focusedSessionPath(
+        m_focusedTerminalProvider ? m_focusedTerminalProvider() : nullptr);
 
     if (transcriptPath.isEmpty()) {
         m_modelBtn->hide();
@@ -1809,13 +1810,8 @@ void ClaudeStatusBarController::refreshModelStateChip()
 {
     if (!m_modelStateBtn) return;
 
-    // Resolve transcript path — same pattern as refreshModelChip.
-    QString cwd;
-    auto *focused = m_focusedTerminalProvider
-        ? m_focusedTerminalProvider() : nullptr;
-    if (focused) cwd = focused->shellCwd();
-    QString transcriptPath;
-    if (m_integration) transcriptPath = m_integration->activeSessionPath(cwd);
+    const QString transcriptPath = focusedSessionPath(
+        m_focusedTerminalProvider ? m_focusedTerminalProvider() : nullptr);
 
     if (transcriptPath.isEmpty()) {
         m_modelStateBtn->hide();
@@ -1990,10 +1986,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
         static_cast<qint64>(autoCfg.value("composer_stale_ms").toInt(-1));
 
     // Score the focused transcript.
-    QString transcriptPath;
-    if (m_integration) {
-        transcriptPath = m_integration->activeSessionPath(focused->shellCwd());
-    }
+    const QString transcriptPath = focusedSessionPath(focused);
     if (transcriptPath.isEmpty()) return;
     const ModelRecommender::Result rec =
         ModelRecommender::score(transcriptPath, homeTierFromConfig());

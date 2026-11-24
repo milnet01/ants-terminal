@@ -21,6 +21,10 @@ for security-relevant changes.
   hold folder names, commands and other private text, and offers Open Log
   Folder so you can check it and attach it yourself.
 
+### Fixed
+
+- **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
+
 ## [0.7.116] - 2026-11-24
 
 **Theme:** Terminal history uses far less memory and resizes faster; the window

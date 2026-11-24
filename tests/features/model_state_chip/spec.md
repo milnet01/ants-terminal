@@ -25,9 +25,8 @@ user is never blind to what model is in use.
   after `m_modelBtn` so when INV-14 hides the recommender, the state
   chip occupies the same visual slot.
 - `refreshModelStateChip()` exists, is exposed in the public method
-  list (called from the status timer), and uses the focused-terminal
-  provider + `m_integration->activeSessionPath(cwd)` to resolve the
-  transcript (same pattern as `refreshModelChip`).
+  list (called from the status timer), and resolves the focused tab's
+  transcript with `focusedSessionPath()`, as `refreshModelChip` does.
 - `mainwindow.cpp` connects the 2-second status timer's `timeout`
   signal to `ClaudeStatusBarController::refreshModelStateChip`.
 - `resetForTabSwitch()` hides the chip and clears its mtime cache so

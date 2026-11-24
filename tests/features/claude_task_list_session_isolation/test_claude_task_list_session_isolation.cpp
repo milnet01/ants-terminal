@@ -85,9 +85,8 @@ void testInv1RefreshWiring(const std::string &widgets) {
 
     expect(bodyContains(widgets, sig, "// ANTS-1219-INV-1"),
            "ANTS-1219-INV-1: anchor comment present in refreshTasksButton");
-    expect(bodyContains(widgets, sig,
-                        "m_integration->activeSessionPath(cwd)"),
-           "ANTS-1219-INV-1: activeSessionPath(cwd) called in refreshTasksButton");
+    expect(bodyContains(widgets, sig, "focusedSessionPath(focused)"),
+           "ANTS-1219-INV-1: focusedSessionPath(focused) called in refreshTasksButton");
     expect(bodyContains(widgets, sig, "if (path != prevPath)"),
            "ANTS-1219-INV-1: path-change gate present in refreshTasksButton");
     expect(bodyContains(widgets, sig,

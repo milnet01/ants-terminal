@@ -108895,7 +108895,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L14 sweep, from L14-F3).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6227] **Work out the focused tab's transcript path in one helper instead of five copies in claudestatuswidgets.cpp.**
+- ✅ [ANTS-6227] **Work out the focused tab's transcript path in one helper instead of five copies in claudestatuswidgets.cpp.**
   From ANTS-6126; feeds ANTS-5796 (dup:02362e44f150). Each site runs
   provider -> shellCwd -> activeSessionPath(cwd); the ANTS-5773 comment
   in refreshBgTasksButton says that path can be another tab's session
@@ -108906,6 +108906,9 @@ worked after these.
   Hot reload: none needed.
   The 2026-11-06 reviews also found this: row 759
   `src/claudestatuswidgets.cpp:1690-1696`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-24: focusedSessionPath() asks the tab tracker for the
+  focused shell's transcript first and falls back to the cwd walk; the
+  five sites call it. INV-11(c) and ANTS-1219-INV-1 now pin the helper.
   **Layman:** Five places each work out which Claude conversation belongs to the focused tab, and one of them notes it can pick the wrong one.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L17-F4).

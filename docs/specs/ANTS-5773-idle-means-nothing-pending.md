@@ -74,7 +74,7 @@ qint64 claudeStartMs = 0;   // processStartTimeMs of the tab's Claude; 0 = unkno
 
 Each shell entry holds its own `ClaudeTranscript::Cursor` and `ClaudeBgTaskAccum`. `reparseTranscript` runs `ClaudeBgTaskTracker::parseIncremental` on the entry's transcript alongside the tail parse. `pollAllShells` (every 2 s) re-runs `finalize`, so a deleted output file is noticed without a transcript write. A change in any count emits `shellStateChanged`. A new Claude PID resets cursor, accumulator and counts.
 
-`ClaudeStatusBarController::refreshBgTasksButton` passes the focused tab's `claudeStartMs` to the button's tracker when that tracker's transcript is the tab's bound one, read through a new `ClaudeTabTracker::transcriptPath(pid_t)`; otherwise it passes 0. The button reads `activeSessionPath(cwd)`, which can be another tab's session, whose tasks the focused tab's start time would wrongly retire.
+`ClaudeStatusBarController::refreshBgTasksButton` passes the focused tab's `claudeStartMs` to the button's tracker when that tracker's transcript is the tab's bound one, read through a new `ClaudeTabTracker::transcriptPath(pid_t)`; otherwise it passes 0. The button's path can come from `focusedSessionPath`'s cwd fallback (ANTS-6227), which can be another tab's session, whose tasks the focused tab's start time would wrongly retire.
 
 ### 2.4 Resolver
 

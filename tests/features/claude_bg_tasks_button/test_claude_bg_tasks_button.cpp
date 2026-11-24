@@ -314,23 +314,35 @@ TEST(ClaudeBgTasksButton, Main) {
                  "walk up the project tree — Claude may have been "
                  "launched from a parent of the shell's current cwd");
         }
-        // (c) ClaudeStatusBarController::refreshBgTasksButton must
-        // source the cwd via the focused-terminal provider and pass
-        // it through to activeSessionPath. ANTS-1146 — function moved
-        // to claudestatuswidgets.cpp; the focusedTerminal() direct
-        // call became m_focusedTerminalProvider() (the controller
-        // can't reach into MainWindow's tab plumbing directly).
-        std::regex refreshScoped(
-            R"(m_focusedTerminalProvider[\s\S]*?shellCwd[\s\S]*?activeSessionPath\s*\([^)]*cwd[^)]*\))");
+        // (c) ANTS-6227 — every focused-tab lookup goes through
+        // focusedSessionPath(). It asks the tab tracker for the focused
+        // shell's own transcript first; only when the tracker has none
+        // does it walk the shell's cwd with activeSessionPath, which can
+        // return another tab's session in the same tree (ANTS-5773).
+        const std::string helper = ants_test::stripComments(
+            ants_test::slurpFunctionBody(csw,
+                "QString ClaudeStatusBarController::focusedSessionPath("));
+        const auto own = helper.find("m_tracker->transcriptPath(");
+        const auto walk = helper.find("activeSessionPath(");
+        if (own == std::string::npos || walk == std::string::npos ||
+                own > walk || helper.find("shellCwd()") == std::string::npos) {
+            fail("INV-11(c): focusedSessionPath() must ask "
+                 "m_tracker->transcriptPath() for the focused shell "
+                 "first, then fall back to activeSessionPath() on its "
+                 "shellCwd()");
+        }
+        if (ants_test::countOccurrences(ants_test::stripComments(csw),
+                                        "activeSessionPath(") != 1) {
+            fail("INV-11(c): claudestatuswidgets.cpp must call "
+                 "activeSessionPath() only inside focusedSessionPath() — "
+                 "a direct call skips the tab tracker's own transcript");
+        }
         const std::string refreshBody = functionBody(csw,
             "void ClaudeStatusBarController::refreshBgTasksButton()");
-        if (refreshBody.empty() ||
-                !std::regex_search(refreshBody, refreshScoped)) {
-            fail("INV-11(c): refreshBgTasksButton must read the "
-                 "active tab's cwd via the focusedTerminal provider "
-                 "AND pass it to `activeSessionPath(cwd)` — without "
-                 "this wiring the global-newest fallback fires and "
-                 "the dialog leaks other projects' bg-tasks");
+        if (refreshBody.find("focusedSessionPath(") == std::string::npos) {
+            fail("INV-11(c): refreshBgTasksButton must resolve its "
+                 "transcript with focusedSessionPath() — without it the "
+                 "dialog can show another tab's or project's bg-tasks");
         }
     }
 

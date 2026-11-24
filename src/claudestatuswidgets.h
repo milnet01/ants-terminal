@@ -310,6 +310,10 @@ private:
     void apply();   // private status-label renderer (formerly
                     // MainWindow::applyClaudeStatusLabel)
 
+    // ANTS-6227 — the focused tab's Claude transcript, or empty. The tab
+    // tracker's per-shell path comes first; the cwd walk is the fallback.
+    QString focusedSessionPath(TerminalWidget *focused) const;
+
     // ANTS-1924 / ANTS-1920 — shared model-switch PTY handshake. After a
     // caller injects `/model <tier>\r`, this confirms CC's "Switch model?"
     // dialog and then sends a configurable continuation prompt so CC resumes
