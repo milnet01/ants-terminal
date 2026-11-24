@@ -108426,7 +108426,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L13-F4).
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6217] **Give the roadmap dialog's two background git processes one error policy.**
+- ✅ [ANTS-6217] **Give the roadmap dialog's two background git processes one error policy.**
   From ANTS-6122 (L13 MEDIUM F5). The recent-commits handler deletes its
   QProcess only on FailedToStart; the blame handler deletes it and marks
   the run answered on any error, including a timeout while the process
@@ -108434,6 +108434,9 @@ worked after these.
   make the other match. Queued: choosing changes behaviour on an error
   path, so it wants its own test.
   Hot reload: none needed; no new running state.
+  2026-11-24, 4daa7d58: the recent-commits rule won. Only FailedToStart
+  ends a run from the error handler; the blame handler now matches.
+  Locked by test_roadmap_last_touch_async INV-8.
   **Layman:** Two background git jobs in the roadmap window handle errors differently, and nothing says whether that is on purpose.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F5).
