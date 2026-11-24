@@ -108442,7 +108442,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L13-F5).
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6218] **Pass renderCardsHtml's section state to its emitter lambdas as parameters instead of [&] captures.**
+- ✅ [ANTS-6218] **Pass renderCardsHtml's section state to its emitter lambdas as parameters instead of [&] captures.**
   From ANTS-6122 (L13 MEDIUM F6). emitSectionHeader reads the outer
   sectionExpanded, and openTable()/colHeadEmitted flip flags the main
   loop also reads. Queued: renderCardsHtml is the dialog's whole
@@ -108451,12 +108451,15 @@ worked after these.
   Hot reload: none needed; no new running state.
   The 2026-11-06 reviews also found this: row 699
   `src/roadmapdialog.cpp:1177`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-24, e6b09f8c: emitSectionHeader takes `expanded`; its
+  column-head flag is its own init-capture; tableOpen's one writer and
+  two readers are named.
   **Layman:** The roadmap card renderer is very long and its helper pieces quietly change shared state, which makes it hard to follow.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F6).
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6219] **Build the roadmap card stylesheet with named substitutions instead of 24 positional %N placeholders.**
+- ✅ [ANTS-6219] **Build the roadmap card stylesheet with named substitutions instead of 24 positional %N placeholders.**
   From ANTS-6122 (L13 MEDIUM F7). Adding a CSS value means renumbering
   the chain; the duplicate-id banner already works around it with an
   inline style. Queued: test_roadmap_dialog_cards pins
@@ -108464,6 +108467,9 @@ worked after these.
   `.rm-state-label{font-size:%20px;color:%6;` and
   `.rm-section-title{color:%2;`, so those assertions move with it.
   Hot reload: none needed; no new running state.
+  2026-11-24, 292fb070: named @token@ slots filled by fillCssTokens();
+  the card test's CssTokens check catches an unfilled one. The
+  duplicate-id banner's inline style was left as is.
   **Layman:** The roadmap window's style sheet fills 24 numbered gaps in order, so adding one style means renumbering the rest by hand.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F7).
