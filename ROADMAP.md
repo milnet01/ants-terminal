@@ -99453,11 +99453,12 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: feedback-oneup-2026-11-16.
   Lanes: changelog-feedback.
 
-- 📋 [ANTS-6910] **The ANTS-3396 spec cites mainwindow.cpp and claudeintegration.cpp lines past the end of those files.**
+- ✅ [ANTS-6910] **The ANTS-3396 spec cites mainwindow.cpp and claudeintegration.cpp lines past the end of those files.**
   check-doc.py lineref: the spec names src/mainwindow.cpp lines in the
   4508-4578 range (the file is shorter) and src/claudeintegration.cpp:9997.
   The audit_run code moved to src/mcptoolregistry.cpp (ANTS-4932) and the
   registry to src/claudeintegration_callpolicy.cpp. Fix: cite by symbol.
+  Shipped 2026-11-24: citations by symbol; check-doc.py clean.
   **Layman:** The design note for background audits points at code locations that no longer exist.
   Kind: doc-fix.
   Source: in-session-2026-11-24, check-doc.py while shipping ANTS-6221.
