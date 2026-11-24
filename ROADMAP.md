@@ -99633,13 +99633,15 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-11-24, check-doc.py while shipping ANTS-6221.
   Lanes: specs.
 
-- 📋 [ANTS-6912] **check-shipped-coverage.sh counts an id cited on a bullet's continuation line or inside an "ANTS-A to ANTS-B" range.**
+- ✅ [ANTS-6912] **check-shipped-coverage.sh counts an id cited on a bullet's continuation line or inside an "ANTS-A to ANTS-B" range.**
   Seen 2026-11-24 preparing 0.7.116: 17 security items read as uncited,
   yet [Unreleased] cites them, e.g. "(ANTS-6449, ANTS-6450, ANTS-6453 to
   ANTS-6464)" on the second line of its bullet. The grep only matches a
   line that starts a bullet, and never expands a range. Fix: read each
   bullet's whole text and expand ranges; keep continuation-prose
   cross-references out by requiring the id list to close the bullet.
+  Shipped 2026-11-24: 7378a2e8.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — a fix to an internal release check; users see nothing.
   **Layman:** The pre-release check wrongly reports some finished work as missing from the release notes.
   Kind: fix.
   Source: in-session-2026-11-24, 0.7.116 release prep.
@@ -108800,7 +108802,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L14-F7, L14-F11).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6222] **Call mcpd::peerUidIs at the four inline SO_PEERCRED peer checks.**
+- ✅ [ANTS-6222] **Call mcpd::peerUidIs at the four inline SO_PEERCRED peer checks.**
   From ANTS-6123; feeds ANTS-5796 (dup:3634cdb28375). Sites:
   ClaudeIntegration::onHookConnection and onMcpConnection,
   remotecontrol_terminal.cpp and remotecontrol_state.cpp (the last logs
@@ -108812,6 +108814,8 @@ worked after these.
   new id dup:d1db209f0fb3 (onHookConnection, onMcpConnection,
   RemoteControl::onNewConnection). Only the RemoteControl copy logs the
   failure reason. The idle-timer setup beside each is copied too.
+  Shipped 2026-11-24: d0ca327a.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — an internal refactor with no change in behaviour.
   **Layman:** The check that only your own user may talk to the terminal's sockets is written out four times; one shared copy means a fix lands everywhere.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L14-F9).
@@ -108831,7 +108835,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L14-F10).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6224] **Name the touched-files list for what it holds: files Claude read as well as edited.**
+- ✅ [ANTS-6224] **Name the touched-files list for what it holds: files Claude read as well as edited.**
   From ANTS-6123. updateChangedFiles, m_changedFiles and fileChanged
   record Read as well as Edit and Write. The lane pass documented this
   at the signal. Rename the internal names (test_mcp_secret_redaction
@@ -108840,6 +108844,8 @@ worked after these.
   `changed_files` is read by clients (test_mcp_focused_test); keep it,
   or add a new field before retiring it.
   Hot reload: none needed.
+  Shipped 2026-11-24: 9c681bed.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — an internal rename; the get_session_info wire field is unchanged.
   **Layman:** The list called 'changed files' also includes files Claude only read, which misleads anyone using it to mean 'edited'.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L14-F12).
@@ -115297,7 +115303,7 @@ reports are asked for separately, each time.
   Source: user-request-2026-09-27.
   Lanes: telemetry, docs.
 
-- 📋 [ANTS-6911] **Help → Report an Issue opens a pre-filled GitHub issue form, and warns before any log file is shared.**
+- ✅ [ANTS-6911] **Help → Report an Issue opens a pre-filled GitHub issue form, and warns before any log file is shared.**
   User request 2026-11-24: let people log issues to GitHub from inside the
   app, as easily as possible. Decided: no in-app posting, no stored token.
   - .github/ISSUE_TEMPLATE/ bug and feature forms (what happened, expected,
@@ -115312,6 +115318,8 @@ reports are asked for separately, each time.
     it and attach it by hand. Nothing is attached without that choice.
   Hot reload: none needed; a menu action and a dialog with no running
   state. Code runs in the terminal process (it opens a browser URL).
+  Shipped 2026-11-24: 2c94f4a5; issue forms joined the ci-workflows
+  review lane.
   **Layman:** A menu item opens a ready-filled bug report on GitHub, and warns people before they share a log that may hold private details.
   Kind: feature.
   Source: user-request-2026-11-24.

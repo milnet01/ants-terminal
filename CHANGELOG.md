@@ -12,6 +12,15 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Help → Report an Issue opens GitHub's issue form with your system details filled in** (ANTS-6911)
+  You choose bug or idea and type a title. The form opens in your browser,
+  and you send it from your own GitHub account; the app posts nothing. No
+  log is attached. When a debug log exists, the dialog warns that it can
+  hold folder names, commands and other private text, and offers Open Log
+  Folder so you can check it and attach it yourself.
+
 ## [0.7.116] - 2026-11-24
 
 **Theme:** Terminal history uses far less memory and resizes faster; the window

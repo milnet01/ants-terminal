@@ -675,9 +675,12 @@
     },
     {
       "name": "ci-workflows",
-      "summary": "GitHub Actions workflows that build, test, audit and release the project, and its funding file.",
+      "summary": "GitHub Actions workflows that build, test, audit and release the project, its funding file and its issue forms.",
       "sourcePaths": [
         ".github/FUNDING.yml",
+        ".github/ISSUE_TEMPLATE/bug_report.yml",
+        ".github/ISSUE_TEMPLATE/config.yml",
+        ".github/ISSUE_TEMPLATE/feature_request.yml",
         ".github/workflows/ci.yml",
         ".github/workflows/release-audit.yml",
         ".github/workflows/release.yml"
