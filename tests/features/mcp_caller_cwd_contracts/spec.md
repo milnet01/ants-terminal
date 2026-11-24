@@ -14,7 +14,7 @@ the dispatch-site refusal envelope.
   `verify_changes`) as `CallerCwdContract::Required`.
 - **CLS-2.** TabSpecific / ProcessGlobal groups appear in the table
   (Phase 3a documentation; no enforcement yet).
-- **DISP-1.** `handleMcpRequest` invokes `callerCwdContractFor(toolName)`
+- **DISP-1.** `mcpToolsCall` invokes `callerCwdContractFor(toolName)`
   before the cache lookup, and refuses with
   `caller_cwd_required` when contract is Required and caller_cwd
   is empty.

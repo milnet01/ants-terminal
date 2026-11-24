@@ -36,9 +36,12 @@ TEST(mcp_tool_descriptor_version, Inv1FinalisationLoopPresent) {
 TEST(mcp_tool_descriptor_version, Inv2SemverPolicyDocumented) {
     expect_reset();
     const std::string cpp = ants_test::slurpClaudeIntegration();
-    expect(contains(cpp, "SemVer-\n                // of-tools") ||
-           contains(cpp, "SemVer-of-tools policy") ||
-           contains(cpp, "SemVer-\n                // of tools"),
+    // ANTS-6223 — whitespace squashed, so the comment's indentation and
+    // where it wraps do not matter.
+    const std::string flat = ants_test::squashWhitespace(cpp);
+    expect(contains(flat, "SemVer- // of-tools") ||
+           contains(flat, "SemVer-of-tools policy") ||
+           contains(flat, "SemVer- // of tools"),
            "INV-2: SemVer-of-tools policy comment present");
     expect(contains(cpp, "MAJOR") && contains(cpp, "MINOR") &&
            contains(cpp, "PATCH"),

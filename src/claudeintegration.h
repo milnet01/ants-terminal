@@ -733,8 +733,8 @@ private slots:
     // idempotent-read cache insert, recordDispatch and the socket write.
     // Every path reaches it with a transformReply result.
     void finishToolDispatch(const McpCallContext &ctx, const ReplyTransform &reply);
-    // ANTS-4932 — a parsed request, dispatched by method. Body moved verbatim
-    // out of onMcpConnection's readyRead lambda.
+    // ANTS-4932 — a parsed request, dispatched by method; ANTS-6223 gave each
+    // method its own member below.
     void handleMcpRequest(const QJsonDocument &doc, const QByteArray &buf,
                           const QPointer<McpReplyChannel> &guard);
     // ANTS-2132 — hand a verb to the dispatch worker and return immediately.
@@ -752,6 +752,17 @@ private slots:
                                 const QJsonObject *error);
 
 private:
+    // ANTS-6223 — one member per MCP method, called by handleMcpRequest.
+    // The first two return the JSON-RPC result; the last two write their
+    // own reply, now or from a worker.
+    QJsonObject mcpInitialize();
+    QJsonObject mcpToolsList(const QJsonObject &request);
+    void mcpToolsCall(const QJsonObject &request, const QJsonValue &reqId,
+                      const QByteArray &buf,
+                      const QPointer<McpReplyChannel> &guard);
+    void mcpVerifyTrustPrompt(const QJsonObject &request, const QJsonValue &reqId,
+                              const QPointer<McpReplyChannel> &guard);
+
     void processHookEvent(const QJsonObject &event);
     // parseTranscriptForState is declared above (public, for tests).
     // ANTS-4451 — takes the EXTRACTED name and input, never a raw event.

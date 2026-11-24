@@ -42,7 +42,7 @@ is full. See `docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md` for the full desi
   envelope has `ok:false`, `code:"rate_limited"`, `retry_after_ms`,
   and an `error` string.
 - **INV-12 / order vs caller_cwd_required.** Source-grep verifies
-  the `caller_cwd_required` check in `handleMcpRequest` runs before
+  the `caller_cwd_required` check in `mcpToolsCall` runs before
   the rate-limit branch.
 - **INV-13 / tier classification source-grep.** The ControlPlane
   allowlist contains exactly the five expected tools; the

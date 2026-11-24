@@ -108821,7 +108821,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L14-F9).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6223] **Split ClaudeIntegration::handleMcpRequest into one member function per MCP method.**
+- ✅ [ANTS-6223] **Split ClaudeIntegration::handleMcpRequest into one member function per MCP method.**
   From ANTS-6123. The tools/call branch shares result, error and
   haveResult with the final sendMcpResponse from far above, inside two
   leftover bare blocks; its refusal gates each depend on every gate
@@ -108830,6 +108830,8 @@ worked after these.
   depend on statement order in this function. Run source_scrapes on
   claudeintegration.cpp first and move each anchor with its code.
   Hot reload: none needed.
+  Shipped 2026-11-24: handleMcpRequest dispatches to mcpInitialize, mcpToolsList, mcpToolsCall and mcpVerifyTrustPrompt; bodies moved verbatim, dedented, the two bare blocks gone. Scrapes scoped to the tools/call or tools/list branch now read the member's body.
+  Release note (2026-11-24): no CHANGELOG entry, deliberately — an internal refactor with no change in behaviour.
   **Layman:** One function that answers every request to the terminal is about 15,000 lines long; splitting it lets a newcomer find and change one part safely.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L14-F10).

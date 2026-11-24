@@ -93,13 +93,10 @@ TEST_F(RateLimitTestFixture, Inv5CacheHitsConsume) {
     const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
 
-    const auto dispatchStart = cc.find("else if (method == \"tools/call\")");
-    ASSERT_NE(dispatchStart, std::string::npos);
-    // ANTS-3681 — the tools/call arm of the method dispatch chain, bounded
-    // by the next arm rather than a byte window (widened 9000→16000→21000
-    // before this).
-    const std::string region = ants_test::regionBetween(
-        cc, "else if (method == \"tools/call\")", "} else if (method == ");
+    // ANTS-3681 / ANTS-6223 — the whole tools/call handler, brace-matched,
+    // rather than a byte window.
+    const std::string region = ants_test::slurpFunctionBody(
+        cc, "void ClaudeIntegration::mcpToolsCall(");
     ASSERT_FALSE(region.empty());
 
     const auto rateLimitPos = region.find("rateLimitCheck(toolName");
@@ -253,16 +250,11 @@ TEST_F(RateLimitTestFixture, Inv11EnvelopeShape) {
 TEST_F(RateLimitTestFixture, Inv12OrderVsCallerCwdRequired) {
     const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
-    const auto dispatchStart = cc.find("else if (method == \"tools/call\")");
-    ASSERT_NE(dispatchStart, std::string::npos);
-    // Window sized to comfortably span from the dispatch start through
-    // the rate-limit block. Bumped 9000→12000 (ANTS-1772), 12000→15000
-    // (ANTS-1853 grew the caller_cwd gate with the empty-arguments
-    // diagnostic) — the ordering assertion below is what matters, not
-    // the exact window size. ANTS-4932 — the window is gone: ants-mcpd's
-    // forward branch sits between the two anchors and outgrew it, and each
-    // anchor's FIRST occurrence after the dispatch start is what is ordered.
-    const std::string region = cc.substr(dispatchStart);
+    // ANTS-6223 — the whole tools/call handler; each anchor's FIRST
+    // occurrence in it is what is ordered.
+    const std::string region = ants_test::slurpFunctionBody(
+        cc, "void ClaudeIntegration::mcpToolsCall(");
+    ASSERT_FALSE(region.empty());
     const auto cwdRequired =
         region.find("CallerCwdContract::Required &&");
     const auto rateLimit = region.find("// ANTS-1356 — per-tool");

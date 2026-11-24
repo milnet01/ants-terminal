@@ -52,10 +52,10 @@ these that names it (inventory, 2026-10-01):
 |---|---|
 | Handler registration (both servers) | `mcp::registerProjectScopedVerbs` (`src/mcptoolregistry.cpp`); `get_git_status` alone is registered in `MainWindow::setupClaudeMcpProviders` |
 | Terminal-forwarded set | `mcp::terminalScopedVerbNames()` (`get_git_status`) |
-| `tools/list` descriptor | the `["name"] = "<verb>"` descriptor blocks in `ClaudeIntegration::handleMcpRequest` |
+| `tools/list` descriptor | the `["name"] = "<verb>"` descriptor blocks in the `appendToolSchemas*` pieces that `ClaudeIntegration::mcpToolsList` calls |
 | Caller-cwd contract | `ClaudeIntegration::callerCwdContractFor` |
-| Token cost | `kCosts` in `handleMcpRequest`'s `tokenCostFor` |
-| Kind bucket | `kindForName` in `handleMcpRequest` (explicit rows; prefix rows stay for the kept verbs) |
+| Token cost | `kCosts` in `mcpToolsList`'s `tokenCostFor` |
+| Kind bucket | `kindForName` in `mcpToolsList` (explicit rows; prefix rows stay for the kept verbs) |
 | Rate-limit class | `ClaudeIntegration::rateLimitClassFor` |
 | ETag allowlist | `ClaudeIntegration::isEtagSupportedTool` |
 | Offload allowlist | `isOffloadEligible` (`src/mcpprojection.cpp`) |

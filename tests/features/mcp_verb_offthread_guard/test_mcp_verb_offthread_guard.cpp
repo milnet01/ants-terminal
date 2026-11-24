@@ -153,11 +153,21 @@ TEST(McpVerbOffthreadGuard, Main) {
     // handleMcpRequest(), which both hosts run.
     // ANTS-4919 — its tools/list branch calls the appendToolSchemas pieces,
     // which are part of the path this scans.
+    // ANTS-6223 — each method's body is its own member, so the path is
+    // handleMcpRequest plus all four.
     const std::string handler =
         bodyAfter(ci, "void ClaudeIntegration::handleMcpRequest(");
-    const std::string dispatcher =
-        handler.empty() ? std::string()
-                        : handler + "\n" + ants_test::toolsListDescriptorText(ci);
+    const std::string methods[] = {
+        bodyAfter(ci, "QJsonObject ClaudeIntegration::mcpInitialize("),
+        ants_test::toolsListDescriptorText(ci),
+        bodyAfter(ci, "void ClaudeIntegration::mcpToolsCall("),
+        bodyAfter(ci, "void ClaudeIntegration::mcpVerifyTrustPrompt("),
+    };
+    std::string dispatcher = handler;
+    for (const std::string &m : methods) {
+        if (m.empty()) { dispatcher.clear(); break; }
+        if (!dispatcher.empty()) dispatcher += "\n" + m;
+    }
     const std::string finish =
         bodyAfter(ci, "void ClaudeIntegration::finishToolDispatch(");
     const std::string post =

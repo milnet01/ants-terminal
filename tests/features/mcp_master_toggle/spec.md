@@ -29,7 +29,7 @@ early return precedes the `QStringLiteral("/model ")` injection in
 `src/claudestatuswidgets.cpp`. *Test:* source-grep ordering.
 
 **INV-5 — Dispatcher refusal.** A `!m_mcpEnabled` guard emitting
-`mcp_disabled` sits inside the `tools/call` branch of
+`mcp_disabled` sits inside the `tools/call` handler, `mcpToolsCall` in
 `src/claudeintegration.cpp`, before the `caller_cwd_required` emit.
 *Test:* source-grep ordering.
 

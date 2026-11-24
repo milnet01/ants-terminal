@@ -16,11 +16,10 @@
 
 namespace {
 
-// ANTS-3681 — the brace-matched tools/call arm of the method dispatch chain.
-// It replaces byte windows that were widened five times (9000 → 23000) as
-// the arm grew; "" when the arm is missing.
+// ANTS-3681 — the brace-matched tools/call handler, which ANTS-6223 moved
+// out of the method dispatch chain into its own member; "" when missing.
 std::string toolsCallBranch(const std::string &cc) {
-    return ants_test::slurpFunctionBody(cc, "else if (method == \"tools/call\")");
+    return ants_test::slurpFunctionBody(cc, "void ClaudeIntegration::mcpToolsCall(");
 }
 
 }  // namespace

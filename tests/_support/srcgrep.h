@@ -232,15 +232,15 @@ inline std::string toolSchemaPiecesText(const std::string &cc) {
 }
 
 // ANTS-4919 — every tools/list descriptor in ClaudeIntegration's text `cc`:
-// the tools/list..tools/call branch of handleMcpRequest (the piece calls and
-// the tail that post-processes the array), then the body of each
-// `void appendToolSchemas<Part>(QJsonArray &tools)` piece in text order
-// (ANTS-1677 § 2.2 kind B). Found by
+// the body of ClaudeIntegration::mcpToolsList (the piece calls and the tail
+// that post-processes the array; ANTS-6223 moved it out of handleMcpRequest),
+// then the body of each `void appendToolSchemas<Part>(QJsonArray &tools)`
+// piece in text order (ANTS-1677 § 2.2 kind B). Found by
 // definition, not by file, so it holds when a piece moves to another file of
-// the class. "" when the branch is missing.
+// the class. "" when mcpToolsList is missing.
 inline std::string toolsListDescriptorText(const std::string &cc) {
-    std::string out = regionBetween(cc, "else if (method == \"tools/list\")",
-                                    "else if (method == \"tools/call\")");
+    std::string out =
+        slurpFunctionBody(cc, "QJsonObject ClaudeIntegration::mcpToolsList(");
     if (out.empty()) return {};
     return out + toolSchemaPiecesText(cc);
 }

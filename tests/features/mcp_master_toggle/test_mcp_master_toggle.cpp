@@ -123,9 +123,9 @@ TEST(McpMasterToggle, Ants2195ParkedGuardPrecedesInjection) {
 // INV-5 — dispatcher refuses with mcp_disabled before the caller_cwd gate.
 TEST(McpMasterToggle, INV5_DispatcherRefusal) {
     const std::string ci = ants_test::slurpClaudeIntegration();
-    const auto branch = ci.find("method == \"tools/call\"");
+    const auto branch = ci.find("void ClaudeIntegration::mcpToolsCall(");
     ASSERT_NE(branch, std::string::npos);
-    // Anchor every search at/after the tools/call branch so an earlier
+    // Anchor every search at/after the tools/call handler so an earlier
     // in-file mention (schema text, contract tables) can't skew ordering.
     const auto guard  = ci.find("!m_mcpEnabled", branch);
     const auto code   = ci.find("\"mcp_disabled\"", branch);

@@ -42,10 +42,10 @@ TEST(McpTabSpecificContract, Inv1ErrorCodeDocumented) {
 TEST(McpTabSpecificContract, Inv2RefusalBlockPresent) {
     const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
-    // ANTS-3681 — the whole tools/call arm of the method dispatch chain,
-    // up to the next `} else if (method ==` arm, not a byte window.
-    const std::string region = ants_test::regionBetween(
-        cc, "else if (method == \"tools/call\")", "} else if (method ==");
+    // ANTS-3681 / ANTS-6223 — the whole tools/call handler, brace-matched,
+    // not a byte window.
+    const std::string region = ants_test::slurpFunctionBody(
+        cc, "void ClaudeIntegration::mcpToolsCall(");
     ASSERT_FALSE(region.empty()) << "tools/call branch missing";
     EXPECT_TRUE(has(region, "\"tab_or_cwd_required\""))
         << "ANTS-1415 INV-2: code literal missing";

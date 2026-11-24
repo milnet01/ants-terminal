@@ -1661,1730 +1661,1755 @@ QJsonObject makeEncodingProp() {
 
 using namespace claudeintegrationdetail;
 
-// ANTS-4932 — the request body below keeps the indentation it had inside
-// onMcpConnection's readyRead lambda, so the move changed no line of it.
-// `buf` is the request line; `guard` is its reply channel.
+// ANTS-4932 — a request from either host (the terminal or ants-mcpd),
+// dispatched by method. `buf` is the request line; `guard` is its reply
+// channel. ANTS-6223 — each method has its own member below; the two that
+// may answer from a worker write their own reply.
 void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                          const QByteArray &buf,
                                          const QPointer<McpReplyChannel> &guard) {
-    {
+    const QJsonObject request = doc.object();
+    const QString method = request.value("method").toString();
+    const QJsonValue reqId = request.value("id");
+
+    // Build either `result` (success) or `error` (failure). The
+    // envelope ({jsonrpc, id, result/error}) is added at the end.
+    QJsonObject result;
+    QJsonObject error;
+    bool haveResult = false;
+
+    if (method == "initialize") {
+        result = mcpInitialize();
+        haveResult = true;
+    } else if (method == "tools/list") {
+        result = mcpToolsList(request);
+        haveResult = true;
+    } else if (method == "tools/call") {
+        mcpToolsCall(request, reqId, buf, guard);
+        return;
+    } else if (method == QLatin1String(VerifyTrust::kPromptMethod)
+               && m_verifyTrustPromptHandler) {
+        mcpVerifyTrustPrompt(request, reqId, guard);
+        return;
+    } else {
+        // JSON-RPC -32601 = Method not found
+        error["code"] = -32601;
+        error["message"] = QString("Method not found: %1").arg(method);
+    }
+
+    sendMcpResponse(guard, reqId,
+                    haveResult ? &result : nullptr,
+                    haveResult ? nullptr : &error);
+}
+
+QJsonObject ClaudeIntegration::mcpInitialize() {
+    QJsonObject result;
+    // ANTS-1284 — reset per-tool dispatch counters on
+    // session-start handshake. See docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md.
+    // ANTS-3572 — fold the previous session into the persisted
+    // aggregate before clearing (endTokenSession emits first).
+    endTokenSession();
+    QJsonObject caps;
+    caps["tools"] = QJsonObject();
+    QJsonObject serverInfo;
+    serverInfo["name"] = m_serverName;  // ANTS-4932 — "ants-mcpd" there
+    serverInfo["version"] = QStringLiteral(ANTS_VERSION);
+    // ANTS-1952 — build identity so a caller can detect a
+    // ship-vs-live binary gap (same SemVer, rebuilt with a fix).
+    // SemVer alone can't distinguish it; the git SHA can. Lets a
+    // session compare against `git log` and flag "server predates
+    // commit X" instead of chasing stale telemetry (cf. the
+    // ANTS-1632/1903/1947 stale-binary investigations).
+    // ANTS-3582: ANTS_BUILD_* are extern const char[] (build_info_values.cpp),
+    // so read via fromLatin1 — not compile-time literals.
+    serverInfo["build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);
+    serverInfo["build_date"] = QString::fromLatin1(ANTS_BUILD_DATE);
+    serverInfo["build_time"] = QString::fromLatin1(ANTS_BUILD_TIME);
+    serverInfo["build_type"] = QString::fromLatin1(ANTS_BUILD_TYPE);
+    result["protocolVersion"] = "2025-11-25";
+    result["capabilities"] = caps;
+    result["serverInfo"] = serverInfo;
+    return result;
+}
+
+QJsonObject ClaudeIntegration::mcpToolsList(const QJsonObject &request) {
+    QJsonObject result;
+    QJsonArray tools;
+
+    appendToolSchemasTerminal(tools);
+
+    appendToolSchemasCodeNav(tools);
+
+    appendToolSchemasDocs(tools);
+
+    appendToolSchemasOrientation(tools);
+    appendToolSchemasStore(tools);
+    // ANTS-5734 — trace: a symbol's definitions, callers,
+    // references, tests, documents, spec invariants and roadmap
+    // items in one call. Listed only by a process that registered
+    // it (INV-13): ants-mcpd does, the terminal cannot, since it
+    // does not link the parser. Every property the descriptor
+    // declares is read by trace::serve (ANTS-4621).
+    if (m_toolProviders.count(QStringLiteral("trace"))) {
+        appendToolSchemasTrace(tools);
+    }
+    appendToolSchemasReports(tools);
+
+    // ANTS-1354 — default `version: "1.0"` on every tool
+    // descriptor unless one already set its own. SemVer-
+    // of-tools policy:
+    //   * MAJOR — wire-format break (response shape
+    //     changes incompatibly, arg semantics flip,
+    //     refusal-code dropped). Caller code that worked
+    //     against the previous MAJOR cannot be expected
+    //     to still parse.
+    //   * MINOR — additive change (new optional arg, new
+    //     response field, new opt-in flag). Old callers
+    //     keep working.
+    //   * PATCH — bug fix only; no observable schema
+    //     change.
+    // Bumping is per-tool: an additive change to
+    // `roadmap_query` (e.g. ANTS-1425 narrator opt-in)
+    // bumps `roadmap_query.version` to "1.1" without
+    // touching siblings. Callers dispatch on this field
+    // to decide whether their parsing path still applies.
+    //
+    // ANTS-1505 — per-tool budget hints. `typical_token_cost`
+    // is the token count a caller should expect on the
+    // common path; `worst_case_tokens` is the cap a fresh
+    // call against a large project might hit (after
+    // pagination + truncate). Both are conservative
+    // estimates rounded to ≤2 sig-fig; they're hints, not
+    // contracts. Callers can use them to size cold-start
+    // discovery or to decide between two tools that
+    // expose overlapping data.
+    auto tokenCostFor = [](const QString &name)
+            -> std::pair<int, int> {
+        // Buckets: (typical, worst). A verb with no row takes
+        // the default below, an estimate nobody measured.
+        static const QHash<QString, std::pair<int, int>> kCosts = {
+            // Control-plane / cheap fixed responses.
+            {QStringLiteral("get_session_info"),  {100,  400}},
+            {QStringLiteral("get_cwd"),           {80,   200}},
+            {QStringLiteral("caller_cwd_info"),   {150,  400}},
+            {QStringLiteral("tab_list"),          {200,  800}},
+            {QStringLiteral("tool_info"),         {500,  2000}},
+            {QStringLiteral("token_usage"),       {600,  2500}},
+            {QStringLiteral("mcp_trace"),         {800,  3000}},
+            // Terminal-state reads.
+            {QStringLiteral("get_last_command"),  {600,  3000}},
+            {QStringLiteral("get_environment"),   {300,  800}},
+            {QStringLiteral("get_scrollback"),    {1500, 8000}},
+            {QStringLiteral("get_text"),          {1200, 6000}},
+            // Scrollback error extraction (ANTS-1301).
+            {QStringLiteral("recent_errors"),     {800,  4000}},
+            // Selection read-through (ANTS-1312).
+            {QStringLiteral("last_selection"),    {200,  2000}},
+            // Topic-to-files discovery (ANTS-1636).
+            {QStringLiteral("find_sources"),      {600,  3500}},
+            // Documentation map (ANTS-2139): summary is the
+            // ~80 B/doc light list; topic/doc_path bodies smaller.
+            {QStringLiteral("docs_index"),        {800,  6000}},
+            // ANTS-3601 — doc_integrity: findings list, usually
+            // small (most docs are clean); grows with breakage.
+            {QStringLiteral("doc_integrity"),     {500,  4000}},
+            // ANTS-3636 — doc_citations: one entry per citation
+            // plus its text; a dense spec is the upper end.
+            {QStringLiteral("doc_citations"),     {900,  8000}},
+            // ANTS-3661 — doc_symbols: one entry per candidate
+            // occurrence across the walked corpus.
+            {QStringLiteral("doc_symbols"),       {900,  8000}},
+            // ANTS-3662 — spec_lint: findings are sparse on a
+            // conforming corpus; line_count adds one row per spec.
+            {QStringLiteral("spec_lint"),         {600,  5000}},
+            // ANTS-4108 — spec_conformance: findings are sparse,
+            // but observations[] is one row per executed case, so
+            // the ceiling scales with max_cases rather than defects.
+            {QStringLiteral("spec_conformance"),  {700,  9000}},
+            // ANTS-3660 — doc_dedup: one entry per pair PLUS one
+            // per cluster, and a corpus-wide walk is the upper end
+            // (measured: 275 pairs / 128 clusters over docs/).
+            {QStringLiteral("doc_dedup"),         {1200, 12000}},
+            // ANTS-3663 — doc_lint composes all six checkers, so
+            // its ceiling is their union over one walk; max_findings
+            // is what a caller bounds it with.
+            {QStringLiteral("doc_lint"),          {1500, 16000}},
+            // Repo / docs.
+            {QStringLiteral("roadmap_query"),     {1700, 12000}},
+            {QStringLiteral("roadmap_log"),       {200,  600}},
+            // ANTS-3855 — roadmap_migrate: counts + a bounded
+            // notes[] (default 200 entries), no roadmap text echoed
+            // back. The upper end is a corpus project whose source
+            // raises the note cap.
+            {QStringLiteral("roadmap_migrate"),   {300,  4000}},
+            {QStringLiteral("project_layout"),    {600,  2000}},
+            // ANTS-2161 — project_settings: small detect/write envelope.
+            {QStringLiteral("project_settings"),  {300,  1500}},
+            // ANTS-2093 — project_query: aggregate answer, occasionally
+            // a small list; result_cap_bytes (64 KiB default) bounds it.
+            {QStringLiteral("project_query"),     {400,  4000}},
+            {QStringLiteral("session_memory"),    {200,  1000}},
+            // ANTS-1883 — composer of three large reads + ANTS-1922
+            // active_bullets (top-20 headline_only, ~2 KB); bucket
+            // = sum of constituents' worst case + bullet overhead.
+            {QStringLiteral("session_orient"),    {2500, 17000}},
+            {QStringLiteral("workflow_state"),    {200,  1000}},
+            {QStringLiteral("workspace_search"),  {1500, 10000}},
+            {QStringLiteral("file_outline"),      {800,  4000}},
+            {QStringLiteral("git_state"),         {700,  4000}},
+            {QStringLiteral("subsystem"),         {400,  1500}},
+            // Plan + verify.
+            {QStringLiteral("verify_changes"),    {600,  3000}},
+            // Audit suite.
+            {QStringLiteral("audit_run"),         {4000, 25000}},
+            {QStringLiteral("last_audit_summary"),{600,  2500}},
+            // Cold-eyes.
+            {QStringLiteral("cold_eyes_partition"),    {1000, 4000}},
+            {QStringLiteral("cold_eyes_brief"),        {1500, 6000}},
+            // Indie-review.
+            {QStringLiteral("indie_review_partition"),    {1500, 6000}},
+            {QStringLiteral("indie_review_corroborate"),  {1500, 6000}},
+            {QStringLiteral("indie_review_dispatch"),     {3000, 12000}},
+            // Test-audit.
+            {QStringLiteral("test_audit_partition"),       {1500, 6000}},
+            {QStringLiteral("test_audit_brief"),           {2000, 8000}},
+            // Spec-aware (ANTS-1309 + ANTS-1308).
+            {QStringLiteral("spec_query"),         {500,  2500}},
+            {QStringLiteral("invariant_check"),    {800,  4000}},
+            // Build/test cache (ANTS-1299 + ANTS-1300).
+            {QStringLiteral("build_status"),       {500,  2000}},
+            {QStringLiteral("test_results"),       {800,  3000}},
+            // Symbol queries (ANTS-1303).
+            {QStringLiteral("find_definition"),    {600,  2500}},
+            {QStringLiteral("find_caller"),        {800,  4000}},
+            // Shape matcher (ANTS-1305).
+            {QStringLiteral("similar_code"),       {600,  2500}},
+            // Task-start context composers (ANTS-1306 + ANTS-1307).
+            {QStringLiteral("task_priors"),        {1200, 6000}},
+            {QStringLiteral("project_conventions"),{400,  1500}},
+            // Focused test runner (ANTS-1302).
+            {QStringLiteral("focused_test"),       {800,  4000}},
+            // ANTS-3745 — build_target_for: one small envelope,
+            // a CMake parse and at most two file reads.
+            {QStringLiteral("build_target_for"),   {300,  1200}},
+        };
+        const auto it = kCosts.find(name);
+        if (it != kCosts.end()) return it.value();
+        return {500, 2500};  // conservative default
+    };
+    // ANTS-1518 — discoverability prefix-tag. Defined here
+    // (outer tools/list scope) so both the post-build loop
+    // and the lite-shape branch reuse the same mapping.
+    // Same kind-buckets the lite-shape kind: field uses,
+    // emitted as a `[<kind>] ` prefix on every full-shape
+    // description so a session surfacing tools/list can
+    // grep by surface family without parsing every
+    // descriptor.
+    // ANTS-1567 — every tool has a non-"other" prefix, named
+    // after the surface family a session would grep tools/list
+    // for. `mcp-state` is server-side per-cwd state, and
+    // `caller_cwd_info` is `meta`: a diagnostic, not a pty read.
+    auto kindForName = [](const QString &name) -> QString {
+        if (name.startsWith(QStringLiteral("cold_eyes_")))
+            return QStringLiteral("cold-eyes");
+        if (name.startsWith(QStringLiteral("indie_review_")))
+            return QStringLiteral("indie-review");
+        if (name.startsWith(QStringLiteral("test_audit_")))
+            return QStringLiteral("test-audit");
+        if (name.startsWith(QStringLiteral("roadmap_")))
+            return QStringLiteral("roadmap");
+        // ANTS-1548 — changelog_log (writer) + ANTS-3533
+        // changelog_query (reader) are the CHANGELOG siblings
+        // of the roadmap family.
+        if (name.startsWith(QStringLiteral("changelog_")))
+            return QStringLiteral("roadmap");
+        if (name == QLatin1String("audit_run") ||
+            name == QLatin1String("last_audit_summary") ||
+            // ANTS-3396 — audit_poll: poll an async audit_run job.
+            name == QLatin1String("audit_poll") ||
+            // ANTS-2129 — audit_falsepos_log: write side of the
+            // false-positive ledger, audit-family.
+            name == QLatin1String("audit_falsepos_log") ||
+            // ANTS-1713 — audit_dismiss: write side of the
+            // fingerprint-keyed learned-FP ledger.
+            name == QLatin1String("audit_dismiss"))
+            return QStringLiteral("audit");
+        if (name == QLatin1String("verify_changes"))
+            return QStringLiteral("verify");
+        if (name == QLatin1String("git_state"))
+            return QStringLiteral("git");
+        if (name == QLatin1String("workspace_search") ||
+            // ANTS-3716 — cited_by: caller_cwd-Required,
+            // path-validated tree search (workspace_search family,
+            // whose rg runner it shares).
+            name == QLatin1String("cited_by") ||
+            name == QLatin1String("file_outline") ||
+            // ANTS-1855 — read_log: caller_cwd-Required,
+            // path-validated file reader (file_outline family).
+            name == QLatin1String("read_log") ||
+            // ANTS-2021 — read_region: caller_cwd-Required,
+            // path-validated slice reader (file_outline family).
+            name == QLatin1String("read_region") ||
+            // ANTS-2219 — read_regions: batched slice reader.
+            name == QLatin1String("read_regions") ||
+            // ANTS-2094 — read_spill: re-read an offloaded result
+            // by content-addressed handle (global cache reader).
+            name == QLatin1String("read_spill") ||
+            // ANTS-2022 — apply_edits: caller_cwd-Required,
+            // path-validated batch file editor (workspace write).
+            name == QLatin1String("apply_edits") ||
+            // ANTS-1636 — find_sources: project-scoped
+            // src/+tests/ topic walker.
+            name == QLatin1String("find_sources") ||
+            // ANTS-3368 — co_change_family: project-scoped
+            // repo-wide co-change site scan.
+            name == QLatin1String("co_change_family") ||
+            // ANTS-1637 — codebase_index: project-scoped
+            // structural-map reader.
+            name == QLatin1String("codebase_index") ||
+            // ANTS-2139 — docs_index: project-scoped
+            // documentation-map reader.
+            name == QLatin1String("docs_index") ||
+            // ANTS-3601 — doc_integrity: project-scoped
+            // doc-consistency reader.
+            name == QLatin1String("doc_integrity") ||
+            // ANTS-3636 — doc_citations: project-scoped
+            // citation-resolution reader, doc_integrity's sibling.
+            name == QLatin1String("doc_citations") ||
+            // ANTS-5502 — quotation_check: does each quoted
+            // sentence occur in the file it names.
+            name == QLatin1String("quotation_check") ||
+            name == QLatin1String("version_check") ||   // ANTS-5510
+            name == QLatin1String("dependency_inventory") ||   // ANTS-5515
+            name == QLatin1String("ci_report") ||   // ANTS-6399
+            name == QLatin1String("doc_symbols") ||
+            name == QLatin1String("spec_lint") ||   // ANTS-3662
+            // ANTS-4108 — spec_conformance: spec_lint's executable
+            // sibling; same project-scoped document reader family.
+            name == QLatin1String("spec_conformance") ||
+            name == QLatin1String("doc_dedup") ||   // ANTS-3660
+            name == QLatin1String("doc_lint") ||    // ANTS-3663
+            // ANTS-2161 — project_settings: project-scoped
+            // layout-config detect + create/update.
+            name == QLatin1String("project_settings") ||
+            // ANTS-2093 — project_query: project-scoped read
+            // (runs a sandboxed snippet over caller_cwd's files).
+            name == QLatin1String("project_query") ||
+            name == QLatin1String("project_layout") ||
+            name == QLatin1String("subsystem") ||
+            // ANTS-1883 — session_orient bundles the
+            // session-start state + project_layout + roadmap
+            // section_index; same workspace family.
+            name == QLatin1String("session_orient"))
+            return QStringLiteral("workspace");
+        if (name == QLatin1String("session_memory") ||
+                // ANTS-4622 — session_message is the cross-SESSION
+                // half of the same question session_memory answers
+                // within one: what survives this session. Bucketed
+                // together so a catalogue reader finds both.
+                name == QLatin1String("session_message") ||
+                // ANTS-6310 — what survives every session, on
+                // every project.
+                name == QLatin1String("know_how") ||
+                name == QLatin1String("workflow_state") ||
+                // ANTS-5299 — run_trace records what a review
+                // run did, for the sessions after it.
+                name == QLatin1String("run_trace"))
+            return QStringLiteral("mcp-state");
+        // ANTS-1735 — model_switch_stats: autonomous
+        // model-switcher effectiveness scorecard.
+        if (name == QLatin1String("model_switch_stats"))
+            return QStringLiteral("model");
+        // ANTS-1309 + ANTS-1308 + ANTS-1963 — spec-aware
+        // tools (spec_log is the write sibling of spec_query).
+        if (name == QLatin1String("spec_query") ||
+            name == QLatin1String("invariant_check") ||
+            name == QLatin1String("spec_log"))
+            return QStringLiteral("spec");
+        // ANTS-1961 / ANTS-1962 — cross-session feedback-file
+        // read + write verbs.
+        if (name == QLatin1String("feedback_query") ||
+            name == QLatin1String("feedback_log"))
+            return QStringLiteral("feedback");
+        // ANTS-1299 — build_status cache.
+        if (name == QLatin1String("build_status") ||
+            // ANTS-3745 — build_target_for: which target owns a
+            // source. A build question answered statically, so it
+            // sits with build_status rather than with the test
+            // runners below.
+            name == QLatin1String("build_target_for"))
+            return QStringLiteral("build");
+        // ANTS-1300 — test_results cache.
+        if (name == QLatin1String("test_results"))
+            return QStringLiteral("test");
+        // ANTS-1302 — focused_test (shares the test bucket).
+        if (name == QLatin1String("focused_test"))
+            return QStringLiteral("test");
+        // ANTS-4398 — mutation_probe (same bucket: it asks
+        // whether the tests measure anything).
+        if (name == QLatin1String("mutation_probe"))
+            return QStringLiteral("test");
+        // ANTS-1303 — symbol queries.
+        if (name == QLatin1String("find_definition") ||
+            name == QLatin1String("trace") ||   // ANTS-5734
+            name == QLatin1String("find_caller"))
+            return QStringLiteral("symbol");
+        // ANTS-1305 — shape matcher.
+        if (name == QLatin1String("similar_code"))
+            return QStringLiteral("pattern");
+        // ANTS-5787 — the readability shortlists.
+        if (name == QLatin1String("function_sizes") ||
+            name == QLatin1String("source_scrapes") ||   // ANTS-5602
+            name == QLatin1String("comment_claims") ||   // ANTS-5786
+            name == QLatin1String("duplicate_blocks"))   // ANTS-5785
+            return QStringLiteral("readability");
+        // ANTS-1306 — task-start context bundler.
+        if (name == QLatin1String("task_priors"))
+            return QStringLiteral("context");
+        // ANTS-1307 — task_type-scoped convention summary.
+        if (name == QLatin1String("project_conventions"))
+            return QStringLiteral("convention");
+        if (name.startsWith(QStringLiteral("get_")) ||
+            name == QLatin1String("tab_list") ||
+            // ANTS-1301 — reads terminal scrollback.
+            name == QLatin1String("recent_errors") ||
+            // ANTS-1312 — reads terminal selection.
+            name == QLatin1String("last_selection"))
+            return QStringLiteral("terminal");
+        if (name == QLatin1String("tool_info") ||
+            name == QLatin1String("token_usage") ||
+            name == QLatin1String("session_cost") ||  // ANTS-5698
+            name == QLatin1String("mcp_trace") ||
+            name == QLatin1String("caller_cwd_info"))
+            return QStringLiteral("meta");
+        return QStringLiteral("other");
+    };
+    QSet<QString> compactInjected;  // ANTS-4659, see below
+    for (int i = 0; i < tools.size(); ++i) {
+        QJsonObject t = tools[i].toObject();
+        const QString name =
+            t.value(QStringLiteral("name")).toString();
+        if (!t.contains(QStringLiteral("version"))) {
+            t[QStringLiteral("version")] = QStringLiteral("1.0");
+        }
+        if (!t.contains(QStringLiteral("typical_token_cost"))) {
+            const auto cost = tokenCostFor(name);
+            t[QStringLiteral("typical_token_cost")] = cost.first;
+            t[QStringLiteral("worst_case_tokens")]  = cost.second;
+        }
+        // ANTS-1518 — prepend `[<kind>] ` to description.
+        // Idempotent: skip if already starts with `[` so a
+        // hot-reload or repeated tools/list call doesn't
+        // double-prefix.
+        // ANTS-1568 — for etag-supporting tools, append a
+        // one-line "Etag tip" memo so a caller scanning the
+        // tools/list block sees WHEN to use the etag_match
+        // shortcut (the parameter doc explains WHAT it
+        // does; the memo explains the workflow). Idempotent
+        // sentinel: check for "Etag tip:" in the existing
+        // description to skip re-append on hot-reload.
         {
-            QJsonObject request = doc.object();
-            QString method = request.value("method").toString();
-            QJsonValue reqId = request.value("id");
-
-            // Build either `result` (success) or `error` (failure). The
-            // envelope ({jsonrpc, id, result/error}) is added at the end.
-            QJsonObject result;
-            QJsonObject error;
-            bool haveResult = false;
-
-            if (method == "initialize") {
-                // ANTS-1284 — reset per-tool dispatch counters on
-                // session-start handshake. See docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md.
-                // ANTS-3572 — fold the previous session into the persisted
-                // aggregate before clearing (endTokenSession emits first).
-                endTokenSession();
-                QJsonObject caps;
-                caps["tools"] = QJsonObject();
-                QJsonObject serverInfo;
-                serverInfo["name"] = m_serverName;  // ANTS-4932 — "ants-mcpd" there
-                serverInfo["version"] = QStringLiteral(ANTS_VERSION);
-                // ANTS-1952 — build identity so a caller can detect a
-                // ship-vs-live binary gap (same SemVer, rebuilt with a fix).
-                // SemVer alone can't distinguish it; the git SHA can. Lets a
-                // session compare against `git log` and flag "server predates
-                // commit X" instead of chasing stale telemetry (cf. the
-                // ANTS-1632/1903/1947 stale-binary investigations).
-                // ANTS-3582: ANTS_BUILD_* are extern const char[] (build_info_values.cpp),
-                // so read via fromLatin1 — not compile-time literals.
-                serverInfo["build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);
-                serverInfo["build_date"] = QString::fromLatin1(ANTS_BUILD_DATE);
-                serverInfo["build_time"] = QString::fromLatin1(ANTS_BUILD_TIME);
-                serverInfo["build_type"] = QString::fromLatin1(ANTS_BUILD_TYPE);
-                result["protocolVersion"] = "2025-11-25";
-                result["capabilities"] = caps;
-                result["serverInfo"] = serverInfo;
-                haveResult = true;
-            } else if (method == "tools/list") {
-                QJsonArray tools;
-
-                appendToolSchemasTerminal(tools);
-
-                appendToolSchemasCodeNav(tools);
-
-                appendToolSchemasDocs(tools);
-
-                appendToolSchemasOrientation(tools);
-                appendToolSchemasStore(tools);
-                // ANTS-5734 — trace: a symbol's definitions, callers,
-                // references, tests, documents, spec invariants and roadmap
-                // items in one call. Listed only by a process that registered
-                // it (INV-13): ants-mcpd does, the terminal cannot, since it
-                // does not link the parser. Every property the descriptor
-                // declares is read by trace::serve (ANTS-4621).
-                if (m_toolProviders.count(QStringLiteral("trace"))) {
-                    appendToolSchemasTrace(tools);
-                }
-                appendToolSchemasReports(tools);
-
-                // ANTS-1354 — default `version: "1.0"` on every tool
-                // descriptor unless one already set its own. SemVer-
-                // of-tools policy:
-                //   * MAJOR — wire-format break (response shape
-                //     changes incompatibly, arg semantics flip,
-                //     refusal-code dropped). Caller code that worked
-                //     against the previous MAJOR cannot be expected
-                //     to still parse.
-                //   * MINOR — additive change (new optional arg, new
-                //     response field, new opt-in flag). Old callers
-                //     keep working.
-                //   * PATCH — bug fix only; no observable schema
-                //     change.
-                // Bumping is per-tool: an additive change to
-                // `roadmap_query` (e.g. ANTS-1425 narrator opt-in)
-                // bumps `roadmap_query.version` to "1.1" without
-                // touching siblings. Callers dispatch on this field
-                // to decide whether their parsing path still applies.
-                //
-                // ANTS-1505 — per-tool budget hints. `typical_token_cost`
-                // is the token count a caller should expect on the
-                // common path; `worst_case_tokens` is the cap a fresh
-                // call against a large project might hit (after
-                // pagination + truncate). Both are conservative
-                // estimates rounded to ≤2 sig-fig; they're hints, not
-                // contracts. Callers can use them to size cold-start
-                // discovery or to decide between two tools that
-                // expose overlapping data.
-                auto tokenCostFor = [](const QString &name)
-                        -> std::pair<int, int> {
-                    // Buckets: (typical, worst). A verb with no row takes
-                    // the default below, an estimate nobody measured.
-                    static const QHash<QString, std::pair<int, int>> kCosts = {
-                        // Control-plane / cheap fixed responses.
-                        {QStringLiteral("get_session_info"),  {100,  400}},
-                        {QStringLiteral("get_cwd"),           {80,   200}},
-                        {QStringLiteral("caller_cwd_info"),   {150,  400}},
-                        {QStringLiteral("tab_list"),          {200,  800}},
-                        {QStringLiteral("tool_info"),         {500,  2000}},
-                        {QStringLiteral("token_usage"),       {600,  2500}},
-                        {QStringLiteral("mcp_trace"),         {800,  3000}},
-                        // Terminal-state reads.
-                        {QStringLiteral("get_last_command"),  {600,  3000}},
-                        {QStringLiteral("get_environment"),   {300,  800}},
-                        {QStringLiteral("get_scrollback"),    {1500, 8000}},
-                        {QStringLiteral("get_text"),          {1200, 6000}},
-                        // Scrollback error extraction (ANTS-1301).
-                        {QStringLiteral("recent_errors"),     {800,  4000}},
-                        // Selection read-through (ANTS-1312).
-                        {QStringLiteral("last_selection"),    {200,  2000}},
-                        // Topic-to-files discovery (ANTS-1636).
-                        {QStringLiteral("find_sources"),      {600,  3500}},
-                        // Documentation map (ANTS-2139): summary is the
-                        // ~80 B/doc light list; topic/doc_path bodies smaller.
-                        {QStringLiteral("docs_index"),        {800,  6000}},
-                        // ANTS-3601 — doc_integrity: findings list, usually
-                        // small (most docs are clean); grows with breakage.
-                        {QStringLiteral("doc_integrity"),     {500,  4000}},
-                        // ANTS-3636 — doc_citations: one entry per citation
-                        // plus its text; a dense spec is the upper end.
-                        {QStringLiteral("doc_citations"),     {900,  8000}},
-                        // ANTS-3661 — doc_symbols: one entry per candidate
-                        // occurrence across the walked corpus.
-                        {QStringLiteral("doc_symbols"),       {900,  8000}},
-                        // ANTS-3662 — spec_lint: findings are sparse on a
-                        // conforming corpus; line_count adds one row per spec.
-                        {QStringLiteral("spec_lint"),         {600,  5000}},
-                        // ANTS-4108 — spec_conformance: findings are sparse,
-                        // but observations[] is one row per executed case, so
-                        // the ceiling scales with max_cases rather than defects.
-                        {QStringLiteral("spec_conformance"),  {700,  9000}},
-                        // ANTS-3660 — doc_dedup: one entry per pair PLUS one
-                        // per cluster, and a corpus-wide walk is the upper end
-                        // (measured: 275 pairs / 128 clusters over docs/).
-                        {QStringLiteral("doc_dedup"),         {1200, 12000}},
-                        // ANTS-3663 — doc_lint composes all six checkers, so
-                        // its ceiling is their union over one walk; max_findings
-                        // is what a caller bounds it with.
-                        {QStringLiteral("doc_lint"),          {1500, 16000}},
-                        // Repo / docs.
-                        {QStringLiteral("roadmap_query"),     {1700, 12000}},
-                        {QStringLiteral("roadmap_log"),       {200,  600}},
-                        // ANTS-3855 — roadmap_migrate: counts + a bounded
-                        // notes[] (default 200 entries), no roadmap text echoed
-                        // back. The upper end is a corpus project whose source
-                        // raises the note cap.
-                        {QStringLiteral("roadmap_migrate"),   {300,  4000}},
-                        {QStringLiteral("project_layout"),    {600,  2000}},
-                        // ANTS-2161 — project_settings: small detect/write envelope.
-                        {QStringLiteral("project_settings"),  {300,  1500}},
-                        // ANTS-2093 — project_query: aggregate answer, occasionally
-                        // a small list; result_cap_bytes (64 KiB default) bounds it.
-                        {QStringLiteral("project_query"),     {400,  4000}},
-                        {QStringLiteral("session_memory"),    {200,  1000}},
-                        // ANTS-1883 — composer of three large reads + ANTS-1922
-                        // active_bullets (top-20 headline_only, ~2 KB); bucket
-                        // = sum of constituents' worst case + bullet overhead.
-                        {QStringLiteral("session_orient"),    {2500, 17000}},
-                        {QStringLiteral("workflow_state"),    {200,  1000}},
-                        {QStringLiteral("workspace_search"),  {1500, 10000}},
-                        {QStringLiteral("file_outline"),      {800,  4000}},
-                        {QStringLiteral("git_state"),         {700,  4000}},
-                        {QStringLiteral("subsystem"),         {400,  1500}},
-                        // Plan + verify.
-                        {QStringLiteral("verify_changes"),    {600,  3000}},
-                        // Audit suite.
-                        {QStringLiteral("audit_run"),         {4000, 25000}},
-                        {QStringLiteral("last_audit_summary"),{600,  2500}},
-                        // Cold-eyes.
-                        {QStringLiteral("cold_eyes_partition"),    {1000, 4000}},
-                        {QStringLiteral("cold_eyes_brief"),        {1500, 6000}},
-                        // Indie-review.
-                        {QStringLiteral("indie_review_partition"),    {1500, 6000}},
-                        {QStringLiteral("indie_review_corroborate"),  {1500, 6000}},
-                        {QStringLiteral("indie_review_dispatch"),     {3000, 12000}},
-                        // Test-audit.
-                        {QStringLiteral("test_audit_partition"),       {1500, 6000}},
-                        {QStringLiteral("test_audit_brief"),           {2000, 8000}},
-                        // Spec-aware (ANTS-1309 + ANTS-1308).
-                        {QStringLiteral("spec_query"),         {500,  2500}},
-                        {QStringLiteral("invariant_check"),    {800,  4000}},
-                        // Build/test cache (ANTS-1299 + ANTS-1300).
-                        {QStringLiteral("build_status"),       {500,  2000}},
-                        {QStringLiteral("test_results"),       {800,  3000}},
-                        // Symbol queries (ANTS-1303).
-                        {QStringLiteral("find_definition"),    {600,  2500}},
-                        {QStringLiteral("find_caller"),        {800,  4000}},
-                        // Shape matcher (ANTS-1305).
-                        {QStringLiteral("similar_code"),       {600,  2500}},
-                        // Task-start context composers (ANTS-1306 + ANTS-1307).
-                        {QStringLiteral("task_priors"),        {1200, 6000}},
-                        {QStringLiteral("project_conventions"),{400,  1500}},
-                        // Focused test runner (ANTS-1302).
-                        {QStringLiteral("focused_test"),       {800,  4000}},
-                        // ANTS-3745 — build_target_for: one small envelope,
-                        // a CMake parse and at most two file reads.
-                        {QStringLiteral("build_target_for"),   {300,  1200}},
-                    };
-                    const auto it = kCosts.find(name);
-                    if (it != kCosts.end()) return it.value();
-                    return {500, 2500};  // conservative default
-                };
-                // ANTS-1518 — discoverability prefix-tag. Defined here
-                // (outer tools/list scope) so both the post-build loop
-                // and the lite-shape branch reuse the same mapping.
-                // Same kind-buckets the lite-shape kind: field uses,
-                // emitted as a `[<kind>] ` prefix on every full-shape
-                // description so a session surfacing tools/list can
-                // grep by surface family without parsing every
-                // descriptor.
-                // ANTS-1567 — every tool has a non-"other" prefix, named
-                // after the surface family a session would grep tools/list
-                // for. `mcp-state` is server-side per-cwd state, and
-                // `caller_cwd_info` is `meta`: a diagnostic, not a pty read.
-                auto kindForName = [](const QString &name) -> QString {
-                    if (name.startsWith(QStringLiteral("cold_eyes_")))
-                        return QStringLiteral("cold-eyes");
-                    if (name.startsWith(QStringLiteral("indie_review_")))
-                        return QStringLiteral("indie-review");
-                    if (name.startsWith(QStringLiteral("test_audit_")))
-                        return QStringLiteral("test-audit");
-                    if (name.startsWith(QStringLiteral("roadmap_")))
-                        return QStringLiteral("roadmap");
-                    // ANTS-1548 — changelog_log (writer) + ANTS-3533
-                    // changelog_query (reader) are the CHANGELOG siblings
-                    // of the roadmap family.
-                    if (name.startsWith(QStringLiteral("changelog_")))
-                        return QStringLiteral("roadmap");
-                    if (name == QLatin1String("audit_run") ||
-                        name == QLatin1String("last_audit_summary") ||
-                        // ANTS-3396 — audit_poll: poll an async audit_run job.
-                        name == QLatin1String("audit_poll") ||
-                        // ANTS-2129 — audit_falsepos_log: write side of the
-                        // false-positive ledger, audit-family.
-                        name == QLatin1String("audit_falsepos_log") ||
-                        // ANTS-1713 — audit_dismiss: write side of the
-                        // fingerprint-keyed learned-FP ledger.
-                        name == QLatin1String("audit_dismiss"))
-                        return QStringLiteral("audit");
-                    if (name == QLatin1String("verify_changes"))
-                        return QStringLiteral("verify");
-                    if (name == QLatin1String("git_state"))
-                        return QStringLiteral("git");
-                    if (name == QLatin1String("workspace_search") ||
-                        // ANTS-3716 — cited_by: caller_cwd-Required,
-                        // path-validated tree search (workspace_search family,
-                        // whose rg runner it shares).
-                        name == QLatin1String("cited_by") ||
-                        name == QLatin1String("file_outline") ||
-                        // ANTS-1855 — read_log: caller_cwd-Required,
-                        // path-validated file reader (file_outline family).
-                        name == QLatin1String("read_log") ||
-                        // ANTS-2021 — read_region: caller_cwd-Required,
-                        // path-validated slice reader (file_outline family).
-                        name == QLatin1String("read_region") ||
-                        // ANTS-2219 — read_regions: batched slice reader.
-                        name == QLatin1String("read_regions") ||
-                        // ANTS-2094 — read_spill: re-read an offloaded result
-                        // by content-addressed handle (global cache reader).
-                        name == QLatin1String("read_spill") ||
-                        // ANTS-2022 — apply_edits: caller_cwd-Required,
-                        // path-validated batch file editor (workspace write).
-                        name == QLatin1String("apply_edits") ||
-                        // ANTS-1636 — find_sources: project-scoped
-                        // src/+tests/ topic walker.
-                        name == QLatin1String("find_sources") ||
-                        // ANTS-3368 — co_change_family: project-scoped
-                        // repo-wide co-change site scan.
-                        name == QLatin1String("co_change_family") ||
-                        // ANTS-1637 — codebase_index: project-scoped
-                        // structural-map reader.
-                        name == QLatin1String("codebase_index") ||
-                        // ANTS-2139 — docs_index: project-scoped
-                        // documentation-map reader.
-                        name == QLatin1String("docs_index") ||
-                        // ANTS-3601 — doc_integrity: project-scoped
-                        // doc-consistency reader.
-                        name == QLatin1String("doc_integrity") ||
-                        // ANTS-3636 — doc_citations: project-scoped
-                        // citation-resolution reader, doc_integrity's sibling.
-                        name == QLatin1String("doc_citations") ||
-                        // ANTS-5502 — quotation_check: does each quoted
-                        // sentence occur in the file it names.
-                        name == QLatin1String("quotation_check") ||
-                        name == QLatin1String("version_check") ||   // ANTS-5510
-                        name == QLatin1String("dependency_inventory") ||   // ANTS-5515
-                        name == QLatin1String("ci_report") ||   // ANTS-6399
-                        name == QLatin1String("doc_symbols") ||
-                        name == QLatin1String("spec_lint") ||   // ANTS-3662
-                        // ANTS-4108 — spec_conformance: spec_lint's executable
-                        // sibling; same project-scoped document reader family.
-                        name == QLatin1String("spec_conformance") ||
-                        name == QLatin1String("doc_dedup") ||   // ANTS-3660
-                        name == QLatin1String("doc_lint") ||    // ANTS-3663
-                        // ANTS-2161 — project_settings: project-scoped
-                        // layout-config detect + create/update.
-                        name == QLatin1String("project_settings") ||
-                        // ANTS-2093 — project_query: project-scoped read
-                        // (runs a sandboxed snippet over caller_cwd's files).
-                        name == QLatin1String("project_query") ||
-                        name == QLatin1String("project_layout") ||
-                        name == QLatin1String("subsystem") ||
-                        // ANTS-1883 — session_orient bundles the
-                        // session-start state + project_layout + roadmap
-                        // section_index; same workspace family.
-                        name == QLatin1String("session_orient"))
-                        return QStringLiteral("workspace");
-                    if (name == QLatin1String("session_memory") ||
-                            // ANTS-4622 — session_message is the cross-SESSION
-                            // half of the same question session_memory answers
-                            // within one: what survives this session. Bucketed
-                            // together so a catalogue reader finds both.
-                            name == QLatin1String("session_message") ||
-                            // ANTS-6310 — what survives every session, on
-                            // every project.
-                            name == QLatin1String("know_how") ||
-                            name == QLatin1String("workflow_state") ||
-                            // ANTS-5299 — run_trace records what a review
-                            // run did, for the sessions after it.
-                            name == QLatin1String("run_trace"))
-                        return QStringLiteral("mcp-state");
-                    // ANTS-1735 — model_switch_stats: autonomous
-                    // model-switcher effectiveness scorecard.
-                    if (name == QLatin1String("model_switch_stats"))
-                        return QStringLiteral("model");
-                    // ANTS-1309 + ANTS-1308 + ANTS-1963 — spec-aware
-                    // tools (spec_log is the write sibling of spec_query).
-                    if (name == QLatin1String("spec_query") ||
-                        name == QLatin1String("invariant_check") ||
-                        name == QLatin1String("spec_log"))
-                        return QStringLiteral("spec");
-                    // ANTS-1961 / ANTS-1962 — cross-session feedback-file
-                    // read + write verbs.
-                    if (name == QLatin1String("feedback_query") ||
-                        name == QLatin1String("feedback_log"))
-                        return QStringLiteral("feedback");
-                    // ANTS-1299 — build_status cache.
-                    if (name == QLatin1String("build_status") ||
-                        // ANTS-3745 — build_target_for: which target owns a
-                        // source. A build question answered statically, so it
-                        // sits with build_status rather than with the test
-                        // runners below.
-                        name == QLatin1String("build_target_for"))
-                        return QStringLiteral("build");
-                    // ANTS-1300 — test_results cache.
-                    if (name == QLatin1String("test_results"))
-                        return QStringLiteral("test");
-                    // ANTS-1302 — focused_test (shares the test bucket).
-                    if (name == QLatin1String("focused_test"))
-                        return QStringLiteral("test");
-                    // ANTS-4398 — mutation_probe (same bucket: it asks
-                    // whether the tests measure anything).
-                    if (name == QLatin1String("mutation_probe"))
-                        return QStringLiteral("test");
-                    // ANTS-1303 — symbol queries.
-                    if (name == QLatin1String("find_definition") ||
-                        name == QLatin1String("trace") ||   // ANTS-5734
-                        name == QLatin1String("find_caller"))
-                        return QStringLiteral("symbol");
-                    // ANTS-1305 — shape matcher.
-                    if (name == QLatin1String("similar_code"))
-                        return QStringLiteral("pattern");
-                    // ANTS-5787 — the readability shortlists.
-                    if (name == QLatin1String("function_sizes") ||
-                        name == QLatin1String("source_scrapes") ||   // ANTS-5602
-                        name == QLatin1String("comment_claims") ||   // ANTS-5786
-                        name == QLatin1String("duplicate_blocks"))   // ANTS-5785
-                        return QStringLiteral("readability");
-                    // ANTS-1306 — task-start context bundler.
-                    if (name == QLatin1String("task_priors"))
-                        return QStringLiteral("context");
-                    // ANTS-1307 — task_type-scoped convention summary.
-                    if (name == QLatin1String("project_conventions"))
-                        return QStringLiteral("convention");
-                    if (name.startsWith(QStringLiteral("get_")) ||
-                        name == QLatin1String("tab_list") ||
-                        // ANTS-1301 — reads terminal scrollback.
-                        name == QLatin1String("recent_errors") ||
-                        // ANTS-1312 — reads terminal selection.
-                        name == QLatin1String("last_selection"))
-                        return QStringLiteral("terminal");
-                    if (name == QLatin1String("tool_info") ||
-                        name == QLatin1String("token_usage") ||
-                        name == QLatin1String("session_cost") ||  // ANTS-5698
-                        name == QLatin1String("mcp_trace") ||
-                        name == QLatin1String("caller_cwd_info"))
-                        return QStringLiteral("meta");
-                    return QStringLiteral("other");
-                };
-                QSet<QString> compactInjected;  // ANTS-4659, see below
-                for (int i = 0; i < tools.size(); ++i) {
-                    QJsonObject t = tools[i].toObject();
-                    const QString name =
-                        t.value(QStringLiteral("name")).toString();
-                    if (!t.contains(QStringLiteral("version"))) {
-                        t[QStringLiteral("version")] = QStringLiteral("1.0");
-                    }
-                    if (!t.contains(QStringLiteral("typical_token_cost"))) {
-                        const auto cost = tokenCostFor(name);
-                        t[QStringLiteral("typical_token_cost")] = cost.first;
-                        t[QStringLiteral("worst_case_tokens")]  = cost.second;
-                    }
-                    // ANTS-1518 — prepend `[<kind>] ` to description.
-                    // Idempotent: skip if already starts with `[` so a
-                    // hot-reload or repeated tools/list call doesn't
-                    // double-prefix.
-                    // ANTS-1568 — for etag-supporting tools, append a
-                    // one-line "Etag tip" memo so a caller scanning the
-                    // tools/list block sees WHEN to use the etag_match
-                    // shortcut (the parameter doc explains WHAT it
-                    // does; the memo explains the workflow). Idempotent
-                    // sentinel: check for "Etag tip:" in the existing
-                    // description to skip re-append on hot-reload.
-                    {
-                        QString desc =
-                            t.value(QStringLiteral("description")).toString();
-                        if (!desc.startsWith(QLatin1Char('['))) {
-                            desc = QStringLiteral("[%1] %2")
-                                       .arg(kindForName(name), desc);
-                        }
-                        if (isEtagSupportedTool(name) &&
-                            !desc.contains(QStringLiteral("Etag tip:"))) {
-                            desc += QStringLiteral(
-                                " Etag tip: cache the returned `etag` "
-                                "field and pass it back via `etag_match` "
-                                "on subsequent calls in the same session "
-                                "— saves a full re-emit when the "
-                                "underlying file hasn't changed "
-                                "(ANTS-1499 \"304 Not Modified\" pattern).");
-                        }
-                        // One carve-out, about what the verb DOES rather than
-                        // who calls it:
-                        // indie_review_dispatch POSTs each lane to the
-                        // project's configured AI endpoint (default
-                        // "llama3"). Its own text says where the request
-                        // goes; it does not say the trade-off is review
-                        // quality, which is the part a caller choosing a
-                        // verb needs. Idempotent sentinel.
-                        if (name == QLatin1String("indie_review_dispatch")
-                            && !desc.contains(
-                                   QStringLiteral("Weaker reviewer:"))) {
-                            desc += QStringLiteral(
-                                " Weaker reviewer: this reviews on the "
-                                "configured local endpoint, NOT on Claude "
-                                "subagents — a different and weaker "
-                                "reviewer, not a cheaper route to the same "
-                                "review. /indie-review keeps its own "
-                                "fan-out for that reason; reach for this "
-                                "only when the local model is what you "
-                                "want (global CLAUDE.md §18).");
-                        }
-                        t[QStringLiteral("description")] = desc;
-                    }
-                    // ANTS-1520 — keep the JSON-schema `required[]`
-                    // array in sync with the dispatcher's contract.
-                    // For every Required-contract tool, ensure
-                    // `caller_cwd` is in `inputSchema.required`. Saves
-                    // touching ~25 tool-registration blocks individually
-                    // and stays in lockstep with callerCwdContractFor
-                    // automatically. Idempotent: skips when already
-                    // listed (most existing Required tools already
-                    // append it explicitly).
-                    if (callerCwdContractFor(name) ==
-                        CallerCwdContract::Required) {
-                        QJsonObject schema =
-                            t.value(QStringLiteral("inputSchema"))
-                             .toObject();
-                        // Guard: only inject when the schema actually
-                        // declares `properties.caller_cwd`. A `required`
-                        // entry without a matching property would
-                        // produce an invalid JSON schema and Zod
-                        // validators on the consuming side reject the
-                        // whole tools/list response. Most Required-
-                        // contract tools declare the property via
-                        // `makeCallerCwdReadProp`, some by hand; this
-                        // guard covers a registration that skipped it.
-                        const QJsonObject props =
-                            schema.value(QStringLiteral("properties"))
-                                  .toObject();
-                        if (props.contains(
-                                QStringLiteral("caller_cwd"))) {
-                            QJsonArray req =
-                                schema.value(QStringLiteral("required"))
-                                      .toArray();
-                            bool already = false;
-                            for (const auto &rv : std::as_const(req)) {
-                                if (rv.toString() ==
-                                    QStringLiteral("caller_cwd")) {
-                                    already = true;
-                                    break;
-                                }
-                            }
-                            if (!already) {
-                                req.append(QStringLiteral("caller_cwd"));
-                                schema[QStringLiteral("required")] = req;
-                                t[QStringLiteral("inputSchema")] = schema;
-                            }
-                        }
-                    }
-                    // ANTS-4524 — `fields=` is universal, so DECLARE it
-                    // universally. The dispatcher projects for every verb now;
-                    // an undeclared property is the other half of the same
-                    // defect, and it shipped once already (ANTS-4624): a
-                    // strict client has no type to marshal to, the argument
-                    // arrives as a string, `fv.isArray()` is false and the
-                    // narrowing is skipped in silence. Injected here rather
-                    // than by ~150 hand-written schema lines, for the reason
-                    // the caller_cwd block above gives: one site cannot drift
-                    // from the dispatcher. Idempotent — a verb declaring its
-                    // own richer `fields` description keeps it, so this adds
-                    // the property only where it is missing, with a terse
-                    // description because ~150 copies of the full one is real
-                    // wire cost on tools/list.
-                    {
-                        QJsonObject schema =
-                            t.value(QStringLiteral("inputSchema")).toObject();
-                        if (!schema.isEmpty()) {
-                            QJsonObject props =
-                                schema.value(QStringLiteral("properties"))
-                                      .toObject();
-                            if (!props.contains(QStringLiteral("fields"))) {
-                                QJsonObject p;
-                                p[QStringLiteral("type")] =
-                                    QStringLiteral("array");
-                                QJsonObject items;
-                                items[QStringLiteral("type")] =
-                                    QStringLiteral("string");
-                                p[QStringLiteral("items")] = items;
-                                p[QStringLiteral("description")] =
-                                    QStringLiteral(
-                                        "Optional. Return only these top-level "
-                                        "response fields; names the envelope "
-                                        "does not carry are listed in "
-                                        "`fields_unmatched`, alongside "
-                                        "`fields_available` — the keys it does "
-                                        "carry, so a misspelling is visible "
-                                        "rather than inferred (ANTS-4930). "
-                                        "Honoured by every verb (ANTS-4524).");
-                                props[QStringLiteral("fields")] = p;
-                                schema[QStringLiteral("properties")] = props;
-                                t[QStringLiteral("inputSchema")] = schema;
-                            }
-                        }
-                    }
-                    // ANTS-4659 — `compact` is universal too, and declared
-                    // here for the reason `fields` is. Kept off the wire for
-                    // an always-loaded verb (kWireHidden below).
-                    {
-                        QJsonObject schema =
-                            t.value(QStringLiteral("inputSchema")).toObject();
-                        QJsonObject props =
-                            schema.value(QStringLiteral("properties")).toObject();
-                        if (!schema.isEmpty() &&
-                            !props.contains(QStringLiteral("compact"))) {
-                            props[QStringLiteral("compact")] = QJsonObject{
-                                {QStringLiteral("type"), QStringLiteral("boolean")},
-                                {QStringLiteral("description"), QStringLiteral(
-                                    "Drop null, false and empty fields from "
-                                    "the reply.")}};
-                            schema[QStringLiteral("properties")] = props;
-                            t[QStringLiteral("inputSchema")] = schema;
-                            compactInjected.insert(
-                                t.value(QStringLiteral("name")).toString());
-                        }
-                    }
-                    // ANTS-2158 — exempt the highest-frequency verbs from
-                    // Claude Code's MCP tool-search DEFERRAL so they are
-                    // callable without a ToolSearch round-trip (the
-                    // "deferred-schema tax" that nudged sessions back to raw
-                    // grep/Read/Edit). Honoured by Claude Code v2.1.121+ via
-                    // the tool's `_meta`; older clients ignore the field
-                    // (graceful). The set is small on purpose — each
-                    // always-loaded tool costs context in every session, so
-                    // only the verbs that most directly replace the
-                    // always-loaded Bash grep / Read. The roadmap and
-                    // changelog writers are not in it: their schemas are
-                    // large and most sessions call them rarely.
-                    // See docs/standards/mcp-behavioural-notes.md.
-                    static const QSet<QString> kEagerVerbs = {
-                        QStringLiteral("workspace_search"),
-                        QStringLiteral("find_definition"),
-                        // ANTS-5734 § 2.8 — listed only where registered.
-                        QStringLiteral("trace"),
-                        QStringLiteral("file_outline"),
-                        QStringLiteral("read_region"),
-                    };
-                    if (kEagerVerbs.contains(
-                            t.value(QStringLiteral("name")).toString())) {
-                        QJsonObject meta =
-                            t.value(QStringLiteral("_meta")).toObject();
-                        meta[QStringLiteral("anthropic/alwaysLoad")] = true;
-                        t[QStringLiteral("_meta")] = meta;
-                    }
-                    tools.replace(i, t);
-                }
-
-                // ANTS-1399-INV-2 — snapshot for tool_info to read from
-                // without re-running the array build. Descriptors are
-                // built from compile-time literals so the snapshot
-                // never goes stale in practice. Snapshot the FULL
-                // tools array before any lite-shape transform so a
-                // tools/list-lite client can still drill in via
-                // tool_info(name) for the full schema.
-                m_lastToolsList = tools;
-
-                // ANTS-2175 — cache each verb's declared inputSchema property
-                // names so the tools/call dispatcher can refuse a call naming
-                // one the verb does not declare (ANTS-4659). Rebuilt in lockstep
-                // with the snapshot above so it can never go stale; the schema
-                // is compile-time-literal so this fires ~once per session.
-                // Derived from the FULL array (pre-detail-strip) — the strip
-                // only touches `description`, not `inputSchema`.
-                m_toolParamKeys.clear();
-                m_toolParamSchemas.clear();
-                for (const auto &v : std::as_const(tools)) {
-                    const QJsonObject t = v.toObject();
-                    const QString name =
-                        t.value(QStringLiteral("name")).toString();
-                    if (name.isEmpty()) continue;
-                    const QJsonObject props =
-                        t.value(QStringLiteral("inputSchema")).toObject()
-                         .value(QStringLiteral("properties")).toObject();
-                    QSet<QString> keys;
-                    for (auto pit = props.constBegin();
-                         pit != props.constEnd(); ++pit)
-                        keys.insert(pit.key());
-                    m_toolParamKeys.insert(name, keys);
-                    m_toolParamSchemas.insert(name, props);
-                }
-
-                // ANTS-5506 — doc_lint's doc_facts reads this map from a
-                // dispatch worker, so it gets a COPY published under a mutex
-                // rather than m_toolParamKeys itself (GUI-thread-only,
-                // ANTS-5072). The set is what a call may pass without being
-                // refused: schema properties, the universal
-                // dispatch args, and the conditional ones this verb honours.
-                {
-                    QHash<QString, QSet<QString>> published;
-                    for (auto kit = m_toolParamKeys.cbegin();
-                         kit != m_toolParamKeys.cend(); ++kit) {
-                        QSet<QString> accepted = kit.value();
-                        accepted.insert(QStringLiteral("caller_cwd"));
-                        accepted.insert(QStringLiteral("encoding"));
-                        accepted.insert(QStringLiteral("fields"));
-                        accepted.unite(honouredDispatchArgs(kit.key()));
-                        published.insert(kit.key(), accepted);
-                    }
-                    QMutexLocker lock(&m_verbArgsMutex);
-                    m_verbArgsPublished = std::move(published);
-                }
-
-                // ANTS-2079 — strip per-op `detail` from the wire payload;
-                // the snapshot above retains it so tool_info can serve it on
-                // demand. QJsonArray is copy-on-write: mutating `tools` here
-                // detaches it, leaving m_lastToolsList intact. A one-line
-                // pointer is appended to `description` so a session reading
-                // tools/list knows where the full prose lives. Runs before
-                // both the lite branch and the full-shape send so neither
-                // wire shape carries `detail`.
-                for (int i = 0; i < tools.size(); ++i) {
-                    QJsonObject t = tools.at(i).toObject();
-                    if (t.contains(QStringLiteral("detail"))) {
-                        t.remove(QStringLiteral("detail"));
-                        t[QStringLiteral("description")] =
-                            t.value(QStringLiteral("description")).toString()
-                            + QStringLiteral(
-                                  " Full per-op detail via tool_info "
-                                  "{name:\"%1\"}.")
-                                  .arg(t.value(QStringLiteral("name"))
-                                           .toString());
-                        tools.replace(i, t);
-                    }
-                }
-
-                // ANTS-5628 — an always-loaded verb's schema is paid for by
-                // every session at start, so on the wire each of its argument
-                // descriptions becomes a one-line summary. The snapshot above
-                // keeps the full text, and tool_info {name} serves it, which
-                // the description's pointer already names. Keyed by
-                // "verb/arg" first, then by "arg" for the arguments those
-                // verbs share. A summary is used only where it is shorter;
-                // an argument with no entry keeps its own text.
-                {
-                    static const QHash<QString, QString> kArgSummary = {
-                        {QStringLiteral("caller_cwd"), QStringLiteral("Your $PWD (required); picks the project.")},
-                        {QStringLiteral("compact"), QStringLiteral("Drop null, false and empty fields from the reply.")},
-                        {QStringLiteral("encoding"), QStringLiteral("\"tabular\" packs object arrays as {__cols__, __rows__}; default \"json\".")},
-                        {QStringLiteral("etag_match"), QStringLiteral("Etag from an earlier call with the same arguments; an unchanged result returns {unchanged:true}.")},
-                        {QStringLiteral("fields"), QStringLiteral("Return only these top-level reply fields.")},
-                        {QStringLiteral("raw"), QStringLiteral("Return the file text verbatim; use it when you will Edit from the output.")},
-                        {QStringLiteral("workspace_search/context"), QStringLiteral("Lines of context around each match (0-10).")},
-                        {QStringLiteral("workspace_search/count_only"), QStringLiteral("Return only the match and file counts.")},
-                        {QStringLiteral("workspace_search/dedup"), QStringLiteral("Fold identical lines into one match with also_at (default true).")},
-                        {QStringLiteral("workspace_search/enclosing_symbol"), QStringLiteral("Name the function each match is inside.")},
-                        {QStringLiteral("workspace_search/exclude_glob"), QStringLiteral("Glob or globs to leave out, written positively (\"docs/**\").")},
-                        {QStringLiteral("workspace_search/files_only"), QStringLiteral("Return only the matching files, with hit counts.")},
-                        {QStringLiteral("workspace_search/glob"), QStringLiteral("One inclusion glob, e.g. \"*.cpp\" or \"docs/{a,b}.md\".")},
-                        {QStringLiteral("workspace_search/headline_only"), QStringLiteral("Rows as {file, line, headline}, without context.")},
-                        {QStringLiteral("workspace_search/lane"), QStringLiteral("Subdirectory to search, e.g. \"src\".")},
-                        {QStringLiteral("workspace_search/match_wrapped"), QStringLiteral("Match a literal quotation across hard line wraps.")},
-                        {QStringLiteral("workspace_search/matches_only"), QStringLiteral("Return the distinct matched strings, with counts.")},
-                        {QStringLiteral("workspace_search/max_bytes"), QStringLiteral("Reply size cap in bytes (default 512 KiB).")},
-                        {QStringLiteral("workspace_search/multiline"), QStringLiteral("Let a regex cross line breaks; write the break as \\n or \\s+.")},
-                        {QStringLiteral("workspace_search/max_match_bytes"), QStringLiteral("Clip each match's text to N bytes (default 512; 0 = no clip).")},
-                        {QStringLiteral("workspace_search/offset"), QStringLiteral("Skip the first N matches; pass back next_offset to page.")},
-                        {QStringLiteral("workspace_search/query"), QStringLiteral("Alias for pattern.")},
-                        {QStringLiteral("workspace_search/respect_gitignore"), QStringLiteral("false also searches ignored files.")},
-                        {QStringLiteral("workspace_search/timeout_sec"), QStringLiteral("ripgrep time budget in seconds (1-30, default 5).")},
-                        {QStringLiteral("file_outline/etags"), QStringLiteral("{path: etag} for the paths form; an unchanged file returns a stub.")},
-                        {QStringLiteral("file_outline/filter"), QStringLiteral("Keep only symbols whose name contains this text.")},
-                        {QStringLiteral("file_outline/max_bytes"), QStringLiteral("Reply size cap in bytes (default 512 KiB).")},
-                        {QStringLiteral("file_outline/max_heading_level"), QStringLiteral("Markdown: drop headings deeper than this level.")},
-                        {QStringLiteral("file_outline/max_symbols"), QStringLiteral("Cap on symbols[] (default 200).")},
-                        {QStringLiteral("file_outline/paths"), QStringLiteral("Several paths in one call; returns files[].")},
-                        {QStringLiteral("file_outline/sizes"), QStringLiteral("Add bytes and lines to each symbol.")},
-                        {QStringLiteral("read_region/call_sequence"), QStringLiteral("Also return the region's calls in order, and the accessors it uses.")},
-                        {QStringLiteral("read_region/max_line_bytes"), QStringLiteral("Clip each line to N bytes.")},
-                        {QStringLiteral("read_region/section"), QStringLiteral("Markdown heading text or slug; returns that section.")},
-                        {QStringLiteral("find_definition/include_body"), QStringLiteral("Return each definition's body inline.")},
-                        {QStringLiteral("workspace_search/include_generated"), QStringLiteral("true also searches files the project marks as generated.")},
-                        {QStringLiteral("workspace_search/include_hidden"), QStringLiteral("Also search dotfile paths (never .git/).")},
-                        {QStringLiteral("file_outline/path"), QStringLiteral("File path, repo-relative or absolute, under the project.")},
-                        {QStringLiteral("read_region/start_line"), QStringLiteral("1-based first line.")},
-                        {QStringLiteral("read_region/end_line"), QStringLiteral("1-based last line, inclusive (default start_line).")},
-                        {QStringLiteral("read_region/symbol"), QStringLiteral("Return this symbol's body.")},
-                        {QStringLiteral("read_region/tail_lines"), QStringLiteral("With section: only its last N lines.")},
-                        {QStringLiteral("read_region/max_bytes"), QStringLiteral("Cap on lines[] bytes (default 512 KiB); keeps the head.")},
-                        {QStringLiteral("find_definition/lang"), QStringLiteral("One language family; auto (default) scans all.")},
-                        {QStringLiteral("find_definition/max_results"), QStringLiteral("Cap on definitions[] (default 50).")},
-                        {QStringLiteral("find_definition/lane"), QStringLiteral("Only scan this project-relative folder, e.g. \"src/render\".")},
-                    };
-                    static const QSet<QString> kSharedArgs = {
-                        QStringLiteral("fields"), QStringLiteral("compact"),
-                        QStringLiteral("encoding"), QStringLiteral("etag_match"),
-                    };
-                    // ANTS-5694 — the always-loaded verbs' own descriptions: the
-                    // purpose, the one usage trap, and (on the two etag
-                    // verbs) a one-line Etag tip. The kind prefix and the
-                    // tool_info pointer are added below, as on every verb.
-                    static const QHash<QString, QString> kEagerDescription = {
-                        {QStringLiteral("workspace_search"), QStringLiteral("Search a project for a literal string, or a regex with regex:true; use instead of Bash grep -r. ONE pattern, not AND-ed words. caller_cwd picks the tree (any directory). Returns matches[{file, line, text}]. Holding a symbol name? find_caller or trace is cheaper.")},
-                        {QStringLiteral("find_definition"), QStringLiteral("Find where a symbol is defined (C++, Python, Lua, Shell, GLSL) instead of grep + Read. Returns definitions[{file, line, signature, kind}]; kind is definition, declaration or local.")},
-                        {QStringLiteral("file_outline"), QStringLiteral("Outline a file (header comment + symbols {line, kind, name, signature}) instead of a full Read; paths:[...] outlines several. caller_cwd required, or \"~global\". Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
-                        {QStringLiteral("read_region"), QStringLiteral("Return an exact slice of a file instead of a Read: a line range, a symbol's body, or a markdown section; exactly one. Several: read_regions. caller_cwd required, or \"~global\" for ~/.claude/. Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
-                    };
-                    // ANTS-5271 — the five largest schemas are deferred, but a
-                    // session that loads one carries it to the end, and most
-                    // calls use two or three of its arguments. Same treatment,
-                    // nested item fields included ("verb/parent.child" first).
-                    // ANTS-4931 — the six verbs whose argument prose was
-                    // longest after those five (measured 2026-11-04).
-                    static const QSet<QString> kLeanVerbs = {
-                        QStringLiteral("roadmap_log"),
-                        QStringLiteral("roadmap_query"),
-                        QStringLiteral("feedback_log"),
-                        QStringLiteral("changelog_log"),
-                        QStringLiteral("roadmap_migrate"),
-                        QStringLiteral("audit_run"),
-                        QStringLiteral("apply_edits"),
-                        QStringLiteral("doc_citations"),
-                        QStringLiteral("doc_lint"),
-                        QStringLiteral("spec_log"),
-                        QStringLiteral("invariant_check"),
-                    };
-                    static const QHash<QString, QString> kLeanSummary = {
-                        {QStringLiteral("dry_run"), QStringLiteral("Preview the result without writing (default false).")},
-                        {QStringLiteral("roadmap_query/body_from_end"), QStringLiteral("id/ids fetch: keep the END of an over-cap body; max_body_bytes then sizes the tail.")},
-                        {QStringLiteral("roadmap_query/body_match"), QStringLiteral("Keep only body lines containing this text (case-insensitive); turns bodies on.")},
-                        {QStringLiteral("roadmap_query/bullet_fields"), QStringLiteral("Keep only these keys on each bullet. Not with headline_only, section_index, bundles or report.")},
-                        {QStringLiteral("roadmap_query/check_sync"), QStringLiteral("Also report whether ROADMAP.md matches the store (file_in_sync, drift_*). Not cached; ask once.")},
-                        {QStringLiteral("roadmap_query/filter"), QStringLiteral("Alias for status.")},
-                        {QStringLiteral("roadmap_query/id"), QStringLiteral("Fetch one bullet by id (case-sensitive), body included.")},
-                        {QStringLiteral("roadmap_query/ids"), QStringLiteral("Fetch up to 100 bullets by id, in document order, each with input_index; misses in missing_ids.")},
-                        {QStringLiteral("roadmap_query/include_body"), QStringLiteral("Add each bullet's body (2000-char cap on lists). id/ids fetches include it by default.")},
-                        {QStringLiteral("roadmap_query/include_narrator_bullets"), QStringLiteral("Keep id-less section-summary bullets (default false).")},
-                        {QStringLiteral("roadmap_query/include_section_etags"), QStringLiteral("section_index: add a section_etag per section, for section_etag_match.")},
-                        {QStringLiteral("roadmap_query/include_section_headers"), QStringLiteral("Keep section-rollup bullets that carry no id or headline (default false).")},
-                        {QStringLiteral("roadmap_query/kind"), QStringLiteral("Keep only bullets of this kind; an unknown kind refuses bad_kind.")},
-                        {QStringLiteral("roadmap_query/limit"), QStringLiteral("Cap on bullets[] (1-500). Omitted, a large reply downshifts to headline rows.")},
-                        {QStringLiteral("roadmap_query/max_body_bytes"), QStringLiteral("Body cap: one id up to 1 MiB, ids up to 16 KiB each; on lists it may only lower the 2000 cap.")},
-                        {QStringLiteral("roadmap_query/max_results"), QStringLiteral("Alias for limit.")},
-                        {QStringLiteral("roadmap_query/mode"), QStringLiteral("bullets (default), section_index (slugs and counts), headline_only, bundles, report, sources, or ledger.")},
-                        {QStringLiteral("roadmap_query/offset"), QStringLiteral("0-based start into the filtered bullets; use with limit to page.")},
-                        {QStringLiteral("roadmap_query/q"), QStringLiteral("Alias for query.")},
-                        {QStringLiteral("roadmap_query/query"), QStringLiteral("Case-insensitive substring filter on headline, body or id. On section_index it filters section names.")},
-                        {QStringLiteral("roadmap_query/range"), QStringLiteral("mode:ledger only: git range checked for commits naming no roadmap id (default newest tag..HEAD).")},
-                        {QStringLiteral("roadmap_query/regex"), QStringLiteral("Read query as a case-insensitive regular expression.")},
-                        {QStringLiteral("roadmap_query/scope"), QStringLiteral("mode:report only: project (default) or all registered projects.")},
-                        {QStringLiteral("roadmap_query/section"), QStringLiteral("Slug of a ## or ### heading; returns its bullets and its subsections' bullets.")},
-                        {QStringLiteral("roadmap_query/section_etag_match"), QStringLiteral("section_etag from an earlier section= call; an unchanged section returns {unchanged:true}.")},
-                        {QStringLiteral("roadmap_query/shipped_since"), QStringLiteral("YYYY-MM-DD: list items the store says shipped on or after this date. Store-backed projects only.")},
-                        {QStringLiteral("roadmap_query/shipped_until"), QStringLiteral("YYYY-MM-DD, exclusive upper bound for shipped_since (default tomorrow).")},
-                        {QStringLiteral("roadmap_query/since"), QStringLiteral("mode:report only: YYYY-MM-DD start of one custom period.")},
-                        {QStringLiteral("roadmap_query/slugs_only"), QStringLiteral("section_index only: return a flat slugs array.")},
-                        {QStringLiteral("roadmap_query/source"), QStringLiteral("Keep bullets whose Source: starts with this prefix (string or array, case-insensitive).")},
-                        {QStringLiteral("roadmap_query/source_group"), QStringLiteral("mode:sources: stem (default; drops the date onward) or exact.")},
-                        {QStringLiteral("roadmap_query/stale_days"), QStringLiteral("mode:ledger only: an in-progress item untouched this many days is stale (default 14).")},
-                        {QStringLiteral("roadmap_query/status"), QStringLiteral("active (planned + in-progress), shipped, all, one lifecycle name or emoji, or an array of them.")},
-                        {QStringLiteral("roadmap_query/version"), QStringLiteral("A release such as \"0.10.0\"; answers as section= does for that release's section.")},
-                        {QStringLiteral("roadmap_query/whole_word"), QStringLiteral("Match query on word boundaries, so a short acronym stops matching inside words.")},
-                        {QStringLiteral("roadmap_query/with_titles"), QStringLiteral("With slugs_only, also return slug_titles [{slug, headline}].")},
-                        {QStringLiteral("roadmap_log/accept_ambiguous_rematch"), QStringLiteral("convert: proceed although some bullets would be paired with stored items by order.")},
-                        {QStringLiteral("roadmap_log/accept_text_loss"), QStringLiteral("convert: proceed although the rewrite drops text the file holds.")},
-                        {QStringLiteral("roadmap_log/after_section"), QStringLiteral("create_section / move_section: the slug the new or moved section goes after.")},
-                        {QStringLiteral("roadmap_log/amendments"), QStringLiteral("amend_field_batch: [{id, field, value}] in one commit; refused entries land in skipped[].")},
-                        {QStringLiteral("roadmap_log/before_id"), QStringLiteral("amend_field field:section, append, append_batch: file the moved or new items directly before this item.")},
-                        {QStringLiteral("roadmap_log/bullets"), QStringLiteral("append_batch: bullets with append's fields; {{id:N}} in text cites bullet N's new id.")},
-                        {QStringLiteral("roadmap_log/bullets.id_hint"), QStringLiteral("Explicit id number; honoured on the first bullet only (counter strategy).")},
-                        {QStringLiteral("roadmap_log/bullets.pass"), QStringLiteral("This bullet's pass designator on a pass-headings roadmap; the call-level pass is the fallback.")},
-                        {QStringLiteral("roadmap_log/bullets.section"), QStringLiteral("This bullet's section slug. The call-level section is the fallback; omit it when every bullet names one.")},
-                        {QStringLiteral("roadmap_log/bullets.stable_id"), QStringLiteral("This bullet's id when id_strategy is stable_prefix; unique within the batch.")},
-                        {QStringLiteral("roadmap_log/bullets.status"), QStringLiteral("planned, in-progress, shipped, considered or dropped; the call-level status is the fallback.")},
-                        {QStringLiteral("roadmap_log/cells"), QStringLiteral("bundle_row: one string per table column.")},
-                        {QStringLiteral("roadmap_log/clear_placeholder_source"), QStringLiteral("repair_trailers: also blank an undated placeholder source of \"planned\".")},
-                        {QStringLiteral("roadmap_log/dry_run"), QStringLiteral("Preview without writing. The store change runs and is rolled back, so refusals still show.")},
-                        {QStringLiteral("roadmap_log/element_position"), QStringLiteral("amend/delete/promote_element: the element's position as list_elements reports it.")},
-                        {QStringLiteral("roadmap_log/evidence"), QStringLiteral("File paths (screenshots, logs) evidencing the item. Paths only: the list is comma-split.")},
-                        {QStringLiteral("roadmap_log/field"), QStringLiteral("amend_field: layman, kind, source, lanes or evidence; or section, to move the item.")},
-                        {QStringLiteral("roadmap_log/force"), QStringLiteral("append: file a bullet whose headline matches an existing item.")},
-                        {QStringLiteral("roadmap_log/header"), QStringLiteral("bundle_row: column names; creates the table when the section has none.")},
-                        {QStringLiteral("roadmap_log/id_hint"), QStringLiteral("append: explicit id number; must exceed the counter.")},
-                        {QStringLiteral("roadmap_log/id_prefix"), QStringLiteral("append: id prefix (e.g. \"DOOM\"); default sniffed from existing ids, else the folder name.")},
-                        {QStringLiteral("roadmap_log/id_strategy"), QStringLiteral("counter (default) or stable_prefix, which needs stable_id.")},
-                        {QStringLiteral("roadmap_log/intro_body"), QStringLiteral("create_section: intro prose for the new section.")},
-                        {QStringLiteral("roadmap_log/legend"), QStringLiteral("set_legend: {status: wording} for the status legend; an empty string removes one.")},
-                        {QStringLiteral("roadmap_log/locators"), QStringLiteral("Batch ops: items, each {id|anchor|headline|line_range} plus note, to_status or old_text/new_text.")},
-                        {QStringLiteral("roadmap_log/locators.note"), QStringLiteral("Note appended to this item's body; required on annotate_batch.")},
-                        {QStringLiteral("roadmap_log/locators.old_text"), QStringLiteral("amend_batch: the exact text to replace in this item's body.")},
-                        {QStringLiteral("roadmap_log/locators.to_status"), QStringLiteral("flip_batch: this item's target status; the call-level to_status is the fallback.")},
-                        {QStringLiteral("roadmap_log/max_planned"), QStringLiteral("convert: cap on ids.planned[] rows (default 200); 0 keeps only the counts.")},
-                        {QStringLiteral("roadmap_log/new_text"), QStringLiteral("amend_*, set_body, set_intro, set_preamble: the replacement text; empty deletes the match.")},
-                        {QStringLiteral("roadmap_log/note"), QStringLiteral("Prose appended to the item's body; required on annotate, optional on flip.")},
-                        {QStringLiteral("roadmap_log/old_text"), QStringLiteral("amend_body / amend_headline: exact text; must occur once; matches across wraps. replace_text: every exact occurrence.")},
-                        {QStringLiteral("roadmap_log/op"), QStringLiteral("Default append. Each op's arguments, refusals and behaviour: tool_info {name:\"roadmap_log\"}.")},
-                        {QStringLiteral("roadmap_log/plan_id"), QStringLiteral("A dry run's plan_id: applies that request without resending it. Used once; lasts 15 minutes.")},
-                        {QStringLiteral("roadmap_log/pass"),QStringLiteral("Pass designator (e.g. \"43.5\") for append on a pass-headings roadmap; required there.")},
-                        {QStringLiteral("roadmap_log/position"), QStringLiteral("bundle_row: end (default), or sorted by sort_col.")},
-                        {QStringLiteral("roadmap_log/return"), QStringLiteral("headline_only adds post_bullets to append/flip replies; full echoes the whole rendered bullet.")},
-                        {QStringLiteral("roadmap_log/section"), QStringLiteral("Section slug; an unknown slug refuses with candidates[]. replace_text: limits it to this section and its sub-sections.")},
-                        {QStringLiteral("roadmap_log/stable_id"), QStringLiteral("The full id when id_strategy is stable_prefix (e.g. \"Ts20-SP6\").")},
-                        {QStringLiteral("roadmap_log/status"), QStringLiteral("planned, in-progress, shipped, considered or dropped. replace_text: only items with this status.")},
-                        {QStringLiteral("roadmap_log/strip_runs"), QStringLiteral("repair_trailers: also remove a redundant legacy trailer run that ends a body.")},
-                        {QStringLiteral("roadmap_log/targets"), QStringLiteral("link / unlink: the target ids.")},
-                        {QStringLiteral("roadmap_log/type"), QStringLiteral("link / unlink: splits-from, blocked-by, duplicate-of or supersedes.")},
-                        {QStringLiteral("roadmap_log/value"), QStringLiteral("amend_field: the new value; lanes and evidence take an array; empty clears layman.")},
-                        {QStringLiteral("feedback_log/assignments"), QStringLiteral("assign_id_batch: assign_id argument objects applied in one write; failures land in skipped[].")},
-                        {QStringLiteral("feedback_log/awaiting"), QStringLiteral("assign_id: a question for the reporter; the finding stays untriaged. One of ids/closure/awaiting.")},
-                        {QStringLiteral("feedback_log/confirm"), QStringLiteral("reimport: replace the store's text with the hand-edited file's.")},
-                        {QStringLiteral("feedback_log/heading"), QStringLiteral("assign_id: the finding's verbatim ### heading line.")},
-                        {QStringLiteral("feedback_log/ids"), QStringLiteral("assign_id: the ANTS-NNNN ids to assign. One of ids/closure/awaiting.")},
-                        {QStringLiteral("feedback_log/note"), QStringLiteral("Prose under the heading; on assign_id, a single Note line.")},
-                        {QStringLiteral("feedback_log/op"), QStringLiteral("Required. Contributors use append_finding; the rest are maintainer ops. Detail: tool_info.")},
-                        {QStringLiteral("feedback_log/path"), QStringLiteral("The feedback file; omitted, derived from caller_cwd's folder name at the shared root.")},
-                        {QStringLiteral("feedback_log/title"), QStringLiteral("set_title: the project name, replacing the text after the H1's last em dash.")},
-                        {QStringLiteral("roadmap_migrate/accept_deletions"), QStringLiteral("Delete items missing from the file; a store-served project keeps them by default (absent_kept).")},
-                        {QStringLiteral("roadmap_migrate/backup"), QStringLiteral("Snapshot the store first (default true); a failed snapshot refuses.")},
-                        {QStringLiteral("roadmap_migrate/backup_to"), QStringLiteral("Snapshot path; default pre-migrate.sqlite in the snapshot folder. Overwritten each run.")},
-                        {QStringLiteral("roadmap_migrate/confirm"), QStringLiteral("deregister / reroot: confirm while the (old) project root still exists.")},
-                        {QStringLiteral("roadmap_migrate/dry_run"), QStringLiteral("Plan and report counts, then roll back.")},
-                        {QStringLiteral("roadmap_migrate/export_slug"), QStringLiteral("The project's export key, [a-z0-9-]; defaults to the slugified folder name.")},
-                        {QStringLiteral("roadmap_migrate/max_notes"), QStringLiteral("Cap on notes[] rows (default 200, clamped to 1-2000).")},
-                        {QStringLiteral("roadmap_migrate/only_ids"), QStringLiteral("Report only these ids in updated_items[]; the migration still runs whole.")},
-                        {QStringLiteral("roadmap_migrate/op"), QStringLiteral("migrate (default), deregister (delete the project), init (new roadmap) or reroot (moved root).")},
-                        {QStringLiteral("changelog_log/body"), QStringLiteral("Prose under the bullet, stored as sent, so wrap it yourself. On add_from_roadmap it replaces the Layman line.")},
-                        {QStringLiteral("changelog_log/bullets"), QStringLiteral("add_subsection: bullets under the prose, each {summary, body?, id?}.")},
-                        {QStringLiteral("changelog_log/date"), QStringLiteral("add_subsection / release: YYYY-MM-DD, default today.")},
-                        {QStringLiteral("changelog_log/dated"), QStringLiteral("release: close under ## <date>, for a project with no versions.")},
-                        {QStringLiteral("changelog_log/entries"), QStringLiteral("add_batch: entries, each {summary + category|kind} or {id} alone; written in input order.")},
-                        {QStringLiteral("changelog_log/headline"), QStringLiteral("add_subsection: the dated topic headline.")},
-                        {QStringLiteral("changelog_log/max_body_bytes"), QStringLiteral("release: cap on the echoed released_body (default 16384; 0 = no cap).")},
-                        {QStringLiteral("changelog_log/op"), QStringLiteral("Default add. Each op's arguments and refusals: tool_info {name:\"changelog_log\"}.")},
-                        {QStringLiteral("changelog_log/path"), QStringLiteral("A second, existing changelog (project-relative); omit for the root CHANGELOG.md.")},
-                        {QStringLiteral("changelog_log/summary"), QStringLiteral("Bold one-line summary; on add_from_roadmap it replaces the cited headline.")},
-                        {QStringLiteral("changelog_log/version"), QStringLiteral("release: the version, without brackets.")},
-                        {QStringLiteral("apply_edits/dry_run"), QStringLiteral("Preview without writing; the reply says would_write / would_apply instead of files_written (default false).")},
-                        {QStringLiteral("apply_edits/edits"), QStringLiteral("{path?, new} plus {old, replace_all?} or {start_line, end_line, expect_first_line, expect_last_line}; old_string/new_string accepted.")},
-                        {QStringLiteral("apply_edits/edits.expect_count"), QStringLiteral("old form only: how many times old must match; another count skips the edit as count_mismatch. Refused with a range.")},
-                        {QStringLiteral("apply_edits/edits.expect_first_line"), QStringLiteral("Verbatim text of line start_line; required on a range edit. A mismatch skips it as range_mismatch.")},
-                        {QStringLiteral("apply_edits/edits.expect_last_line"), QStringLiteral("Verbatim text of line end_line; required on a range edit, checked with expect_first_line.")},
-                        {QStringLiteral("apply_edits/edits.old_text"), QStringLiteral("Alias for old (roadmap_log amend_body's spelling). Sending two spellings refuses bad_op_combo.")},
-                        {QStringLiteral("apply_edits/match_wrapped"), QStringLiteral("Let `old` match across different line wraps; a wrap-caused not_found names this flag in its hint (default false).")},
-                        {QStringLiteral("apply_edits/path"), QStringLiteral("Default path for every edit that omits one; a per-edit path wins.")},
-                        {QStringLiteral("doc_lint/checks"), QStringLiteral("Checkers to run (default all): doc_integrity, doc_citations, doc_dedup, doc_symbols, spec_lint, doc_facts. Unknown refuses.")},
-                        {QStringLiteral("doc_lint/dry_run"), QStringLiteral("With fix:true, compute the repair and write nothing; refuses without fix.")},
-                        {QStringLiteral("doc_lint/fix"), QStringLiteral("Repair toc_gap findings in place (default false; all else is report-only). Adds fixed[], files_written, fix_errors[].")},
-                        {QStringLiteral("doc_lint/max_findings"), QStringLiteral("Cap on findings[] (default 500, 1-5000); counts still cover the whole run.")},
-                        {QStringLiteral("doc_citations/quotes"), QStringLiteral("Also check double-quoted spans against the document a nearby backticked path names; adds quotes[], quote_counts (default off).")},
-                        {QStringLiteral("spec_log/cells"), QStringLiteral("append_loop on a table log: one string per column, in header order; a wrong count refuses column_mismatch.")},
-                        {QStringLiteral("spec_log/dry_run"), QStringLiteral("Return the landing line and would-be file size (bytes) without writing (default false).")},
-                        {QStringLiteral("spec_log/preserve_body"), QStringLiteral("set_status only: keep the Status field's continuation lines, rewrite only its first line (default false).")},
-                        {QStringLiteral("spec_log/status"), QStringLiteral("set_status: the new value, one line (continuations replaced unless preserve_body). append_status: text added at the field's end.")},
-                        {QStringLiteral("invariant_check/files"), QStringLiteral("Project-relative paths to find citing specs for; pass src/foo.cpp, not foo.cpp. Read basename_matches too.")},
-                        {QStringLiteral("invariant_check/mode"), QStringLiteral("summary (default: counts, no bodies) or full (adds invariant bodies; can exceed the reply cap).")},
-                        {QStringLiteral("invariant_check/paths"), QStringLiteral("Alias for files; sending both refuses bad_op_combo.")},
-                        // Its own wording, kept: the shared caller_cwd summary is
-                        // shorter and would drop the mismatch refusal.
-                        {QStringLiteral("audit_run/caller_cwd"), QStringLiteral("Your $PWD. Mutating verbs refuse on mismatch with the focused tab's cwd (ANTS-1372).")},
-                        {QStringLiteral("audit_run/async"), QStringLiteral("Return a job handle at once and poll audit_poll {job_id}; for scope:\"full\" or slow tools (default false).")},
-                        {QStringLiteral("audit_run/cap_per_tool_seconds"), QStringLiteral("Per-tool wall-clock cap, 5-300 s (default 30); above ~60 s use async:true. Out of range refuses bad_args.")},
-                        {QStringLiteral("audit_run/checks"), QStringLiteral("Check ids for clang-tidy (e.g. [\"bugprone-integer-division\"]); other tools refuse bad_args.")},
-                        {QStringLiteral("audit_run/exclude_paths"), QStringLiteral("Path prefixes to leave out (vendored code); exclude_paths_ignored_by names tools that cannot honour it.")},
-                        {QStringLiteral("audit_run/save_baseline"), QStringLiteral("Pin this run's findings as the baseline (whole-tree runs only); later runs add since_baseline:{new[], new_count}.")},
-                        {QStringLiteral("audit_run/min_confidence"), QStringLiteral("Hide findings scored below this (0-100, default 0 = off) from counts and samples; adds below_confidence_floor_count.")},
-                        {QStringLiteral("audit_run/paths"), QStringLiteral("Paths to narrow file-scoped tools to; gitleaks and trivy then skip.")},
-                        {QStringLiteral("audit_run/scope"), QStringLiteral("auto (default), full (whole tracked src/, deterministic), files, since-last-run (adds delta), since-tag:<tag>, branch-diff.")},
-                        {QStringLiteral("audit_run/suppressions"), QStringLiteral("auto (default: learned-FP ledger + allowlist), none, or path:<file>.")},
-                        {QStringLiteral("audit_run/tools"), QStringLiteral("Subset of cppcheck, clazy, clang-tidy, ruff, bandit, semgrep, gitleaks, trivy, shellcheck, mypy; default all but mypy.")},
-                    };
-                    // ANTS-5725 — an always-loaded verb's arguments used in
-                    // under 5% of its calls stay off the wire (user decision,
-                    // 2026-10-16). They are still accepted: m_toolParamKeys
-                    // and tool_info read the saved full list, and Claude Code
-                    // passes an argument the wire schema leaves out, as text
-                    // (ANTS-6325: mcp::coerceArgTypes restores its type). Measured 2026-10-22 with
-                    // tools/mcp-arg-usage-survey.py; re-run it before adding
-                    // to or taking from a list. find_definition hides none.
-                    static const QHash<QString, QStringList> kWireHidden = {
-                        {QStringLiteral("workspace_search"),
-                         {QStringLiteral("case"), QStringLiteral("count_only"),
-                          QStringLiteral("dedup"), QStringLiteral("encoding"),
-                          QStringLiteral("fields"), QStringLiteral("include_generated"),
-                          QStringLiteral("include_hidden"),
-                          QStringLiteral("match_wrapped"), QStringLiteral("matches_only"),
-                          QStringLiteral("max_bytes"), QStringLiteral("multiline"),
-                          QStringLiteral("offset"),
-                          QStringLiteral("query"), QStringLiteral("raw"),
-                          QStringLiteral("respect_gitignore"), QStringLiteral("timeout_sec")}},
-                        {QStringLiteral("file_outline"),
-                         {QStringLiteral("mode"), QStringLiteral("etag_match"),
-                          QStringLiteral("etags"), QStringLiteral("max_bytes"),
-                          QStringLiteral("raw")}},
-                        {QStringLiteral("read_region"),
-                         {QStringLiteral("call_sequence"), QStringLiteral("compact"),
-                          QStringLiteral("etag_match"), QStringLiteral("fields"),
-                          QStringLiteral("max_bytes"), QStringLiteral("raw"),
-                          QStringLiteral("tail_lines")}},
-                    };
-                    // The first key with an entry wins: "verb/parent.child"
-                    // (nested only), "verb/arg", then the shared "arg".
-                    const auto summaryFor = [](const QStringList &keys) {
-                        for (const QString &key : keys) {
-                            QString s = kArgSummary.value(key);
-                            if (s.isEmpty()) s = kLeanSummary.value(key);
-                            if (!s.isEmpty()) return s;
-                        }
-                        return QString();
-                    };
-                    const auto applySummary = [](QJsonObject &p, const QString &s) {
-                        if (!s.isEmpty()
-                            && s.size() < p.value(QStringLiteral("description"))
-                                              .toString().size())
-                            p[QStringLiteral("description")] = s;
-                    };
-                    const auto shorten = [&](QJsonObject &props, const QString &name) {
-                        const QString verb = name + QLatin1Char('/');
-                        for (auto pit = props.begin(); pit != props.end(); ++pit) {
-                            QJsonObject p = pit.value().toObject();
-                            applySummary(p, summaryFor({verb + pit.key(), pit.key()}));
-                            QJsonObject items =
-                                p.value(QStringLiteral("items")).toObject();
-                            QJsonObject inner =
-                                items.value(QStringLiteral("properties")).toObject();
-                            if (!inner.isEmpty()) {
-                                for (auto iit = inner.begin(); iit != inner.end(); ++iit) {
-                                    QJsonObject q = iit.value().toObject();
-                                    applySummary(q, summaryFor(
-                                        {verb + pit.key() + QLatin1Char('.') + iit.key(),
-                                         verb + iit.key()}));
-                                    iit.value() = q;
-                                }
-                                items[QStringLiteral("properties")] = inner;
-                                p[QStringLiteral("items")] = items;
-                            }
-                            pit.value() = p;
-                        }
-                    };
-                    for (int i = 0; i < tools.size(); ++i) {
-                        QJsonObject t = tools.at(i).toObject();
-                        const QString name =
-                            t.value(QStringLiteral("name")).toString();
-                        QJsonObject schema =
-                            t.value(QStringLiteral("inputSchema")).toObject();
-                        QJsonObject props =
-                            schema.value(QStringLiteral("properties")).toObject();
-                        if (t.value(QStringLiteral("_meta")).toObject()
-                                 .value(QStringLiteral("anthropic/alwaysLoad"))
-                                 .toBool()
-                            || kLeanVerbs.contains(name)) {
-                            shorten(props, name);
-                            for (const QString &arg : kWireHidden.value(name))
-                                props.remove(arg);
-                            // ANTS-4659 — the dispatcher's own `compact`.
-                            if (compactInjected.contains(name))
-                                props.remove(QStringLiteral("compact"));
-                        } else {
-                            // ANTS-5714 — every other verb: only the
-                            // arguments that mean the same on every verb.
-                            // A verb-specific caller_cwd wording is kept;
-                            // only the generic dispatcher text is replaced.
-                            for (auto pit = props.begin(); pit != props.end(); ++pit) {
-                                const QString &arg = pit.key();
-                                QJsonObject p = pit.value().toObject();
-                                const bool generic =
-                                    arg == QLatin1String("caller_cwd")
-                                        ? p.value(QStringLiteral("description")).toString()
-                                              .contains(QLatin1String("Required by the dispatcher"))
-                                        : kSharedArgs.contains(arg);
-                                if (!generic) continue;
-                                applySummary(p, kArgSummary.value(arg));
-                                pit.value() = p;
-                            }
-                        }
-                        schema[QStringLiteral("properties")] = props;
-                        t[QStringLiteral("inputSchema")] = schema;
-                        const QString desc = kEagerDescription.value(name);
-                        if (!desc.isEmpty())
-                            t[QStringLiteral("description")] =
-                                QStringLiteral("[%1] %2 %3 via tool_info {name:\"%4\"}.")
-                                    .arg(kindForName(name), desc,
-                                         kWireHidden.contains(name)
-                                             ? QStringLiteral("Rarer arguments and full per-op detail")
-                                             : QStringLiteral("Full per-op detail"),
-                                         name);
-                        tools.replace(i, t);
-                    }
-                }
-
-                // ANTS-1502 — two-tier discovery. When the caller
-                // requests `_meta.shape == "lite"`, return a compact
-                // shape `[{name, summary, kind}]` per tool instead of
-                // the full descriptor set. Callers drill into a
-                // specific tool via `tool_info(name)` (ANTS-1399).
-                // Opt-in only: by default we return the full shape
-                // the MCP spec mandates.
-                bool wantLite = false;
-                {
-                    const QJsonObject params =
-                        request.value("params").toObject();
-                    const QJsonObject metaObj =
-                        params.value(QStringLiteral("_meta")).toObject();
-                    const QString shape =
-                        metaObj.value(QStringLiteral("shape")).toString();
-                    if (shape == QLatin1String("lite")) wantLite = true;
-                }
-                if (wantLite) {
-                    // ANTS-1518 — kindForName is hoisted to the outer
-                    // tools/list scope (above) so the full-shape
-                    // description-prefix loop and this lite-shape branch
-                    // share one source of truth.
-                    auto liteSummaryFor = [](const QJsonObject &t) -> QString {
-                        // selection_hint when there is one, else the first
-                        // sentence of description, cut to 160 characters.
-                        QString hint =
-                            t.value(QStringLiteral("selection_hint"))
-                             .toString();
-                        if (!hint.isEmpty()) return hint;
-                        QString desc =
-                            t.value(QStringLiteral("description"))
-                             .toString();
-                        const int dot = desc.indexOf(QChar('.'));
-                        if (dot > 0 && dot < 200) {
-                            desc = desc.left(dot + 1);
-                        }
-                        if (desc.size() > 160) {
-                            desc = desc.left(157) + QStringLiteral("...");
-                        }
-                        return desc;
-                    };
-                    QJsonArray lite;
-                    for (const auto &v : std::as_const(tools)) {
-                        const QJsonObject t = v.toObject();
-                        const QString name =
-                            t.value(QStringLiteral("name")).toString();
-                        QJsonObject e;
-                        e[QStringLiteral("name")]    = name;
-                        e[QStringLiteral("summary")] = liteSummaryFor(t);
-                        e[QStringLiteral("kind")]    = kindForName(name);
-                        lite.append(e);
-                    }
-                    result[QStringLiteral("tools")] = lite;
-                    result[QStringLiteral("shape")] = QStringLiteral("lite");
-                    result[QStringLiteral("hint")]  = QStringLiteral(
-                        "Lite shape (ANTS-1502): each entry has only "
-                        "{name, summary, kind}. Call tool_info(name) "
-                        "for the full schema before invoking.");
-                } else {
-                    result["tools"] = tools;
-                }
-                haveResult = true;
-            } else if (method == "tools/call") {
-                QJsonObject params = request.value("params").toObject();
-                QString toolName = params.value("name").toString();
-
-                // ANTS-1284 — hoist args + responseText out of the
-                // branches so a single recordCall covers both the
-                // inline get_session_info path and registered providers.
-                const QJsonObject argsObj = mcp::coerceArgTypes(params.value("arguments").toObject(),
-                                                                m_toolParamSchemas.value(toolName));
-                QString responseText;
-                bool toolHandled = false;
-                // ANTS-1356 — dispatchResult overrides the default
-                // "ok" passed to recordDispatch. Refusal branches set
-                // this to surface the refusal in mcp_trace +
-                // token_usage's failed-call accumulator.
-                // ANTS-1454 retrofitted the ANTS-1404 branch below to
-                // set "caller_cwd_required" — the pre-1454 default-to-
-                // ok masked the per-call cost of misconfigured callers
-                // (see docs/specs/ANTS-1454-caller-cwd-required-refusals-count.md).
-                QString dispatchResult = QStringLiteral("ok");
-                // ANTS-1360 — start latency clock before cache lookup
-                // so cache-hit records capture true µs-range latency
-                // (not zero). Stop right before recordMcpTrace below.
-                QElapsedTimer mcpTraceTimer;
-                mcpTraceTimer.start();
-                // The reply pipeline's context, from this call's locals as
-                // they stand when it is built.
-                const auto baseContext = [&] {
-                    McpCallContext c;
-                    c.socket         = guard;
-                    c.requestId      = reqId;
-                    c.toolName       = toolName;
-                    c.args           = argsObj;
-                    c.requestBytes   = buf.size();
-                    c.dispatchResult = dispatchResult;
-                    c.traceTimer     = mcpTraceTimer;
-                    return c;
-                };
-                // ANTS-1901 — master MCP gate. When the integration is
-                // toggled off at runtime the socket stays bound until the
-                // next launch, but observation must stop now: refuse every
-                // verb with `mcp_disabled` as the FIRST gate — before the
-                // caller_cwd contract check and the idempotent-read cache
-                // lookup — so a disabled session never serves even a
-                // memoised response. setMcpEnabled() drives m_mcpEnabled
-                // from MainWindow on the live Settings toggle; at startup a
-                // disabled master never binds the socket, so this branch is
-                // only reachable in the runtime toggle-off window.
-                if (!m_mcpEnabled) {
-                    QJsonObject env;
-                    env["ok"]    = false;
-                    env["code"]  = QStringLiteral("mcp_disabled");
-                    env["error"] = QStringLiteral(
-                        "Ants MCP integration is disabled (Settings → "
-                        "General → \"Enable Ants MCP integration\"). "
-                        "Re-enable it to use this tool.");
-                    responseText = QString::fromUtf8(
-                        QJsonDocument(env).toJson(QJsonDocument::Compact));
-                    toolHandled    = true;
-                    dispatchResult = QStringLiteral("mcp_disabled");
-                }
-                // ANTS-1404 — per-tool caller_cwd contract check.
-                // Runs BEFORE the cache lookup so a refused call
-                // doesn't pollute the cache, and BEFORE the
-                // get_session_info inline branch so the contract
-                // applies uniformly. INV-2: tools classified Required
-                // refuse with {ok:false, code:"caller_cwd_required"}
-                // when caller_cwd is absent — closes the silent
-                // focused-fallback leak (2026-05-15 cross-session
-                // report). Other categories (Optional, TabSpecific,
-                // ProcessGlobal) are no-ops in Phase 3a.
-                // ANTS-1419 — consult the stored contract on the
-                // registered entry when present (single source of
-                // truth at the call site); fall back to the static
-                // table for inline-dispatched tools
-                // (get_session_info, tool_info) that don't appear
-                // in m_toolProviders.
-                CallerCwdContract contract;
-                if (auto it = m_toolProviders.find(toolName);
-                    it != m_toolProviders.end()) {
-                    contract = it->second.contract;
-                } else {
-                    contract = callerCwdContractFor(toolName);
-                }
-                const QString callerCwd =
-                    argsObj.value(QStringLiteral("caller_cwd"))
-                        .toString();
-                // ANTS-1772 — resolve tool existence BEFORE the
-                // caller_cwd contract gate (default Required), else an
-                // unknown tool with no caller_cwd would wrongly refuse
-                // `caller_cwd_required` instead of `tool_not_found`.
-                // Inline tools (get_session_info, tool_info) aren't in
-                // m_toolProviders; token_usage / mcp_trace are. Gating
-                // contract + rate-limit on toolKnown lets an unknown tool
-                // fall through to the registry-miss else-branch below.
-                const bool toolKnown =
-                    toolName == QStringLiteral("get_session_info") ||
-                    toolName == QStringLiteral("tool_info") ||
-                    m_toolProviders.find(toolName) != m_toolProviders.end() ||
-                    m_forwardedTools.contains(toolName);  // ANTS-4932 § 2.5
-                if (!toolHandled && toolKnown &&
-                    contract == CallerCwdContract::Required &&
-                    callerCwd.isEmpty()) {
-                    // ANTS-1853 — distinguish "the whole arguments object
-                    // arrived empty" (the call's parameters were dropped in
-                    // transit — an intermittent tools/call serialisation drop
-                    // observed 2026-05-25) from "caller_cwd was the only
-                    // missing field". The former is NOT a caller error:
-                    // re-adding caller_cwd alone can't help because every
-                    // other arg is gone too. Flagging it steers the caller to
-                    // resend the ENTIRE call rather than fixate on one field,
-                    // and the diagnostic log below lets a recurrence be root-
-                    // caused against the Claude Code integration debug lane.
-                    const bool argumentsEmpty = argsObj.isEmpty();
-                    QJsonObject env;
-                    env["ok"]    = false;
-                    env["code"]  = QStringLiteral("caller_cwd_required");
-                    env["error"] = QString(
-                        "%1: caller_cwd is required for this tool "
-                        "(ANTS-1404). Pass your $PWD as caller_cwd "
-                        "so the tool routes to your project rather "
-                        "than whichever tab Ants has focused.")
-                        .arg(toolName)
-                        // ANTS-1857 — size-aware steer: name the
-                        // large-payload root cause + the two mitigations
-                        // (shrink / use Edit), not just "resend".
-                        + (argumentsEmpty
-                            ? QStringLiteral(
-                                " NOTE: this call arrived with NO arguments "
-                                "at all — if you DID pass caller_cwd, the "
-                                "whole parameter payload was dropped in "
-                                "transit (the data never reached Ants; not "
-                                "an Ants bug). Resend the entire call "
-                                "verbatim. If it keeps dropping, the payload "
-                                "is likely too large — shrink it (e.g. a "
-                                "shorter roadmap_log `body`, or split the "
-                                "work) or write the content with the Edit "
-                                "tool directly. Small calls are reliable "
-                                "(ANTS-1853).")
-                            : QString());
-                    // ANTS-1418 — surface the diagnostic verb so a
-                    // caller who already passes caller_cwd but still
-                    // gets the wrong tab (symlinked roots, worktree
-                    // checkouts, container bind-mounts) finds the
-                    // tool that lets them confirm the resolution.
-                    env["hint"] = QStringLiteral(
-                        "call mcp__ants__caller_cwd_info with your "
-                        "$PWD to confirm which tab Ants would route "
-                        "this call to");
-                    // ANTS-1543 — concrete JSON snippet (mirrors the
-                    // session_memory + RcGate envelopes) so the
-                    // caller can copy the exact arguments shape.
-                    QJsonObject ex;
-                    ex[QStringLiteral("caller_cwd")] =
-                        QStringLiteral("<your $PWD>");
-                    env[QStringLiteral("example")] = ex;
-                    // ANTS-1853 — machine-readable flag for the dropped-
-                    // payload case so a caller (or test) can branch on it.
-                    if (argumentsEmpty)
-                        env[QStringLiteral("arguments_empty")] = true;
-                    // ANTS-1853 — diagnostic trace on every caller_cwd
-                    // refusal. The parsed-key fields alone can't tell a
-                    // truncated-transport drop from an intact request whose
-                    // `arguments` serialised empty upstream, so also log the
-                    // raw whole-request byte length (`buf`), whether the
-                    // `arguments` key was present at all, and a bounded
-                    // request fingerprint (the "raw length + content hash" the
-                    // ROADMAP note asked for). See ANTS-1853 for the matrix.
-                    ANTS_LOG(DebugLog::Claude,
-                             "ANTS-1853 tools/call refused caller_cwd_required:"
-                             " tool=%s arguments_empty=%d args_key_present=%d"
-                             " arg_keys=%d req_bytes=%d req_hash=%u keys=[%s]",
-                             toolName.toUtf8().constData(),
-                             argumentsEmpty ? 1 : 0,
-                             params.contains(QStringLiteral("arguments")) ? 1 : 0,
-                             static_cast<int>(argsObj.size()),
-                             static_cast<int>(buf.size()),
-                             static_cast<unsigned>(qHash(buf)),
-                             argsObj.keys().join(QLatin1Char(','))
-                                 .toUtf8().constData());
-                    responseText = QString::fromUtf8(
-                        QJsonDocument(env)
-                            .toJson(QJsonDocument::Compact));
-                    toolHandled    = true;
-                    // ANTS-1454 — route the refusal to recordDispatch's
-                    // failed-call accumulator. Pre-1454 the branch
-                    // inherited the "ok" default and token_usage
-                    // double-counted refusals as successes.
-                    dispatchResult = QStringLiteral("caller_cwd_required");
-                }
-                // ANTS-1415 — Phase 3b: TabSpecific contract enforcement.
-                // The per-tab read tools route on caller_cwd (ANTS-1392)
-                // and, for those tabSpecificAcceptsTabIndex lists, an
-                // explicit `tab` index. With NO usable routing key they
-                // fall back to the focused tab — the cross-tenant leak
-                // ANTS-1404 closed for Required tools, deferred from
-                // Phase 3a because the routing-vs-anchoring semantics
-                // needed their own spec pass. Refuse before the
-                // rate-limit + cache, mirroring the Required branch.
-                // A stray `tab` on a cwd-only tool is NOT a routing key
-                // (the handler ignores it), else it would bypass the
-                // gate and still fall back to focused. See
-                // docs/standards/mcp-error-codes.md § 3 + docs/specs/ANTS-1415-callercwdcontract-tabspecific.md.
-                if (!toolHandled && toolKnown &&
-                    contract == CallerCwdContract::TabSpecific) {
-                    const bool tabIsRoutingKey =
-                        tabSpecificAcceptsTabIndex(toolName);
-                    const bool hasTab = tabIsRoutingKey &&
-                        argsObj.value(QStringLiteral("tab")).isDouble();
-                    if (callerCwd.isEmpty() && !hasTab) {
-                        QJsonObject env;
-                        env["ok"]   = false;
-                        env["code"] = QStringLiteral("tab_or_cwd_required");
-                        env["error"] = (tabIsRoutingKey
-                            ? QString("%1: pass a `tab` index or `caller_cwd` "
-                                      "(your $PWD) to identify the target tab "
-                                      "(ANTS-1415). Without either, this "
-                                      "per-tab tool falls back to whichever tab "
-                                      "Ants has focused — which may belong to a "
-                                      "different project.")
-                            : QString("%1: pass `caller_cwd` (your $PWD) to "
-                                      "identify the target tab (ANTS-1415). "
-                                      "Without it, this per-tab tool falls back "
-                                      "to whichever tab Ants has focused — which "
-                                      "may belong to a different project."))
-                            .arg(toolName);
-                        env["hint"] = QStringLiteral(
-                            "call mcp__ants__caller_cwd_info with your $PWD to "
-                            "confirm which tab Ants would route this call to; "
-                            "tab_list gives tab indices");
-                        QJsonObject ex;
-                        ex[QStringLiteral("caller_cwd")] =
-                            QStringLiteral("<your $PWD>");
-                        env[QStringLiteral("example")] = ex;
-                        responseText = QString::fromUtf8(
-                            QJsonDocument(env).toJson(QJsonDocument::Compact));
-                        toolHandled    = true;
-                        dispatchResult = QStringLiteral("tab_or_cwd_required");
-                    }
-                }
-                // ANTS-4659 — an argument the verb does not declare refuses
-                // the call before the verb runs, on every verb. It used to
-                // run and report the argument as ignored, and every such
-                // argument surveyed was a slip that silently did nothing.
-                // Above the forwarder, so ants-mcpd refuses for the terminal.
-                if (!toolHandled && toolKnown) {
-                    const QStringList unknown =
-                        ignoredArgKeysFor(toolName, argsObj);
-                    if (!unknown.isEmpty()) {
-                        QJsonObject env;
-                        env["ok"]   = false;
-                        env["code"] = QStringLiteral("bad_args");
-                        env["error"] = QStringLiteral(
-                            "%1: unknown argument%2 %3; nothing ran.")
-                            .arg(toolName,
-                                 unknown.size() == 1 ? QString()
-                                                     : QStringLiteral("s"),
-                                 unknown.join(QStringLiteral(", ")));
-                        env["unknown_args"] =
-                            QJsonArray::fromStringList(unknown);
-                        env["hint"] = QStringLiteral(
-                            "tool_info {name:\"%1\"} lists this verb's "
-                            "arguments").arg(toolName);
-                        responseText = QString::fromUtf8(
-                            QJsonDocument(env).toJson(QJsonDocument::Compact));
-                        toolHandled    = true;
-                        dispatchResult = QStringLiteral("bad_args");
-                    }
-                }
-                // ANTS-4932 § 2.3 — ants-mcpd forwards a terminal-scoped verb
-                // whole once the gates above have passed it, and emits the
-                // terminal's reply unchanged: rate limit, cache, ETag, fields=
-                // and the wrap all ran in the terminal. A forwarder failure is
-                // a no_terminal envelope, finished like any other refusal.
-                // Never adds a caller_cwd: the request goes as it came (INV-8).
-                if (!toolHandled && m_forwarder &&
-                    m_forwardedTools.contains(toolName)) {
-                    McpCallContext fctx = baseContext();
-                    fctx.toolHandled = true;
-                    const QPointer<ClaudeIntegration> self(this);
-                    m_forwarder(buf,
-                        [fctx](const QByteArray &replyLine) {
-                            McpReplyChannel *const channel = fctx.socket.data();
-                            if (channel && channel->isOpen())
-                                channel->reply(replyLine);
-                        },
-                        [self, fctx](const QString &envelope) {
-                            if (!self) return;
-                            self->finishToolDispatch(
-                                fctx, transformReply(fctx, envelope));
-                        });
-                    return;
-                }
-                // ANTS-1356 — per-tool sliding-window rate-limit.
-                // Runs AFTER caller_cwd_required (a misconfigured
-                // caller should see the precise refusal first) but
-                // BEFORE the idempotent-read cache lookup (cache
-                // hits consume bucket budget — INV-5). Refusal sets
-                // toolHandled=true with a {ok:false, code:"rate_limited",
-                // retry_after_ms} envelope; downstream wrap + record
-                // paths see it like any other completed call.
-                if (!toolHandled && toolKnown) {
-                    const qint64 nowMs = s_rateLimitClock.elapsed();
-                    const qint64 retryAfter =
-                        rateLimitCheck(toolName, callerCwd, nowMs);
-                    if (retryAfter > 0) {
-                        const RateLimitTier tier =
-                            rateLimitTierFor(rateLimitClassFor(toolName));
-                        QJsonObject env;
-                        env["ok"]              = false;
-                        env["code"]            = QStringLiteral("rate_limited");
-                        env["retry_after_ms"]  = static_cast<qint64>(retryAfter);
-                        env["error"] = QString(
-                            "%1: rate-limited (%2 calls in last "
-                            "%3 s, cap %2). retry_after_ms=%4")
-                            .arg(toolName)
-                            .arg(tier.capPerWindow)
-                            .arg(tier.windowMs / 1000)
-                            .arg(retryAfter);
-                        responseText = QString::fromUtf8(
-                            QJsonDocument(env)
-                                .toJson(QJsonDocument::Compact));
-                        toolHandled    = true;
-                        dispatchResult = QStringLiteral("rate_limited");
-                    }
-                }
-                // ANTS-1357 — short-TTL idempotent-read cache lookup
-                // happens before dispatch. Only the 4 allowlisted tools
-                // hit this path (isIdempotentReadTool); everything else
-                // falls through to the registry below. INV-1: cache
-                // hit response is byte-identical to a miss at stampMs.
-                bool cachedHit = false;
-                // Cleared on the dispatch_queue_full branch below.
-                bool cacheable =
-                    !toolHandled && isIdempotentReadTool(toolName);
-                // baseContext plus the cache state; a handled call also
-                // carries its undeclared-argument keys, for the ledger.
-                const auto dispatchContext = [&](bool handled) {
-                    McpCallContext c = baseContext();
-                    c.cachedHit   = cachedHit;
-                    c.cacheable   = cacheable;
-                    c.toolHandled = handled;
-                    if (handled)
-                        c.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
-                    return c;
-                };
-                if (cacheable) {
-                    const QString hit = tryGetIdempotentReadCache(
-                        toolName, argsObj);
-                    if (!hit.isEmpty()) {
-                        responseText = hit;
-                        toolHandled  = true;
-                        cachedHit    = true;
-                    }
-                }
-                // ANTS-1253: get_session_info stays inline — it reads
-                // ClaudeIntegration's own private state (m_state,
-                // m_currentTool, m_contextPercent, m_touchedFiles,
-                // m_activeSessionId) rather than delegating to an
-                // external provider. All outward-delegate tools
-                // dispatch via the registry below. Guard widened to
-                // `!toolHandled` so a prior refusal (ANTS-1404
-                // contract check) or cache hit (ANTS-1357) short-
-                // circuits this block.
-                if (!toolHandled) {
-                    if (toolName == "get_session_info") {
-                        QJsonObject info;
-                        info["state"] = static_cast<int>(m_state);
-                        info["current_tool"] = m_currentTool;
-                        info["context_percent"] = m_contextPercent;
-                        info["changed_files"] = QJsonArray::fromStringList(m_touchedFiles);
-                        info["session_id"] = m_activeSessionId;
-                        // ANTS-1952 — re-surface build identity here too, so a
-                        // session that has already handshaked can confirm the
-                        // running binary's SHA without re-issuing initialize.
-                        info["server_build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);  // ANTS-3582: extern arrays
-                        info["server_build_date"] = QString::fromLatin1(ANTS_BUILD_DATE);
-                        info["server_build_time"] = QString::fromLatin1(ANTS_BUILD_TIME);
-                        info["server_build_type"] = QString::fromLatin1(ANTS_BUILD_TYPE);
-                        responseText = QString::fromUtf8(
-                            QJsonDocument(info).toJson(QJsonDocument::Compact));
-                        toolHandled = true;
-                    } else if (toolName == "tool_info") {
-                        // ANTS-1399-INV-3 — read from the snapshot
-                        // populated at tools/list end. Inline-dispatched
-                        // (no provider lambda) so the cache lives next
-                        // to the descriptors it slices from.
-                        QJsonObject env;
-                        const QString reqName =
-                            argsObj.value(QStringLiteral("name")).toString();
-                        // ANTS-1985 — catalog mode. Evaluated BEFORE the
-                        // reqName.isEmpty() guard: catalog calls supply no
-                        // `name`, so reaching missing_name first would
-                        // wrongly refuse every catalog request (spec § 2.4).
-                        const bool catalogMode =
-                            argsObj.value(QStringLiteral("catalog")).toBool();
-                        if (catalogMode) {
-                            if (m_lastToolsList.isEmpty()) {
-                                env["ok"]    = false;
-                                env["code"]  = QStringLiteral("tools_not_ready");
-                                env["error"] = QStringLiteral(
-                                    "tool_info: call tools/list first to "
-                                    "populate the descriptor cache");
-                            } else {
-                                // Group by the [<kind>] description prefix
-                                // (injected at tools/list, ANTS-1518). QMap
-                                // keys sort ascending, so both categories
-                                // and the names within each emit in stable
-                                // sorted order (INV-12). A missing or
-                                // malformed prefix ([ unclosed, or []) →
-                                // "other", keeping the parse total.
-                                auto categoryOf =
-                                    [](const QString &desc) -> QString {
-                                    if (desc.startsWith(QLatin1Char('['))) {
-                                        const int close =
-                                            desc.indexOf(QLatin1Char(']'));
-                                        if (close > 1)
-                                            return desc.mid(1, close - 1);
-                                    }
-                                    return QStringLiteral("other");
-                                };
-                                QMap<QString, QMap<QString, QString>> grouped;
-                                for (const auto &v :
-                                         std::as_const(m_lastToolsList)) {
-                                    const QJsonObject d = v.toObject();
-                                    const QString n = d.value(
-                                        QStringLiteral("name")).toString();
-                                    const QString cat = categoryOf(
-                                        d.value(QStringLiteral("description"))
-                                         .toString());
-                                    grouped[cat][n] = d.value(
-                                        QStringLiteral("selection_hint"))
-                                        .toString();
-                                }
-                                QJsonObject catalog;
-                                int toolCount = 0;
-                                for (auto c = grouped.constBegin();
-                                     c != grouped.constEnd(); ++c) {
-                                    QJsonArray arr;
-                                    for (auto t = c.value().constBegin();
-                                         t != c.value().constEnd(); ++t) {
-                                        QJsonObject e;
-                                        e[QStringLiteral("name")] = t.key();
-                                        e[QStringLiteral("selection_hint")] =
-                                            t.value();
-                                        arr.append(e);
-                                        ++toolCount;
-                                    }
-                                    catalog[c.key()] = arr;
-                                }
-                                env["ok"]             = true;
-                                env["catalog"]        = catalog;
-                                env["tool_count"]     = toolCount;
-                                env["category_count"] = catalog.size();
-                                // ANTS-5807 — said once, on the call a caller
-                                // makes before dispatching verbs in parallel.
-                                // Each verb is registered on one lane and
-                                // each lane is one thread (postWorkerJob).
-                                env["concurrency"] = QStringLiteral(
-                                    "Within one server, calls to the same verb run "
-                                    "one at a time, so parallel calls queue; "
-                                    "audit_run refuses already_running for a project "
-                                    "it is sweeping. Each session runs its own "
-                                    "server, so two sessions' calls can overlap: a "
-                                    "roadmap-store write is one transaction, but a "
-                                    "verb that rewrites a file (apply_edits) "
-                                    "replaces it whole, and the last writer wins.");
-                                // ANTS-2073 — stamp the running server's
-                                // build identity on the catalog (the
-                                // documented once-per-session discovery
-                                // call) so a client can self-diagnose a
-                                // stale-binary deploy gap without a
-                                // separate get_session_info round-trip.
-                                QJsonObject sb;
-                                sb["version"]      = QStringLiteral(ANTS_VERSION);
-                                sb["build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);  // ANTS-3582: extern arrays
-                                sb["build_date"]   = QString::fromLatin1(ANTS_BUILD_DATE);
-                                sb["build_time"]   = QString::fromLatin1(ANTS_BUILD_TIME);
-                                sb["build_type"]   = QString::fromLatin1(ANTS_BUILD_TYPE);
-                                env["server_build"] = sb;
-                            }
-                        } else if (reqName.isEmpty()) {
-                            env["ok"]    = false;
-                            env["code"]  = QStringLiteral("missing_name");
-                            env["error"] = QStringLiteral(
-                                "tool_info: 'name' arg is required");
-                        } else if (m_lastToolsList.isEmpty()) {
-                            env["ok"]    = false;
-                            env["code"]  = QStringLiteral("tools_not_ready");
-                            env["error"] = QStringLiteral(
-                                "tool_info: call tools/list first to "
-                                "populate the descriptor cache");
-                        } else {
-                            QJsonObject match;
-                            QJsonArray available;
-                            for (const auto &v : std::as_const(m_lastToolsList)) {
-                                const QJsonObject d = v.toObject();
-                                const QString n =
-                                    d.value(QStringLiteral("name")).toString();
-                                available.append(n);
-                                if (n == reqName) match = d;
-                            }
-                            if (match.isEmpty()) {
-                                env["ok"]        = false;
-                                env["code"]      = QStringLiteral("unknown_tool");
-                                env["error"]     = QStringLiteral(
-                                    "tool_info: no MCP tool registered "
-                                    "as '%1'").arg(reqName);
-                                env["available"] = available;
-                                // ANTS-5485 — a removed verb names its successor.
-                                const QString replacement =
-                                    mcp::removedReplacement(reqName);
-                                if (!replacement.isEmpty())
-                                    env["replacement"] = replacement;
-                            } else if (const QString op = argsObj.value(
-                                           QStringLiteral("op")).toString();
-                                       !op.isEmpty()) {
-                                env = mcp::toolInfoForOp(match, op);   // ANTS-6829
-                            } else {
-                                env["ok"]          = true;
-                                env["name"]        = match.value(QStringLiteral("name"));
-                                env["description"] = match.value(QStringLiteral("description"));
-                                env["inputSchema"] = match.value(QStringLiteral("inputSchema"));
-                                // ANTS-1453 — pass selection_hint through
-                                // unchanged. No defaulting (every tool sets
-                                // it in tools/list per HINT-1).
-                                env["selection_hint"] =
-                                    match.value(QStringLiteral("selection_hint"));
-                                // ANTS-2079 — surface the per-op detail
-                                // trimmed from the wire payload. Conditional
-                                // (NOT mirroring selection_hint's
-                                // unconditional set): present only for tools
-                                // that authored one; an unconditional set
-                                // would emit detail:null for the ~66 tools
-                                // that didn't and break INV-2.
-                                if (match.contains(QStringLiteral("detail")))
-                                    env["detail"] =
-                                        match.value(QStringLiteral("detail"));
-                            }
-                        }
-                        responseText = QString::fromUtf8(
-                            QJsonDocument(env).toJson(QJsonDocument::Compact));
-                        toolHandled = true;
-                    } else if (auto it = m_toolProviders.find(toolName);
-                               it != m_toolProviders.end()) {
-                        // ANTS-1419 — value type is RegisteredTool
-                        // (handler + contract); call the handler.
-                        // ANTS-2132 — off-thread where the registration
-                        // marked it so. postToolDispatch returns having
-                        // queued the work; the reply is written later, from
-                        // finishToolDispatch, on this thread.
-                        if (it->second.deferred) {
-                            // ANTS-2132 § 2.8 — the verb replies later, on
-                            // this thread, through the same pipeline.
-                            const McpCallContext dctx = dispatchContext(true);
-                            const QPointer<ClaudeIntegration> self(this);
-                            const auto replied = std::make_shared<bool>(false);
-                            it->second.deferred(argsObj,
-                                [self, dctx, replied](const QString &body) {
-                                    // The first reply is written; any later
-                                    // one is dropped.
-                                    if (*replied || !self) return;
-                                    *replied = true;
-                                    self->finishToolDispatch(
-                                        dctx, transformReply(dctx, body));
-                                });
-                            return;  // the reply follows from the verb
-                        }
-                        if (it->second.offThread) {
-                            if (postToolDispatch(dispatchContext(true), it->second.handler,
-                                                 it->second.lane))
-                                return;  // reply follows from the worker
-                            // Queue full — refuse rather than drop it, so a
-                            // caller sees a code instead of a dead socket.
-                            QJsonObject env;
-                            env["ok"]             = false;
-                            env["code"]           = QStringLiteral("dispatch_queue_full");
-                            env["error"]          = QStringLiteral(
-                                "%1: too many MCP calls are already in "
-                                "flight; retry shortly").arg(toolName);
-                            env["retry_after_ms"] = 250;
-                            responseText   = QString::fromUtf8(
-                                QJsonDocument(env).toJson(QJsonDocument::Compact));
-                            dispatchResult = QStringLiteral("dispatch_queue_full");
-                            // ANTS-5090 — a transient refusal is not an answer
-                            // (ANTS-1357 INV-5); caching it would serve it to the
-                            // next caller after the queue has drained.
-                            cacheable = false;
-                        } else {
-                            responseText = it->second.handler(argsObj);
-                        }
-                        toolHandled = true;
-                    }
-                }
-                // ANTS-2132 — hand the rest of the reply to finishToolDispatch.
-                // It owns the transforms, the wrap, recordDispatch and the
-                // socket write for this path.
-                const McpCallContext ctx = dispatchContext(toolHandled);
-                finishToolDispatch(ctx, transformReply(ctx, responseText));
-                return;
-            } else if (method == QLatin1String(VerifyTrust::kPromptMethod)
-                       && m_verifyTrustPromptHandler) {
-                // ANTS-5464 § 2.2 — not a tool. The handler may hold a prompt
-                // open, so it runs on the Bulk worker: the GUI thread and the
-                // Shared worker keep serving (INV-9). The reply is written
-                // from the GUI thread, like every other.
-                const QJsonObject params = request.value("params").toObject();
-                if (postWorkerJob([this, guard, reqId, params,
-                                   handler = m_verifyTrustPromptHandler]() {
-                        const QJsonObject r = handler(params);
-                        QMetaObject::invokeMethod(this, [guard, reqId, r]() {
-                            sendMcpResponse(guard, reqId, &r, nullptr);
-                        }, Qt::QueuedConnection);
-                    }, DispatchLane::Bulk))
-                    return;
-                error["code"] = -32000;
-                error["message"] = QStringLiteral(
-                    "%1: too many MCP calls are already in flight; retry shortly")
-                    .arg(method);
-            } else {
-                // JSON-RPC -32601 = Method not found
-                error["code"] = -32601;
-                error["message"] = QString("Method not found: %1").arg(method);
+            QString desc =
+                t.value(QStringLiteral("description")).toString();
+            if (!desc.startsWith(QLatin1Char('['))) {
+                desc = QStringLiteral("[%1] %2")
+                           .arg(kindForName(name), desc);
             }
+            if (isEtagSupportedTool(name) &&
+                !desc.contains(QStringLiteral("Etag tip:"))) {
+                desc += QStringLiteral(
+                    " Etag tip: cache the returned `etag` "
+                    "field and pass it back via `etag_match` "
+                    "on subsequent calls in the same session "
+                    "— saves a full re-emit when the "
+                    "underlying file hasn't changed "
+                    "(ANTS-1499 \"304 Not Modified\" pattern).");
+            }
+            // One carve-out, about what the verb DOES rather than
+            // who calls it:
+            // indie_review_dispatch POSTs each lane to the
+            // project's configured AI endpoint (default
+            // "llama3"). Its own text says where the request
+            // goes; it does not say the trade-off is review
+            // quality, which is the part a caller choosing a
+            // verb needs. Idempotent sentinel.
+            if (name == QLatin1String("indie_review_dispatch")
+                && !desc.contains(
+                       QStringLiteral("Weaker reviewer:"))) {
+                desc += QStringLiteral(
+                    " Weaker reviewer: this reviews on the "
+                    "configured local endpoint, NOT on Claude "
+                    "subagents — a different and weaker "
+                    "reviewer, not a cheaper route to the same "
+                    "review. /indie-review keeps its own "
+                    "fan-out for that reason; reach for this "
+                    "only when the local model is what you "
+                    "want (global CLAUDE.md §18).");
+            }
+            t[QStringLiteral("description")] = desc;
+        }
+        // ANTS-1520 — keep the JSON-schema `required[]`
+        // array in sync with the dispatcher's contract.
+        // For every Required-contract tool, ensure
+        // `caller_cwd` is in `inputSchema.required`. Saves
+        // touching ~25 tool-registration blocks individually
+        // and stays in lockstep with callerCwdContractFor
+        // automatically. Idempotent: skips when already
+        // listed (most existing Required tools already
+        // append it explicitly).
+        if (callerCwdContractFor(name) ==
+            CallerCwdContract::Required) {
+            QJsonObject schema =
+                t.value(QStringLiteral("inputSchema"))
+                 .toObject();
+            // Guard: only inject when the schema actually
+            // declares `properties.caller_cwd`. A `required`
+            // entry without a matching property would
+            // produce an invalid JSON schema and Zod
+            // validators on the consuming side reject the
+            // whole tools/list response. Most Required-
+            // contract tools declare the property via
+            // `makeCallerCwdReadProp`, some by hand; this
+            // guard covers a registration that skipped it.
+            const QJsonObject props =
+                schema.value(QStringLiteral("properties"))
+                      .toObject();
+            if (props.contains(
+                    QStringLiteral("caller_cwd"))) {
+                QJsonArray req =
+                    schema.value(QStringLiteral("required"))
+                          .toArray();
+                bool already = false;
+                for (const auto &rv : std::as_const(req)) {
+                    if (rv.toString() ==
+                        QStringLiteral("caller_cwd")) {
+                        already = true;
+                        break;
+                    }
+                }
+                if (!already) {
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema[QStringLiteral("required")] = req;
+                    t[QStringLiteral("inputSchema")] = schema;
+                }
+            }
+        }
+        // ANTS-4524 — `fields=` is universal, so DECLARE it
+        // universally. The dispatcher projects for every verb now;
+        // an undeclared property is the other half of the same
+        // defect, and it shipped once already (ANTS-4624): a
+        // strict client has no type to marshal to, the argument
+        // arrives as a string, `fv.isArray()` is false and the
+        // narrowing is skipped in silence. Injected here rather
+        // than by ~150 hand-written schema lines, for the reason
+        // the caller_cwd block above gives: one site cannot drift
+        // from the dispatcher. Idempotent — a verb declaring its
+        // own richer `fields` description keeps it, so this adds
+        // the property only where it is missing, with a terse
+        // description because ~150 copies of the full one is real
+        // wire cost on tools/list.
+        {
+            QJsonObject schema =
+                t.value(QStringLiteral("inputSchema")).toObject();
+            if (!schema.isEmpty()) {
+                QJsonObject props =
+                    schema.value(QStringLiteral("properties"))
+                          .toObject();
+                if (!props.contains(QStringLiteral("fields"))) {
+                    QJsonObject p;
+                    p[QStringLiteral("type")] =
+                        QStringLiteral("array");
+                    QJsonObject items;
+                    items[QStringLiteral("type")] =
+                        QStringLiteral("string");
+                    p[QStringLiteral("items")] = items;
+                    p[QStringLiteral("description")] =
+                        QStringLiteral(
+                            "Optional. Return only these top-level "
+                            "response fields; names the envelope "
+                            "does not carry are listed in "
+                            "`fields_unmatched`, alongside "
+                            "`fields_available` — the keys it does "
+                            "carry, so a misspelling is visible "
+                            "rather than inferred (ANTS-4930). "
+                            "Honoured by every verb (ANTS-4524).");
+                    props[QStringLiteral("fields")] = p;
+                    schema[QStringLiteral("properties")] = props;
+                    t[QStringLiteral("inputSchema")] = schema;
+                }
+            }
+        }
+        // ANTS-4659 — `compact` is universal too, and declared
+        // here for the reason `fields` is. Kept off the wire for
+        // an always-loaded verb (kWireHidden below).
+        {
+            QJsonObject schema =
+                t.value(QStringLiteral("inputSchema")).toObject();
+            QJsonObject props =
+                schema.value(QStringLiteral("properties")).toObject();
+            if (!schema.isEmpty() &&
+                !props.contains(QStringLiteral("compact"))) {
+                props[QStringLiteral("compact")] = QJsonObject{
+                    {QStringLiteral("type"), QStringLiteral("boolean")},
+                    {QStringLiteral("description"), QStringLiteral(
+                        "Drop null, false and empty fields from "
+                        "the reply.")}};
+                schema[QStringLiteral("properties")] = props;
+                t[QStringLiteral("inputSchema")] = schema;
+                compactInjected.insert(
+                    t.value(QStringLiteral("name")).toString());
+            }
+        }
+        // ANTS-2158 — exempt the highest-frequency verbs from
+        // Claude Code's MCP tool-search DEFERRAL so they are
+        // callable without a ToolSearch round-trip (the
+        // "deferred-schema tax" that nudged sessions back to raw
+        // grep/Read/Edit). Honoured by Claude Code v2.1.121+ via
+        // the tool's `_meta`; older clients ignore the field
+        // (graceful). The set is small on purpose — each
+        // always-loaded tool costs context in every session, so
+        // only the verbs that most directly replace the
+        // always-loaded Bash grep / Read. The roadmap and
+        // changelog writers are not in it: their schemas are
+        // large and most sessions call them rarely.
+        // See docs/standards/mcp-behavioural-notes.md.
+        static const QSet<QString> kEagerVerbs = {
+            QStringLiteral("workspace_search"),
+            QStringLiteral("find_definition"),
+            // ANTS-5734 § 2.8 — listed only where registered.
+            QStringLiteral("trace"),
+            QStringLiteral("file_outline"),
+            QStringLiteral("read_region"),
+        };
+        if (kEagerVerbs.contains(
+                t.value(QStringLiteral("name")).toString())) {
+            QJsonObject meta =
+                t.value(QStringLiteral("_meta")).toObject();
+            meta[QStringLiteral("anthropic/alwaysLoad")] = true;
+            t[QStringLiteral("_meta")] = meta;
+        }
+        tools.replace(i, t);
+    }
 
-            sendMcpResponse(guard, reqId,
-                            haveResult ? &result : nullptr,
-                            haveResult ? nullptr : &error);
+    // ANTS-1399-INV-2 — snapshot for tool_info to read from
+    // without re-running the array build. Descriptors are
+    // built from compile-time literals so the snapshot
+    // never goes stale in practice. Snapshot the FULL
+    // tools array before any lite-shape transform so a
+    // tools/list-lite client can still drill in via
+    // tool_info(name) for the full schema.
+    m_lastToolsList = tools;
+
+    // ANTS-2175 — cache each verb's declared inputSchema property
+    // names so the tools/call dispatcher can refuse a call naming
+    // one the verb does not declare (ANTS-4659). Rebuilt in lockstep
+    // with the snapshot above so it can never go stale; the schema
+    // is compile-time-literal so this fires ~once per session.
+    // Derived from the FULL array (pre-detail-strip) — the strip
+    // only touches `description`, not `inputSchema`.
+    m_toolParamKeys.clear();
+    m_toolParamSchemas.clear();
+    for (const auto &v : std::as_const(tools)) {
+        const QJsonObject t = v.toObject();
+        const QString name =
+            t.value(QStringLiteral("name")).toString();
+        if (name.isEmpty()) continue;
+        const QJsonObject props =
+            t.value(QStringLiteral("inputSchema")).toObject()
+             .value(QStringLiteral("properties")).toObject();
+        QSet<QString> keys;
+        for (auto pit = props.constBegin();
+             pit != props.constEnd(); ++pit)
+            keys.insert(pit.key());
+        m_toolParamKeys.insert(name, keys);
+        m_toolParamSchemas.insert(name, props);
+    }
+
+    // ANTS-5506 — doc_lint's doc_facts reads this map from a
+    // dispatch worker, so it gets a COPY published under a mutex
+    // rather than m_toolParamKeys itself (GUI-thread-only,
+    // ANTS-5072). The set is what a call may pass without being
+    // refused: schema properties, the universal
+    // dispatch args, and the conditional ones this verb honours.
+    {
+        QHash<QString, QSet<QString>> published;
+        for (auto kit = m_toolParamKeys.cbegin();
+             kit != m_toolParamKeys.cend(); ++kit) {
+            QSet<QString> accepted = kit.value();
+            accepted.insert(QStringLiteral("caller_cwd"));
+            accepted.insert(QStringLiteral("encoding"));
+            accepted.insert(QStringLiteral("fields"));
+            accepted.unite(honouredDispatchArgs(kit.key()));
+            published.insert(kit.key(), accepted);
+        }
+        QMutexLocker lock(&m_verbArgsMutex);
+        m_verbArgsPublished = std::move(published);
+    }
+
+    // ANTS-2079 — strip per-op `detail` from the wire payload;
+    // the snapshot above retains it so tool_info can serve it on
+    // demand. QJsonArray is copy-on-write: mutating `tools` here
+    // detaches it, leaving m_lastToolsList intact. A one-line
+    // pointer is appended to `description` so a session reading
+    // tools/list knows where the full prose lives. Runs before
+    // both the lite branch and the full-shape send so neither
+    // wire shape carries `detail`.
+    for (int i = 0; i < tools.size(); ++i) {
+        QJsonObject t = tools.at(i).toObject();
+        if (t.contains(QStringLiteral("detail"))) {
+            t.remove(QStringLiteral("detail"));
+            t[QStringLiteral("description")] =
+                t.value(QStringLiteral("description")).toString()
+                + QStringLiteral(
+                      " Full per-op detail via tool_info "
+                      "{name:\"%1\"}.")
+                      .arg(t.value(QStringLiteral("name"))
+                               .toString());
+            tools.replace(i, t);
         }
     }
+
+    // ANTS-5628 — an always-loaded verb's schema is paid for by
+    // every session at start, so on the wire each of its argument
+    // descriptions becomes a one-line summary. The snapshot above
+    // keeps the full text, and tool_info {name} serves it, which
+    // the description's pointer already names. Keyed by
+    // "verb/arg" first, then by "arg" for the arguments those
+    // verbs share. A summary is used only where it is shorter;
+    // an argument with no entry keeps its own text.
+    {
+        static const QHash<QString, QString> kArgSummary = {
+            {QStringLiteral("caller_cwd"), QStringLiteral("Your $PWD (required); picks the project.")},
+            {QStringLiteral("compact"), QStringLiteral("Drop null, false and empty fields from the reply.")},
+            {QStringLiteral("encoding"), QStringLiteral("\"tabular\" packs object arrays as {__cols__, __rows__}; default \"json\".")},
+            {QStringLiteral("etag_match"), QStringLiteral("Etag from an earlier call with the same arguments; an unchanged result returns {unchanged:true}.")},
+            {QStringLiteral("fields"), QStringLiteral("Return only these top-level reply fields.")},
+            {QStringLiteral("raw"), QStringLiteral("Return the file text verbatim; use it when you will Edit from the output.")},
+            {QStringLiteral("workspace_search/context"), QStringLiteral("Lines of context around each match (0-10).")},
+            {QStringLiteral("workspace_search/count_only"), QStringLiteral("Return only the match and file counts.")},
+            {QStringLiteral("workspace_search/dedup"), QStringLiteral("Fold identical lines into one match with also_at (default true).")},
+            {QStringLiteral("workspace_search/enclosing_symbol"), QStringLiteral("Name the function each match is inside.")},
+            {QStringLiteral("workspace_search/exclude_glob"), QStringLiteral("Glob or globs to leave out, written positively (\"docs/**\").")},
+            {QStringLiteral("workspace_search/files_only"), QStringLiteral("Return only the matching files, with hit counts.")},
+            {QStringLiteral("workspace_search/glob"), QStringLiteral("One inclusion glob, e.g. \"*.cpp\" or \"docs/{a,b}.md\".")},
+            {QStringLiteral("workspace_search/headline_only"), QStringLiteral("Rows as {file, line, headline}, without context.")},
+            {QStringLiteral("workspace_search/lane"), QStringLiteral("Subdirectory to search, e.g. \"src\".")},
+            {QStringLiteral("workspace_search/match_wrapped"), QStringLiteral("Match a literal quotation across hard line wraps.")},
+            {QStringLiteral("workspace_search/matches_only"), QStringLiteral("Return the distinct matched strings, with counts.")},
+            {QStringLiteral("workspace_search/max_bytes"), QStringLiteral("Reply size cap in bytes (default 512 KiB).")},
+            {QStringLiteral("workspace_search/multiline"), QStringLiteral("Let a regex cross line breaks; write the break as \\n or \\s+.")},
+            {QStringLiteral("workspace_search/max_match_bytes"), QStringLiteral("Clip each match's text to N bytes (default 512; 0 = no clip).")},
+            {QStringLiteral("workspace_search/offset"), QStringLiteral("Skip the first N matches; pass back next_offset to page.")},
+            {QStringLiteral("workspace_search/query"), QStringLiteral("Alias for pattern.")},
+            {QStringLiteral("workspace_search/respect_gitignore"), QStringLiteral("false also searches ignored files.")},
+            {QStringLiteral("workspace_search/timeout_sec"), QStringLiteral("ripgrep time budget in seconds (1-30, default 5).")},
+            {QStringLiteral("file_outline/etags"), QStringLiteral("{path: etag} for the paths form; an unchanged file returns a stub.")},
+            {QStringLiteral("file_outline/filter"), QStringLiteral("Keep only symbols whose name contains this text.")},
+            {QStringLiteral("file_outline/max_bytes"), QStringLiteral("Reply size cap in bytes (default 512 KiB).")},
+            {QStringLiteral("file_outline/max_heading_level"), QStringLiteral("Markdown: drop headings deeper than this level.")},
+            {QStringLiteral("file_outline/max_symbols"), QStringLiteral("Cap on symbols[] (default 200).")},
+            {QStringLiteral("file_outline/paths"), QStringLiteral("Several paths in one call; returns files[].")},
+            {QStringLiteral("file_outline/sizes"), QStringLiteral("Add bytes and lines to each symbol.")},
+            {QStringLiteral("read_region/call_sequence"), QStringLiteral("Also return the region's calls in order, and the accessors it uses.")},
+            {QStringLiteral("read_region/max_line_bytes"), QStringLiteral("Clip each line to N bytes.")},
+            {QStringLiteral("read_region/section"), QStringLiteral("Markdown heading text or slug; returns that section.")},
+            {QStringLiteral("find_definition/include_body"), QStringLiteral("Return each definition's body inline.")},
+            {QStringLiteral("workspace_search/include_generated"), QStringLiteral("true also searches files the project marks as generated.")},
+            {QStringLiteral("workspace_search/include_hidden"), QStringLiteral("Also search dotfile paths (never .git/).")},
+            {QStringLiteral("file_outline/path"), QStringLiteral("File path, repo-relative or absolute, under the project.")},
+            {QStringLiteral("read_region/start_line"), QStringLiteral("1-based first line.")},
+            {QStringLiteral("read_region/end_line"), QStringLiteral("1-based last line, inclusive (default start_line).")},
+            {QStringLiteral("read_region/symbol"), QStringLiteral("Return this symbol's body.")},
+            {QStringLiteral("read_region/tail_lines"), QStringLiteral("With section: only its last N lines.")},
+            {QStringLiteral("read_region/max_bytes"), QStringLiteral("Cap on lines[] bytes (default 512 KiB); keeps the head.")},
+            {QStringLiteral("find_definition/lang"), QStringLiteral("One language family; auto (default) scans all.")},
+            {QStringLiteral("find_definition/max_results"), QStringLiteral("Cap on definitions[] (default 50).")},
+            {QStringLiteral("find_definition/lane"), QStringLiteral("Only scan this project-relative folder, e.g. \"src/render\".")},
+        };
+        static const QSet<QString> kSharedArgs = {
+            QStringLiteral("fields"), QStringLiteral("compact"),
+            QStringLiteral("encoding"), QStringLiteral("etag_match"),
+        };
+        // ANTS-5694 — the always-loaded verbs' own descriptions: the
+        // purpose, the one usage trap, and (on the two etag
+        // verbs) a one-line Etag tip. The kind prefix and the
+        // tool_info pointer are added below, as on every verb.
+        static const QHash<QString, QString> kEagerDescription = {
+            {QStringLiteral("workspace_search"), QStringLiteral("Search a project for a literal string, or a regex with regex:true; use instead of Bash grep -r. ONE pattern, not AND-ed words. caller_cwd picks the tree (any directory). Returns matches[{file, line, text}]. Holding a symbol name? find_caller or trace is cheaper.")},
+            {QStringLiteral("find_definition"), QStringLiteral("Find where a symbol is defined (C++, Python, Lua, Shell, GLSL) instead of grep + Read. Returns definitions[{file, line, signature, kind}]; kind is definition, declaration or local.")},
+            {QStringLiteral("file_outline"), QStringLiteral("Outline a file (header comment + symbols {line, kind, name, signature}) instead of a full Read; paths:[...] outlines several. caller_cwd required, or \"~global\". Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
+            {QStringLiteral("read_region"), QStringLiteral("Return an exact slice of a file instead of a Read: a line range, a symbol's body, or a markdown section; exactly one. Several: read_regions. caller_cwd required, or \"~global\" for ~/.claude/. Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
+        };
+        // ANTS-5271 — the five largest schemas are deferred, but a
+        // session that loads one carries it to the end, and most
+        // calls use two or three of its arguments. Same treatment,
+        // nested item fields included ("verb/parent.child" first).
+        // ANTS-4931 — the six verbs whose argument prose was
+        // longest after those five (measured 2026-11-04).
+        static const QSet<QString> kLeanVerbs = {
+            QStringLiteral("roadmap_log"),
+            QStringLiteral("roadmap_query"),
+            QStringLiteral("feedback_log"),
+            QStringLiteral("changelog_log"),
+            QStringLiteral("roadmap_migrate"),
+            QStringLiteral("audit_run"),
+            QStringLiteral("apply_edits"),
+            QStringLiteral("doc_citations"),
+            QStringLiteral("doc_lint"),
+            QStringLiteral("spec_log"),
+            QStringLiteral("invariant_check"),
+        };
+        static const QHash<QString, QString> kLeanSummary = {
+            {QStringLiteral("dry_run"), QStringLiteral("Preview the result without writing (default false).")},
+            {QStringLiteral("roadmap_query/body_from_end"), QStringLiteral("id/ids fetch: keep the END of an over-cap body; max_body_bytes then sizes the tail.")},
+            {QStringLiteral("roadmap_query/body_match"), QStringLiteral("Keep only body lines containing this text (case-insensitive); turns bodies on.")},
+            {QStringLiteral("roadmap_query/bullet_fields"), QStringLiteral("Keep only these keys on each bullet. Not with headline_only, section_index, bundles or report.")},
+            {QStringLiteral("roadmap_query/check_sync"), QStringLiteral("Also report whether ROADMAP.md matches the store (file_in_sync, drift_*). Not cached; ask once.")},
+            {QStringLiteral("roadmap_query/filter"), QStringLiteral("Alias for status.")},
+            {QStringLiteral("roadmap_query/id"), QStringLiteral("Fetch one bullet by id (case-sensitive), body included.")},
+            {QStringLiteral("roadmap_query/ids"), QStringLiteral("Fetch up to 100 bullets by id, in document order, each with input_index; misses in missing_ids.")},
+            {QStringLiteral("roadmap_query/include_body"), QStringLiteral("Add each bullet's body (2000-char cap on lists). id/ids fetches include it by default.")},
+            {QStringLiteral("roadmap_query/include_narrator_bullets"), QStringLiteral("Keep id-less section-summary bullets (default false).")},
+            {QStringLiteral("roadmap_query/include_section_etags"), QStringLiteral("section_index: add a section_etag per section, for section_etag_match.")},
+            {QStringLiteral("roadmap_query/include_section_headers"), QStringLiteral("Keep section-rollup bullets that carry no id or headline (default false).")},
+            {QStringLiteral("roadmap_query/kind"), QStringLiteral("Keep only bullets of this kind; an unknown kind refuses bad_kind.")},
+            {QStringLiteral("roadmap_query/limit"), QStringLiteral("Cap on bullets[] (1-500). Omitted, a large reply downshifts to headline rows.")},
+            {QStringLiteral("roadmap_query/max_body_bytes"), QStringLiteral("Body cap: one id up to 1 MiB, ids up to 16 KiB each; on lists it may only lower the 2000 cap.")},
+            {QStringLiteral("roadmap_query/max_results"), QStringLiteral("Alias for limit.")},
+            {QStringLiteral("roadmap_query/mode"), QStringLiteral("bullets (default), section_index (slugs and counts), headline_only, bundles, report, sources, or ledger.")},
+            {QStringLiteral("roadmap_query/offset"), QStringLiteral("0-based start into the filtered bullets; use with limit to page.")},
+            {QStringLiteral("roadmap_query/q"), QStringLiteral("Alias for query.")},
+            {QStringLiteral("roadmap_query/query"), QStringLiteral("Case-insensitive substring filter on headline, body or id. On section_index it filters section names.")},
+            {QStringLiteral("roadmap_query/range"), QStringLiteral("mode:ledger only: git range checked for commits naming no roadmap id (default newest tag..HEAD).")},
+            {QStringLiteral("roadmap_query/regex"), QStringLiteral("Read query as a case-insensitive regular expression.")},
+            {QStringLiteral("roadmap_query/scope"), QStringLiteral("mode:report only: project (default) or all registered projects.")},
+            {QStringLiteral("roadmap_query/section"), QStringLiteral("Slug of a ## or ### heading; returns its bullets and its subsections' bullets.")},
+            {QStringLiteral("roadmap_query/section_etag_match"), QStringLiteral("section_etag from an earlier section= call; an unchanged section returns {unchanged:true}.")},
+            {QStringLiteral("roadmap_query/shipped_since"), QStringLiteral("YYYY-MM-DD: list items the store says shipped on or after this date. Store-backed projects only.")},
+            {QStringLiteral("roadmap_query/shipped_until"), QStringLiteral("YYYY-MM-DD, exclusive upper bound for shipped_since (default tomorrow).")},
+            {QStringLiteral("roadmap_query/since"), QStringLiteral("mode:report only: YYYY-MM-DD start of one custom period.")},
+            {QStringLiteral("roadmap_query/slugs_only"), QStringLiteral("section_index only: return a flat slugs array.")},
+            {QStringLiteral("roadmap_query/source"), QStringLiteral("Keep bullets whose Source: starts with this prefix (string or array, case-insensitive).")},
+            {QStringLiteral("roadmap_query/source_group"), QStringLiteral("mode:sources: stem (default; drops the date onward) or exact.")},
+            {QStringLiteral("roadmap_query/stale_days"), QStringLiteral("mode:ledger only: an in-progress item untouched this many days is stale (default 14).")},
+            {QStringLiteral("roadmap_query/status"), QStringLiteral("active (planned + in-progress), shipped, all, one lifecycle name or emoji, or an array of them.")},
+            {QStringLiteral("roadmap_query/version"), QStringLiteral("A release such as \"0.10.0\"; answers as section= does for that release's section.")},
+            {QStringLiteral("roadmap_query/whole_word"), QStringLiteral("Match query on word boundaries, so a short acronym stops matching inside words.")},
+            {QStringLiteral("roadmap_query/with_titles"), QStringLiteral("With slugs_only, also return slug_titles [{slug, headline}].")},
+            {QStringLiteral("roadmap_log/accept_ambiguous_rematch"), QStringLiteral("convert: proceed although some bullets would be paired with stored items by order.")},
+            {QStringLiteral("roadmap_log/accept_text_loss"), QStringLiteral("convert: proceed although the rewrite drops text the file holds.")},
+            {QStringLiteral("roadmap_log/after_section"), QStringLiteral("create_section / move_section: the slug the new or moved section goes after.")},
+            {QStringLiteral("roadmap_log/amendments"), QStringLiteral("amend_field_batch: [{id, field, value}] in one commit; refused entries land in skipped[].")},
+            {QStringLiteral("roadmap_log/before_id"), QStringLiteral("amend_field field:section, append, append_batch: file the moved or new items directly before this item.")},
+            {QStringLiteral("roadmap_log/bullets"), QStringLiteral("append_batch: bullets with append's fields; {{id:N}} in text cites bullet N's new id.")},
+            {QStringLiteral("roadmap_log/bullets.id_hint"), QStringLiteral("Explicit id number; honoured on the first bullet only (counter strategy).")},
+            {QStringLiteral("roadmap_log/bullets.pass"), QStringLiteral("This bullet's pass designator on a pass-headings roadmap; the call-level pass is the fallback.")},
+            {QStringLiteral("roadmap_log/bullets.section"), QStringLiteral("This bullet's section slug. The call-level section is the fallback; omit it when every bullet names one.")},
+            {QStringLiteral("roadmap_log/bullets.stable_id"), QStringLiteral("This bullet's id when id_strategy is stable_prefix; unique within the batch.")},
+            {QStringLiteral("roadmap_log/bullets.status"), QStringLiteral("planned, in-progress, shipped, considered or dropped; the call-level status is the fallback.")},
+            {QStringLiteral("roadmap_log/cells"), QStringLiteral("bundle_row: one string per table column.")},
+            {QStringLiteral("roadmap_log/clear_placeholder_source"), QStringLiteral("repair_trailers: also blank an undated placeholder source of \"planned\".")},
+            {QStringLiteral("roadmap_log/dry_run"), QStringLiteral("Preview without writing. The store change runs and is rolled back, so refusals still show.")},
+            {QStringLiteral("roadmap_log/element_position"), QStringLiteral("amend/delete/promote_element: the element's position as list_elements reports it.")},
+            {QStringLiteral("roadmap_log/evidence"), QStringLiteral("File paths (screenshots, logs) evidencing the item. Paths only: the list is comma-split.")},
+            {QStringLiteral("roadmap_log/field"), QStringLiteral("amend_field: layman, kind, source, lanes or evidence; or section, to move the item.")},
+            {QStringLiteral("roadmap_log/force"), QStringLiteral("append: file a bullet whose headline matches an existing item.")},
+            {QStringLiteral("roadmap_log/header"), QStringLiteral("bundle_row: column names; creates the table when the section has none.")},
+            {QStringLiteral("roadmap_log/id_hint"), QStringLiteral("append: explicit id number; must exceed the counter.")},
+            {QStringLiteral("roadmap_log/id_prefix"), QStringLiteral("append: id prefix (e.g. \"DOOM\"); default sniffed from existing ids, else the folder name.")},
+            {QStringLiteral("roadmap_log/id_strategy"), QStringLiteral("counter (default) or stable_prefix, which needs stable_id.")},
+            {QStringLiteral("roadmap_log/intro_body"), QStringLiteral("create_section: intro prose for the new section.")},
+            {QStringLiteral("roadmap_log/legend"), QStringLiteral("set_legend: {status: wording} for the status legend; an empty string removes one.")},
+            {QStringLiteral("roadmap_log/locators"), QStringLiteral("Batch ops: items, each {id|anchor|headline|line_range} plus note, to_status or old_text/new_text.")},
+            {QStringLiteral("roadmap_log/locators.note"), QStringLiteral("Note appended to this item's body; required on annotate_batch.")},
+            {QStringLiteral("roadmap_log/locators.old_text"), QStringLiteral("amend_batch: the exact text to replace in this item's body.")},
+            {QStringLiteral("roadmap_log/locators.to_status"), QStringLiteral("flip_batch: this item's target status; the call-level to_status is the fallback.")},
+            {QStringLiteral("roadmap_log/max_planned"), QStringLiteral("convert: cap on ids.planned[] rows (default 200); 0 keeps only the counts.")},
+            {QStringLiteral("roadmap_log/new_text"), QStringLiteral("amend_*, set_body, set_intro, set_preamble: the replacement text; empty deletes the match.")},
+            {QStringLiteral("roadmap_log/note"), QStringLiteral("Prose appended to the item's body; required on annotate, optional on flip.")},
+            {QStringLiteral("roadmap_log/old_text"), QStringLiteral("amend_body / amend_headline: exact text; must occur once; matches across wraps. replace_text: every exact occurrence.")},
+            {QStringLiteral("roadmap_log/op"), QStringLiteral("Default append. Each op's arguments, refusals and behaviour: tool_info {name:\"roadmap_log\"}.")},
+            {QStringLiteral("roadmap_log/plan_id"), QStringLiteral("A dry run's plan_id: applies that request without resending it. Used once; lasts 15 minutes.")},
+            {QStringLiteral("roadmap_log/pass"),QStringLiteral("Pass designator (e.g. \"43.5\") for append on a pass-headings roadmap; required there.")},
+            {QStringLiteral("roadmap_log/position"), QStringLiteral("bundle_row: end (default), or sorted by sort_col.")},
+            {QStringLiteral("roadmap_log/return"), QStringLiteral("headline_only adds post_bullets to append/flip replies; full echoes the whole rendered bullet.")},
+            {QStringLiteral("roadmap_log/section"), QStringLiteral("Section slug; an unknown slug refuses with candidates[]. replace_text: limits it to this section and its sub-sections.")},
+            {QStringLiteral("roadmap_log/stable_id"), QStringLiteral("The full id when id_strategy is stable_prefix (e.g. \"Ts20-SP6\").")},
+            {QStringLiteral("roadmap_log/status"), QStringLiteral("planned, in-progress, shipped, considered or dropped. replace_text: only items with this status.")},
+            {QStringLiteral("roadmap_log/strip_runs"), QStringLiteral("repair_trailers: also remove a redundant legacy trailer run that ends a body.")},
+            {QStringLiteral("roadmap_log/targets"), QStringLiteral("link / unlink: the target ids.")},
+            {QStringLiteral("roadmap_log/type"), QStringLiteral("link / unlink: splits-from, blocked-by, duplicate-of or supersedes.")},
+            {QStringLiteral("roadmap_log/value"), QStringLiteral("amend_field: the new value; lanes and evidence take an array; empty clears layman.")},
+            {QStringLiteral("feedback_log/assignments"), QStringLiteral("assign_id_batch: assign_id argument objects applied in one write; failures land in skipped[].")},
+            {QStringLiteral("feedback_log/awaiting"), QStringLiteral("assign_id: a question for the reporter; the finding stays untriaged. One of ids/closure/awaiting.")},
+            {QStringLiteral("feedback_log/confirm"), QStringLiteral("reimport: replace the store's text with the hand-edited file's.")},
+            {QStringLiteral("feedback_log/heading"), QStringLiteral("assign_id: the finding's verbatim ### heading line.")},
+            {QStringLiteral("feedback_log/ids"), QStringLiteral("assign_id: the ANTS-NNNN ids to assign. One of ids/closure/awaiting.")},
+            {QStringLiteral("feedback_log/note"), QStringLiteral("Prose under the heading; on assign_id, a single Note line.")},
+            {QStringLiteral("feedback_log/op"), QStringLiteral("Required. Contributors use append_finding; the rest are maintainer ops. Detail: tool_info.")},
+            {QStringLiteral("feedback_log/path"), QStringLiteral("The feedback file; omitted, derived from caller_cwd's folder name at the shared root.")},
+            {QStringLiteral("feedback_log/title"), QStringLiteral("set_title: the project name, replacing the text after the H1's last em dash.")},
+            {QStringLiteral("roadmap_migrate/accept_deletions"), QStringLiteral("Delete items missing from the file; a store-served project keeps them by default (absent_kept).")},
+            {QStringLiteral("roadmap_migrate/backup"), QStringLiteral("Snapshot the store first (default true); a failed snapshot refuses.")},
+            {QStringLiteral("roadmap_migrate/backup_to"), QStringLiteral("Snapshot path; default pre-migrate.sqlite in the snapshot folder. Overwritten each run.")},
+            {QStringLiteral("roadmap_migrate/confirm"), QStringLiteral("deregister / reroot: confirm while the (old) project root still exists.")},
+            {QStringLiteral("roadmap_migrate/dry_run"), QStringLiteral("Plan and report counts, then roll back.")},
+            {QStringLiteral("roadmap_migrate/export_slug"), QStringLiteral("The project's export key, [a-z0-9-]; defaults to the slugified folder name.")},
+            {QStringLiteral("roadmap_migrate/max_notes"), QStringLiteral("Cap on notes[] rows (default 200, clamped to 1-2000).")},
+            {QStringLiteral("roadmap_migrate/only_ids"), QStringLiteral("Report only these ids in updated_items[]; the migration still runs whole.")},
+            {QStringLiteral("roadmap_migrate/op"), QStringLiteral("migrate (default), deregister (delete the project), init (new roadmap) or reroot (moved root).")},
+            {QStringLiteral("changelog_log/body"), QStringLiteral("Prose under the bullet, stored as sent, so wrap it yourself. On add_from_roadmap it replaces the Layman line.")},
+            {QStringLiteral("changelog_log/bullets"), QStringLiteral("add_subsection: bullets under the prose, each {summary, body?, id?}.")},
+            {QStringLiteral("changelog_log/date"), QStringLiteral("add_subsection / release: YYYY-MM-DD, default today.")},
+            {QStringLiteral("changelog_log/dated"), QStringLiteral("release: close under ## <date>, for a project with no versions.")},
+            {QStringLiteral("changelog_log/entries"), QStringLiteral("add_batch: entries, each {summary + category|kind} or {id} alone; written in input order.")},
+            {QStringLiteral("changelog_log/headline"), QStringLiteral("add_subsection: the dated topic headline.")},
+            {QStringLiteral("changelog_log/max_body_bytes"), QStringLiteral("release: cap on the echoed released_body (default 16384; 0 = no cap).")},
+            {QStringLiteral("changelog_log/op"), QStringLiteral("Default add. Each op's arguments and refusals: tool_info {name:\"changelog_log\"}.")},
+            {QStringLiteral("changelog_log/path"), QStringLiteral("A second, existing changelog (project-relative); omit for the root CHANGELOG.md.")},
+            {QStringLiteral("changelog_log/summary"), QStringLiteral("Bold one-line summary; on add_from_roadmap it replaces the cited headline.")},
+            {QStringLiteral("changelog_log/version"), QStringLiteral("release: the version, without brackets.")},
+            {QStringLiteral("apply_edits/dry_run"), QStringLiteral("Preview without writing; the reply says would_write / would_apply instead of files_written (default false).")},
+            {QStringLiteral("apply_edits/edits"), QStringLiteral("{path?, new} plus {old, replace_all?} or {start_line, end_line, expect_first_line, expect_last_line}; old_string/new_string accepted.")},
+            {QStringLiteral("apply_edits/edits.expect_count"), QStringLiteral("old form only: how many times old must match; another count skips the edit as count_mismatch. Refused with a range.")},
+            {QStringLiteral("apply_edits/edits.expect_first_line"), QStringLiteral("Verbatim text of line start_line; required on a range edit. A mismatch skips it as range_mismatch.")},
+            {QStringLiteral("apply_edits/edits.expect_last_line"), QStringLiteral("Verbatim text of line end_line; required on a range edit, checked with expect_first_line.")},
+            {QStringLiteral("apply_edits/edits.old_text"), QStringLiteral("Alias for old (roadmap_log amend_body's spelling). Sending two spellings refuses bad_op_combo.")},
+            {QStringLiteral("apply_edits/match_wrapped"), QStringLiteral("Let `old` match across different line wraps; a wrap-caused not_found names this flag in its hint (default false).")},
+            {QStringLiteral("apply_edits/path"), QStringLiteral("Default path for every edit that omits one; a per-edit path wins.")},
+            {QStringLiteral("doc_lint/checks"), QStringLiteral("Checkers to run (default all): doc_integrity, doc_citations, doc_dedup, doc_symbols, spec_lint, doc_facts. Unknown refuses.")},
+            {QStringLiteral("doc_lint/dry_run"), QStringLiteral("With fix:true, compute the repair and write nothing; refuses without fix.")},
+            {QStringLiteral("doc_lint/fix"), QStringLiteral("Repair toc_gap findings in place (default false; all else is report-only). Adds fixed[], files_written, fix_errors[].")},
+            {QStringLiteral("doc_lint/max_findings"), QStringLiteral("Cap on findings[] (default 500, 1-5000); counts still cover the whole run.")},
+            {QStringLiteral("doc_citations/quotes"), QStringLiteral("Also check double-quoted spans against the document a nearby backticked path names; adds quotes[], quote_counts (default off).")},
+            {QStringLiteral("spec_log/cells"), QStringLiteral("append_loop on a table log: one string per column, in header order; a wrong count refuses column_mismatch.")},
+            {QStringLiteral("spec_log/dry_run"), QStringLiteral("Return the landing line and would-be file size (bytes) without writing (default false).")},
+            {QStringLiteral("spec_log/preserve_body"), QStringLiteral("set_status only: keep the Status field's continuation lines, rewrite only its first line (default false).")},
+            {QStringLiteral("spec_log/status"), QStringLiteral("set_status: the new value, one line (continuations replaced unless preserve_body). append_status: text added at the field's end.")},
+            {QStringLiteral("invariant_check/files"), QStringLiteral("Project-relative paths to find citing specs for; pass src/foo.cpp, not foo.cpp. Read basename_matches too.")},
+            {QStringLiteral("invariant_check/mode"), QStringLiteral("summary (default: counts, no bodies) or full (adds invariant bodies; can exceed the reply cap).")},
+            {QStringLiteral("invariant_check/paths"), QStringLiteral("Alias for files; sending both refuses bad_op_combo.")},
+            // Its own wording, kept: the shared caller_cwd summary is
+            // shorter and would drop the mismatch refusal.
+            {QStringLiteral("audit_run/caller_cwd"), QStringLiteral("Your $PWD. Mutating verbs refuse on mismatch with the focused tab's cwd (ANTS-1372).")},
+            {QStringLiteral("audit_run/async"), QStringLiteral("Return a job handle at once and poll audit_poll {job_id}; for scope:\"full\" or slow tools (default false).")},
+            {QStringLiteral("audit_run/cap_per_tool_seconds"), QStringLiteral("Per-tool wall-clock cap, 5-300 s (default 30); above ~60 s use async:true. Out of range refuses bad_args.")},
+            {QStringLiteral("audit_run/checks"), QStringLiteral("Check ids for clang-tidy (e.g. [\"bugprone-integer-division\"]); other tools refuse bad_args.")},
+            {QStringLiteral("audit_run/exclude_paths"), QStringLiteral("Path prefixes to leave out (vendored code); exclude_paths_ignored_by names tools that cannot honour it.")},
+            {QStringLiteral("audit_run/save_baseline"), QStringLiteral("Pin this run's findings as the baseline (whole-tree runs only); later runs add since_baseline:{new[], new_count}.")},
+            {QStringLiteral("audit_run/min_confidence"), QStringLiteral("Hide findings scored below this (0-100, default 0 = off) from counts and samples; adds below_confidence_floor_count.")},
+            {QStringLiteral("audit_run/paths"), QStringLiteral("Paths to narrow file-scoped tools to; gitleaks and trivy then skip.")},
+            {QStringLiteral("audit_run/scope"), QStringLiteral("auto (default), full (whole tracked src/, deterministic), files, since-last-run (adds delta), since-tag:<tag>, branch-diff.")},
+            {QStringLiteral("audit_run/suppressions"), QStringLiteral("auto (default: learned-FP ledger + allowlist), none, or path:<file>.")},
+            {QStringLiteral("audit_run/tools"), QStringLiteral("Subset of cppcheck, clazy, clang-tidy, ruff, bandit, semgrep, gitleaks, trivy, shellcheck, mypy; default all but mypy.")},
+        };
+        // ANTS-5725 — an always-loaded verb's arguments used in
+        // under 5% of its calls stay off the wire (user decision,
+        // 2026-10-16). They are still accepted: m_toolParamKeys
+        // and tool_info read the saved full list, and Claude Code
+        // passes an argument the wire schema leaves out, as text
+        // (ANTS-6325: mcp::coerceArgTypes restores its type). Measured 2026-10-22 with
+        // tools/mcp-arg-usage-survey.py; re-run it before adding
+        // to or taking from a list. find_definition hides none.
+        static const QHash<QString, QStringList> kWireHidden = {
+            {QStringLiteral("workspace_search"),
+             {QStringLiteral("case"), QStringLiteral("count_only"),
+              QStringLiteral("dedup"), QStringLiteral("encoding"),
+              QStringLiteral("fields"), QStringLiteral("include_generated"),
+              QStringLiteral("include_hidden"),
+              QStringLiteral("match_wrapped"), QStringLiteral("matches_only"),
+              QStringLiteral("max_bytes"), QStringLiteral("multiline"),
+              QStringLiteral("offset"),
+              QStringLiteral("query"), QStringLiteral("raw"),
+              QStringLiteral("respect_gitignore"), QStringLiteral("timeout_sec")}},
+            {QStringLiteral("file_outline"),
+             {QStringLiteral("mode"), QStringLiteral("etag_match"),
+              QStringLiteral("etags"), QStringLiteral("max_bytes"),
+              QStringLiteral("raw")}},
+            {QStringLiteral("read_region"),
+             {QStringLiteral("call_sequence"), QStringLiteral("compact"),
+              QStringLiteral("etag_match"), QStringLiteral("fields"),
+              QStringLiteral("max_bytes"), QStringLiteral("raw"),
+              QStringLiteral("tail_lines")}},
+        };
+        // The first key with an entry wins: "verb/parent.child"
+        // (nested only), "verb/arg", then the shared "arg".
+        const auto summaryFor = [](const QStringList &keys) {
+            for (const QString &key : keys) {
+                QString s = kArgSummary.value(key);
+                if (s.isEmpty()) s = kLeanSummary.value(key);
+                if (!s.isEmpty()) return s;
+            }
+            return QString();
+        };
+        const auto applySummary = [](QJsonObject &p, const QString &s) {
+            if (!s.isEmpty()
+                && s.size() < p.value(QStringLiteral("description"))
+                                  .toString().size())
+                p[QStringLiteral("description")] = s;
+        };
+        const auto shorten = [&](QJsonObject &props, const QString &name) {
+            const QString verb = name + QLatin1Char('/');
+            for (auto pit = props.begin(); pit != props.end(); ++pit) {
+                QJsonObject p = pit.value().toObject();
+                applySummary(p, summaryFor({verb + pit.key(), pit.key()}));
+                QJsonObject items =
+                    p.value(QStringLiteral("items")).toObject();
+                QJsonObject inner =
+                    items.value(QStringLiteral("properties")).toObject();
+                if (!inner.isEmpty()) {
+                    for (auto iit = inner.begin(); iit != inner.end(); ++iit) {
+                        QJsonObject q = iit.value().toObject();
+                        applySummary(q, summaryFor(
+                            {verb + pit.key() + QLatin1Char('.') + iit.key(),
+                             verb + iit.key()}));
+                        iit.value() = q;
+                    }
+                    items[QStringLiteral("properties")] = inner;
+                    p[QStringLiteral("items")] = items;
+                }
+                pit.value() = p;
+            }
+        };
+        for (int i = 0; i < tools.size(); ++i) {
+            QJsonObject t = tools.at(i).toObject();
+            const QString name =
+                t.value(QStringLiteral("name")).toString();
+            QJsonObject schema =
+                t.value(QStringLiteral("inputSchema")).toObject();
+            QJsonObject props =
+                schema.value(QStringLiteral("properties")).toObject();
+            if (t.value(QStringLiteral("_meta")).toObject()
+                     .value(QStringLiteral("anthropic/alwaysLoad"))
+                     .toBool()
+                || kLeanVerbs.contains(name)) {
+                shorten(props, name);
+                for (const QString &arg : kWireHidden.value(name))
+                    props.remove(arg);
+                // ANTS-4659 — the dispatcher's own `compact`.
+                if (compactInjected.contains(name))
+                    props.remove(QStringLiteral("compact"));
+            } else {
+                // ANTS-5714 — every other verb: only the
+                // arguments that mean the same on every verb.
+                // A verb-specific caller_cwd wording is kept;
+                // only the generic dispatcher text is replaced.
+                for (auto pit = props.begin(); pit != props.end(); ++pit) {
+                    const QString &arg = pit.key();
+                    QJsonObject p = pit.value().toObject();
+                    const bool generic =
+                        arg == QLatin1String("caller_cwd")
+                            ? p.value(QStringLiteral("description")).toString()
+                                  .contains(QLatin1String("Required by the dispatcher"))
+                            : kSharedArgs.contains(arg);
+                    if (!generic) continue;
+                    applySummary(p, kArgSummary.value(arg));
+                    pit.value() = p;
+                }
+            }
+            schema[QStringLiteral("properties")] = props;
+            t[QStringLiteral("inputSchema")] = schema;
+            const QString desc = kEagerDescription.value(name);
+            if (!desc.isEmpty())
+                t[QStringLiteral("description")] =
+                    QStringLiteral("[%1] %2 %3 via tool_info {name:\"%4\"}.")
+                        .arg(kindForName(name), desc,
+                             kWireHidden.contains(name)
+                                 ? QStringLiteral("Rarer arguments and full per-op detail")
+                                 : QStringLiteral("Full per-op detail"),
+                             name);
+            tools.replace(i, t);
+        }
+    }
+
+    // ANTS-1502 — two-tier discovery. When the caller
+    // requests `_meta.shape == "lite"`, return a compact
+    // shape `[{name, summary, kind}]` per tool instead of
+    // the full descriptor set. Callers drill into a
+    // specific tool via `tool_info(name)` (ANTS-1399).
+    // Opt-in only: by default we return the full shape
+    // the MCP spec mandates.
+    bool wantLite = false;
+    {
+        const QJsonObject params =
+            request.value("params").toObject();
+        const QJsonObject metaObj =
+            params.value(QStringLiteral("_meta")).toObject();
+        const QString shape =
+            metaObj.value(QStringLiteral("shape")).toString();
+        if (shape == QLatin1String("lite")) wantLite = true;
+    }
+    if (wantLite) {
+        // ANTS-1518 — kindForName is hoisted to the outer
+        // tools/list scope (above) so the full-shape
+        // description-prefix loop and this lite-shape branch
+        // share one source of truth.
+        auto liteSummaryFor = [](const QJsonObject &t) -> QString {
+            // selection_hint when there is one, else the first
+            // sentence of description, cut to 160 characters.
+            QString hint =
+                t.value(QStringLiteral("selection_hint"))
+                 .toString();
+            if (!hint.isEmpty()) return hint;
+            QString desc =
+                t.value(QStringLiteral("description"))
+                 .toString();
+            const int dot = desc.indexOf(QChar('.'));
+            if (dot > 0 && dot < 200) {
+                desc = desc.left(dot + 1);
+            }
+            if (desc.size() > 160) {
+                desc = desc.left(157) + QStringLiteral("...");
+            }
+            return desc;
+        };
+        QJsonArray lite;
+        for (const auto &v : std::as_const(tools)) {
+            const QJsonObject t = v.toObject();
+            const QString name =
+                t.value(QStringLiteral("name")).toString();
+            QJsonObject e;
+            e[QStringLiteral("name")]    = name;
+            e[QStringLiteral("summary")] = liteSummaryFor(t);
+            e[QStringLiteral("kind")]    = kindForName(name);
+            lite.append(e);
+        }
+        result[QStringLiteral("tools")] = lite;
+        result[QStringLiteral("shape")] = QStringLiteral("lite");
+        result[QStringLiteral("hint")]  = QStringLiteral(
+            "Lite shape (ANTS-1502): each entry has only "
+            "{name, summary, kind}. Call tool_info(name) "
+            "for the full schema before invoking.");
+    } else {
+        result["tools"] = tools;
+    }
+    return result;
+}
+
+void ClaudeIntegration::mcpToolsCall(const QJsonObject &request,
+                                     const QJsonValue &reqId,
+                                     const QByteArray &buf,
+                                     const QPointer<McpReplyChannel> &guard) {
+    QJsonObject params = request.value("params").toObject();
+    QString toolName = params.value("name").toString();
+
+    // ANTS-1284 — hoist args + responseText out of the
+    // branches so a single recordCall covers both the
+    // inline get_session_info path and registered providers.
+    const QJsonObject argsObj = mcp::coerceArgTypes(params.value("arguments").toObject(),
+                                                    m_toolParamSchemas.value(toolName));
+    QString responseText;
+    bool toolHandled = false;
+    // ANTS-1356 — dispatchResult overrides the default
+    // "ok" passed to recordDispatch. Refusal branches set
+    // this to surface the refusal in mcp_trace +
+    // token_usage's failed-call accumulator.
+    // ANTS-1454 retrofitted the ANTS-1404 branch below to
+    // set "caller_cwd_required" — the pre-1454 default-to-
+    // ok masked the per-call cost of misconfigured callers
+    // (see docs/specs/ANTS-1454-caller-cwd-required-refusals-count.md).
+    QString dispatchResult = QStringLiteral("ok");
+    // ANTS-1360 — start latency clock before cache lookup
+    // so cache-hit records capture true µs-range latency
+    // (not zero). Stop right before recordMcpTrace below.
+    QElapsedTimer mcpTraceTimer;
+    mcpTraceTimer.start();
+    // The reply pipeline's context, from this call's locals as
+    // they stand when it is built.
+    const auto baseContext = [&] {
+        McpCallContext c;
+        c.socket         = guard;
+        c.requestId      = reqId;
+        c.toolName       = toolName;
+        c.args           = argsObj;
+        c.requestBytes   = buf.size();
+        c.dispatchResult = dispatchResult;
+        c.traceTimer     = mcpTraceTimer;
+        return c;
+    };
+    // ANTS-1901 — master MCP gate. When the integration is
+    // toggled off at runtime the socket stays bound until the
+    // next launch, but observation must stop now: refuse every
+    // verb with `mcp_disabled` as the FIRST gate — before the
+    // caller_cwd contract check and the idempotent-read cache
+    // lookup — so a disabled session never serves even a
+    // memoised response. setMcpEnabled() drives m_mcpEnabled
+    // from MainWindow on the live Settings toggle; at startup a
+    // disabled master never binds the socket, so this branch is
+    // only reachable in the runtime toggle-off window.
+    if (!m_mcpEnabled) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = QStringLiteral("mcp_disabled");
+        env["error"] = QStringLiteral(
+            "Ants MCP integration is disabled (Settings → "
+            "General → \"Enable Ants MCP integration\"). "
+            "Re-enable it to use this tool.");
+        responseText = QString::fromUtf8(
+            QJsonDocument(env).toJson(QJsonDocument::Compact));
+        toolHandled    = true;
+        dispatchResult = QStringLiteral("mcp_disabled");
+    }
+    // ANTS-1404 — per-tool caller_cwd contract check.
+    // Runs BEFORE the cache lookup so a refused call
+    // doesn't pollute the cache, and BEFORE the
+    // get_session_info inline branch so the contract
+    // applies uniformly. INV-2: tools classified Required
+    // refuse with {ok:false, code:"caller_cwd_required"}
+    // when caller_cwd is absent — closes the silent
+    // focused-fallback leak (2026-05-15 cross-session
+    // report). Other categories (Optional, TabSpecific,
+    // ProcessGlobal) are no-ops in Phase 3a.
+    // ANTS-1419 — consult the stored contract on the
+    // registered entry when present (single source of
+    // truth at the call site); fall back to the static
+    // table for inline-dispatched tools
+    // (get_session_info, tool_info) that don't appear
+    // in m_toolProviders.
+    CallerCwdContract contract;
+    if (auto it = m_toolProviders.find(toolName);
+        it != m_toolProviders.end()) {
+        contract = it->second.contract;
+    } else {
+        contract = callerCwdContractFor(toolName);
+    }
+    const QString callerCwd =
+        argsObj.value(QStringLiteral("caller_cwd"))
+            .toString();
+    // ANTS-1772 — resolve tool existence BEFORE the
+    // caller_cwd contract gate (default Required), else an
+    // unknown tool with no caller_cwd would wrongly refuse
+    // `caller_cwd_required` instead of `tool_not_found`.
+    // Inline tools (get_session_info, tool_info) aren't in
+    // m_toolProviders; token_usage / mcp_trace are. Gating
+    // contract + rate-limit on toolKnown lets an unknown tool
+    // fall through to the registry-miss else-branch below.
+    const bool toolKnown =
+        toolName == QStringLiteral("get_session_info") ||
+        toolName == QStringLiteral("tool_info") ||
+        m_toolProviders.find(toolName) != m_toolProviders.end() ||
+        m_forwardedTools.contains(toolName);  // ANTS-4932 § 2.5
+    if (!toolHandled && toolKnown &&
+        contract == CallerCwdContract::Required &&
+        callerCwd.isEmpty()) {
+        // ANTS-1853 — distinguish "the whole arguments object
+        // arrived empty" (the call's parameters were dropped in
+        // transit — an intermittent tools/call serialisation drop
+        // observed 2026-05-25) from "caller_cwd was the only
+        // missing field". The former is NOT a caller error:
+        // re-adding caller_cwd alone can't help because every
+        // other arg is gone too. Flagging it steers the caller to
+        // resend the ENTIRE call rather than fixate on one field,
+        // and the diagnostic log below lets a recurrence be root-
+        // caused against the Claude Code integration debug lane.
+        const bool argumentsEmpty = argsObj.isEmpty();
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = QStringLiteral("caller_cwd_required");
+        env["error"] = QString(
+            "%1: caller_cwd is required for this tool "
+            "(ANTS-1404). Pass your $PWD as caller_cwd "
+            "so the tool routes to your project rather "
+            "than whichever tab Ants has focused.")
+            .arg(toolName)
+            // ANTS-1857 — size-aware steer: name the
+            // large-payload root cause + the two mitigations
+            // (shrink / use Edit), not just "resend".
+            + (argumentsEmpty
+                ? QStringLiteral(
+                    " NOTE: this call arrived with NO arguments "
+                    "at all — if you DID pass caller_cwd, the "
+                    "whole parameter payload was dropped in "
+                    "transit (the data never reached Ants; not "
+                    "an Ants bug). Resend the entire call "
+                    "verbatim. If it keeps dropping, the payload "
+                    "is likely too large — shrink it (e.g. a "
+                    "shorter roadmap_log `body`, or split the "
+                    "work) or write the content with the Edit "
+                    "tool directly. Small calls are reliable "
+                    "(ANTS-1853).")
+                : QString());
+        // ANTS-1418 — surface the diagnostic verb so a
+        // caller who already passes caller_cwd but still
+        // gets the wrong tab (symlinked roots, worktree
+        // checkouts, container bind-mounts) finds the
+        // tool that lets them confirm the resolution.
+        env["hint"] = QStringLiteral(
+            "call mcp__ants__caller_cwd_info with your "
+            "$PWD to confirm which tab Ants would route "
+            "this call to");
+        // ANTS-1543 — concrete JSON snippet (mirrors the
+        // session_memory + RcGate envelopes) so the
+        // caller can copy the exact arguments shape.
+        QJsonObject ex;
+        ex[QStringLiteral("caller_cwd")] =
+            QStringLiteral("<your $PWD>");
+        env[QStringLiteral("example")] = ex;
+        // ANTS-1853 — machine-readable flag for the dropped-
+        // payload case so a caller (or test) can branch on it.
+        if (argumentsEmpty)
+            env[QStringLiteral("arguments_empty")] = true;
+        // ANTS-1853 — diagnostic trace on every caller_cwd
+        // refusal. The parsed-key fields alone can't tell a
+        // truncated-transport drop from an intact request whose
+        // `arguments` serialised empty upstream, so also log the
+        // raw whole-request byte length (`buf`), whether the
+        // `arguments` key was present at all, and a bounded
+        // request fingerprint (the "raw length + content hash" the
+        // ROADMAP note asked for). See ANTS-1853 for the matrix.
+        ANTS_LOG(DebugLog::Claude,
+                 "ANTS-1853 tools/call refused caller_cwd_required:"
+                 " tool=%s arguments_empty=%d args_key_present=%d"
+                 " arg_keys=%d req_bytes=%d req_hash=%u keys=[%s]",
+                 toolName.toUtf8().constData(),
+                 argumentsEmpty ? 1 : 0,
+                 params.contains(QStringLiteral("arguments")) ? 1 : 0,
+                 static_cast<int>(argsObj.size()),
+                 static_cast<int>(buf.size()),
+                 static_cast<unsigned>(qHash(buf)),
+                 argsObj.keys().join(QLatin1Char(','))
+                     .toUtf8().constData());
+        responseText = QString::fromUtf8(
+            QJsonDocument(env)
+                .toJson(QJsonDocument::Compact));
+        toolHandled    = true;
+        // ANTS-1454 — route the refusal to recordDispatch's
+        // failed-call accumulator. Pre-1454 the branch
+        // inherited the "ok" default and token_usage
+        // double-counted refusals as successes.
+        dispatchResult = QStringLiteral("caller_cwd_required");
+    }
+    // ANTS-1415 — Phase 3b: TabSpecific contract enforcement.
+    // The per-tab read tools route on caller_cwd (ANTS-1392)
+    // and, for those tabSpecificAcceptsTabIndex lists, an
+    // explicit `tab` index. With NO usable routing key they
+    // fall back to the focused tab — the cross-tenant leak
+    // ANTS-1404 closed for Required tools, deferred from
+    // Phase 3a because the routing-vs-anchoring semantics
+    // needed their own spec pass. Refuse before the
+    // rate-limit + cache, mirroring the Required branch.
+    // A stray `tab` on a cwd-only tool is NOT a routing key
+    // (the handler ignores it), else it would bypass the
+    // gate and still fall back to focused. See
+    // docs/standards/mcp-error-codes.md § 3 + docs/specs/ANTS-1415-callercwdcontract-tabspecific.md.
+    if (!toolHandled && toolKnown &&
+        contract == CallerCwdContract::TabSpecific) {
+        const bool tabIsRoutingKey =
+            tabSpecificAcceptsTabIndex(toolName);
+        const bool hasTab = tabIsRoutingKey &&
+            argsObj.value(QStringLiteral("tab")).isDouble();
+        if (callerCwd.isEmpty() && !hasTab) {
+            QJsonObject env;
+            env["ok"]   = false;
+            env["code"] = QStringLiteral("tab_or_cwd_required");
+            env["error"] = (tabIsRoutingKey
+                ? QString("%1: pass a `tab` index or `caller_cwd` "
+                          "(your $PWD) to identify the target tab "
+                          "(ANTS-1415). Without either, this "
+                          "per-tab tool falls back to whichever tab "
+                          "Ants has focused — which may belong to a "
+                          "different project.")
+                : QString("%1: pass `caller_cwd` (your $PWD) to "
+                          "identify the target tab (ANTS-1415). "
+                          "Without it, this per-tab tool falls back "
+                          "to whichever tab Ants has focused — which "
+                          "may belong to a different project."))
+                .arg(toolName);
+            env["hint"] = QStringLiteral(
+                "call mcp__ants__caller_cwd_info with your $PWD to "
+                "confirm which tab Ants would route this call to; "
+                "tab_list gives tab indices");
+            QJsonObject ex;
+            ex[QStringLiteral("caller_cwd")] =
+                QStringLiteral("<your $PWD>");
+            env[QStringLiteral("example")] = ex;
+            responseText = QString::fromUtf8(
+                QJsonDocument(env).toJson(QJsonDocument::Compact));
+            toolHandled    = true;
+            dispatchResult = QStringLiteral("tab_or_cwd_required");
+        }
+    }
+    // ANTS-4659 — an argument the verb does not declare refuses
+    // the call before the verb runs, on every verb. It used to
+    // run and report the argument as ignored, and every such
+    // argument surveyed was a slip that silently did nothing.
+    // Above the forwarder, so ants-mcpd refuses for the terminal.
+    if (!toolHandled && toolKnown) {
+        const QStringList unknown =
+            ignoredArgKeysFor(toolName, argsObj);
+        if (!unknown.isEmpty()) {
+            QJsonObject env;
+            env["ok"]   = false;
+            env["code"] = QStringLiteral("bad_args");
+            env["error"] = QStringLiteral(
+                "%1: unknown argument%2 %3; nothing ran.")
+                .arg(toolName,
+                     unknown.size() == 1 ? QString()
+                                         : QStringLiteral("s"),
+                     unknown.join(QStringLiteral(", ")));
+            env["unknown_args"] =
+                QJsonArray::fromStringList(unknown);
+            env["hint"] = QStringLiteral(
+                "tool_info {name:\"%1\"} lists this verb's "
+                "arguments").arg(toolName);
+            responseText = QString::fromUtf8(
+                QJsonDocument(env).toJson(QJsonDocument::Compact));
+            toolHandled    = true;
+            dispatchResult = QStringLiteral("bad_args");
+        }
+    }
+    // ANTS-4932 § 2.3 — ants-mcpd forwards a terminal-scoped verb
+    // whole once the gates above have passed it, and emits the
+    // terminal's reply unchanged: rate limit, cache, ETag, fields=
+    // and the wrap all ran in the terminal. A forwarder failure is
+    // a no_terminal envelope, finished like any other refusal.
+    // Never adds a caller_cwd: the request goes as it came (INV-8).
+    if (!toolHandled && m_forwarder &&
+        m_forwardedTools.contains(toolName)) {
+        McpCallContext fctx = baseContext();
+        fctx.toolHandled = true;
+        const QPointer<ClaudeIntegration> self(this);
+        m_forwarder(buf,
+            [fctx](const QByteArray &replyLine) {
+                McpReplyChannel *const channel = fctx.socket.data();
+                if (channel && channel->isOpen())
+                    channel->reply(replyLine);
+            },
+            [self, fctx](const QString &envelope) {
+                if (!self) return;
+                self->finishToolDispatch(
+                    fctx, transformReply(fctx, envelope));
+            });
+        return;
+    }
+    // ANTS-1356 — per-tool sliding-window rate-limit.
+    // Runs AFTER caller_cwd_required (a misconfigured
+    // caller should see the precise refusal first) but
+    // BEFORE the idempotent-read cache lookup (cache
+    // hits consume bucket budget — INV-5). Refusal sets
+    // toolHandled=true with a {ok:false, code:"rate_limited",
+    // retry_after_ms} envelope; downstream wrap + record
+    // paths see it like any other completed call.
+    if (!toolHandled && toolKnown) {
+        const qint64 nowMs = s_rateLimitClock.elapsed();
+        const qint64 retryAfter =
+            rateLimitCheck(toolName, callerCwd, nowMs);
+        if (retryAfter > 0) {
+            const RateLimitTier tier =
+                rateLimitTierFor(rateLimitClassFor(toolName));
+            QJsonObject env;
+            env["ok"]              = false;
+            env["code"]            = QStringLiteral("rate_limited");
+            env["retry_after_ms"]  = static_cast<qint64>(retryAfter);
+            env["error"] = QString(
+                "%1: rate-limited (%2 calls in last "
+                "%3 s, cap %2). retry_after_ms=%4")
+                .arg(toolName)
+                .arg(tier.capPerWindow)
+                .arg(tier.windowMs / 1000)
+                .arg(retryAfter);
+            responseText = QString::fromUtf8(
+                QJsonDocument(env)
+                    .toJson(QJsonDocument::Compact));
+            toolHandled    = true;
+            dispatchResult = QStringLiteral("rate_limited");
+        }
+    }
+    // ANTS-1357 — short-TTL idempotent-read cache lookup
+    // happens before dispatch. Only the 4 allowlisted tools
+    // hit this path (isIdempotentReadTool); everything else
+    // falls through to the registry below. INV-1: cache
+    // hit response is byte-identical to a miss at stampMs.
+    bool cachedHit = false;
+    // Cleared on the dispatch_queue_full branch below.
+    bool cacheable =
+        !toolHandled && isIdempotentReadTool(toolName);
+    // baseContext plus the cache state; a handled call also
+    // carries its undeclared-argument keys, for the ledger.
+    const auto dispatchContext = [&](bool handled) {
+        McpCallContext c = baseContext();
+        c.cachedHit   = cachedHit;
+        c.cacheable   = cacheable;
+        c.toolHandled = handled;
+        if (handled)
+            c.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
+        return c;
+    };
+    if (cacheable) {
+        const QString hit = tryGetIdempotentReadCache(
+            toolName, argsObj);
+        if (!hit.isEmpty()) {
+            responseText = hit;
+            toolHandled  = true;
+            cachedHit    = true;
+        }
+    }
+    // ANTS-1253: get_session_info stays inline — it reads
+    // ClaudeIntegration's own private state (m_state,
+    // m_currentTool, m_contextPercent, m_touchedFiles,
+    // m_activeSessionId) rather than delegating to an
+    // external provider. All outward-delegate tools
+    // dispatch via the registry below. Guard widened to
+    // `!toolHandled` so a prior refusal (ANTS-1404
+    // contract check) or cache hit (ANTS-1357) short-
+    // circuits this block.
+    if (!toolHandled) {
+        if (toolName == "get_session_info") {
+            QJsonObject info;
+            info["state"] = static_cast<int>(m_state);
+            info["current_tool"] = m_currentTool;
+            info["context_percent"] = m_contextPercent;
+            info["changed_files"] = QJsonArray::fromStringList(m_touchedFiles);
+            info["session_id"] = m_activeSessionId;
+            // ANTS-1952 — re-surface build identity here too, so a
+            // session that has already handshaked can confirm the
+            // running binary's SHA without re-issuing initialize.
+            info["server_build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);  // ANTS-3582: extern arrays
+            info["server_build_date"] = QString::fromLatin1(ANTS_BUILD_DATE);
+            info["server_build_time"] = QString::fromLatin1(ANTS_BUILD_TIME);
+            info["server_build_type"] = QString::fromLatin1(ANTS_BUILD_TYPE);
+            responseText = QString::fromUtf8(
+                QJsonDocument(info).toJson(QJsonDocument::Compact));
+            toolHandled = true;
+        } else if (toolName == "tool_info") {
+            // ANTS-1399-INV-3 — read from the snapshot
+            // populated at tools/list end. Inline-dispatched
+            // (no provider lambda) so the cache lives next
+            // to the descriptors it slices from.
+            QJsonObject env;
+            const QString reqName =
+                argsObj.value(QStringLiteral("name")).toString();
+            // ANTS-1985 — catalog mode. Evaluated BEFORE the
+            // reqName.isEmpty() guard: catalog calls supply no
+            // `name`, so reaching missing_name first would
+            // wrongly refuse every catalog request (spec § 2.4).
+            const bool catalogMode =
+                argsObj.value(QStringLiteral("catalog")).toBool();
+            if (catalogMode) {
+                if (m_lastToolsList.isEmpty()) {
+                    env["ok"]    = false;
+                    env["code"]  = QStringLiteral("tools_not_ready");
+                    env["error"] = QStringLiteral(
+                        "tool_info: call tools/list first to "
+                        "populate the descriptor cache");
+                } else {
+                    // Group by the [<kind>] description prefix
+                    // (injected at tools/list, ANTS-1518). QMap
+                    // keys sort ascending, so both categories
+                    // and the names within each emit in stable
+                    // sorted order (INV-12). A missing or
+                    // malformed prefix ([ unclosed, or []) →
+                    // "other", keeping the parse total.
+                    auto categoryOf =
+                        [](const QString &desc) -> QString {
+                        if (desc.startsWith(QLatin1Char('['))) {
+                            const int close =
+                                desc.indexOf(QLatin1Char(']'));
+                            if (close > 1)
+                                return desc.mid(1, close - 1);
+                        }
+                        return QStringLiteral("other");
+                    };
+                    QMap<QString, QMap<QString, QString>> grouped;
+                    for (const auto &v :
+                             std::as_const(m_lastToolsList)) {
+                        const QJsonObject d = v.toObject();
+                        const QString n = d.value(
+                            QStringLiteral("name")).toString();
+                        const QString cat = categoryOf(
+                            d.value(QStringLiteral("description"))
+                             .toString());
+                        grouped[cat][n] = d.value(
+                            QStringLiteral("selection_hint"))
+                            .toString();
+                    }
+                    QJsonObject catalog;
+                    int toolCount = 0;
+                    for (auto c = grouped.constBegin();
+                         c != grouped.constEnd(); ++c) {
+                        QJsonArray arr;
+                        for (auto t = c.value().constBegin();
+                             t != c.value().constEnd(); ++t) {
+                            QJsonObject e;
+                            e[QStringLiteral("name")] = t.key();
+                            e[QStringLiteral("selection_hint")] =
+                                t.value();
+                            arr.append(e);
+                            ++toolCount;
+                        }
+                        catalog[c.key()] = arr;
+                    }
+                    env["ok"]             = true;
+                    env["catalog"]        = catalog;
+                    env["tool_count"]     = toolCount;
+                    env["category_count"] = catalog.size();
+                    // ANTS-5807 — said once, on the call a caller
+                    // makes before dispatching verbs in parallel.
+                    // Each verb is registered on one lane and
+                    // each lane is one thread (postWorkerJob).
+                    env["concurrency"] = QStringLiteral(
+                        "Within one server, calls to the same verb run "
+                        "one at a time, so parallel calls queue; "
+                        "audit_run refuses already_running for a project "
+                        "it is sweeping. Each session runs its own "
+                        "server, so two sessions' calls can overlap: a "
+                        "roadmap-store write is one transaction, but a "
+                        "verb that rewrites a file (apply_edits) "
+                        "replaces it whole, and the last writer wins.");
+                    // ANTS-2073 — stamp the running server's
+                    // build identity on the catalog (the
+                    // documented once-per-session discovery
+                    // call) so a client can self-diagnose a
+                    // stale-binary deploy gap without a
+                    // separate get_session_info round-trip.
+                    QJsonObject sb;
+                    sb["version"]      = QStringLiteral(ANTS_VERSION);
+                    sb["build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);  // ANTS-3582: extern arrays
+                    sb["build_date"]   = QString::fromLatin1(ANTS_BUILD_DATE);
+                    sb["build_time"]   = QString::fromLatin1(ANTS_BUILD_TIME);
+                    sb["build_type"]   = QString::fromLatin1(ANTS_BUILD_TYPE);
+                    env["server_build"] = sb;
+                }
+            } else if (reqName.isEmpty()) {
+                env["ok"]    = false;
+                env["code"]  = QStringLiteral("missing_name");
+                env["error"] = QStringLiteral(
+                    "tool_info: 'name' arg is required");
+            } else if (m_lastToolsList.isEmpty()) {
+                env["ok"]    = false;
+                env["code"]  = QStringLiteral("tools_not_ready");
+                env["error"] = QStringLiteral(
+                    "tool_info: call tools/list first to "
+                    "populate the descriptor cache");
+            } else {
+                QJsonObject match;
+                QJsonArray available;
+                for (const auto &v : std::as_const(m_lastToolsList)) {
+                    const QJsonObject d = v.toObject();
+                    const QString n =
+                        d.value(QStringLiteral("name")).toString();
+                    available.append(n);
+                    if (n == reqName) match = d;
+                }
+                if (match.isEmpty()) {
+                    env["ok"]        = false;
+                    env["code"]      = QStringLiteral("unknown_tool");
+                    env["error"]     = QStringLiteral(
+                        "tool_info: no MCP tool registered "
+                        "as '%1'").arg(reqName);
+                    env["available"] = available;
+                    // ANTS-5485 — a removed verb names its successor.
+                    const QString replacement =
+                        mcp::removedReplacement(reqName);
+                    if (!replacement.isEmpty())
+                        env["replacement"] = replacement;
+                } else if (const QString op = argsObj.value(
+                               QStringLiteral("op")).toString();
+                           !op.isEmpty()) {
+                    env = mcp::toolInfoForOp(match, op);   // ANTS-6829
+                } else {
+                    env["ok"]          = true;
+                    env["name"]        = match.value(QStringLiteral("name"));
+                    env["description"] = match.value(QStringLiteral("description"));
+                    env["inputSchema"] = match.value(QStringLiteral("inputSchema"));
+                    // ANTS-1453 — pass selection_hint through
+                    // unchanged. No defaulting (every tool sets
+                    // it in tools/list per HINT-1).
+                    env["selection_hint"] =
+                        match.value(QStringLiteral("selection_hint"));
+                    // ANTS-2079 — surface the per-op detail
+                    // trimmed from the wire payload. Conditional
+                    // (NOT mirroring selection_hint's
+                    // unconditional set): present only for tools
+                    // that authored one; an unconditional set
+                    // would emit detail:null for the ~66 tools
+                    // that didn't and break INV-2.
+                    if (match.contains(QStringLiteral("detail")))
+                        env["detail"] =
+                            match.value(QStringLiteral("detail"));
+                }
+            }
+            responseText = QString::fromUtf8(
+                QJsonDocument(env).toJson(QJsonDocument::Compact));
+            toolHandled = true;
+        } else if (auto it = m_toolProviders.find(toolName);
+                   it != m_toolProviders.end()) {
+            // ANTS-1419 — value type is RegisteredTool
+            // (handler + contract); call the handler.
+            // ANTS-2132 — off-thread where the registration
+            // marked it so. postToolDispatch returns having
+            // queued the work; the reply is written later, from
+            // finishToolDispatch, on this thread.
+            if (it->second.deferred) {
+                // ANTS-2132 § 2.8 — the verb replies later, on
+                // this thread, through the same pipeline.
+                const McpCallContext dctx = dispatchContext(true);
+                const QPointer<ClaudeIntegration> self(this);
+                const auto replied = std::make_shared<bool>(false);
+                it->second.deferred(argsObj,
+                    [self, dctx, replied](const QString &body) {
+                        // The first reply is written; any later
+                        // one is dropped.
+                        if (*replied || !self) return;
+                        *replied = true;
+                        self->finishToolDispatch(
+                            dctx, transformReply(dctx, body));
+                    });
+                return;  // the reply follows from the verb
+            }
+            if (it->second.offThread) {
+                if (postToolDispatch(dispatchContext(true), it->second.handler,
+                                     it->second.lane))
+                    return;  // reply follows from the worker
+                // Queue full — refuse rather than drop it, so a
+                // caller sees a code instead of a dead socket.
+                QJsonObject env;
+                env["ok"]             = false;
+                env["code"]           = QStringLiteral("dispatch_queue_full");
+                env["error"]          = QStringLiteral(
+                    "%1: too many MCP calls are already in "
+                    "flight; retry shortly").arg(toolName);
+                env["retry_after_ms"] = 250;
+                responseText   = QString::fromUtf8(
+                    QJsonDocument(env).toJson(QJsonDocument::Compact));
+                dispatchResult = QStringLiteral("dispatch_queue_full");
+                // ANTS-5090 — a transient refusal is not an answer
+                // (ANTS-1357 INV-5); caching it would serve it to the
+                // next caller after the queue has drained.
+                cacheable = false;
+            } else {
+                responseText = it->second.handler(argsObj);
+            }
+            toolHandled = true;
+        }
+    }
+    // ANTS-2132 — hand the rest of the reply to finishToolDispatch.
+    // It owns the transforms, the wrap, recordDispatch and the
+    // socket write for this path.
+    const McpCallContext ctx = dispatchContext(toolHandled);
+    finishToolDispatch(ctx, transformReply(ctx, responseText));
+}
+
+void ClaudeIntegration::mcpVerifyTrustPrompt(const QJsonObject &request,
+                                             const QJsonValue &reqId,
+                                             const QPointer<McpReplyChannel> &guard) {
+    // ANTS-5464 § 2.2 — not a tool. The handler may hold a prompt
+    // open, so it runs on the Bulk worker: the GUI thread and the
+    // Shared worker keep serving (INV-9). The reply is written
+    // from the GUI thread, like every other.
+    const QJsonObject params = request.value("params").toObject();
+    if (postWorkerJob([this, guard, reqId, params,
+                       handler = m_verifyTrustPromptHandler]() {
+            const QJsonObject r = handler(params);
+            QMetaObject::invokeMethod(this, [guard, reqId, r]() {
+                sendMcpResponse(guard, reqId, &r, nullptr);
+            }, Qt::QueuedConnection);
+        }, DispatchLane::Bulk))
+        return;
+    QJsonObject error;
+    error["code"] = -32000;
+    error["message"] = QStringLiteral(
+        "%1: too many MCP calls are already in flight; retry shortly")
+        .arg(QLatin1String(VerifyTrust::kPromptMethod));
+    sendMcpResponse(guard, reqId, nullptr, &error);
 }

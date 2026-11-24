@@ -177,16 +177,15 @@ TEST(McpBuildStatus, WiringContract) {
 
     // INV-9 — kindForName "build" bucket.
     {
-        const auto pos = ciCpp.find("auto kindForName");
-        ASSERT_NE(pos, std::string::npos);
-        // Bounded by the lambda's own terminator rather than a byte count, for
+        // Bounded by the lambda's own braces rather than a byte count, for
         // the reason given at INV-7: kindForName grows every time a verb is
         // bucketed, so any fixed window is a scheduled false failure. It has
         // already been widened once (ANTS-2129, 5 KiB → 7 KiB) and ANTS-3661
-        // pushed build_status past 7 KiB too.
-        const auto fnEnd = ciCpp.find("\n                };", pos);
-        ASSERT_NE(fnEnd, std::string::npos);
-        const std::string fn = ciCpp.substr(pos, fnEnd - pos);
+        // pushed build_status past 7 KiB too. ANTS-6223 — brace-matched, so
+        // the lambda's indentation does not matter either.
+        const std::string fn =
+            ants_test::slurpFunctionBody(ciCpp, "auto kindForName");
+        ASSERT_FALSE(fn.empty());
         const auto branch = fn.find("\"build_status\"");
         ASSERT_NE(branch, std::string::npos)
             << "build_status must have an explicit branch in "
