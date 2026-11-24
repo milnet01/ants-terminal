@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem privately
+    url: https://github.com/milnet01/ants-terminal/security/advisories/new
+    about: Please do not post security problems as public issues.

@@ -288,6 +288,10 @@ More build options are in [CONTRIBUTING.md](CONTRIBUTING.md).
 If the tools don't show up, check that **Settings → General → Enable Ants
 MCP integration** is ticked, then close and reopen Ants.
 
+**Found a problem, or have an idea?** Choose **Help → Report an Issue**. It
+opens GitHub's issue form in your browser with your version and system
+details filled in. You send it from your own GitHub account.
+
 ## Settings
 
 Open **Settings** from the menu, or edit `~/.config/ants-terminal/config.json`

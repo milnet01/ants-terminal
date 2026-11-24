@@ -263,6 +263,9 @@ Listed only where behavior isn't obvious from the name.
 - `welcomedialog` (`ants_dialogs_lib`) — the first-run welcome: thanks, a
   feature summary, setup rows and donation links. Opens once per config
   (`ui.welcome_shown`) and from Help › Show Welcome. Spec ANTS-5558.
+- `reportissue` (`ants_dialogs_lib`) — Help › Report an Issue: a bug-or-idea
+  dialog that opens GitHub's issue form pre-filled with the system details,
+  and warns before a debug log is shared. ANTS-6911.
 - `claudesetup` (`ants_dialogs_lib`) — the setup actions the welcome dialog
   and Settings share: the Claude Code hooks, registering `ants-mcpd` with
   `claude mcp add`, the optional CLAUDE.md note, shell integration. Spec

@@ -1,0 +1,27 @@
+# ANTS-6911 — Help → Report an Issue opens this form with `title` and the
+# `environment` field filled in (src/reportissue.cpp, issueUrl). Renaming a
+# field id breaks that pre-fill; tests/features/report_issue checks it.
+name: An idea or request
+description: Something you would like Ants Terminal to do, or do differently.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would it help you do?
+      description: The problem it solves, or the task it makes easier.
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Your system
+      description: Filled in for you when you use Help → Report an Issue in Ants Terminal.
+    validations:
+      required: false

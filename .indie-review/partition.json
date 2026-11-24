@@ -99,6 +99,8 @@
         "src/dialogfocus.h",
         "src/dialogshowtracer.cpp",
         "src/dialogshowtracer.h",
+        "src/reportissue.cpp",
+        "src/reportissue.h",
         "src/reviewdialogbase.cpp",
         "src/reviewdialogbase.h",
         "src/appimageenv.cpp",

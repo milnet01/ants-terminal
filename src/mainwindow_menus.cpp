@@ -18,6 +18,7 @@
 #include "claudeprojects.h"
 #include "claudetranscript.h"
 #include "aboutdialogs.h"          // ANTS-1181 — About-Ants/About-Qt
+#include "reportissue.h"           // ANTS-6911 — Help → Report an Issue
 #include "auditdialog.h"
 #include "coldeyesdialog.h"   // ANTS-1721 — native cold-eyes review dialog.
 #include "testauditdialog.h"  // ANTS-1722 — native test-suite review dialog.
@@ -1026,6 +1027,12 @@ void MainWindow::setupHelpMenu() {
     connect(welcomeAction, &QAction::triggered, this, &MainWindow::showWelcome);
 
     helpMenu->addSeparator();
+    // ANTS-6911 — a pre-filled GitHub issue, sent from the person's own account.
+    QAction *reportIssueAction = helpMenu->addAction(tr("Report an &Issue..."));
+    reportIssueAction->setObjectName(QStringLiteral("helpReportIssueAction"));
+    connect(reportIssueAction, &QAction::triggered, this, [this]() {
+        ReportIssue::show(this, DebugLog::logFilePath());
+    });
     // 0.7.47 — manual update check. The startup probe already runs
     // 5 s after launch (see m_updateAvailableAction wiring); this
     // gives the user a way to re-check on demand without restarting.

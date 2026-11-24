@@ -1,0 +1,55 @@
+# ANTS-6911 — Help → Report an Issue opens this form with `title` and the
+# `environment` field filled in (src/reportissue.cpp, issueUrl). Renaming a
+# field id breaks that pre-fill; tests/features/report_issue checks it.
+name: Something is broken
+description: Ants Terminal did something wrong, crashed or would not start.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+        **Found a security problem?** Please do not post it here. Report it privately instead:
+        https://github.com/milnet01/ants-terminal/security/advisories/new
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see? A screenshot helps, if you can add one.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we make it happen?
+      description: The steps that lead to the problem, if you know them.
+      placeholder: |
+        1. Open a new tab
+        2. Run ...
+        3. See ...
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Your system
+      description: Filled in for you when you use Help → Report an Issue in Ants Terminal.
+      placeholder: Ants Terminal version, Qt version, Linux distribution and desktop.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log (optional)
+      description: >-
+        A debug log can hold folder names, commands you ran and other private
+        text. Read it first, and remove anything you do not want to share.
+      render: text
+    validations:
+      required: false

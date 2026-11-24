@@ -1110,6 +1110,8 @@ add_library(ants_dialogs_lib STATIC
     src/sshdialog.cpp
     src/aidialog.cpp
     src/aboutdialogs.cpp
+    # ANTS-6911 — Help → Report an Issue.
+    src/reportissue.cpp
     # ANTS-5558 — the welcome dialog and the setup actions it shares with
     # SettingsDialog.
     src/welcomedialog.cpp
@@ -2747,6 +2749,10 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/help_about_menu/test_help_about_menu.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp")
+    set_property(SOURCE tests/features/report_issue/test_report_issue.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_ISSUE_TEMPLATE_DIR="${CMAKE_SOURCE_DIR}/.github/ISSUE_TEMPLATE"
+        SRC_MAINWINDOW_MENUS_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow_menus.cpp")
     set_property(SOURCE tests/features/welcome_dialog/test_welcome_dialog.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_WELCOMEDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/welcomedialog.cpp")
@@ -4111,6 +4117,8 @@ if(ANTS_TESTS)
         SOURCES tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
                 # ANTS-5390 — the About dialog never clips its body.
                 tests/features/about_dialog_fits/test_about_dialog_fits.cpp
+                # ANTS-6911 — Help → Report an Issue's link and log warning.
+                tests/features/report_issue/test_report_issue.cpp
                 # ANTS-5391 — the themed title bar follows a retitle.
                 tests/features/dialog_chrome_title_follows/test_dialog_chrome_title_follows.cpp
                 # ANTS-5368 — the roadmap dialog's title names its source.
