@@ -62,6 +62,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`trace` reads Python files whose f-strings hold a quoted string and later break a `{…}` field across lines** (ANTS-6344)
+  The vendored Python grammar carries a local patch for this, which
+  `tools/vendor-grammars.sh` re-applies on every refresh.
+
 - **A tab reads "Claude: idle" right after /clear, and after any local command in the newer Claude Code transcript format** (ANTS-6917)
 
 - **The publish stamp is written when the live roadmap path is given relative to the project root** (ANTS-5879)

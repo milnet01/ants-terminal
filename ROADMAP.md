@@ -92896,7 +92896,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md 2026-11-01.
   Lanes: mcp.
 
-- 📋 [ANTS-6344] **Vendored Python grammar cannot parse a multi-line replacement field in a triple-quoted f-string.**
+- ✅ [ANTS-6344] **Vendored Python grammar cannot parse a multi-line replacement field in a triple-quoted f-string.**
   Smallest failing form, shrunk from Pressless editor.py _page on 2026-11-01:
   f"""{a}\n<p x="/">{say("b")}</p>\n<p x="c">{\n say("d" if e else "f")}</p>\n<s>{g}</s>"""
   Python's ast accepts it. Cause in the grammar's scanner not looked into.
@@ -92906,6 +92906,15 @@ measured Ants adding about 5,250 tokens to every request.
   valid ones to planned). Reproduced: the body's f-string, then a def
   and a caller. trace reports parse_error and misses after_one's
   definition and its caller; the same f-string on one line finds both.
+  Shipped 2026-11-25. The form above parses clean; the real trigger is a
+  plain string nested in an earlier field of the same f-string, then a
+  field opening with a line break at a smaller indent. The scanner's
+  "inside an f-string" flag followed the innermost string only, so the
+  nested string cleared it and the line break read as a dedent. Fixed
+  by patches/python-ants-6344.patch (flag = any open f-string), which
+  tools/vendor-grammars.sh now re-applies. Upstream v0.25.0 and master
+  still have the defect. 57,618 Python files: none newly fail.
+  Hot reload: ants-mcpd rebuild + client reconnect.
   **Layman:** The code reader trips on one rare way of writing long text in Python, and anything after it in that file can be misread.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-11-01.

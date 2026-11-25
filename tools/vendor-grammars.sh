@@ -16,6 +16,9 @@
 #            -> third_party/tree-sitter-grammars/<lang>/
 #   extra    each "extra" path, from the tarball root to the same relative
 #            path under third_party/tree-sitter-grammars/
+#   patches  each "patches" file, applied with patch -p1 from
+#            third_party/tree-sitter-grammars/ after the copy; one that does
+#            not apply stops the script
 # The build itself never fetches anything.
 
 set -euo pipefail
@@ -114,6 +117,12 @@ for ((i = 0; i < count; i++)); do
         mkdir -p "$grammars_dir/$(dirname "$extra")"
         cp "$src/$extra" "$grammars_dir/$extra"
     done < <(jq -r ".grammars[$i].extra // [] | .[]" "$manifest")
+    # Local fixes upstream has not released: they must survive a refresh.
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        patch -p1 --batch --forward --quiet -d "$grammars_dir" < "$grammars_dir/$p"
+        echo "vendor-grammars: $lang patched with $p"
+    done < <(jq -r ".grammars[$i].patches // [] | .[]" "$manifest")
     abi=$(sed -n 's/^#define LANGUAGE_VERSION \([0-9]*\).*/\1/p' "$dest/src/parser.c")
     echo "vendor-grammars: $lang -> third_party/tree-sitter-grammars/$lang (ABI $abi)"
 done

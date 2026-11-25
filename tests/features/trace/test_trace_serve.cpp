@@ -196,6 +196,26 @@ TEST_F(TraceServe, Ants6342ParseErrorFileIsNamedAndItsCallsMarked) {
     EXPECT_TRUE(possibleCalls(clean).isEmpty()) << dump(clean);
 }
 
+// ANTS-6344 — after a plain string nested in an f-string's field, a later field
+// that opens with a line break, at a smaller indent, is not the end of the
+// block: the file parses clean and what follows it is still found.
+TEST_F(TraceServe, Ants6344FieldLineBreakAfterNestedStringParses) {
+    ASSERT_TRUE(write(QStringLiteral("page.py"),
+                      "def page():\n"
+                      "    return f\"\"\"{say(\"b\")}\n"
+                      "<p>{\n"
+                      "say(\"d\" if e else \"f\")}</p>\"\"\"\n"
+                      "\n"
+                      "def after_page():\n"
+                      "    pass\n"
+                      "\n"
+                      "after_page()\n"));
+    const QJsonObject r = traceSymbol(QStringLiteral("after_page"));
+    EXPECT_FALSE(notCovered(r, QStringLiteral("parse_error")).has_value()) << dump(r);
+    EXPECT_EQ(arr(r, "definitions").size(), 1) << dump(r);
+    EXPECT_EQ(arr(r, "callers").size(), 1) << dump(r);
+}
+
 // ANTS-6209 — a name followed by `(` that did not parse as a call says so.
 TEST_F(TraceServe, Ants6209MacroArgumentIsAPossibleCall) {
     const QJsonObject r = traceSymbol(QStringLiteral("macroArgFn"));

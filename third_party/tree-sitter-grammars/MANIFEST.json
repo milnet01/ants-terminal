@@ -33,7 +33,8 @@
       "commit": "293fdc02038ee2bf0e2e206711b69c90ac0d413f",
       "sha256": "b74d8ba6730535354175436208fe1452fd464f235263959ca40b8bf32cb23dc6",
       "license": "MIT",
-      "generated_by": "upstream"
+      "generated_by": "upstream",
+      "patches": ["patches/python-ants-6344.patch"]
     },
     {
       "lang": "bash",

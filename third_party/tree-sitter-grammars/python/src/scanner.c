@@ -88,6 +88,19 @@ typedef struct {
     bool inside_interpolated_string;
 } Scanner;
 
+// Ants Terminal patch (ANTS-6344): whether any open string is an f-string.
+// Upstream set the flag from the innermost string alone, so a plain string
+// nested in a replacement field cleared it, and a later field opening with a
+// line break at a smaller indent then read as a dedent.
+static inline bool any_format_delimiter(Scanner *scanner) {
+    for (uint32_t i = 0; i < scanner->delimiters.size; i++) {
+        if (is_format(array_get(&scanner->delimiters, i))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static inline void advance(TSLexer *lexer) { lexer->advance(lexer, false); }
 
 static inline void skip(TSLexer *lexer) { lexer->advance(lexer, true); }
@@ -177,7 +190,7 @@ bool tree_sitter_python_external_scanner_scan(void *payload, TSLexer *lexer, con
                                 lexer->mark_end(lexer);
                                 array_pop(&scanner->delimiters);
                                 lexer->result_symbol = STRING_END;
-                                scanner->inside_interpolated_string = false;
+                                scanner->inside_interpolated_string = any_format_delimiter(scanner);
                             }
                             return true;
                         }
@@ -195,7 +208,7 @@ bool tree_sitter_python_external_scanner_scan(void *payload, TSLexer *lexer, con
                     advance(lexer);
                     array_pop(&scanner->delimiters);
                     lexer->result_symbol = STRING_END;
-                    scanner->inside_interpolated_string = false;
+                    scanner->inside_interpolated_string = any_format_delimiter(scanner);
                 }
                 lexer->mark_end(lexer);
                 return true;
@@ -350,7 +363,7 @@ bool tree_sitter_python_external_scanner_scan(void *payload, TSLexer *lexer, con
         if (end_character(&delimiter)) {
             array_push(&scanner->delimiters, delimiter);
             lexer->result_symbol = STRING_START;
-            scanner->inside_interpolated_string = is_format(&delimiter);
+            scanner->inside_interpolated_string = any_format_delimiter(scanner);
             return true;
         }
         if (has_flags) {
