@@ -109177,6 +109177,10 @@ worked after these.
   resolves the wrong store root there. The pass-headings probe in
   append, flip and append_batch is the same shape (dup:8e7f3b9ca308):
   fold it in the same helper.
+  2026-11-25: the pass-headings half landed with ANTS-4681 (7111424b).
+  All five sites call rcdetail::rlIsPassHeadings(markdown, root), which
+  scans the head before any whole-file parse. What remains is the shared
+  caller_cwd -> ROADMAP.md -> read prologue.
   **Layman:** Three roadmap edit tools each repeat the steps that find and read the roadmap, and one copy has drifted.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F10).
