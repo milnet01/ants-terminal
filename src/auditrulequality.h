@@ -22,8 +22,9 @@
 //     the last N suppressions for a rule) that proposes a candidate
 //     `dropIfContains` addition the user can accept with one click
 //
-// Persisted to `<project>/audit_rule_quality.json` (sibling of
-// `.audit_suppress`). JSON not JSONL because the file is read whole on
+// Persisted to `<project>/.audit_cache/audit_rule_quality.json`; a copy an
+// older Ants left in the project root is moved there on load (ANTS-6862).
+// JSON not JSONL because the file is read whole on
 // every dialog open and the size is small (capped at the 90-day window).
 //
 // The suggester is INTENTIONALLY simple — a 1-2 line text heuristic, not

@@ -23,6 +23,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Auditing a project leaves no rule-quality files in its top folder.** (ANTS-6862)
+  The audit keeps its rule-quality history and that file's lock in
+  `.audit_cache/`. A history an older version left in the top folder
+  moves there, records intact, the next time the audit opens.
+
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ## [0.7.116] - 2026-11-24

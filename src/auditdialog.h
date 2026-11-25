@@ -446,7 +446,7 @@ private:
     bool isSuppressed(const Finding &f) const;
 
     // 0.6.31 self-learning layer — tracks per-rule fire and suppression
-    // counts in <project>/audit_rule_quality.json. Surfaces noisy rules
+    // counts in <project>/.audit_cache/audit_rule_quality.json. Surfaces noisy rules
     // (≥50 % suppression rate over the last 30 days) in the Rule Quality
     // dialog, and proposes one-line `dropIfContains` tightenings via
     // longest-common-substring across recent suppressions for a rule.

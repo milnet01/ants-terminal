@@ -13,10 +13,35 @@
 
 #include <algorithm>
 
+namespace {
+
+// ANTS-6862 — an older Ants kept the history in the project root, where
+// every audited project showed it and its lock as untracked files. Move it
+// into .audit_cache/ once. A history already there wins: the root copy is
+// then left alone rather than lost.
+void moveRootHistoryIn(const QString &projectPath, const QString &path) {
+    if (projectPath.isEmpty()) return;
+    const QString legacy = projectPath + QStringLiteral("/audit_rule_quality.json");
+    if (!QFileInfo::exists(legacy) || QFileInfo::exists(path)) return;
+    {
+        ConfigWriteLock lock(legacy, ConfigWriteLock::kGuiTimeoutMs);
+        if (!lock.acquired()) return;
+        if (QFileInfo::exists(legacy) && !QFileInfo::exists(path)
+            && !(ensurePrivateDir(QFileInfo(path).path()) && QFile::rename(legacy, path)))
+            qWarning("auditrulequality: could not move %s into .audit_cache/",
+                     legacy.toUtf8().constData());
+    }
+    // Taking the lock created its file in the root, if nothing had.
+    QFile::remove(legacy + QStringLiteral(".lock"));
+}
+
+}  // namespace
+
 RuleQualityTracker::RuleQualityTracker(const QString &projectPath)
     : m_projectPath(projectPath),
-      m_path(projectPath + "/audit_rule_quality.json")
+      m_path(projectPath + "/.audit_cache/audit_rule_quality.json")
 {
+    moveRootHistoryIn(m_projectPath, m_path);
     load();
 }
 
@@ -193,6 +218,11 @@ QString RuleQualityTracker::suggestTightening(const QString &ruleId,
 
 void RuleQualityTracker::save() {
     if (m_projectPath.isEmpty() || !m_dirty) return;
+    if (!ensurePrivateDir(QFileInfo(m_path).path())) {
+        qWarning("auditrulequality: cannot create the folder for %s; not saved",
+                 m_path.toUtf8().constData());
+        return;
+    }
 
     ConfigWriteLock lock(m_path, ConfigWriteLock::kGuiTimeoutMs);
     if (!lock.acquired()) {

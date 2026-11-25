@@ -4,7 +4,7 @@
 
 `RuleQualityTracker` (`src/auditrulequality.h`) is the data layer behind
 the 0.6.31 audit dialog's **Rule Quality** view. It records per-rule
-fire and suppression events to `<project>/audit_rule_quality.json` and
+fire and suppression events to `<project>/.audit_cache/audit_rule_quality.json` and
 exposes:
 
 1. **`report()`** — per-rule stats covering the last 30 days, sorted by
@@ -43,6 +43,11 @@ exposes:
 7. **Two trackers keep each other's records** (ANTS-6480) — `save()` holds
    the file's write lock, re-reads the file, and adds only the fires and
    suppressions recorded since this tracker's last save.
+8. **Nothing in the project root** (ANTS-6862) — `save()` writes the
+   history and its lock under `.audit_cache/`, never in the project root.
+   A history an older Ants left in the root moves into `.audit_cache/` when
+   a tracker loads, with its records, and its root lock is removed. Where
+   `.audit_cache/` already holds a history, the root copy is left as it is.
 
 ## Rationale
 

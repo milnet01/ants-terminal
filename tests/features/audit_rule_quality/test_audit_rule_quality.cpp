@@ -37,6 +37,17 @@ int failures = 0;
     }                                                                        \
 } while (0)
 
+// ANTS-6862 — the history lives in the audit's own cache folder.
+QString historyPath(const QTemporaryDir &tmp) {
+    return tmp.path() + "/.audit_cache/audit_rule_quality.json";
+}
+
+// A fixture written before the tracker exists needs the folder first.
+QString seededHistoryPath(const QTemporaryDir &tmp) {
+    QDir().mkpath(tmp.path() + "/.audit_cache");
+    return historyPath(tmp);
+}
+
 // --- Test 1 — recordFire / recordSuppression aggregation. ------------
 void testFireAndSuppressionAggregation() {
     QTemporaryDir tmp;
@@ -142,7 +153,7 @@ void testPersistenceRoundTrip() {
         t.save();
     }
     // Verify the file exists and is non-empty.
-    QFile f(tmp.path() + "/audit_rule_quality.json");
+    QFile f(historyPath(tmp));
     CHECK(f.exists(), "audit_rule_quality.json must be written");
     CHECK(f.size() > 0, "audit_rule_quality.json must be non-empty");
 
@@ -159,7 +170,7 @@ void testPersistenceRoundTrip() {
 // --- Test 6 — ANTS-5085: save only what changed, not per suppression. --
 void testSaveOnlyWhenChanged() {
     QTemporaryDir tmp;
-    const QString path = tmp.path() + "/audit_rule_quality.json";
+    const QString path = historyPath(tmp);
     {
         RuleQualityTracker t(tmp.path());
         t.recordSuppression("rule_a", "ka", "src/foo.cpp:1: line a1", "noise");
@@ -179,7 +190,7 @@ void testSaveOnlyWhenChanged() {
 // runs neither saturate the record cap nor grow the file per finding. ----
 void testManyFiresStayCountedAndSmall() {
     QTemporaryDir tmp;
-    const QString path = tmp.path() + "/audit_rule_quality.json";
+    const QString path = historyPath(tmp);
     {
         RuleQualityTracker t(tmp.path());
         for (int i = 0; i < 60000; ++i)
@@ -198,7 +209,7 @@ void testManyFiresStayCountedAndSmall() {
 void testLoadsV1FireRecords() {
     QTemporaryDir tmp;
     const QString ts = QDateTime::currentDateTime().toString(Qt::ISODate);
-    QFile f(tmp.path() + "/audit_rule_quality.json");
+    QFile f(seededHistoryPath(tmp));
     CHECK(f.open(QIODevice::WriteOnly), "could not write the v1 fixture");
     f.write(QString(R"({"schema_version":1,"fires":[)"
                     R"({"rule":"old_rule","line":"a","ts":"%1"},)"
@@ -241,7 +252,7 @@ void testTwoTrackersKeepEachOthersRecords() {
 // this build's schema. --------------------------------------------------------
 void testNewerSchemaIsNotRewritten() {
     QTemporaryDir tmp;
-    const QString path = tmp.path() + "/audit_rule_quality.json";
+    const QString path = seededHistoryPath(tmp);
     const QByteArray seed = R"({"schema_version":3,"fire_days":[],"suppressions":[],"v3_field":1})";
     QFile f(path);
     CHECK(f.open(QIODevice::WriteOnly), "could not write the v3 fixture");
@@ -255,6 +266,74 @@ void testNewerSchemaIsNotRewritten() {
     QFile g(path);
     CHECK(g.open(QIODevice::ReadOnly), "the v3 file is gone");
     CHECK(g.readAll() == seed, "a newer-schema history was rewritten");
+}
+
+// --- Test 11 — ANTS-6862: a save leaves nothing in the project's root. ------
+void testHistoryLivesInAuditCache() {
+    QTemporaryDir tmp;
+    {
+        RuleQualityTracker t(tmp.path());
+        t.recordFire("rule_a", "x");
+        t.save();
+    }
+    CHECK(QFile::exists(historyPath(tmp)), "the history is not in .audit_cache/");
+    CHECK(!QFile::exists(tmp.path() + "/audit_rule_quality.json"),
+          "the history was written to the project root");
+    CHECK(!QFile::exists(tmp.path() + "/audit_rule_quality.json.lock"),
+          "the history's lock was left in the project root");
+}
+
+// --- Test 12 — ANTS-6862: a history an older Ants left in the root moves
+// into .audit_cache/ with its records, and its lock goes with it. ------------
+void testLegacyRootHistoryMovesIn() {
+    QTemporaryDir tmp;
+    const QString legacy = tmp.path() + "/audit_rule_quality.json";
+    const QString day = QDate::currentDate().toString(Qt::ISODate);
+    QFile f(legacy);
+    CHECK(f.open(QIODevice::WriteOnly), "could not write the legacy fixture");
+    f.write(QString(R"({"schema_version":2,"fire_days":[)"
+                    R"({"rule":"old_rule","day":"%1","count":3}],)"
+                    R"("suppressions":[]})").arg(day).toUtf8());
+    f.close();
+    QFile lock(legacy + ".lock");
+    CHECK(lock.open(QIODevice::WriteOnly), "could not write the legacy lock");
+    lock.close();
+
+    RuleQualityTracker t(tmp.path());
+    const auto rows = t.report();
+    CHECK(rows.size() == 1, "the legacy history's rule is missing");
+    if (rows.size() == 1) CHECK_EQ(rows[0].firesAllTime, 3, "legacy fires lost");
+    CHECK(QFile::exists(historyPath(tmp)), "the legacy history was not moved in");
+    CHECK(!QFile::exists(legacy), "the legacy history is still in the root");
+    CHECK(!QFile::exists(legacy + ".lock"), "the legacy lock is still in the root");
+}
+
+// --- Test 13 — ANTS-6862: a history already in .audit_cache/ wins, and the
+// root copy is left as it is rather than lost. --------------------------------
+void testRootHistoryLeftWhenCacheHasOne() {
+    QTemporaryDir tmp;
+    const QString legacy = tmp.path() + "/audit_rule_quality.json";
+    const QByteArray rootSeed = R"({"schema_version":2,"fire_days":[],"suppressions":[]})";
+    QFile r(legacy);
+    CHECK(r.open(QIODevice::WriteOnly), "could not write the root fixture");
+    r.write(rootSeed);
+    r.close();
+    const QString day = QDate::currentDate().toString(Qt::ISODate);
+    QFile c(seededHistoryPath(tmp));
+    CHECK(c.open(QIODevice::WriteOnly), "could not write the cache fixture");
+    c.write(QString(R"({"schema_version":2,"fire_days":[)"
+                    R"({"rule":"cache_rule","day":"%1","count":1}],)"
+                    R"("suppressions":[]})").arg(day).toUtf8());
+    c.close();
+
+    RuleQualityTracker t(tmp.path());
+    const auto rows = t.report();
+    CHECK(rows.size() == 1 && rows[0].ruleId == "cache_rule",
+          "the .audit_cache/ history was not the one loaded");
+    QFile g(legacy);
+    CHECK(g.open(QIODevice::ReadOnly), "the root copy was removed");
+    CHECK(g.readAll() == rootSeed, "the root copy was changed");
+    CHECK(!QFile::exists(legacy + ".lock"), "loading left a lock in the root");
 }
 
 #define RQ_TEST(NAME) \
@@ -274,5 +353,8 @@ RQ_TEST(ManyFiresStayCountedAndSmall)
 RQ_TEST(LoadsV1FireRecords)
 RQ_TEST(TwoTrackersKeepEachOthersRecords)
 RQ_TEST(NewerSchemaIsNotRewritten)
+RQ_TEST(HistoryLivesInAuditCache)
+RQ_TEST(LegacyRootHistoryMovesIn)
+RQ_TEST(RootHistoryLeftWhenCacheHasOne)
 
 }  // namespace

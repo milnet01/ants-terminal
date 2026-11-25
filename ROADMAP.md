@@ -74543,11 +74543,15 @@ suppression that survives line drift.
   Source: user-report-2026-11-21 (audit hand-off stalled over 10 minutes).
   Lanes: auditdialog.
 
-- 💭 [ANTS-6862] **The audit keeps its rule-quality history out of the audited project's root, or in a folder that ignores itself.**
+- ✅ [ANTS-6862] **The audit keeps its rule-quality history out of the audited project's root, or in a folder that ignores itself.**
   RuleQualityTracker writes <project>/audit_rule_quality.json and its
   ConfigWriteLock sibling <project>/audit_rule_quality.json.lock. Only
   this repo's .gitignore lists them (ANTS-6860), so every other audited
   project shows two untracked files. .audit_cache/ is the obvious home.
+  User picked it 2026-11-25: move the rule-quality history and its lock
+  into .audit_cache/.
+  Shipped 2026-11-25: the history and its lock live in .audit_cache/; a
+  root copy moves in on load (spec invariant 8, tests 11-13).
   **Layman:** Auditing someone else's project would leave no untracked files in it.
   Kind: fix.
   Source: ANTS-6860 follow-up 2026-11-21.

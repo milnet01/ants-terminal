@@ -218,10 +218,9 @@ AuditDialog::AuditDialog(const QString &projectPath,
     loadSuppressions();
     loadAllowlist();
     // 0.6.31 self-learning layer — load the per-rule fire/suppression
-    // history from <project>/audit_rule_quality.json. Tracker writes back
-    // on destruction (RAII) so save() is automatic at dialog close;
-    // recordSuppression() also force-flushes immediately because user
-    // actions deserve durability.
+    // history from <project>/.audit_cache/audit_rule_quality.json. Tracker
+    // writes back on destruction (RAII) so save() is automatic at dialog
+    // close.
     m_qualityTracker = std::make_unique<RuleQualityTracker>(m_projectPath);
     populateChecks();
     const int userRules = loadUserRules();
