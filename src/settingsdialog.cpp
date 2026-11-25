@@ -274,9 +274,8 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     layout->addRow(m_claudeTabStatusIndicator);
 
     // ANTS-1901 — master on/off for the whole Ants MCP integration.
-    // Sits above the per-feature toggles (auto-switcher, orientation
-    // hook, terse replies) as the top of the hierarchy and greys them
-    // out when off. Default on. Enabling takes effect on the next launch
+    // Sits above the per-feature toggles as the top of the hierarchy;
+    // when off it greys the ones mirrorMcpMaster lists. Default on. Enabling takes effect on the next launch
     // (the MCP socket binds at startup); disabling is honoured immediately.
     m_claudeMcpEnabled = new QCheckBox(
         "Enable Ants MCP integration", tab);
@@ -690,9 +689,9 @@ void SettingsDialog::setupTerminalTab(QWidget *tab) {
     layout->addRow(quakeGroup);
 
     // Dependency-UI gating: hotkey field is meaningless when Quake
-    // mode is off. Portal-status label stays visible — its
-    // diagnostic value (binding ok / portal absent) is independent
-    // of whether the user has enabled Quake yet.
+    // mode is off. The portal-status label greys with it but stays
+    // shown, so its diagnostic (binding ok / portal absent) can still
+    // be read before the user enables Quake.
     auto syncQuake = [this, portalStatus]() {
         const bool on = m_quakeMode->isChecked();
         m_quakeHotkey->setEnabled(on);
@@ -1164,7 +1163,6 @@ void SettingsDialog::loadSettings() {
     if (m_claudeAutoModelSwitch)
         m_claudeAutoModelSwitch->setChecked(
             m_config->claudeAutoModel().value("switch_enabled").toBool());
-    // ANTS-1893 — load the three surfacing mute toggles (default TRUE).
     if (m_claudeAutoModelHomeTier) {
         const QString home = m_config->claudeAutoModel()
             .value("home_tier").toString(QStringLiteral("sonnet"));
@@ -1172,6 +1170,7 @@ void SettingsDialog::loadSettings() {
         m_claudeAutoModelHomeTier->setCurrentIndex(idx >= 0 ? idx
             : m_claudeAutoModelHomeTier->findData(QStringLiteral("sonnet")));
     }
+    // ANTS-1893 — load the three surfacing mute toggles (default TRUE).
     if (m_claudeAutoModelToast)
         m_claudeAutoModelToast->setChecked(m_config->claudeAutoModelToastEnabled());
     if (m_claudeAutoModelChipPulse)
@@ -1300,10 +1299,10 @@ void SettingsDialog::applySettings() {
         m_config->setClaudeMcpEnabled(m_claudeMcpEnabled->isChecked());
     if (m_claudeAutoModelSwitch)
         m_config->setClaudeAutoModelSwitch(m_claudeAutoModelSwitch->isChecked());
-    // ANTS-1893 — persist the three surfacing mute toggles.
     if (m_claudeAutoModelHomeTier)
         m_config->setClaudeAutoModelHomeTier(
             m_claudeAutoModelHomeTier->currentData().toString());
+    // ANTS-1893 — persist the three surfacing mute toggles.
     if (m_claudeAutoModelToast)
         m_config->setClaudeAutoModelToastEnabled(m_claudeAutoModelToast->isChecked());
     if (m_claudeAutoModelChipPulse)

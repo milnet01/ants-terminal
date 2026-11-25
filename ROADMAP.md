@@ -96614,7 +96614,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
 
 ### One-edit comment fixes (2026-11-06 review)
 
-- 📋 [ANTS-6545] **Correct the false or stale comments the 2026-11-06 reviews found in app-entry-dialogs.**
+- ✅ [ANTS-6545] **Correct the false or stale comments the 2026-11-06 reviews found in app-entry-dialogs.**
   12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1179 `src/settingsdialog.cpp:641-643` (Medium)
   - row 1180 `src/settingsdialog.cpp:441-443` (Low)
@@ -96628,6 +96628,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1619 `src/settingsdialog.cpp:1320` (Low)
   - row 1622 `src/sshdialog.cpp:284` (Low)
   - row 1623 `src/sshdialog.h:76` (Low)
+  Closed 2026-11-25. Fixed: 1179 (comment now says the portal label
+  greys but stays shown), 1180 (settingsdialog.h and the master-toggle
+  comment point at mirrorMcpMaster; the comment above it already named
+  offload), 1181 (both ANTS-1893 comments moved to the toggle lines),
+  1184, 1185, 1187. Dismissed: 1557, 1558, 1618, 1619, 1622, 1623 cite
+  ANTS-1168/1169/1170/1178, real shipped items in CHANGELOG.md; the
+  checker stopped flagging such ids with ANTS-5795.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).

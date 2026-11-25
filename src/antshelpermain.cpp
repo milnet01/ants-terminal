@@ -5,8 +5,9 @@
 //   ants-helper list
 //   ants-helper --help | -h
 //
-// Reads optional JSON request from argv (first non-flag positional
-// after the subcommand) or from stdin if argv is `-` / absent.
+// Reads optional JSON request from argv (the first argument after the
+// subcommand that is not `--repo-root <path>`; a stray flag counts) or
+// from stdin if argv is `-` / absent.
 // Writes one JSON object per invocation to stdout. Exit codes per
 // `docs/specs/ANTS-1116-stateless-local-subagent-cli-re.md` § INV-8: 0=success, 1=handler error,
 // 2=usage error, 3=drift detected.

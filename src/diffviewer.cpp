@@ -101,7 +101,7 @@ QString diffHeaderPath(const QString &line) {
 // is worse than no number.
 //
 // Read in fixed-size chunks rather than readAll(): the Status list routinely
-// includes multi-MiB files (this repo's own ROADMAP.md is ~2.4 MiB), and the
+// includes multi-MiB files, such as this repo's own ROADMAP.md, and the
 // dialog should not hold a whole file in memory just to count newlines.
 int fileLineCountUncached(const QString &absPath) {
     QFile f(absPath);
@@ -345,8 +345,8 @@ QDialog *show(QWidget *parent,
     // 0.7.32 (live updates) — every refresh constructs a fresh
     // ProbeState so an in-flight refresh whose probes outlive the
     // next refresh can't decrement the new pending counter and
-    // render half-populated HTML. The current state is held by
-    // QPointer-style ownership inside the runProbes lambda.
+    // render half-populated HTML. Each round holds its state in a
+    // shared_ptr; the generation counter discards an older round.
     struct ProbeState {
         QString cwd;
         QString status;
