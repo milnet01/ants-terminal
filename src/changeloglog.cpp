@@ -618,9 +618,9 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
         r.malformed_line = proseLine;
     }
 
-    // 3. Find the `### <category>` heading within the section, and
-    //    record the first later-ordered category heading (for ordered
-    //    creation when ours is absent).
+    // Find the `### <category>` heading within the section, and record
+    // the first later-ordered category heading (for ordered creation
+    // when ours is absent).
     const int wantOrder = canonicalCategories().indexOf(category);
     int catHeading = -1;
     int laterHeading = -1;  // first ### whose order > wantOrder
@@ -654,7 +654,7 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
         return r;
     }
 
-    // 4. Category heading absent — create it in canonical order.
+    // Category heading absent — create it in canonical order.
     int headingAt = (laterHeading >= 0) ? laterHeading : sectionEnd;
     QStringList block;
     block.append(QStringLiteral("### ") + category);
@@ -670,7 +670,6 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
     return r;
 }
 
-// ANTS-4363 — see the header. Close [Unreleased] into a version block.
 // ANTS-5108 — a line that is a release ENTRY: not blank, not a heading
 // (`### Added` alone releases nothing) and not a one-line HTML comment (a
 // placeholder). Shared by both release paths.
@@ -698,6 +697,7 @@ static QString releaseHeadingDash(const QStringList &lines) {
     return QStringLiteral(" - ");
 }
 
+// ANTS-4363 — see the header. Close [Unreleased] into a version block.
 ReleaseResult closeUnreleased(const QString &markdown,
                               const QString &version,
                               const QString &date,
@@ -978,30 +978,11 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
     // what converting already means.
     {
         const int sectionEnd = ub.end;
-        // ANTS-4489 (reported by Vestige) — classify by POSITION, not by
-        // first match. This scan used to refuse on any canonical `### `
-        // heading anywhere in the section. Vestige's `[Unreleased]` spans
-        // lines 23-10970: ~500 newest-first dated topics, then a six-heading
-        // Keep-a-Changelog tail left from before that project converted. So a
-        // dated-majority section was refused on the strength of its tail — and
-        // told to "use op:add", which appends INTO that tail ~10,800 lines
-        // below the newest entry, i.e. the very act that produced the mixture.
-        // The guard was self-perpetuating: each session that obeyed it added
-        // another flat heading.
-        //
-        // Position settles it, and is the whole test. This verb inserts at the
-        // TOP of the section (see below). So when a dated topic already sits
-        // ABOVE the first flat heading, the new entry lands among its own kind
-        // and provably never touches the tail — nothing is made worse, because
-        // the mixture is already there and the insert does not go near it.
-        // Refuse only when no dated topic precedes the flat heading, which is
-        // the genuinely flat section ANTS-4356 was protecting.
-        //
-        // ANTS-4563 — this scan moved to classifyUnreleased(), which op:"add"
-        // now reads too. The test is unchanged; what changed is that ONE
-        // function answers it, so the two guards can no longer drift apart the
-        // way they had (a presence test against an order test, opposite answers
-        // on one section, and the entry buried in the gap between them).
+        // Position settles it (ANTS-4489; classifyUnreleased() answers it for
+        // op:"add" too, ANTS-4563). This verb inserts at the TOP of the
+        // section, so when a dated topic sits ABOVE the first flat heading
+        // the new entry lands among its own kind and never touches the flat
+        // tail. Refuse only when no dated topic precedes the flat heading.
         const UnreleasedShape shape =
             classifyUnreleased(lines, unrel + 1, sectionEnd);
         const int flatCategoryLine = shape.flatCategoryLine;

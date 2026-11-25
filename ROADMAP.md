@@ -96718,12 +96718,19 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: build-system.
 
-- 📋 [ANTS-6549] **Correct the false or stale comments the 2026-11-06 reviews found in changelog-feedback.**
+- ✅ [ANTS-6549] **Correct the false or stale comments the 2026-11-06 reviews found in changelog-feedback.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 423 `src/changelogquery.h:109` (High)
   - row 1169 `src/changeloglog.cpp:556` (Low)
   - row 1170 `src/changeloglog.cpp:504` (Low)
   - row 1171 `src/changeloglog.cpp:822` (Low)
+  Closed 2026-11-25. Row 423: already fixed by 355dd7a9 (ANTS-6831),
+  which rewrote the releaseLint header to say indented continuations cite.
+  Row 1169: the ANTS-4363 line now sits above closeUnreleased. Row 1170:
+  step numbers dropped in insertUnreleasedEntry (steps 1-2 no longer
+  exist). Row 1171: the ANTS-4489 block cut to the current rule and a
+  pointer to ANTS-4489 and ANTS-4563, which hold the history. The local
+  copies of the shape fields below it are left as they are.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
