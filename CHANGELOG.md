@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The background-task reader starts and ends every task one way, so a shell whose completion is read before its launch result counts as finished** (ANTS-6230)
+
 - **The background-task and task-list trackers share one base for following a transcript, so a fix to that code lands in both at once** (ANTS-6228)
 
 - **A roadmap_log write takes about half the time on a large roadmap: it skips the hand-edit check and the delete guard's reparse when the publish stamp shows nothing changed since the last write** (ANTS-4681)

@@ -197,6 +197,22 @@ void applyNotifications(ClaudeBgTaskAccum &acc, const QString &text) {
     }
 }
 
+// Add an id-less task for a call. It shows only once startTask gives it an id
+// and a kind (finalize drops the rest).
+int appendTask(ClaudeBgTaskAccum &acc, const QString &tuId,
+               const ClaudeBgPendingCall &call, const QString &fallbackTs) {
+    ClaudeBackgroundTask t;
+    t.tool = call.name;
+    t.description = call.description.isEmpty() ? call.command : call.description;
+    t.command = call.command;
+    t.startedAt = call.startedAt.isValid()
+        ? call.startedAt : QDateTime::fromString(fallbackTs, Qt::ISODateWithMs);
+    acc.raw.append(t);
+    const int idx = acc.raw.size() - 1;
+    if (!tuId.isEmpty()) acc.idxByToolUseId.insert(tuId, idx);
+    return idx;
+}
+
 // ANTS-5773 — start a task from a remembered call, or give the id to the
 // flagged launch already started for this tool_use_id.
 ClaudeBackgroundTask &startTask(ClaudeBgTaskAccum &acc, const QString &tuId,
@@ -205,20 +221,8 @@ ClaudeBackgroundTask &startTask(ClaudeBgTaskAccum &acc, const QString &tuId,
                                 ClaudeBackgroundTask::Kind kind,
                                 const QString &id) {
     auto it = acc.idxByToolUseId.constFind(tuId);
-    int idx;
-    if (it != acc.idxByToolUseId.constEnd()) {
-        idx = it.value();
-    } else {
-        ClaudeBackgroundTask t;
-        t.tool = call.name;
-        t.description = call.description.isEmpty() ? call.command : call.description;
-        t.command = call.command;
-        t.startedAt = call.startedAt.isValid()
-            ? call.startedAt : QDateTime::fromString(fallbackTs, Qt::ISODateWithMs);
-        acc.raw.append(t);
-        idx = acc.raw.size() - 1;
-        if (!tuId.isEmpty()) acc.idxByToolUseId.insert(tuId, idx);
-    }
+    const int idx = it != acc.idxByToolUseId.constEnd()
+        ? it.value() : appendTask(acc, tuId, call, fallbackTs);
     ClaudeBackgroundTask &t = acc.raw[idx];
     t.id = id;
     t.kind = kind;
@@ -248,7 +252,6 @@ void resumeAgent(ClaudeBgTaskAccum &acc, const QString &tuId, const ClaudeBgPend
 // paths share this one implementation.
 void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
     QList<ClaudeBackgroundTask> &out = acc.raw;
-    QHash<QString, int> &idxByToolUseId = acc.idxByToolUseId;
     QHash<QString, int> &idxByBgId = acc.idxByBgId;
 
     const QString type = ev.value(QStringLiteral("type")).toString();
@@ -304,19 +307,7 @@ void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
             call.startedAt = QDateTime::fromString(ts, Qt::ISODateWithMs);
             if (!toolUseId.isEmpty()) acc.calls.insert(toolUseId, call);
 
-            // BackgroundTask launch.
-            if (flagged) {
-                ClaudeBackgroundTask t;
-                t.tool = call.name;
-                t.description = call.description.isEmpty() ? call.command : call.description;
-                t.command = call.command;
-                t.startedAt = call.startedAt;
-                if (toolName == QLatin1String("Agent") || toolName == QLatin1String("Task"))
-                    t.kind = ClaudeBackgroundTask::Kind::Agent;
-                out.append(t);
-                if (!toolUseId.isEmpty())
-                    idxByToolUseId.insert(toolUseId, out.size() - 1);
-            }
+            if (flagged) appendTask(acc, toolUseId, call, ts);
         }
     } else if (type == QLatin1String("user")) {
         const QJsonObject msg = ev.value(QStringLiteral("message")).toObject();
@@ -382,10 +373,7 @@ void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
                 if (idHint.isEmpty())
                     idHint = tur.value(QStringLiteral("bash_id")).toString();
                 if (!idHint.isEmpty()) {
-                    auto it = idxByBgId.find(idHint);
-                    if (it != idxByBgId.end()) {
-                        out[it.value()].finished = true;
-                    }
+                    finishById(acc, idHint);
                 } else {
                     // Fallback: scan result text for any tracked id.
                     // ANTS-1669 — match on a word boundary so a short id

@@ -1033,6 +1033,33 @@ TEST(ClaudeBgTasksButton, Ants5773AgentAndMonitorKinds) {
     const auto flagged = ClaudeBgTaskTracker::parseTranscript(flaggedTp);
     ASSERT_EQ(flagged.size(), 1);
     EXPECT_EQ(flagged[0].kind, ClaudeBackgroundTask::Kind::Agent);
+    EXPECT_EQ(flagged[0].startedAt,
+              QDateTime::fromString("2026-10-19T12:35:00.000Z", Qt::ISODateWithMs))
+        << "a flagged launch starts at its tool_use, not its result";
+}
+
+// ANTS-6230 — a completion naming its shell by shellId ends the task even
+// when it is read before the launch result, as a notice does (ANTS-6307).
+TEST(ClaudeBgTasksButton, Ants6230ShellIdCompletionBeforeLaunchResultEndsTask) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("b9hagbv7b.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("early.jsonl"));
+    writeLines(tp, {
+        assistantToolUse("2026-10-29T15:09:06.357Z", "Bash", "toolu_01Hf",
+                         QJsonObject{{"command", "make"},
+                                     {"run_in_background", true}}),
+        userToolResult("2026-10-29T15:09:06.400Z", "toolu_out",
+                       QJsonObject{{"status", "completed"}, {"shellId", "b9hagbv7b"}},
+                       "exit 0"),
+        userToolResult("2026-10-29T15:09:06.489Z", "toolu_01Hf",
+                       QJsonObject{{"backgroundTaskId", "b9hagbv7b"}},
+                       shellResultText("b9hagbv7b", out)),
+    });
+    const auto tasks = ClaudeBgTaskTracker::parseTranscript(tp);
+    ASSERT_EQ(tasks.size(), 1);
+    EXPECT_TRUE(tasks[0].finished) << "the earlier completion ends it";
 }
 
 // ANTS-5773 INV-8 — a task started before the Claude process did is not

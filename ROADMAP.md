@@ -109082,7 +109082,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L17-F6).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6230] **Route applyBgEvent's inline task launch and finish through startTask and finishById.**
+- ✅ [ANTS-6230] **Route applyBgEvent's inline task launch and finish through startTask and finishById.**
   From ANTS-6126. claudebgtasks.cpp applyBgEvent rebuilds a task
   inline for a flagged launch (through the aliases out and
   idxByToolUseId) where startTask does it through acc, and repeats
@@ -109093,6 +109093,15 @@ worked after these.
   Hot reload: none needed.
   The 2026-11-06 reviews also found this: row 772
   `src/claudebgtasks.cpp:450`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Decided: neither queued difference was visible. finalize drops a task
+  with no id, and startTask sets the kind with the id, so the inline
+  Agent kind never showed; the inline start time came from the same
+  timestamp startTask falls back to. The flagged launch and startTask
+  now share appendTask. The shellId finish goes through finishById, so
+  an end read before its start now ends it, as ANTS-6307 does for
+  notices. Locked by Ants5773AgentAndMonitorKinds (flagged start time)
+  and Ants6230ShellIdCompletionBeforeLaunchResultEndsTask (seen red
+  first).
   **Layman:** The background-task reader creates and finishes tasks in two different ways, which makes it hard to follow and lets the two drift.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L17-F24).
