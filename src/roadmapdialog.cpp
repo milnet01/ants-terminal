@@ -170,9 +170,10 @@ constexpr KindEntry kKinds[] = {
 // `<style>` block. Cozy is the default tier (INV-1 locks default==Cozy;
 // ANTS-2211 raised its meta/label tier to 12 px, so Cozy is no longer
 // byte-equal to the pre-1238 renderer for those classes). Compact /
-// Comfortable are -2 / +2 shifts on
-// the body / heading / code groups, with an 11 px floor on the
-// meta + label tier (INV-8; raised from 9 px by ANTS-2211). Spec:
+// Comfortable are -2 / +2 shifts on the body / heading / code groups,
+// except h4Px (Compact -1) and metaPx (Compact -1, Comfortable +1); the meta
+// + label tier has an 11 px floor (INV-8; raised from 9 px by ANTS-2211).
+// Spec:
 // docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md § 2.f.
 //
 // Field naming mirrors the spec: bodyPx covers `body`,
@@ -1177,15 +1178,10 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         ".rm-kind{font-size:@metaPx@px;color:@muted@;padding-right:6px;}"
         ".rm-summary{font-size:@bodyPx@px;}"
         ".rm-toggle{font-size:@codePx@px;color:@muted@;padding-left:12px;padding-right:4px;}"
-        // ANTS-1241 — id + shipped-date are now inline on the
-        // summary row (after the summary text, before the toggle).
-        // Bumping rm-id from the old 10 px to 12 px makes the
-        // number scannable at a glance; the previous `<div
-        // class="rm-meta">` wrapper triggered the same Qt nested-
-        // block QPalette::Base frame issue that broke rm-body in
-        // ANTS-1240, painting a darker band under the ID on dark
-        // themes. Inline spans paint over the card's bgSecondary
-        // without that frame.
+        // ANTS-1241 — id and date are inline spans, not a wrapping `<div>`:
+        // a nested block would paint a QPalette::Base frame over the card's
+        // bgSecondary (the ANTS-1240 problem). `.rm-id` takes the tier's
+        // codePx.
         ".rm-id{font-family:monospace;font-size:@codePx@px;color:@muted@;padding-left:8px;}"
         ".rm-date{font-size:@metaPx@px;color:@muted@;padding-left:6px;}"
         // ANTS-1240 — body paragraphs are emitted directly inside the
@@ -1528,8 +1524,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // ANTS-1694 — duplicate-ID warning banner leads the body so it is
     // seen before any card. Inline style (not the shared stylesheet
     // block above) so we don't have to renumber its density-tier %N
-    // placeholder chain. Reuses the accent border + secondary
-    // background for theme consistency; the ⚠ glyph carries the warning
+    // placeholder chain. The border is the ToolUse "current work" colour
+    // (currentColor), not the theme accent; the background is the
+    // theme's secondary. The ⚠ glyph carries the warning
     // semantics without needing a bespoke error colour.
     if (!duplicateIds.isEmpty()) {
         html += QStringLiteral(
@@ -3345,9 +3342,11 @@ QString RoadmapDialog::loadMarkdown(const QString &roadmapPath,
     if (dir.isEmpty()) return markdown;
 
     // INV-4a: filter entries through the case-sensitive
-    // <MAJOR>.<MINOR>.md regex. Non-conforming entries (latest.md,
+    // <MAJOR>.<MINOR>.md, P<N>[.<sub>].md and unversioned.md names (see
+    // parseArchiveFilename). Non-conforming entries (latest.md,
     // 0.7.0.md, *.bak, hidden, non-.md) are skipped silently.
-    // INV-4 / INV-11: numeric descending sort by the parsed
+    // INV-4 / INV-11: version archives first, then phase, then unversioned;
+    // within a class, numeric descending sort by the parsed
     // (major, minor) tuple — lexical sort breaks at minor 10
     // (0.10 < 0.9 lexically).
     QDir d(dir);
@@ -3469,8 +3468,6 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
     // 5604). The summary column is the only auto-sized one and takes what is
     // left. Measured 2026-10-01: a PERCENTAGE summary column loses to the
     // other columns' minimum widths and the spare width is shared out evenly.
-    // A markdown table inside an expanded body has its own column count and
-    // keeps its natural layout.
     const qreal width = qMax<qreal>(doc->textWidth(), 0);
     const auto share = [width](qreal fraction, int minPx) {
         return QTextLength(QTextLength::FixedLength,

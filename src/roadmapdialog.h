@@ -11,8 +11,10 @@
 // vertical order: a faceted tab strip (Full / History / Current /
 // Next / Far Future / Custom — each a (filter, sort) preset), a
 // debounced search box (substring + `id:NNNN` shorthand), then the
-// peer category checkboxes (✅ Done / 📋 Planned / 🚧 In progress /
-// 💭 Considered / 🚫 Dropped / Currently being tackled). The body splits a TOC
+// Contents toggle, a Status button and a Kind button (each opens a menu of
+// checkable categories: ✅ Done / 📋 Planned / 🚧 In progress /
+// 💭 Considered / 🚫 Dropped / Currently being tackled), and a Reset filters
+// button (ANTS-4412). The body splits a TOC
 // sidebar from the rendered viewer. Current-work bullets get a
 // border-left highlight derived from the local CHANGELOG.md
 // [Unreleased] block + recent git commit subjects.
@@ -429,9 +431,10 @@ public:
     // `loadMarkdown(roadmapPath, includeArchive)` reads the file at
     // `roadmapPath` (capped at 64 MiB; each archive at 8 MiB) and, if
     // `includeArchive` is true and `archiveDirFor` returns non-empty,
-    // appends each `*.md` archive matching `^[0-9]+\.[0-9]+\.md$`
-    // (case-sensitive), sorted numerically descending by the
-    // `(major, minor)` integer tuple parsed from the filename. Each
+    // appends each `*.md` archive, case-sensitive, in three classes: version
+    // archives `^[0-9]+\.[0-9]+\.md$` first, sorted numerically descending by
+    // the `(major, minor)` tuple parsed from the filename; then phase archives
+    // `P<N>[.<sub>].md`; then `unversioned.md` last. Each
     // archive is preceded by a thematic-break + HTML-comment sentinel
     // separator. Total assembled-buffer cap is 64 MiB; once exceeded
     // the loader emits a single truncation sentinel and stops.
@@ -657,7 +660,7 @@ private:
     QPointer<QCheckBox> m_filterCurrent;
     // ANTS-1106 — Kind-faceted secondary filter. Empty set = no
     // narrowing (current behaviour). Populated from the Kind row's
-    // checkboxes; passed through to renderCardsHtml on every refresh().
+    // checkboxes; passed through to renderCardsHtml on every rebuild().
     QSet<QString> m_kindFilter;
     QHash<int, TabFilters> m_tabFilters;   // keyed by int(Preset)
     // ANTS-1150 — keyed by KindEntry value (matches m_kindFilter
