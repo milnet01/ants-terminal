@@ -12,7 +12,6 @@
 #include "claudeintegration.h"
 #include "tokenusageengine.h"
 #include "guithread.h"
-#include "mcpdsocket.h"  // ANTS-6222 — the peer-UID check
 #include "debuglog.h"
 #include "localsockethub.h"   // ANTS-4932 — the --remote socket moved here
 #include "roadmapparse.h"
@@ -193,17 +192,9 @@ void RemoteControl::onNewConnection() {
         // ever moved (ANTS_REMOTE_SOCKET env override, abstract
         // socket migration), the file ACL stops applying and only
         // the peer-cred check holds the line.
-        // ANTS-1797 — fail CLOSED: peerUidIs refuses an unavailable fd, the
-        // moved-socket case above where only peer-cred holds the line.
-        QString whyNot;
-        if (!mcpd::peerUidIs(static_cast<int>(socket->socketDescriptor()),
-                             ::getuid(), &whyNot)) {
-            ANTS_LOG(DebugLog::Network, "remote-control: %s — disconnecting",
-                     qUtf8Printable(whyNot));
-            socket->disconnectFromServer();
-            socket->deleteLater();
-            continue;
-        }
+        // ANTS-1797 — it fails closed, the moved-socket case above where
+        // only peer-cred holds the line.
+        if (!ants::admitSameUserPeer(socket, "remote-control")) continue;
         // ANTS-5093 — bound how many connections this window holds open.
         if (!ants::admitLiveConnection(this, socket, m_liveConnections)) continue;
         // ANTS-1132 — slow-loris defence. Cap idle time per

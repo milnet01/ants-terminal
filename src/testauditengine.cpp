@@ -91,9 +91,6 @@ const QStringList &g_kDefaultDimensions() {
     return v;
 }
 
-// ────────────────────────── INV-9 (chunk_size clamping) ──
-constexpr int kChunkSizeMin = 4;
-constexpr int kChunkSizeMax = 30;
 // ────────────────────────── INV-7 (pre-pass cap) ──
 constexpr int kPrePassPerChunkCap = 20;
 // ────────────────────────── INV-15 (mtime recheck rate limit) ──

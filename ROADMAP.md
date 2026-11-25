@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6933 -->
+<!-- ants-roadmap-id-high-water: ANTS=6934 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97782,7 +97782,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: chrome-widgets.
 
-- 📋 [ANTS-6590] **Fold the duplicated logic the 2026-11-06 reviews found in claude-integration.**
+- 🚧 [ANTS-6590] **Fold the duplicated logic the 2026-11-06 reviews found in claude-integration.**
   17 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 91 `src/claudeintegration_terminal.cpp:1691` (Medium)
   - row 710 `src/claudeintegration.cpp:172` (Medium)
@@ -97801,6 +97801,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 737 `src/claudeintegration_callpolicy.cpp:270-293` (Medium)
   - row 738 `src/claudeintegration_store.cpp:2270-2276` (Medium)
   - row 742 `src/claudeintegration_store.cpp:1834-1837` (Low)
+  2026-11-25: folded 91, 710 (ants::admitSameUserPeer), 712
+  (mcp::universalDispatchArgs; the published set gains compact), 717,
+  725, 727 (+asm/cmake/yaml), 729 (comment narrowed), 731 (descriptions
+  and selection_hint; the details keep per-runner flags), 732 (constants
+  in testauditengine.h), 735, 736, 742. Already fixed: 726; 711 and 737
+  by ANTS-6221. Open: 730 and 738, as ANTS-6934.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -98211,6 +98217,25 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: found-while-fixing ANTS-6588 2026-11-25.
   Lanes: changelog-feedback.
+
+- 📋 [ANTS-6934] **Close every MCP tool schema through one helper with an explicit strict flag.**
+  Rows 730 and 738 of docs/reviews/close-findings-2026-11-06.md. Each
+  descriptor in src/claudeintegration_{codenav,docs,orientation,reports,
+  store,terminal}.cpp sets properties, required, maybe
+  additionalProperties:false, then attaches and appends, by hand. The
+  strict flag differs between copies with no comment, although
+  docs/standards/mcp-tools.md § Schema hygiene asks for it on every tool.
+  Fix: one helper taking properties, required and an explicit strict
+  flag, with a commented opt-out per tool that stays open. Many feature
+  tests scrape `additionalProperties"] = false` inside a descriptor
+  block; move them to the helper call. Making an open schema strict
+  changes what clients see: check each against its handler first.
+  Hot reload: none needed; ants-mcpd picks it up on rebuild.
+  **Layman:** Every tool's argument list ends with the same hand-copied lines, and some copies forgot the line that rejects unknown arguments.
+  Kind: refactor.
+  Source: split from ANTS-6590 (rows 730, 738) 2026-11-25.
+  Lanes: claude-integration.
+  Splits-from: ANTS-6590.
 
 ### Other bugs (2026-11-06 review)
 

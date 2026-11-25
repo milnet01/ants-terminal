@@ -1,5 +1,7 @@
 #include "localsockethub.h"
 
+#include "debuglog.h"
+#include "mcpdsocket.h"
 #include "secureio.h"
 
 #include <QCoreApplication>
@@ -9,6 +11,8 @@
 #include <QLocalSocket>
 
 #include <algorithm>
+
+#include <unistd.h>
 
 namespace ants {
 
@@ -20,6 +24,18 @@ QPointer<LocalSocketHub> &hubSlot() {
 }
 
 }  // namespace
+
+bool admitSameUserPeer(QLocalSocket *socket, const char *who) {
+    QString whyNot;
+    if (mcpd::peerUidIs(static_cast<int>(socket->socketDescriptor()),
+                        ::getuid(), &whyNot))
+        return true;
+    ANTS_LOG(DebugLog::Network, "%s: %s — disconnecting", who,
+             qUtf8Printable(whyNot));
+    socket->disconnectFromServer();
+    socket->deleteLater();
+    return false;
+}
 
 bool admitLiveConnection(QObject *context, QLocalSocket *socket, int &live) {
     if (live >= kMaxLiveConnections) {

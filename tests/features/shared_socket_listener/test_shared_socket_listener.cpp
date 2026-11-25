@@ -364,16 +364,22 @@ TEST(SharedSocketListener, Inv7AcceptChecksStayInTheHandlers) {
     ASSERT_FALSE(ci.empty());
     ASSERT_FALSE(rc.empty());
     ASSERT_FALSE(hub.empty());
+    // The one peer check calls mcpd::peerUidIs in code.
+    EXPECT_NE(ants_test::stripComments(ants_test::slurpFunctionBody(
+                  hub, "bool admitSameUserPeer(QLocalSocket *socket, const char *who) {"))
+                  .find("mcpd::peerUidIs("),
+              std::string::npos)
+        << "admitSameUserPeer does not call mcpd::peerUidIs";
 
     const auto checkHandler = [](const std::string &src, const std::string &sig) {
         // Comments stripped: a comment naming the check is not the check.
         const std::string body =
             ants_test::stripComments(ants_test::slurpFunctionBody(src, sig));
         ASSERT_FALSE(body.empty()) << sig << " not found";
-        const size_t cred = body.find("mcpd::peerUidIs(");
+        const size_t cred = body.find("ants::admitSameUserPeer(");
         const size_t idle = body.find("setInterval(5000)");
         const size_t read = body.find("&QLocalSocket::readyRead");
-        ASSERT_NE(cred, std::string::npos) << sig << ": no peerUidIs (SO_PEERCRED) check";
+        ASSERT_NE(cred, std::string::npos) << sig << ": no admitSameUserPeer (SO_PEERCRED) check";
         ASSERT_NE(idle, std::string::npos) << sig << ": no 5 s idle timer";
         ASSERT_NE(read, std::string::npos) << sig << ": no readyRead connection";
         EXPECT_LT(cred, read) << sig << ": the peer check follows readyRead";

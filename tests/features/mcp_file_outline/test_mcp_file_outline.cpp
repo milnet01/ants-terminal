@@ -153,9 +153,11 @@ TEST(McpFileOutline, WiringContract) {
             // and `glsl` to the mode enum; this class of break has bitten
             // repeatedly and reads as a real wiring failure every time.
             // Widened 9000 → 12000 by ANTS-4384/4365, which added the `sizes`
-            // and `raw` props ahead of the props[] assignments.
+            // and `raw` props ahead of the props[] assignments. Widened
+            // 12000 → 14000 by ANTS-6590, which named sh, asm, cmake and
+            // yaml in the detail text.
             const size_t windowEnd = std::min(desc.size(),
-                                              reqPos + 12000);
+                                              reqPos + 14000);
             const std::string window = desc.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"paths\"") &&

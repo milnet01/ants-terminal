@@ -97,11 +97,17 @@ struct Chunk {
     QStringList prePassDimensions;
 };
 
+// INV-9 — chunk_size's default and clamp. test_audit_partition's schema
+// is built from them.
+inline constexpr int kChunkSizeDefault = 12;
+inline constexpr int kChunkSizeMin = 4;
+inline constexpr int kChunkSizeMax = 30;
+
 struct PartitionRequest {
     QString callerCwd;
     QString scope;             // "auto" | "path:<sub>" | "files:<csv>"
     QString dimensions;        // "auto" | "csv:<d1,d2,...>"
-    int     chunkSize = 12;    // clamped [4, 30]
+    int     chunkSize = kChunkSizeDefault;  // clamped [kChunkSizeMin, kChunkSizeMax]
     // ANTS-3630 — no `quick` field: it was never read, so it promised a
     // fast path that did not exist. `--quick` is caller-side (skip the
     // subagent phase; the grep pre-pass is the audit).

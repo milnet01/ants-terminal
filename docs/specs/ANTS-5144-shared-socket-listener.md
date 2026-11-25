@@ -266,8 +266,8 @@ connection without a reply.
 - **INV-7** — The accept-time checks stay ahead of reading any request, in each
   connection handler. *Test:* source scrape of `ClaudeIntegration::onMcpConnection`,
   `ClaudeIntegration::onHookConnection` and `RemoteControl::onNewConnection`:
-  each calls `mcpd::peerUidIs` (the `SO_PEERCRED` check) in code, not a
-  comment, and `setInterval(5000)`, before its `readyRead` connection. It also scrapes the `attach` calls in `claudeintegration.cpp` and
+  each calls `ants::admitSameUserPeer` (the `SO_PEERCRED` check, which calls
+  `mcpd::peerUidIs`) in code, not a comment, and `setInterval(5000)`, before its `readyRead` connection. It also scrapes the `attach` calls in `claudeintegration.cpp` and
   `remotecontrol.cpp`, which pass those three handlers as `serve`, and
   `src/localsockethub.cpp`, where `nextPendingConnection` appears only in the
   no-owner close path. Breaks if connections are pulled and read in the hub, or

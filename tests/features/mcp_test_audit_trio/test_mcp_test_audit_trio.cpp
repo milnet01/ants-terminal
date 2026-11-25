@@ -155,10 +155,13 @@ TEST(mcp_test_audit_trio, Ants4404FindingsJsonUsesSharedFenceRules) {
 // INV-9 — chunk-size clamp constants.
 TEST(mcp_test_audit_trio, Inv9ChunkSizeClamp) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
-    expect(contains(cpp, "kChunkSizeMin = 4"),
+    // The constants live in the engine header, beside the .cpp.
+    std::string hdrPath = SRC_TESTAUDITENGINE_CPP_PATH;
+    hdrPath.replace(hdrPath.size() - 4, 4, ".h");
+    const std::string hdr = ants_test::slurpFile(hdrPath.c_str());
+    expect(contains(hdr, "kChunkSizeMin = 4"),
            "INV-9: min = 4");
-    expect(contains(cpp, "kChunkSizeMax = 30"),
+    expect(contains(hdr, "kChunkSizeMax = 30"),
            "INV-9: max = 30");
     EXPECT_EQ(0, expect_failures());
 }

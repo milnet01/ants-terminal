@@ -11,7 +11,6 @@
 #include "mcpspill.h"          // ANTS-2094 — result offload
 #include "mcptoolinfo.h"       // ANTS-6829 — tool_info's per-op slice
 #include "mcpundeclaredargs.h"  // ANTS-4659 — undeclared-argument survey
-#include "mcpdsocket.h"         // ANTS-6222 — the peer-UID check
 #include "secureio.h"
 #include "verifytrustprompt.h"  // ANTS-5464 — the method name
 
@@ -173,13 +172,7 @@ void ClaudeIntegration::onHookConnection() {
         // as this user (a browser plugin included) is admitted and can
         // send hook events; that is the same-UID trust model
         // (ADR-0004), not a gap this check closes.
-        // ANTS-1797 — fail CLOSED: peerUidIs refuses an unavailable fd, since
-        // the peer UID cannot then be verified.
-        if (!mcpd::peerUidIs(static_cast<int>(socket->socketDescriptor()), ::getuid())) {
-            socket->disconnectFromServer();
-            socket->deleteLater();
-            continue;
-        }
+        if (!ants::admitSameUserPeer(socket, "claude hook socket")) continue;
         if (!ants::admitLiveConnection(this, socket, m_liveHookConnections)) continue;
         // ANTS-1151 — slow-loris defence. A peer that connects
         // and never sends bytes (or never closes) used to hold a
@@ -1323,13 +1316,7 @@ void ClaudeIntegration::onMcpConnection() {
         // onHookConnection. MCP socket carries higher-leverage
         // verbs (filesystem reads, git status, environment),
         // peer-cred check is more important here.
-        // ANTS-1797 — fail CLOSED: peerUidIs refuses an unavailable fd, since
-        // the peer UID cannot then be verified.
-        if (!mcpd::peerUidIs(static_cast<int>(socket->socketDescriptor()), ::getuid())) {
-            socket->disconnectFromServer();
-            socket->deleteLater();
-            continue;
-        }
+        if (!ants::admitSameUserPeer(socket, "claude mcp socket")) continue;
         if (!ants::admitLiveConnection(this, socket, m_liveMcpConnections)) continue;
         QTimer *idleTimer = new QTimer(socket);
         idleTimer->setSingleShot(true);
@@ -2345,9 +2332,8 @@ QJsonObject ClaudeIntegration::mcpToolsList(const QJsonObject &request) {
         for (auto kit = m_toolParamKeys.cbegin();
              kit != m_toolParamKeys.cend(); ++kit) {
             QSet<QString> accepted = kit.value();
-            accepted.insert(QStringLiteral("caller_cwd"));
-            accepted.insert(QStringLiteral("encoding"));
-            accepted.insert(QStringLiteral("fields"));
+            for (const QString &arg : mcp::universalDispatchArgs())
+                accepted.insert(arg);
             accepted.unite(honouredDispatchArgs(kit.key()));
             published.insert(kit.key(), accepted);
         }
@@ -2385,7 +2371,8 @@ QJsonObject ClaudeIntegration::mcpToolsList(const QJsonObject &request) {
     // the description's pointer already names. Keyed by
     // "verb/arg" first, then by "arg" for the arguments those
     // verbs share. A summary is used only where it is shorter;
-    // an argument with no entry keeps its own text.
+    // an argument with no entry keeps its own text. An argument
+    // kWireHidden removes from the wire needs no entry.
     {
         static const QHash<QString, QString> kArgSummary = {
             {QStringLiteral("caller_cwd"), QStringLiteral("Your $PWD (required); picks the project.")},
@@ -2395,42 +2382,25 @@ QJsonObject ClaudeIntegration::mcpToolsList(const QJsonObject &request) {
             {QStringLiteral("fields"), QStringLiteral("Return only these top-level reply fields.")},
             {QStringLiteral("raw"), QStringLiteral("Return the file text verbatim; use it when you will Edit from the output.")},
             {QStringLiteral("workspace_search/context"), QStringLiteral("Lines of context around each match (0-10).")},
-            {QStringLiteral("workspace_search/count_only"), QStringLiteral("Return only the match and file counts.")},
-            {QStringLiteral("workspace_search/dedup"), QStringLiteral("Fold identical lines into one match with also_at (default true).")},
             {QStringLiteral("workspace_search/enclosing_symbol"), QStringLiteral("Name the function each match is inside.")},
             {QStringLiteral("workspace_search/exclude_glob"), QStringLiteral("Glob or globs to leave out, written positively (\"docs/**\").")},
             {QStringLiteral("workspace_search/files_only"), QStringLiteral("Return only the matching files, with hit counts.")},
             {QStringLiteral("workspace_search/glob"), QStringLiteral("One inclusion glob, e.g. \"*.cpp\" or \"docs/{a,b}.md\".")},
             {QStringLiteral("workspace_search/headline_only"), QStringLiteral("Rows as {file, line, headline}, without context.")},
             {QStringLiteral("workspace_search/lane"), QStringLiteral("Subdirectory to search, e.g. \"src\".")},
-            {QStringLiteral("workspace_search/match_wrapped"), QStringLiteral("Match a literal quotation across hard line wraps.")},
-            {QStringLiteral("workspace_search/matches_only"), QStringLiteral("Return the distinct matched strings, with counts.")},
-            {QStringLiteral("workspace_search/max_bytes"), QStringLiteral("Reply size cap in bytes (default 512 KiB).")},
-            {QStringLiteral("workspace_search/multiline"), QStringLiteral("Let a regex cross line breaks; write the break as \\n or \\s+.")},
             {QStringLiteral("workspace_search/max_match_bytes"), QStringLiteral("Clip each match's text to N bytes (default 512; 0 = no clip).")},
-            {QStringLiteral("workspace_search/offset"), QStringLiteral("Skip the first N matches; pass back next_offset to page.")},
-            {QStringLiteral("workspace_search/query"), QStringLiteral("Alias for pattern.")},
-            {QStringLiteral("workspace_search/respect_gitignore"), QStringLiteral("false also searches ignored files.")},
-            {QStringLiteral("workspace_search/timeout_sec"), QStringLiteral("ripgrep time budget in seconds (1-30, default 5).")},
-            {QStringLiteral("file_outline/etags"), QStringLiteral("{path: etag} for the paths form; an unchanged file returns a stub.")},
             {QStringLiteral("file_outline/filter"), QStringLiteral("Keep only symbols whose name contains this text.")},
-            {QStringLiteral("file_outline/max_bytes"), QStringLiteral("Reply size cap in bytes (default 512 KiB).")},
             {QStringLiteral("file_outline/max_heading_level"), QStringLiteral("Markdown: drop headings deeper than this level.")},
             {QStringLiteral("file_outline/max_symbols"), QStringLiteral("Cap on symbols[] (default 200).")},
             {QStringLiteral("file_outline/paths"), QStringLiteral("Several paths in one call; returns files[].")},
             {QStringLiteral("file_outline/sizes"), QStringLiteral("Add bytes and lines to each symbol.")},
-            {QStringLiteral("read_region/call_sequence"), QStringLiteral("Also return the region's calls in order, and the accessors it uses.")},
             {QStringLiteral("read_region/max_line_bytes"), QStringLiteral("Clip each line to N bytes.")},
             {QStringLiteral("read_region/section"), QStringLiteral("Markdown heading text or slug; returns that section.")},
             {QStringLiteral("find_definition/include_body"), QStringLiteral("Return each definition's body inline.")},
-            {QStringLiteral("workspace_search/include_generated"), QStringLiteral("true also searches files the project marks as generated.")},
-            {QStringLiteral("workspace_search/include_hidden"), QStringLiteral("Also search dotfile paths (never .git/).")},
             {QStringLiteral("file_outline/path"), QStringLiteral("File path, repo-relative or absolute, under the project.")},
             {QStringLiteral("read_region/start_line"), QStringLiteral("1-based first line.")},
             {QStringLiteral("read_region/end_line"), QStringLiteral("1-based last line, inclusive (default start_line).")},
             {QStringLiteral("read_region/symbol"), QStringLiteral("Return this symbol's body.")},
-            {QStringLiteral("read_region/tail_lines"), QStringLiteral("With section: only its last N lines.")},
-            {QStringLiteral("read_region/max_bytes"), QStringLiteral("Cap on lines[] bytes (default 512 KiB); keeps the head.")},
             {QStringLiteral("find_definition/lang"), QStringLiteral("One language family; auto (default) scans all.")},
             {QStringLiteral("find_definition/max_results"), QStringLiteral("Cap on definitions[] (default 50).")},
             {QStringLiteral("find_definition/lane"), QStringLiteral("Only scan this project-relative folder, e.g. \"src/render\".")},

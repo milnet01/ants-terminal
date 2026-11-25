@@ -667,7 +667,8 @@ QString tabularize(const QString &responseText) {
 
 namespace {
 
-// The args ignoredArgs accepts on EVERY verb, each for a stated reason.
+// universalDispatchArgs() — the args ignoredArgs accepts on EVERY verb, each
+// for a stated reason.
 // Every verb reads `caller_cwd`. `encoding` is applied by the
 // dispatcher with no tool-name predicate (tabularize self-guards per array),
 // so it is honoured wherever it is sent.
@@ -677,13 +678,17 @@ namespace {
 // other two — offload, etag_match — are honoured only for the verbs on the
 // dispatcher's allowlists, so they arrive per call as `honoured`.
 bool isUniversalDispatchArg(const QString &key) {
-    return key == QStringLiteral("caller_cwd")
-        || key == QStringLiteral("encoding")
-        || key == QStringLiteral("fields")
-        || key == QStringLiteral("compact");
+    return universalDispatchArgs().contains(key);
 }
 
 }  // namespace
+
+const QStringList &universalDispatchArgs() {
+    static const QStringList args = {
+        QStringLiteral("caller_cwd"), QStringLiteral("encoding"),
+        QStringLiteral("fields"), QStringLiteral("compact")};
+    return args;
+}
 
 QJsonObject coerceArgTypes(const QJsonObject &args, const QJsonObject &properties) {
     QJsonObject out = args;

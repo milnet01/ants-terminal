@@ -28,6 +28,12 @@ inline constexpr int kMaxLiveConnections = 64;
 // it when `live` is already at kMaxLiveConnections. `context` owns `live`.
 bool admitLiveConnection(QObject *context, QLocalSocket *socket, int &live);
 
+// Admit `socket` only when its peer runs as this user (SO_PEERCRED, through
+// mcpd::peerUidIs); otherwise log why under `who`, disconnect and drop it.
+// ANTS-1797 — fails closed: a peer whose uid cannot be read is refused. It
+// compares uids only, so any process of this user is admitted (ADR-0004).
+bool admitSameUserPeer(QLocalSocket *socket, const char *who);
+
 class LocalSocketHub : public QObject {
 public:
     // The process's hub, created on first use as a child of QCoreApplication.

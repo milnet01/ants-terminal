@@ -33,7 +33,7 @@ in v2 (ANTS-1450 follow-up).
   `<chunk_report file="…">…</chunk_report>` around report content;
   escapes nested fence markers.
 - **INV-9 / chunk size clamped [4, 30].** `kChunkSizeMin = 4`,
-  `kChunkSizeMax = 30`.
+  `kChunkSizeMax = 30`, in `testauditengine.h`.
 - **INV-10 / pagination via offset/limit/truncated/next_offset.**
   partition envelope carries those four fields when caller paged.
 - **INV-13 / pre_pass_findings have NO matched text.** The

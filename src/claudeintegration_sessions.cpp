@@ -32,6 +32,9 @@
 // to the newline. The cap still bounds memory against a corrupt multi-GiB
 // line (ANTS-1806).
 static constexpr qint64 kMaxTranscriptRecordBytes = 16LL * 1024 * 1024;
+// The whole-file cap: loadTranscript and loadTranscriptTail refuse a larger
+// transcript.
+static constexpr qint64 kMaxTranscriptBytes = 100LL * 1024 * 1024;
 
 // ANTS-6368 — read in small chunks: QIODevice::readLine(cap) allocates the
 // whole cap on every call, which made each record cost a 16 MiB
@@ -638,7 +641,6 @@ QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {
     // Skip excessively large transcripts to prevent memory exhaustion.
     // Surface the cap-hit so a "transcript empty / status frozen"
     // bug report is debuggable from logs (env-gated to avoid spam).
-    constexpr qint64 kMaxTranscriptBytes = 100LL * 1024 * 1024;
     if (file.size() > kMaxTranscriptBytes) {
         ANTS_LOG(DebugLog::Claude,
                  "loadTranscript: %s exceeds %lld-byte cap (size=%lld); "
@@ -676,8 +678,7 @@ QJsonArray ClaudeIntegration::loadTranscriptTail(const QString &path,
     };
     QFile file(path);
     if (maxEntries <= 0 || !file.open(QIODevice::ReadOnly)) return finish();
-    // Same whole-file cap as loadTranscript.
-    if (file.size() > 100LL * 1024 * 1024) return finish();
+    if (file.size() > kMaxTranscriptBytes) return finish();
 
     // Pass 1: walk record boundaries, keeping only the offsets of the last
     // maxEntries non-empty records. Nothing is parsed here.
@@ -899,8 +900,6 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
             }
             if (tokens > 0) {
                 snap.contextTokens = tokens;
-                snap.contextPercent = static_cast<int>(std::min<qint64>(
-                    100, tokens * 100 / kDefaultContextWindowTokens));
                 return true;
             }
         }
@@ -1139,13 +1138,17 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     return snap;
 }
 
+void ClaudeIntegration::publishContextPercent() {
+    m_contextPercent = static_cast<int>(std::min<qint64>(
+        100, m_contextTokens * 100 / m_contextWindowTokens));
+    emit contextUpdated(m_contextPercent);
+}
+
 void ClaudeIntegration::setContextWindowTokens(qint64 tokens) {
     if (tokens <= 0 || tokens == m_contextWindowTokens) return;
     m_contextWindowTokens = tokens;
     if (m_contextTokens <= 0) return;
-    m_contextPercent = static_cast<int>(std::min<qint64>(
-        100, m_contextTokens * 100 / m_contextWindowTokens));
-    emit contextUpdated(m_contextPercent);
+    publishContextPercent();
 }
 
 void ClaudeIntegration::clearContextReading() {
@@ -1160,9 +1163,7 @@ void ClaudeIntegration::seedContextReading(qint64 tokens, bool estimated) {
     if (tokens <= 0) return;
     m_contextTokens = tokens;
     m_contextEstimated = estimated;
-    m_contextPercent = static_cast<int>(std::min<qint64>(
-        100, m_contextTokens * 100 / m_contextWindowTokens));
-    emit contextUpdated(m_contextPercent);
+    publishContextPercent();
 }
 
 void ClaudeIntegration::parseTranscriptForState(const QString &path) {
@@ -1176,9 +1177,7 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     if (snap.contextTokens > 0) {
         m_contextTokens = snap.contextTokens;
         m_contextEstimated = snap.contextEstimated;
-        m_contextPercent = static_cast<int>(std::min<qint64>(
-            100, m_contextTokens * 100 / m_contextWindowTokens));
-        emit contextUpdated(m_contextPercent);
+        publishContextPercent();
     }
 
     if (!snap.toolUseBlock.isEmpty()) {

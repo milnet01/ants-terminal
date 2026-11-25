@@ -1576,6 +1576,14 @@ void appendToolSchemasTerminal(QJsonArray &tools) {
                                            linesProp["default"] = 100;
                     props["tab"]   = tabProp;
                     props["lines"] = linesProp;
+                    {
+                        QJsonObject p; p["type"] = "integer";
+                        p["description"] = QStringLiteral(
+                            "Cap on the returned text in UTF-8 bytes, after "
+                            "secret redaction (default 1 MiB). Past it the "
+                            "head is dropped.");
+                        props["max_bytes"] = p;
+                    }
                     // ANTS-1392 — caller_cwd anchor for the no-`tab`
                     // path. Absent with no `tab`, the call refuses
                     // tab_or_cwd_required.

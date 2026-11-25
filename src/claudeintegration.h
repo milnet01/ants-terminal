@@ -77,7 +77,6 @@ struct ClaudeTranscriptSnapshot {
     ClaudeState state = ClaudeState::NotRunning;
     QString tool;                  // non-empty iff state == ToolUse
     QString detail;                // short human-readable label ("thinking", "Bash", …)
-    int contextPercent = -1;       // -1 if no usage observed in window
     // Tokens in the context: input + cache_creation_input + cache_read_input
     // + output of the newest event carrying usage, plus an estimate for the
     // user and tool-result records after it (ANTS-5682); -1 when none was
@@ -798,6 +797,9 @@ private:
     ClaudeState m_state = ClaudeState::NotRunning;
     QString m_currentTool;
     int m_contextPercent = 0;
+    // Sets m_contextPercent from m_contextTokens against
+    // m_contextWindowTokens (capped at 100) and emits contextUpdated.
+    void publishContextPercent();
     qint64 m_contextTokens = 0;
     bool m_contextEstimated = false;
     qint64 m_contextWindowTokens = kDefaultContextWindowTokens;

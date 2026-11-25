@@ -14,6 +14,10 @@ class QJsonObject;
 // mirrors the focusedtest / modelrecommender extraction pattern.
 namespace mcp {
 
+// The arguments every verb accepts: caller_cwd, encoding, fields and compact.
+// ignoredArgs and the published per-verb argument sets both read this list.
+const QStringList &universalDispatchArgs();
+
 // ANTS-4524 — there is NO `fields=` allowlist. Every verb honours it, the
 // dispatcher declares the property on every schema, and `isUniversalDispatchArg`
 // says so to the undeclared-argument check. projectFields is a pure top-level

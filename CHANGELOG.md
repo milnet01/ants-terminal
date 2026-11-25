@@ -66,6 +66,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **MCP tool descriptions name every option the tools accept** (ANTS-6590)
+  `get_text` declares its `max_bytes` cap; `changelog_log` lists its
+  `release` and `add_subsection` ops; `file_outline` names shell, asm,
+  CMake and YAML; `roadmap_migrate`'s detail lists every refusal code.
+
 - **`changelog_query` reads a category heading in any case (`### fixed`) and a `*` or `+` bullet as an entry, the way `changelog_log` writes and merges them** (ANTS-6588)
 
 - **A false positive marked in the Project Audit dialog is also hidden by `audit_run` when its file path contains a space or the tool indents the line** (ANTS-6586)

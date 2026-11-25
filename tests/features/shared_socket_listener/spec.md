@@ -25,8 +25,8 @@ connect over those sockets. INV-7 is a source scrape.
 - `Inv6DestroyingAnOwnerClosesItsConnections` — the socket serving a deferred
   verb is a direct child of its owner, and destroying the owner deletes it and
   disconnects the client.
-- `Inv7AcceptChecksStayInTheHandlers` — a `mcpd::peerUidIs` call (comments
-  stripped) and the 5 s idle timer precede `readyRead` in each handler; the `attach` calls serve through those
+- `Inv7AcceptChecksStayInTheHandlers` — an `ants::admitSameUserPeer` call
+  (comments stripped; it calls `mcpd::peerUidIs`) and the 5 s idle timer precede `readyRead` in each handler; the `attach` calls serve through those
   handlers; the hub pulls a connection only to close it.
 
 ## ANTS-5138 — the client waits for a slow first byte

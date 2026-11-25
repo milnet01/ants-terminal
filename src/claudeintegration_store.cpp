@@ -1739,12 +1739,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "kept on a store-served project (absent_kept), else "
                         "DELETED. op:\"deregister\" removes "
                         "a project's roadmap and keeps its mailbox (confirm:true "
-                        "while its root exists). Refusals: "
-                        "no_project, no_roadmap, case_ambiguous, not_utf8, too_large, "
-                        "format_mismatch, bad_args, slug_collision, store_failed, "
-                        "migrate_failed, mass_deletion, confirm_required, "
-                        "transient_root. caller_cwd "
-                        "Required.");
+                        "while its root exists). Refusals: tool_info lists "
+                        "them all. caller_cwd Required.");
                     t["detail"] = QStringLiteral(
                         "ANTS-4617 — op:\"deregister\" is the INVERSE and the "
                         "catalogue had none: migrating a scratch copy to test "
@@ -1850,7 +1846,11 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "per-project. Refusals: "
                         "no_project, no_roadmap, case_ambiguous, not_utf8, "
                         "too_large (sources over 32 MiB), format_mismatch, bad_args, "
-                        "slug_collision, store_failed, migrate_failed. caller_cwd Required.");
+                        "slug_collision, store_failed, migrate_failed, "
+                        "mass_deletion, confirm_required, transient_root, "
+                        "bad_mode, missing_field, not_found, roadmap_busy, "
+                        "roadmap_exists, backup_failed, write_failed. caller_cwd "
+                        "Required.");
                     // ANTS-1453 — selection_hint: one sentence on WHEN to
                     // reach for this verb rather than what it does.
                     // ANTS-4480 (reported by AI Prompts and Fin Break, the same

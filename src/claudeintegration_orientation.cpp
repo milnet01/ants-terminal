@@ -1,5 +1,6 @@
 // ANTS-1677 claudeintegration piece 6/9 — the orientation and project tool descriptors
 #include "claudeintegration_internal.h"
+#include "testauditengine.h"
 #include "testrunners.h"   // test_results, focused_test: the runner enum
 #include "auditrunner.h"   // audit_run schema: the tool lists
 
@@ -900,12 +901,12 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     t["description"] = QStringLiteral(
                         "Record or read the most recent test run's summary. op=record "
                         "takes {exit_code, output, runner?, started_at_ms?, finished_at_ms?, "
-                        "duration_ms?}, parses ctest, pytest, jest, vitest, cargo test or "
-                        "go test -v output into {runner, passed, failed, skipped, total, "
+                        "duration_ms?}, parses %1 output (go test with -v) into {runner, "
+                        "passed, failed, skipped, total, "
                         "nothing_ran, failing_tests:[{name, excerpt}]} and writes "
                         "<root>/.audit_cache/tests.json. op=read (default) returns it; "
                         "detail=<name> returns one failing test's full block. Refusals: "
-                        "not_cached, detail_not_found.");
+                        "not_cached, detail_not_found.").arg(TestRunners::allNames());
                     t["detail"] = QStringLiteral(
                         "Record or read the most recent test run's "
                         "summary. op=record takes {exit_code, output, "
@@ -928,11 +929,11 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "wasn't in failing_tests[]). Saves ~3-15 K "
                         "tokens per test cycle.");
                     t["selection_hint"] = QStringLiteral(
-                        "Use op=record after every test run (ctest, "
-                        "pytest, jest, vitest, cargo, go -v), then op=read for "
+                        "Use op=record after every test run (%1; go "
+                        "with -v), then op=read for "
                         "subsequent checks. Pass detail=<name> when you "
                         "need the full body of one failing test "
-                        "without re-running the suite.");
+                        "without re-running the suite.").arg(TestRunners::allNames());
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -1030,7 +1031,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     t["name"] = "focused_test";
                     t["description"] = QStringLiteral(
                         "Run only the tests that exercise the changed files, under "
-                        "ctest, pytest, jest, vitest, cargo or go (detected, or `runner`). "
+                        "%1 (detected, or `runner`). "
                         "Maps `changed_files` (or git status) to the tests to run. Returns "
                         "the test_results envelope {ok, runner, passed, failed, skipped, "
                         "total, nothing_ran, failing_tests[]} plus selection, selector and "
@@ -1039,7 +1040,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "no_runner, no_build_dir, focused_test_in_flight, bad_args, "
                         "ctest_missing, ctest_failed, runner_missing, runner_failed, "
                         "unrecognised_output. To check a test would CATCH a defect, use "
-                        "mutation_probe.");
+                        "mutation_probe.").arg(TestRunners::allNames());
                     t["detail"] = QStringLiteral(
                         "Run only the tests that exercise the changed "
                         "files, instead of the whole suite. Resolves "
@@ -2072,8 +2073,12 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                 {
                     QJsonObject t;
                     t["name"] = "audit_run";
-                    // The tool names come from AuditRunner's own lists, so
-                    // this text cannot drift from what the runner runs.
+                    // The description's and detail's tool names come from
+                    // AuditRunner's own lists. The tools, scope, paths and
+                    // exclude_paths descriptions below still name tools by
+                    // hand ("EXCEPT mypy", gitleaks/trivy, the file-scoped
+                    // and native-exclusion lists): a tool added to
+                    // AuditRunner updates them too.
                     const QStringList &known = AuditRunner::kKnownTools();
                     t["description"] = QStringLiteral(
                         "Run the project's external audit tools (")
@@ -2417,7 +2422,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     t["description"] = QStringLiteral(
                         "Phase 1 of the test_audit trio: detect the test "
                         "framework, walk test files, pack into chunks "
-                        "(size 12, [4,30]), run a pre-pass regex scan, "
+                        "(size %1, [%2,%3]), run a pre-pass regex scan, "
                         "return paginated chunks + partition_token. "
                         "dimensions: auto (default) | csv:<d1,d2>. scope: "
                         "auto | path:<sub> | files:<csv>. Seed the subagent "
@@ -2428,7 +2433,10 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "chunk_size. "
                         "(pre_pass_dimensions[] is a prioritisation hint, "
                         "not a coverage allow-list). Required: caller_cwd. "
-                        "Pairs with test_audit_brief.");
+                        "Pairs with test_audit_brief.")
+                        .arg(TestAuditEngine::kChunkSizeDefault)
+                        .arg(TestAuditEngine::kChunkSizeMin)
+                        .arg(TestAuditEngine::kChunkSizeMax);
                     // ANTS-2079 — full pagination / resume / polyglot
                     // reference in `detail` (stripped from the tools/list
                     // wire; served by tool_info
@@ -2436,7 +2444,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     t["detail"] = QStringLiteral(
                         "Phase 1 of the test_audit trio. Detect "
                         "test framework, walk test files, pack into "
-                        "chunks (size 12 default, [4,30]), run "
+                        "chunks (size %1 default, [%2,%3]), run "
                         "pre-pass regex scan, return paginated chunks "
                         "+ partition_token. v1 uses a hardcoded "
                         "pre-pass pattern set; v2 ships a project "
@@ -2496,7 +2504,10 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "verb if `test_audit_brief` refuses with "
                         "`partition_token not found`. Full recipe at "
                         "docs/standards/test-audit-resume.md. "
-                        "See docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md.");
+                        "See docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md.")
+                        .arg(TestAuditEngine::kChunkSizeDefault)
+                        .arg(TestAuditEngine::kChunkSizeMin)
+                        .arg(TestAuditEngine::kChunkSizeMax);
                     t["selection_hint"] = QStringLiteral(
                         "Use to split a test corpus for multi-"
                         "reviewer test-audit dispatch. Phase 1 of "
@@ -2508,18 +2519,19 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     // ANTS-1519 — chunk_size default + bounds surfaced on
                     // the property itself so a session reading the JSON
                     // schema (not the prose description) still knows the
-                    // default. Server-side clamp [4, 30] lives in
-                    // testauditengine.cpp; default 12 lives in
-                    // testauditengine.h PartitionRequest::chunkSize.
+                    // default. All three come from testauditengine.h.
                     QJsonObject chunkSizeProp;
                     chunkSizeProp["type"] = "integer";
-                    chunkSizeProp["default"] = 12;
-                    chunkSizeProp["minimum"] = 4;
-                    chunkSizeProp["maximum"] = 30;
+                    chunkSizeProp["default"] = TestAuditEngine::kChunkSizeDefault;
+                    chunkSizeProp["minimum"] = TestAuditEngine::kChunkSizeMin;
+                    chunkSizeProp["maximum"] = TestAuditEngine::kChunkSizeMax;
                     chunkSizeProp["description"] = QStringLiteral(
-                        "Files per chunk. Default 12; clamped to [4, 30] "
+                        "Files per chunk. Default %1; clamped to [%2, %3] "
                         "server-side. Override via "
-                        "<projectPath>/.test-audit/partition.json.");
+                        "<projectPath>/.test-audit/partition.json.")
+                        .arg(TestAuditEngine::kChunkSizeDefault)
+                        .arg(TestAuditEngine::kChunkSizeMin)
+                        .arg(TestAuditEngine::kChunkSizeMax);
                     // ANTS-3630 — the `quick` property is gone. It was
                     // accepted, forwarded and never read, so `quick:true`
                     // ran an identical full walk + pre-pass. Its schema
