@@ -192,8 +192,8 @@ QString statusWord(const QString &status) {
 }
 
 // The only two vocabularies § 2.5's table names. Everything else — including an
-// absent Status, which is 53 specs of this corpus — falls to the catch-all and
-// is a CANDIDATE. That row is the one doing the real work: an unrecognised word
+// absent Status, which many specs of this corpus carry — falls to the catch-all
+// and is a CANDIDATE. That row is the one doing the real work: an unrecognised word
 // is the common case, not the exotic one, and it must never reach FINDING.
 const QSet<QString> &shippedStatusWords() {
     static const QSet<QString> v = {

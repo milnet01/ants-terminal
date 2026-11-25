@@ -101,8 +101,8 @@ QList<ChangelogBullet> extractTopVersionBullets(const QString &changelogText,
 QStringList significantWords(const QString &text);
 
 // Extract backtick-fenced tokens from a string, filtered to
-// identifier-shaped (no whitespace, len ≥ 2) entries. Used by the
-// CHANGELOG matcher to find feature names like
+// identifier-shaped entries: no whitespace, 2 to 80 chars, at least one letter.
+// Used by the CHANGELOG matcher to find feature names like
 // `launch`, `new-tab`, `RemoteControl::dispatch` inside a bullet.
 QList<QString> extractBacktickTokens(const QString &s);
 
@@ -144,8 +144,10 @@ QString extractChangelogEntryId(const QString &bulletText);
 // build-*, .svn, .hg, .ccls-cache and .indie-review; the bodies of
 // `spec.md` (would self-match every spec token), ROADMAP.md, CHANGELOG.md
 // and .ants_doc_drift_allow.txt; any file not matching the extension list;
-// and (ANTS-5100) a file over BlobOptions::maxFileBytes. Content stops at
-// BlobOptions::maxBlobBytes. Returns the empty string if projectPath
+// and (ANTS-5100) a file over BlobOptions::maxFileBytes. A file that would
+// take the content past BlobOptions::maxBlobBytes is skipped. Inside a git
+// work tree only the files git lists are read (ANTS-5623), so ignored files
+// are left out. Returns the empty string if projectPath
 // doesn't exist or contains no matching files.
 //
 // ANTS-2113 — the walk is deliberately whole-tree (NOT src/-only): a feature
@@ -180,7 +182,8 @@ QString buildProjectSourceBlob(const QString &projectPath,
 // then `::` and `.` tail-fallbacks (so `Class::method` and `module.func`
 // resolve to the trailing identifier alone when the compound form
 // isn't present in the blob). The `.` fallback only applies when the
-// tail is ≥4 chars and starts with a letter — prevents matching file
+// tail is at least 4 chars and starts with a letter, and the token is not a
+// path or a known file extension (ANTS-6389) — prevents matching file
 // extensions like `*.cpp` → `cpp`. (ANTS-2113 H2 weighed identifier-boundary
 // matching here but deferred it — on this repo it surfaces imprecise spec
 // wording, not real drift; see ROADMAP.)

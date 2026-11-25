@@ -11,7 +11,8 @@
 // a check, and a stated count of un-caught rules "has been wrong every time a
 // human wrote it".
 //
-// TWO CHECKS SHIP GATED, and that is deliberate rather than unfinished:
+// THESE § 1e CHECKS SHIP GATED OR NOT AT ALL, and that is deliberate rather
+// than unfinished:
 //
 //   * `missing_section` runs only when the project's format standard carries a
 //     machine-readable `<!-- required-sections -->` block; without one it is

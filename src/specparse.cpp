@@ -100,9 +100,15 @@ static QVector<bool> inlineCodeMask(const QString &text) {
 }
 
 InvariantsSection invariantsSection(const QString &body) {
-    // The heading's TEXT must CONTAIN the word "invariants" (ANTS-4115);
-    // strict first, so a heading that merely mentions invariants loses to a
-    // real section.
+    // ANTS-4115 — the heading's TEXT must CONTAIN the word "invariants"; it need
+    // not BEGIN with it. OneUp writes `## 5. Correctness invariants` in all 13 of
+    // its specs and the anchored form matched none of them, so the section was
+    // never located and every bullet under it was invisible — invariants:[]
+    // beside possible_untabled_invariants:9, the parser reporting that it can see
+    // them and will not return them. Strict-first keeps the old choice on a
+    // document carrying both a real Invariants section and a heading that merely
+    // mentions one (`## Why these invariants matter`), where the loose form alone
+    // would take whichever came first.
     static const QRegularExpression hdrRe(
         QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[Ii]nvariants\b.*$)"),
         QRegularExpression::MultilineOption);
@@ -115,8 +121,8 @@ InvariantsSection invariantsSection(const QString &body) {
     if (!hdrM.hasMatch()) return out;
     out.headingStart = static_cast<int>(hdrM.capturedStart());
     out.start        = static_cast<int>(hdrM.capturedEnd());
-    // Section ends at the next `## ` heading of equal-or-lower depth (treat
-    // any subsequent `## ` as the boundary).
+    // Section ends at the next `## ` heading and no other: a `### Invariants`
+    // section is not ended by a following `###`.
     static const QRegularExpression nextHdrRe(
         QStringLiteral(R"(^##\s+\S)"),
         QRegularExpression::MultilineOption);
@@ -161,15 +167,6 @@ QJsonObject parseSpecBody(const QString &body) {
     // Locate the Invariants section. Accept `## N. Invariants`,
     // `## Invariants`, `### Invariants`; the first letter in either case.
     QJsonArray invariants;
-    // ANTS-4115 — the heading's TEXT must CONTAIN the word "invariants"; it need
-    // not BEGIN with it. OneUp writes `## 5. Correctness invariants` in all 13 of
-    // its specs and the anchored form matched none of them, so the section was
-    // never located and every bullet under it was invisible — invariants:[]
-    // beside possible_untabled_invariants:9, the parser reporting that it can see
-    // them and will not return them. Strict-first keeps the old choice on a
-    // document carrying both a real Invariants section and a heading that merely
-    // mentions one (`## Why these invariants matter`), where the loose form alone
-    // would take whichever came first.
     const InvariantsSection sec = invariantsSection(body);
     if (sec.start >= 0) {
         const int sectionStart = sec.start;

@@ -26,7 +26,7 @@ namespace {
 // list tight: the goal is to avoid *false positives*, not to classify.
 //
 // File-local accessor preserved as `stopwords()`; the public accessor
-// `FeatureCoverage::specStopwords()` (defined at end of file) wraps it
+// `FeatureCoverage::specStopwords()` (defined below) wraps it
 // so downstream callers (DebtSweepEngine) consume one canonical set.
 const QSet<QString> &stopwords() {
     static const QSet<QString> kSpecStopwords = {
@@ -459,8 +459,9 @@ QString buildProjectSourceBlob(const QString &projectPath,
         return s;
     }();
     QString sourceBlob;
-    // ANTS-5100 — bounded: the content half stops at opts.maxBlobBytes (UTF-8
-    // bytes read), and a file over opts.maxFileBytes is not read at all.
+    // ANTS-5100 — bounded: a file that would take the content half past
+    // opts.maxBlobBytes (UTF-8 bytes read) is skipped, and later smaller files
+    // still go in. A file over opts.maxFileBytes is not read at all.
     qint64 blobBytes = 0;
     if (opts.truncatedOut) *opts.truncatedOut = false;
     // ANTS-3600 — when opts.appendPathManifest, record every walked file's

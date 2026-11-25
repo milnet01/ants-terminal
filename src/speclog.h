@@ -37,12 +37,13 @@ struct EditResult {
     // ANTS-6364 — the same two ops: the value after the edit, read back by
     // the parser readers use, so a dry run shows where the text landed.
     QString newValue;
-    // ANTS-4353/4364 — append_loop only. `rowShape` is "table" or "bullet",
-    // so a caller can see which form the section actually holds rather than
-    // assuming. `rowOrder` is the direction INFERRED from the existing rows —
-    // "oldest_first", "newest_first", or "ambiguous" when fewer than two rows
-    // carry a loop number (ANTS-5769: a bullet log falls back to the rows'
-    // dates). Loop logs run in opposite directions across specs
+    // ANTS-4353/4364 — append_loop only. `rowShape` is "table", "bullet" or
+    // "heading", so a caller can see which form the section actually holds
+    // rather than assuming. `rowOrder` is the direction INFERRED from the
+    // existing rows — "oldest_first", "newest_first", or "ambiguous" when fewer
+    // than two rows carry a loop number (ANTS-5769: a bullet log falls back to
+    // the rows' dates). It is empty when the call creates a new log, which has
+    // no rows to infer from. Loop logs run in opposite directions across specs
     // in one corpus, and a row inserted at the wrong end reads as a different
     // loop's result — which a checker validating only per-row tallies passes.
     QString rowShape;
