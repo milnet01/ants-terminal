@@ -103,6 +103,26 @@ static QStringList repoBoundedAncestors(const QString &canonicalRoot) {
     return { canonicalRoot };                // unbounded — do not leave home
 }
 
+// ANTS-3350 — find a project file from the project root or any subfolder,
+// nearest first, never past the repo boundary (ANTS-4447). ANTS-5667 — each
+// folder is probed through its `repo_root`, so an outer folder holding its
+// clone one level down reads the clone's file. The roadmap and changelog
+// finders share this walk (ANTS-6231). *ownerDir gets the folder probed.
+template <typename Probe>
+static QString findUpToRepo(const QString &canonicalRoot, Probe probeDir,
+                            QString *ownerDir = nullptr) {
+    for (const QString &dir : repoBoundedAncestors(canonicalRoot)) {
+        const QString repo = ProjectSettings::repoRootOf(dir);
+        const QString hit = probeDir(repo);
+        if (!hit.isEmpty()) {
+            if (ownerDir)
+                *ownerDir = repo;
+            return hit;
+        }
+    }
+    return {};
+}
+
 // ANTS-1459 — shared path list for ROADMAP.md discovery under a
 // project root. roadmap_query and roadmap_log both call this helper
 // so we don't duplicate the path-widening list (and so neither
@@ -145,33 +165,10 @@ QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir) {
         }
         return {};
     };
-    // ANTS-3350 — resolve from a project SUBDIRECTORY too: walk up to the
-    // nearest ancestor that holds a roadmap, bounded by the enclosing git
-    // repo so the search never escapes the project. caller_cwd == root
-    // returns on the first probe (byte-identical to the prior single-dir
-    // behaviour); only a subdir caller walks up. Matches the code read verbs,
-    // which already resolve the project from a subdir. ANTS-4447 owns the
-    // bound, so the non-git case cannot walk out of the project either.
-    //
-    // ANTS-4882 — `dir` is the project root the roadmap was resolved under, and
-    // the store keys a project on exactly that. It is NOT the roadmap file's own
-    // directory: the two coincide only while the roadmap sits at the root, and
-    // the candidate list above also matches docs/ and .github/.
-    //
-    // ANTS-5667 — a folder declaring `repo_root` is probed through that repo
-    // root instead of itself, and owned by it: an outer folder holding its
-    // clone one level down reads the clone's roadmap and keys the clone's
-    // store row, whether or not it holds a roadmap of its own.
-    for (const QString &dir : repoBoundedAncestors(canonicalRoot)) {
-        const QString repo = ProjectSettings::repoRootOf(dir);
-        const QString hit = probeDir(repo);
-        if (!hit.isEmpty()) {
-            if (ownerDir)
-                *ownerDir = repo;
-            return hit;
-        }
-    }
-    return {};
+    // ANTS-4882 — *ownerDir is the project root the roadmap was resolved under,
+    // and the store keys a project on exactly that. It is NOT the roadmap
+    // file's own directory: the candidate list also matches docs/ and .github/.
+    return findUpToRepo(canonicalRoot, probeDir, ownerDir);
 }
 
 // ANTS-4884 — the project root a path belongs to. The store keys a project on
@@ -277,14 +274,7 @@ QString findChangelogUnder(const QString &canonicalRoot) {
         }
         return {};
     };
-    // ANTS-3350 — walk up to the repo boundary, mirroring findRoadmapUnder,
-    // so changelog_log resolves from a subdirectory. Shares ANTS-4447's
-    // bound: the two had the same walk and therefore the same escape.
-    for (const QString &dir : repoBoundedAncestors(canonicalRoot)) {
-        const QString hit = probeDir(dir);
-        if (!hit.isEmpty()) return hit;
-    }
-    return {};
+    return findUpToRepo(canonicalRoot, probeDir);
 }
 
 // ANTS-2040 — YAML-changelog resolver. project_layout already
@@ -306,15 +296,15 @@ QString findYamlChangelogUnder(const QString &canonicalRoot) {
         QStringLiteral("data/CHANGELOG.yaml"),
         QStringLiteral("data/CHANGELOG.yml"),
     };
-    // ANTS-6393 — the same repo-bounded walk findChangelogUnder takes, so a
-    // YAML changelog above the caller reads as format_mismatch, not as none.
-    for (const QString &dir : repoBoundedAncestors(canonicalRoot)) {
+    // ANTS-6393 — the same walk findChangelogUnder takes, so a YAML changelog
+    // above the caller reads as format_mismatch, not as none.
+    return findUpToRepo(canonicalRoot, [](const QString &dir) -> QString {
         for (const QString &n : kYamlCandidates) {
             const QString c = dir + QLatin1Char('/') + n;
             if (QFileInfo::exists(c)) return c;
         }
-    }
-    return {};
+        return {};
+    });
 }
 
 // ANTS-1463 — canonical hint emitted on every unrecognised_format

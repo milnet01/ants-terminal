@@ -41,6 +41,7 @@
 // workspace_search_phrase_hint does; the linker checks the signatures.
 namespace rcdetail {
 QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir);
+QString findChangelogUnder(const QString &canonicalRoot);
 QString rcProjectRootFor(const QString &path);
 QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
                              const QString &idPrefixArg,
@@ -163,6 +164,19 @@ TEST(ProjectRepoRoot, FindRoadmapUnder) {
         EXPECT_EQ(owner, l.clone)
             << "ownerDir is the store key; it must be the repo root";
     }
+}
+
+// ANTS-6231 — the changelog finder walks the same way, so changelog_log from
+// the outer folder writes the clone's CHANGELOG.md.
+TEST(ProjectRepoRoot, FindChangelogUnder) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Layout l = seed(guard, tmp, true, false);
+    ASSERT_TRUE(writeFile(l.clone + QStringLiteral("/CHANGELOG.md"),
+                          QByteArray("# Changelog\n")));
+    EXPECT_EQ(rcdetail::findChangelogUnder(l.outer),
+              l.clone + QStringLiteral("/CHANGELOG.md"));
 }
 
 // ----------------------------------------------------------------- INV-3 ----

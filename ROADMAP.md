@@ -109107,7 +109107,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L17-F24).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6231] **Share one repo-boundary walk between findRoadmapUnder and findChangelogUnder, with the repo_root choice in one place.**
+- ✅ [ANTS-6231] **Share one repo-boundary walk between findRoadmapUnder and findChangelogUnder, with the repo_root choice in one place.**
   From ANTS-6127; feeds ANTS-5796 (dup:8c59f23dcd7a). ANTS-3350 and
   ANTS-4447 patched both copies; ANTS-5667's repo_root redirect
   (ProjectSettings::repoRootOf) went into the roadmap copy only, and
@@ -109118,6 +109118,13 @@ worked after these.
   Hot reload: none needed.
   The 2026-11-06 reviews also found this: row 793
   `src/remotecontrol.cpp:282`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Decided: repo_root applies to the changelog too; no spec scoped it
+  out. findUpToRepo in remotecontrol.cpp holds the walk and the
+  repoRootOf choice; findRoadmapUnder, findChangelogUnder and
+  findYamlChangelogUnder (a third copy) each pass only their probe. The
+  ANTS-6434 symlink check stays in the changelog probe; the roadmap
+  writer has its own (resolveUnderRoot). Locked by
+  ProjectRepoRoot.FindChangelogUnder, seen red first.
   **Layman:** Two pieces of code that find a project's roadmap and changelog walk the folders the same way, and a fix to one already missed the other.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L18-F2).
