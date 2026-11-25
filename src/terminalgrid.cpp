@@ -1531,7 +1531,7 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
     }
     // OSC 9 — Desktop notification (body only, iTerm2/Ghostty style)
     //
-    // The VT parser caps OSC payloads at 10MB (vtparser.cpp:282) to cover
+    // The VT parser caps OSC payloads at 10MB (kMaxStringBytes in vtparser.cpp) to cover
     // inline-image escape sequences. Notifications are short by nature; a
     // multi-MB body here is either a mistake or an attempt to spam the
     // freedesktop notification daemon. Clamp aggressively before forwarding.
@@ -2323,10 +2323,10 @@ void TerminalGrid::pushHyperlinkSpansForActive() {
     const int cols = m_cols;
     if (startRow >= endRow) {
         // startRow == endRow: single-row span.
-        // startRow >  endRow: a resize/reflow has moved the
-        //   hyperlink's text into scrollback while leaving startRow
-        //   clamped to the new screen. The forward-wrap math doesn't
-        //   apply; preserve the pre-0.7.55 single-row-at-startRow
+        // startRow >  endRow: the cursor moved up while the link was open
+        //   (cursor up, cursor position, reverse index). A resize cannot
+        //   reach here: it drops the open link. The forward-wrap math
+        //   doesn't apply; preserve the pre-0.7.55 single-row-at-startRow
         //   shape so the hyperlink_resize_clamp invariants stay green.
         HyperlinkSpan s;
         s.startCol = m_hyperlinkStartCol;
@@ -3172,14 +3172,8 @@ void TerminalGrid::resize(int rows, int cols) {
     // no longer matches the clickable text (visual-correctness bug when the
     // grid grows back).
     //
-    // Indie-review-2026-05-14 lane-1 H2: the comment used to claim "close
-    // the active hyperlink on any resize" but the code only clamped the
-    // start coords — never reset m_hyperlinkActive / m_hyperlinkUri /
-    // m_hyperlinkId. The clamp itself reintroduces the stale-coordinate
-    // bug it was supposed to prevent, because a shrink that dropped
-    // startRow into scrollback would then pull it up to a different row
-    // on the new screen. Close the active hyperlink for real here —
-    // matches xterm's behaviour.
+    // Rule: close the active hyperlink on any resize, as xterm does. Clamping
+    // the start coords instead would point the link at a different row.
     dropActiveHyperlink();
 
     // Reinitialize tab stops for new width

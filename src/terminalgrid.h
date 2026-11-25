@@ -87,7 +87,6 @@ struct Cell {
     bool isWideCont = false;     // true if this cell is the continuation of a wide char
 };
 
-// A line stored in scrollback or screen, with wrap metadata
 // ANTS-6395 — a line's combining characters, col -> codepoints. Most lines
 // have none, so the map lives behind a pointer: an empty table costs 8 bytes
 // where an unordered_map header costs 56 on every line. Copying deep-copies,
@@ -194,6 +193,7 @@ private:
     std::unique_ptr<Spans> m_spans;
 };
 
+// A line stored in scrollback or screen, with wrap metadata
 struct TermLine {
     std::vector<Cell> cells;
     bool softWrapped = false; // true if line was wrapped at right edge (not \n)
@@ -889,7 +889,9 @@ private:
     static constexpr int QUERY_RESP_MAX_PER_SEC = 256;
     void sendQueryResponse(const std::string &data);
 
-    // Response callback
+    // Response callback. Every callback member (here and in the groups
+    // above and below) must also be in RIS's save-and-restore list
+    // (the ESC c case in terminalgrid.cpp), or `reset` drops it.
     ResponseCallback m_responseCallback;
     // Clipboard callback (OSC 52) — separate channel, see ANTS-1739.
     ClipboardCallback m_clipboardCallback;
@@ -897,7 +899,8 @@ private:
     // Bell callback
     BellCallback m_bellCallback;
 
-    // Pause scrollback insertion while the user is scrolled up (see
+    // True while the user is scrolled up. Lines still go into scrollback;
+    // only the post-full-clear doubling guard is off (see
     // setScrollbackInsertPaused). False = normal terminal behaviour.
     bool m_scrollbackInsertPaused = false;
 
