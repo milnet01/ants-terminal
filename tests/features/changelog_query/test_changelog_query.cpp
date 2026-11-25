@@ -890,3 +890,40 @@ TEST(ChangelogQueryHandler, Ants5507ReleaseSinceMustBeADate) {
     EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(QStringLiteral("bad_args"), r.value(QStringLiteral("code")).toString());
 }
+
+// ANTS-6588 — the reader files a heading's bullets as the writer does: a
+// category name in any case is its canonical category (ANTS-6145 made the
+// writer fold case), and an entry bullet is `-`, `*` or `+` at column 0.
+TEST(ChangelogQueryParse, Ants6588ReaderMatchesTheWriter) {
+    const QString md = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### fixed\n\n"
+        "- **Lower-case heading.** (ANTS-7001)\n"
+        "* **Star bullet.** (ANTS-7002)\n\n"
+        "### 2026-11-25 added — Dated topic in lower case\n\n"
+        "- **Under the topic.** (ANTS-7003)\n");
+    const ParseResult r = ChangelogQuery::parse(md, kPrefix);
+
+    const Entry *lower = findEntryWithId(r, "ANTS-7001");
+    ASSERT_NE(lower, nullptr) << "a bullet under `### fixed` was dropped";
+    EXPECT_EQ(lower->category, QStringLiteral("Fixed"));
+    EXPECT_EQ(findEntry(r, "fixed"), nullptr)
+        << "`### fixed` is a category heading, not a dated topic entry";
+
+    const Entry *star = findEntryWithId(r, "ANTS-7002");
+    ASSERT_NE(star, nullptr) << "a `* ` bullet at column 0 was not an entry";
+    EXPECT_EQ(star->category, QStringLiteral("Fixed"));
+    EXPECT_TRUE(star->text.startsWith(QLatin1String("**Star bullet.**")));
+
+    const Entry *topic = findEntry(r, "Dated topic in lower case");
+    ASSERT_NE(topic, nullptr) << "a dated topic with a lower-case category made no entry";
+    EXPECT_EQ(topic->category, QStringLiteral("Added"));
+    const Entry *under = findEntryWithId(r, "ANTS-7003");
+    ASSERT_NE(under, nullptr);
+    EXPECT_EQ(under->category, QStringLiteral("Added"));
+
+    const auto fs = ChangelogQuery::lint(md, QStringLiteral("CHANGELOG.md"));
+    EXPECT_TRUE(lintShape(fs).filter(QStringLiteral("unknown_category")).isEmpty())
+        << lintShape(fs).join(QLatin1Char(' ')).toStdString();
+}

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6932 -->
+<!-- ants-roadmap-id-high-water: ANTS=6933 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97752,12 +97752,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: build-system.
 
-- 📋 [ANTS-6588] **Fold the duplicated logic the 2026-11-06 reviews found in changelog-feedback.**
+- ✅ [ANTS-6588] **Fold the duplicated logic the 2026-11-06 reviews found in changelog-feedback.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 419 `changeloglog.cpp:514` (Low)
   - row 1161 `src/changelogquery.cpp:501` (Medium)
   - row 1163 `src/changeloglog.cpp:70` (Medium)
   - row 1164 `src/changeloglog.cpp:775` (Medium)
+  Rows 419, 1161, 1163, 1164 closed 2026-11-25: ChangelogLog::canonicalCategory
+  shared by writer and reader; isEntryBullet shared by parse and
+  releaseLint; placeUnderCategory shared by insertUnreleasedEntry and
+  closeUnreleasedDated. Spec ANTS-3533 § 3 amended. Gap found: ANTS-6933.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -98190,6 +98194,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: vt-parser-pty.
+
+- 📋 [ANTS-6933] **changelog_query's release check counts the ids in a dated topic's prose, as entries mode does.**
+  releaseLint (src/changelogquery.cpp) stops citing after a `### `
+  heading and reads only entry bullets and their indented continuation
+  lines. parse() files a dated topic's flush-left prose as the topic
+  entry's body, so its ids appear in entries mode but not in the
+  release citation set. Fix: track a topic as parse() does; test with a
+  topic whose only mention of an id is its prose.
+  **Layman:** A release check can say an item is not mentioned in the changelog when the mention sits in a dated topic's paragraph.
+  Kind: fix.
+  Source: found-while-fixing ANTS-6588 2026-11-25.
+  Lanes: changelog-feedback.
 
 ### Other bugs (2026-11-06 review)
 

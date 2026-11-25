@@ -23,8 +23,15 @@ QString kindToCategory(const QString &kind);
 // describes the defect, so the entry would say the bug is live.
 bool inheritsLaymanBody(const QString &category, const QString &kind);
 
-// True iff `category` is one of the six canonical categories.
+// True iff `category` is one of the six canonical categories, spelled exactly.
+// A caller's `category` argument is checked with this.
 bool isValidCategory(const QString &category);
+
+// The canonical spelling of a `### ` heading's category name, matched in any
+// case (`fixed` → `Fixed`), or "" for none. The writer orders and merges
+// headings by it and changelog_query files bullets by it, so both read
+// `### fixed` as `### Fixed` (ANTS-6145, ANTS-6588).
+QString canonicalCategory(const QString &name);
 
 // The six canonical Keep-a-Changelog categories, in spec order
 // (Added/Changed/Deprecated/Removed/Fixed/Security). Exposed publicly

@@ -59,16 +59,17 @@ bool isValidCategory(const QString &category) {
     return canonicalCategories().contains(category);
 }
 
+QString canonicalCategory(const QString &name) {
+    for (const QString &c : canonicalCategories())
+        if (c.compare(name, Qt::CaseInsensitive) == 0) return c;
+    return QString();
+}
+
 namespace {
-// Case-insensitive canonical index for a `### ` heading name. Returns
-// the 0-based Keep-a-Changelog order, or -1 for a non-canonical heading.
-// Every heading read from a file is ordered through this, so `### fixed`
-// sorts and merges as `### Fixed` does.
+// The 0-based Keep-a-Changelog order of a `### ` heading name, in any case,
+// or -1 for a non-canonical heading.
 int canonicalIndexCI(const QString &name) {
-    const QStringList &cats = canonicalCategories();
-    for (int c = 0; c < cats.size(); ++c)
-        if (cats.at(c).compare(name, Qt::CaseInsensitive) == 0) return c;
-    return -1;
+    return canonicalCategories().indexOf(canonicalCategory(name));
 }
 
 
@@ -521,6 +522,51 @@ QString formatBullet(const QString &summary, const QString &body,
     return out;
 }
 
+namespace {
+// Puts `content` under `### <category>` in lines[from, to), the one placement
+// rule the entry insert and the dated release merge share. An existing
+// heading, in any case, takes it at the top of its block, below the heading's
+// blank spacer; `blankAfter` adds a blank line after it. Otherwise a new
+// heading goes before the first later-ordered category heading, or at `to`,
+// with a blank line above it when the line there is not blank.
+struct CategoryPlacement { int contentAt = -1; bool created = false; };
+CategoryPlacement placeUnderCategory(QStringList &lines, int from, int to,
+                                     const QString &category,
+                                     const QStringList &content, bool blankAfter) {
+    const int wantOrder = canonicalCategories().indexOf(category);
+    int catHeading = -1;
+    int laterHeading = -1;
+    const QVector<bool> fenced = fencedLines(lines, from, to);
+    for (int i = from; i < to; ++i) {
+        if (fenced.at(i) || !isCategoryHeading(lines.at(i))) continue;  // ANTS-5108
+        const int ord = canonicalIndexCI(lines.at(i).trimmed().mid(4).trimmed());
+        if (ord == wantOrder) { catHeading = i; break; }
+        if (ord > wantOrder && laterHeading < 0) laterHeading = i;
+    }
+    CategoryPlacement p;
+    QStringList insert;
+    int at;
+    if (catHeading >= 0) {
+        at = catHeading + 1;
+        if (at < to && lines.at(at).trimmed().isEmpty()) ++at;
+        p.contentAt = at;
+        insert = content;
+        if (blankAfter) insert.append(QString());
+    } else {
+        at = laterHeading >= 0 ? laterHeading : to;
+        if (at > 0 && !lines.at(at - 1).trimmed().isEmpty()) insert.append(QString());
+        insert.append(QStringLiteral("### ") + category);
+        insert.append(QString());
+        p.contentAt = at + int(insert.size());
+        p.created = true;
+        insert += content;
+        insert.append(QString());
+    }
+    for (int k = 0; k < insert.size(); ++k) lines.insert(at + k, insert.at(k));
+    return p;
+}
+}  // namespace
+
 InsertResult insertUnreleasedEntry(const QString &markdown,
                                    const QString &category,
                                    const QString &bulletBlock,
@@ -618,55 +664,15 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
         r.malformed_line = proseLine;
     }
 
-    // Find the `### <category>` heading within the section, and record
-    // the first later-ordered category heading (for ordered creation
-    // when ours is absent).
-    const int wantOrder = canonicalCategories().indexOf(category);
-    int catHeading = -1;
-    int laterHeading = -1;  // first ### whose order > wantOrder
-    const QVector<bool> fenced = fencedLines(lines, unrel + 1, sectionEnd);
-    for (int i = unrel + 1; i < sectionEnd; ++i) {
-        if (fenced.at(i) || !isCategoryHeading(lines.at(i))) continue;  // ANTS-5108
-        const QString name = lines.at(i).trimmed().mid(4).trimmed();
-        if (name.compare(category, Qt::CaseInsensitive) == 0) {
-            catHeading = i;
-            break;
-        }
-        const int ord = canonicalIndexCI(name);
-        if (ord > wantOrder && laterHeading < 0) laterHeading = i;
-    }
-
-    const QStringList bulletLines = bulletBlock.split(QLatin1Char('\n'));
-
-    if (catHeading >= 0) {
-        // Insert at the top of the existing category: right after the
-        // heading line and its single blank spacer (if present).
-        int insertAt = catHeading + 1;
-        if (insertAt < sectionEnd && lines.at(insertAt).trimmed().isEmpty())
-            ++insertAt;
-        QStringList block = bulletLines;
-        if (blankAfter) block.append(QString());  // ANTS-6800 — as the block does
-        for (int k = 0; k < block.size(); ++k)
-            lines.insert(insertAt + k, block.at(k));
-        r.ok = true;
-        r.markdown = lines.join(QLatin1Char('\n'));
-        r.line = insertAt + 1;
-        return r;
-    }
-
-    // Category heading absent — create it in canonical order.
-    int headingAt = (laterHeading >= 0) ? laterHeading : sectionEnd;
-    QStringList block;
-    block.append(QStringLiteral("### ") + category);
-    block.append(QString());
-    block += bulletLines;
-    block.append(QString());
-    for (int k = 0; k < block.size(); ++k)
-        lines.insert(headingAt + k, block.at(k));
+    // ANTS-6800 — `blankAfter` spaces the bullet from the one below it, as
+    // the block does.
+    const CategoryPlacement p = placeUnderCategory(
+        lines, unrel + 1, sectionEnd, category,
+        bulletBlock.split(QLatin1Char('\n')), blankAfter);
     r.ok = true;
-    r.created_category = true;
+    r.created_category = p.created;
     r.markdown = lines.join(QLatin1Char('\n'));
-    r.line = headingAt + 3;  // 1-based line of the inserted bullet
+    r.line = p.contentAt + 1;  // 1-based line of the inserted bullet
     return r;
 }
 
@@ -911,34 +917,8 @@ ReleaseResult closeUnreleasedDated(const QString &markdown,
         for (int i = day + 1; i < lines.size(); ++i) {
             if (lines.at(i).startsWith(QStringLiteral("## "))) { dayEnd = i; break; }
         }
-        const int wantOrder = canonicalCategories().indexOf(blk.first);
-        int catHeading = -1, laterHeading = -1;
-        const QVector<bool> dayFenced = fencedLines(lines, day + 1, dayEnd);
-        for (int i = day + 1; i < dayEnd; ++i) {
-            if (dayFenced.at(i) || !isCategoryHeading(lines.at(i))) continue;  // ANTS-5108
-            const QString name = lines.at(i).trimmed().mid(4).trimmed();
-            if (name.compare(blk.first, Qt::CaseInsensitive) == 0) { catHeading = i; break; }
-            if (canonicalIndexCI(name) > wantOrder && laterHeading < 0)
-                laterHeading = i;
-        }
-        QStringList insert;
-        int at;
-        if (catHeading >= 0) {
-            // New bullets first, under the existing heading.
-            at = catHeading + 1;
-            if (at < dayEnd && lines.at(at).trimmed().isEmpty()) ++at;
-            insert = content;
-            insert.append(QString());
-        } else {
-            at = laterHeading >= 0 ? laterHeading : dayEnd;
-            if (at > 0 && !lines.at(at - 1).trimmed().isEmpty())
-                insert.append(QString());
-            insert.append(QStringLiteral("### ") + blk.first);
-            insert.append(QString());
-            insert += content;
-            insert.append(QString());
-        }
-        for (int k = 0; k < insert.size(); ++k) lines.insert(at + k, insert.at(k));
+        // New bullets first, under the day's heading for the category.
+        placeUnderCategory(lines, day + 1, dayEnd, blk.first, content, true);
     }
     r.line   = day + 1;
     r.merged = true;

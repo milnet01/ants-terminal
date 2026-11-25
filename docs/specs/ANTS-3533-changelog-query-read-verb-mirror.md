@@ -312,7 +312,10 @@ Parsing rules (verified against the live CHANGELOG.md, 2026-07-19):
   are stable regardless of the source heading's casing.
 - **Category heading** — a line starting `### `, or a bare `###`; the name is
   the rest of the line, trimmed (`#### x` and `###x` are not headings). A canonical category
-  (`isValidCategory`) sets the current category. Any other **non-canonical** `###`
+  sets the current category. It is matched in any case and stored in its
+  canonical spelling (`ChangelogLog::canonicalCategory`), so `### fixed` files
+  its bullets under `Fixed`, as the writer reads it *(amendment, 2026-11-25 —
+  ANTS-6588)*. Any other **non-canonical** `###`
   heading — including a bare, name-less `### ` — **resets the current category to
   none** (it is a category boundary, not a no-op) — so bullets under it are
   skipped, symmetric with bullets before the first `###`. This prevents
@@ -325,8 +328,8 @@ Parsing rules (verified against the live CHANGELOG.md, 2026-07-19):
   first ten characters after `### `, parsed with
   `QDate::fromString(…, "yyyy-MM-dd")` as `ChangelogLog::classifyUnreleased` does,
   so `### 2026-13-45 Fixed — …` is not a dated topic. The whitespace-delimited word
-  after the date sets the current category when `isValidCategory` accepts it —
-  case-sensitive, as the § 2.1 `category` filter is. Otherwise the heading resets
+  after the date sets the current category when it names one, in any case, as a
+  category heading does. Otherwise the heading resets
   the category to none, as any other non-canonical `###` does, and makes no
   entry. Before ANTS-5071 every dated topic heading was non-canonical, so every
   bullet under one was skipped while the call still returned `ok:true`.
@@ -334,8 +337,8 @@ Parsing rules (verified against the live CHANGELOG.md, 2026-07-19):
   that sets a category also starts an entry, ahead of the bullets under it.
   `text` is the rest of the heading after the category word, with a single
   leading `—` or `-` and the whitespace around it stripped; markdown kept.
-  `body` is every line after the heading up to the next `- ` bullet at column 0
-  outside a fence, `###` heading or `## [` version heading, with leading and
+  `body` is every line after the heading up to the next entry bullet outside a
+  fence, `###` heading or `## [` version heading, with leading and
   trailing blank lines dropped, each line de-indented as a continuation line is.
   A fence keeps its meaning above inside that body. This is where the writer
   puts a topic's prose: the comment on `collectInterleavedProse` in
@@ -346,8 +349,9 @@ Parsing rules (verified against the live CHANGELOG.md, 2026-07-19):
   extracted as for any entry, and the entry counts in its version's category
   rollup. A heading with nothing after the category word and no prose makes no
   entry.
-- **Entry bullet** — `^- ` at column 0 (outside a fence) starts an entry; `text`
-  = the rest of that line. A bullet with no current category (before any `###`,
+- **Entry bullet** — `-`, `*` or `+` and a space, at column 0 (outside a
+  fence), starts an entry; `text` = the rest of that line. `releaseLint` uses
+  the same rule *(amendment, 2026-11-25 — ANTS-6588)*. A bullet with no current category (before any `###`,
   or under a non-canonical `###`) is skipped (malformed / uncategorised).
 - **Continuation** — a subsequent line indented ≥2 spaces or by a tab (or a blank
   line then such an indented line) that is *not* a new bullet/heading appends to

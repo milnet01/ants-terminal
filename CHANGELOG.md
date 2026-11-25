@@ -66,6 +66,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`changelog_query` reads a category heading in any case (`### fixed`) and a `*` or `+` bullet as an entry, the way `changelog_log` writes and merges them** (ANTS-6588)
+
 - **A false positive marked in the Project Audit dialog is also hidden by `audit_run` when its file path contains a space or the tool indents the line** (ANTS-6586)
 
 - **`trace` reads Python files whose f-strings hold a quoted string and later break a `{…}` field across lines** (ANTS-6344)

@@ -133,16 +133,34 @@ bool parseCategoryHeading(const QString &line, QString &cat) {
 // ANTS-5071 — the category a `### ` heading sets, or "" for none. A dated topic
 // `<YYYY-MM-DD> <Category> — <headline>` (changelog_log op:add_subsection)
 // takes the word after the date. The date is PARSED, as
-// ChangelogLog::classifyUnreleased does, so `2026-13-45` is not one.
+// ChangelogLog::classifyUnreleased does, so `2026-13-45` is not one. Either
+// name is matched in any case and returned in its canonical spelling, as the
+// writer reads it (ANTS-6588).
 QString categoryForHeading(const QString &cat) {
-    if (ChangelogLog::isValidCategory(cat)) return cat;
+    if (const QString c = ChangelogLog::canonicalCategory(cat); !c.isEmpty())
+        return c;
     if (cat.size() > 10 && cat.at(10).isSpace() &&
         QDate::fromString(cat.left(10), QStringLiteral("yyyy-MM-dd")).isValid()) {
         const QString word =
             cat.mid(10).simplified().section(QLatin1Char(' '), 0, 0);
-        if (ChangelogLog::isValidCategory(word)) return word;
+        return ChangelogLog::canonicalCategory(word);
     }
     return QString();
+}
+
+// True for a heading that is a flat category (`### Fixed`, `### fixed`), not a
+// dated topic.
+bool isFlatCategoryHeading(const QString &cat) {
+    return !ChangelogLog::canonicalCategory(cat).isEmpty();
+}
+
+// An entry bullet: `-`, `*` or `+` and a space, at column 0. An indented
+// bullet belongs to the entry above it, as a continuation line. lint's
+// listItem differs on purpose: it sorts every line into list item or prose.
+bool isEntryBullet(const QString &line) {
+    return line.size() >= 2 && line.at(1) == QLatin1Char(' ') &&
+           (line.at(0) == QLatin1Char('-') || line.at(0) == QLatin1Char('*') ||
+            line.at(0) == QLatin1Char('+'));
 }
 
 // ANTS-5145 — a dated topic's headline: the heading after its date and category
@@ -257,9 +275,8 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
             finalizeEntry();
             curCategory = categoryForHeading(cat);
             // ANTS-5145 — a dated topic heading that sets a category is an
-            // entry of its own, ahead of its bullets. A canonical `### Fixed`
-            // returns its own text, so it is not a topic.
-            if (haveVersion && !curCategory.isEmpty() && curCategory != cat) {
+            // entry of its own, ahead of its bullets.
+            if (haveVersion && !curCategory.isEmpty() && !isFlatCategoryHeading(cat)) {
                 curEntry = Entry{};
                 curEntry.version = curVersion;
                 curEntry.date = curDate;
@@ -273,8 +290,8 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
             continue;
         }
 
-        // --- entry bullet (column 0) ---
-        if (line.startsWith(QLatin1String("- "))) {
+        // --- entry bullet ---
+        if (isEntryBullet(line)) {
             finalizeEntry();
             if (!haveVersion || curCategory.isEmpty()) {
                 continue;  // no version context / no category → skip
@@ -442,7 +459,7 @@ QList<DocFinding::Finding> lint(const QString &markdown, const QString &relPath,
             }
             // A dated topic's body is prose by design; only a flat block is
             // bullets alone.
-            inFlatCategory = ChangelogLog::isValidCategory(cat);
+            inFlatCategory = isFlatCategoryHeading(cat);
             if (inFlatCategory) {
                 const int idx = ChangelogLog::canonicalCategories().indexOf(c);
                 if (idx < lastCanon)
@@ -499,8 +516,6 @@ bool recordsNoEntryDecision(const QString &body) {
 QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &idPrefix,
                                        const QString &relPath, const QString &version,
                                        const ReleaseFacts &facts) {
-    static const QRegularExpression bullet(QStringLiteral(R"(^\s*[-*+]\s)"));
-
     QStringList lines = markdown.split(QLatin1Char('\n'));
     for (QString &l : lines)
         if (l.endsWith(QLatin1Char('\r'))) l.chop(1);
@@ -538,7 +553,7 @@ QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &i
             continue;
         }
         if (fence.at(i) || section.isEmpty()) continue;
-        if (bullet.match(l).hasMatch()) {
+        if (isEntryBullet(l)) {
             inBullet = true;
         } else if (l.startsWith(QLatin1String("### "))) {
             inBullet = false;
