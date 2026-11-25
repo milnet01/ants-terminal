@@ -87,7 +87,7 @@ constexpr const char *kOrientationScriptBody =
     // hand-editing it (format-drift risk). The glob is anchored to
     // $CLAUDE_PROJECT_DIR (CC sets it to the project root) falling
     // back to $PWD. Prints nothing — and so does not count against the
-    // INV-10 cap — when no such file is present (the test case).\n"
+    // INV-10 cap — when no such file is present (the test case).
     "if compgen -G \"${CLAUDE_PROJECT_DIR:-$PWD}/*_Ants_MCP_Feedback.md\""
     " >/dev/null 2>&1; then\n"
     "  echo\n"

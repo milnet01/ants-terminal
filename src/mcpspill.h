@@ -72,7 +72,7 @@ bool shouldOffload(qint64 bodyBytes);
 // max_body_bytes raises it to that size plus kExplicitSizeHeadroomBytes,
 // capped at kExplicitSizeCeilingBytes, so a caller who sized the reply gets
 // it inline. It never lowers the configured threshold. read_regions
-// (ANTS-5291) uses the ceiling on every call. trace (ANTS-5734) never
+// (ANTS-5291) and read_region (ANTS-4954) use the ceiling on every call. trace (ANTS-5734) never
 // offloads: it pages under its own max_bytes. Every other verb gets
 // offloadThresholdBytes(). The two-argument shouldOffload applies it.
 constexpr qint64 kExplicitSizeHeadroomBytes = 4096;

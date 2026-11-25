@@ -7,7 +7,8 @@ namespace mcp {
 namespace {
 
 // ANTS-5485 — the verbs removed after a release in which none was
-// called. The value is what to use instead.
+// called. The value is what to use instead. The error names ANTS-5485 for
+// every entry, whichever ticket removed the verb.
 const QHash<QString, QString> &table() {
     static const QHash<QString, QString> t = {
         {QStringLiteral("get_git_status"),             QStringLiteral("git_state")},

@@ -31,8 +31,9 @@ QList<QByteArray> readLines(const QString &path, bool *readOk = nullptr);
 // Atomically rewrite `path` with `lines` (one per line, each '\n'-terminated)
 // via QSaveFile. Creates the parent directory private (0700, ANTS-1988) and
 // tightens the temp file to owner-only (0600) before the rename, so the final
-// file is never briefly group/world-readable. Returns false on any I/O failure
-// (the on-disk file is left untouched).
+// file is never briefly group/world-readable. If that chmod fails it warns and
+// writes anyway (ANTS-5151). Returns false on any other I/O failure (the
+// on-disk file is left untouched).
 bool writeLinesAtomic(const QString &path, const QList<QByteArray> &lines);
 
 // Drop whole lines, oldest first, until the lines plus their '\n' fit in

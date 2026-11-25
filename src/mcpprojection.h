@@ -16,11 +16,9 @@ namespace mcp {
 
 // ANTS-4524 — there is NO `fields=` allowlist. Every verb honours it, the
 // dispatcher declares the property on every schema, and `isUniversalDispatchArg`
-// says so to the undeclared-argument check. The predicate that used to gate it
-// (isFieldProjectionTool) is gone: it answered a question whose answer is now
-// always yes, while a caller passing `fields=` to any other verb had it dropped
-// in silence. projectFields is a pure top-level key filter with a refusal floor
-// and a 304 floor, so it is safe on any object envelope.
+// says so to the undeclared-argument check. projectFields is a pure top-level
+// key filter with a refusal floor and a 304 floor, so it is safe on any object
+// envelope.
 //
 // The verbs whose envelope is compacted when the caller did NOT ask — where
 // mcp::terseDefault() applies to an ABSENT `compact` arg.
@@ -83,7 +81,9 @@ bool isProtectedCompactKey(const QString &key);
 //                                          no floor: the matched field proves
 //                                          the call succeeded.
 //   - refusal (`ok:false`)              -> the refusal floor is carried
-//                                          verbatim whatever `fields` names.
+//                                          verbatim whatever `fields` names;
+//                                          `fields_unmatched` is not added
+//                                          (ANTS-4979).
 //   - `warning`, `parseable_bullets`    -> the diagnostic floor: carried
 //                                          whenever present, whatever
 //                                          `fields` names.
