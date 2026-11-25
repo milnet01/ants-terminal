@@ -867,23 +867,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
     // decided above).
     qint64 counter = 0;
     qint64 newId = 0;
-    // ANTS-4691 — set when the counter value came from the in-memory seed
-    // below (dry run) rather than from the file, so the shared read block
-    // does not re-read a handle that was never opened.
-    bool counterResolved = false;
     if (!useStablePrefix) {
-        QFile cf(counterPath);
-        const bool counterExists = QFile::exists(counterPath);
-
-        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            if (counterExists) {
-                // File present but unreadable (permissions). Keep the
-                // back-compat code for any caller branching on it.
-                return rlErr(QStringLiteral("counter_read_failed"),
-                    QStringLiteral("roadmap_log: could not read "
-                                   ".roadmap-counter at \"%1\"")
-                        .arg(counterPath));
-            }
+        const RlCounter read = rlReadCounter(counterPath);
+        // Present but unreadable or not a number: the back-compat code for any
+        // caller branching on it.
+        if (read.failed())
+            return rlErr(QStringLiteral("counter_read_failed"), read.error(counterPath));
+        if (read.state == RlCounter::State::Missing) {
             {
                 // Re-read the roadmap for the prefix sniffer. The
                 // markdown was about to be read for the section
@@ -951,13 +941,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                 // before the section and target gates, so without the guard a
                 // REFUSED preview still created the file: the reporter's tree
                 // gained an untracked .roadmap-counter from a call that wrote
-                // no bullet. `seed` is already the value the file would hold,
-                // so the preview uses it directly and reports the same
-                // would_be_id the real allocate would hand out.
-                if (dryRun) {
-                    counter = seed;
-                    counterResolved = true;
-                } else {
+                // no bullet. The preview reports the same would_be_id the
+                // real allocate would hand out.
+                if (!dryRun) {
                     QSaveFile init(counterPath);
                     const QByteArray seedBytes = QByteArray::number(seed) + '\n';
                     if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
@@ -968,37 +954,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                                            "auto-create .roadmap-counter at "
                                            "\"%1\"").arg(counterPath));
                     }
-                    if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                        return rlErr(QStringLiteral("counter_read_failed"),
-                            QStringLiteral("roadmap_log: could not read the "
-                                           "just-created .roadmap-counter at "
-                                           "\"%1\"").arg(counterPath));
-                    }
                 }
-                // cf now holds the seed; fall through to the shared
-                // counter-read block below (newId = seed + 1, id_hint
-                // honoured).
+                counter = seed;
             }
-        }
-        if (!counterResolved) {
-            const QByteArray raw = cf.readAll().trimmed();
-            if (raw.isEmpty()) {
-                // Empty / whitespace-only file — caller likely `touch`ed
-                // it without initialising. Route to counter_missing with
-                // the same recipe hint.
-                return rlErr(QStringLiteral("counter_missing"),
-                    QStringLiteral("roadmap_log: .roadmap-counter at "
-                                   "\"%1\" is empty — initialise with: "
-                                   "echo 0 > %1")
-                        .arg(counterPath));
-            }
-            bool ok = false;
-            counter = QString::fromUtf8(raw).toLongLong(&ok);
-            if (!ok) {
-                return rlErr(QStringLiteral("counter_read_failed"),
-                    QStringLiteral("roadmap_log: .roadmap-counter is "
-                                   "not a number"));
-            }
+        } else if (read.state == RlCounter::State::Empty) {
+            // Empty / whitespace-only file — caller likely `touch`ed it
+            // without initialising. Route to counter_missing with the same
+            // recipe hint.
+            return rlErr(QStringLiteral("counter_missing"),
+                QStringLiteral("roadmap_log: .roadmap-counter at "
+                               "\"%1\" is empty — initialise with: "
+                               "echo 0 > %1")
+                    .arg(counterPath));
+        } else {
+            counter = read.value;
         }
         // ANTS-5457 — also for a dry run's in-memory seed, so its id
         // matches the real append's.
@@ -2639,28 +2608,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         // counter lives there rather than under caller_cwd.
         counterPath = QFileInfo(roadmapPath).absolutePath() + QLatin1Char('/') +
             QStringLiteral(".roadmap-counter");
-        qint64 counter = 0;
-        if (QFile::exists(counterPath)) {
-            QFile cf(counterPath);
-            if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                return rlErr(QStringLiteral("counter_read_failed"),
-                    QStringLiteral("roadmap_log: could not read "
-                                   ".roadmap-counter at \"%1\"")
-                        .arg(counterPath));
-            }
-            const QByteArray raw = cf.readAll().trimmed();
-            if (!raw.isEmpty()) {
-                bool ok = false;
-                counter =
-                    QString::fromUtf8(raw).toLongLong(&ok);
-                if (!ok) {
-                    return rlErr(QStringLiteral("counter_read_failed"),
-                        QStringLiteral("roadmap_log: "
-                                       ".roadmap-counter is not a "
-                                       "number"));
-                }
-            }
-        }
+        // An absent or empty counter reads as 0 (RlCounter says why).
+        const RlCounter read = rlReadCounter(counterPath);
+        if (read.failed())
+            return rlErr(QStringLiteral("counter_read_failed"), read.error(counterPath));
+        qint64 counter = read.value;
         // ANTS-5094 — floor to the anchors already in the file, so a fresh
         // clone (no counter file) or a stale counter never re-issues one.
         counter = std::max(counter, rlMaxGfmAnchorForPrefix(bullets, prefix));

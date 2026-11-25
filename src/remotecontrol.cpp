@@ -808,6 +808,33 @@ bool rlWriteCounter(const QString &counterPath, qint64 value) {
     return cw.commit();
 }
 
+RlCounter rlReadCounter(const QString &counterPath) {
+    RlCounter c;
+    QFile cf(counterPath);
+    if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        c.state = QFile::exists(counterPath) ? RlCounter::State::Unreadable
+                                             : RlCounter::State::Missing;
+        return c;
+    }
+    const QByteArray raw = cf.readAll().trimmed();
+    if (raw.isEmpty()) {
+        c.state = RlCounter::State::Empty;
+        return c;
+    }
+    bool ok = false;
+    const qint64 v = QString::fromUtf8(raw).toLongLong(&ok);
+    c.state = ok ? RlCounter::State::Value : RlCounter::State::NotANumber;
+    if (ok) c.value = v;
+    return c;
+}
+
+QString RlCounter::error(const QString &counterPath) const {
+    return state == State::NotANumber
+        ? QStringLiteral("roadmap_log: .roadmap-counter is not a number")
+        : QStringLiteral("roadmap_log: could not read .roadmap-counter at \"%1\"")
+              .arg(counterPath);
+}
+
 // ANTS-2055 — collect the child-subsection slugs of `sec`: any indexed
 // heading deeper than `sec` whose heading line falls inside sec's span.
 // op:append / op:append_batch splice at sec.lineEnd; for a `##`

@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log` reads its id counter file in one place; adding items and changing their status still treat an empty or missing counter differently, and the code now says why** (ANTS-6235)
+
 - **When `roadmap_log` cannot find an item by headline, every roadmap format suggests the items that share the most words with it, and equal matches come back in file order** (ANTS-6234)
 
 - **Every roadmap id pattern the roadmap tools use is built from one prefix rule, so a change to what an id may look like is made once** (ANTS-6232)

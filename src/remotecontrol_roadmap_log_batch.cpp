@@ -980,26 +980,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             counterPath = QFileInfo(roadmapPath).absolutePath() +
                           QLatin1Char('/') +
                           QStringLiteral(".roadmap-counter");
-            // An absent or empty counter reads as 0 here, where append_batch
-            // refuses counter_missing: flip_batch issues only anchors, and the
-            // floor below to the file's own anchors stops one being reissued.
-            qint64 counter = 0;
-            if (QFile::exists(counterPath)) {
-                QFile cf(counterPath);
-                if (!cf.open(QIODevice::ReadOnly | QIODevice::Text))
-                    return rlErr(QStringLiteral("counter_read_failed"),
-                        QStringLiteral("roadmap_log: could not read "
-                                       ".roadmap-counter"));
-                const QByteArray raw = cf.readAll().trimmed();
-                if (!raw.isEmpty()) {
-                    bool ok = false;
-                    counter = QString::fromUtf8(raw).toLongLong(&ok);
-                    if (!ok)
-                        return rlErr(QStringLiteral("counter_read_failed"),
-                            QStringLiteral("roadmap_log: .roadmap-counter is "
-                                           "not a number"));
-                }
-            }
+            // An absent or empty counter reads as 0 (RlCounter says why).
+            const RlCounter read = rlReadCounter(counterPath);
+            if (read.failed())
+                return rlErr(QStringLiteral("counter_read_failed"), read.error(counterPath));
+            qint64 counter = read.value;
             // ANTS-5094 — floor to the anchors already in the file.
             counter = std::max(counter, rlMaxGfmAnchorForPrefix(gbs, prefix));
             counterStart = counter;
@@ -2835,17 +2820,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // stable_prefix strategy skips the counter machinery entirely
     // (a stable-ID project has no .roadmap-counter).
     qint64 counter = 0;
-    // ANTS-4691 — set when the counter came from the in-memory seed below
-    // (dry run) rather than from the file. Mirrors the op:append path.
-    bool counterResolved = false;
     if (!useStablePrefix && !writeTarget) {
-        QFile cf(counterPath);
-        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            if (QFile::exists(counterPath))
-                return rlErr(QStringLiteral("counter_read_failed"),
-                    QStringLiteral("roadmap_log: could not read "
-                                   ".roadmap-counter at \"%1\"")
-                        .arg(counterPath));
+        const RlCounter read = rlReadCounter(counterPath);
+        if (read.failed())
+            return rlErr(QStringLiteral("counter_read_failed"), read.error(counterPath));
+        if (read.state == RlCounter::State::Missing) {
             // ANTS-3450 — parity with the single-bullet append path:
             // `.roadmap-counter` is a derived, gitignored cache, so an
             // absent counter on a fresh clone recovers the high-water mark
@@ -2868,12 +2847,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                                    "mark from — restore it with: echo "
                                    "<highest-id> > %1").arg(counterPath));
             // ANTS-4691 — a dry run must not touch disk; see the op:append
-            // path for the reported case. The seed is already the value the
-            // file would hold, so the preview uses it in memory.
-            if (dryRun) {
-                counter = seed;
-                counterResolved = true;
-            } else {
+            // path for the reported case.
+            if (!dryRun) {
                 QSaveFile init(counterPath);
                 const QByteArray seedBytes = QByteArray::number(seed) + '\n';
                 if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
@@ -2883,27 +2858,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                         QStringLiteral("roadmap_log: could not auto-create "
                                        ".roadmap-counter at \"%1\"")
                             .arg(counterPath));
-                if (!cf.open(QIODevice::ReadOnly | QIODevice::Text))
-                    return rlErr(QStringLiteral("counter_read_failed"),
-                        QStringLiteral("roadmap_log: could not read the "
-                                       "just-created .roadmap-counter at "
-                                       "\"%1\"").arg(counterPath));
-                // cf now holds the seed; fall through.
             }
-        }
-        if (!counterResolved) {
-            const QByteArray raw = cf.readAll().trimmed();
-            if (raw.isEmpty())
-                return rlErr(QStringLiteral("counter_missing"),
-                    QStringLiteral("roadmap_log: .roadmap-counter at "
-                                   "\"%1\" is empty — initialise with: "
-                                   "echo 0 > %1").arg(counterPath));
-            bool ok = false;
-            counter = QString::fromUtf8(raw).toLongLong(&ok);
-            if (!ok)
-                return rlErr(QStringLiteral("counter_read_failed"),
-                    QStringLiteral("roadmap_log: .roadmap-counter is "
-                                   "not a number"));
+            counter = seed;
+        } else if (read.state == RlCounter::State::Empty) {
+            return rlErr(QStringLiteral("counter_missing"),
+                QStringLiteral("roadmap_log: .roadmap-counter at "
+                               "\"%1\" is empty — initialise with: "
+                               "echo 0 > %1").arg(counterPath));
+        } else {
+            counter = read.value;
         }
     }
 

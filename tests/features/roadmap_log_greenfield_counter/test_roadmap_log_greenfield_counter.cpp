@@ -117,6 +117,44 @@ QJsonObject batchReq(const QString &root,
 
 }  // namespace
 
+// ANTS-6235 — an empty counter refuses an append (it hands out ids) but reads
+// as 0 for a flip (it hands out only anchors); a counter that is not a number
+// refuses both appends.
+TEST(RoadmapLogGreenfieldCounter, Ants6235EmptyCounterAppendRefusesFlipReadsZero) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), QByteArray(
+        "# My Project Roadmap\n\n## To Do\n\n- [ ] Set up the build.\n")));
+    RemoteControl rc(nullptr);
+    const auto code = [](const QJsonDocument &d) {
+        return d.object().value(QStringLiteral("code")).toString();
+    };
+
+    ASSERT_TRUE(writeFile(counterPath(tmp.path()), QByteArray("\n")));
+    EXPECT_EQ(code(rc.cmdRoadmapLogAppendForTest(appendReq(tmp.path()))),
+              QStringLiteral("counter_missing"));
+    EXPECT_EQ(code(rc.cmdRoadmapLogAppendBatchForTest(batchReq(tmp.path()))),
+              QStringLiteral("counter_missing"));
+
+    QJsonObject flip;
+    flip[QStringLiteral("caller_cwd")] = tmp.path();
+    flip[QStringLiteral("op")]         = QStringLiteral("flip");
+    flip[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    flip[QStringLiteral("headline")]   = QStringLiteral("Set up the build.");
+    flip[QStringLiteral("prefix_hint")] = QStringLiteral("CL");
+    const QJsonObject f = rc.cmdRoadmapLogFlipForTest(flip).object();
+    ASSERT_TRUE(f.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(f).toJson().toStdString();
+    EXPECT_EQ(readCounter(tmp.path()), 1) << "the flip's anchor is the first: "
+        << QJsonDocument(f).toJson().toStdString();
+
+    ASSERT_TRUE(writeFile(counterPath(tmp.path()), QByteArray("abc\n")));
+    EXPECT_EQ(code(rc.cmdRoadmapLogAppendForTest(appendReq(tmp.path()))),
+              QStringLiteral("counter_read_failed"));
+    EXPECT_EQ(code(rc.cmdRoadmapLogAppendBatchForTest(batchReq(tmp.path()))),
+              QStringLiteral("counter_read_failed"));
+}
+
 // INV-1 — greenfield single append auto-creates the counter at 0 and
 // allocates the first id.
 TEST(RoadmapLogGreenfieldCounter, Inv1SingleAppendGreenfieldAutoInit) {

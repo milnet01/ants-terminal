@@ -109186,13 +109186,23 @@ worked after these.
   Source: review-readability-2026-10-22 (L19-F6).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6235] **Read .roadmap-counter in one place, or say why append and flip treat an empty or missing counter differently.**
+- ✅ [ANTS-6235] **Read .roadmap-counter in one place, or say why append and flip treat an empty or missing counter differently.**
   From ANTS-6128. Empty file: append refuses counter_missing, flip's
   anchor injection reads it as 0. Missing file: append seeds from the
   corpus, flip floors from the file's anchors. Decide whether the
   difference is intended before folding; roadmap_log_stable_prefix_hint
   pins counter_missing.
   Hot reload: none needed.
+  Decided: the difference is intended. append and append_batch hand out
+  ids, which must never repeat: a missing counter (fresh clone) is
+  rebuilt from the corpus, an empty one (touched, never initialised)
+  refuses counter_missing. flip and flip_batch hand out only anchors,
+  floored to the file's own, so both read as 0. rlReadCounter /
+  RlCounter (remotecontrol.cpp, remotecontrol_internal.h) is the one
+  read and carries that reason; the four callers keep their policy. The
+  seed paths no longer re-open the file they just wrote. Locked by
+  RoadmapLogGreenfieldCounter.Ants6235EmptyCounterAppendRefusesFlipReadsZero,
+  which passes on the old and new code alike.
   **Layman:** Two roadmap tools read the same id-counter file but disagree about what an empty or missing file means.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F8).

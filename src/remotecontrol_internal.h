@@ -608,6 +608,21 @@ qint64 rlMaxGfmAnchorForPrefix(const QVector<GfmBullet> &bullets, const QString 
 // BEFORE ROADMAP.md: every allocation floors from the file, so the counter is
 // a cache, and a counter ahead of the file leaves only a harmless gap.
 bool rlWriteCounter(const QString &counterPath, qint64 value);
+// ANTS-6235 — the one read of .roadmap-counter. What an absent or empty file
+// means is the caller's, and differs on purpose: append and append_batch hand
+// out ids, which must never repeat, so they rebuild an absent counter from
+// the committed corpus (a fresh clone) and refuse an empty one (touched,
+// never initialised); flip and flip_batch hand out only anchors, floored to
+// the file's own, so both read as 0.
+struct RlCounter {
+    enum class State { Missing, Empty, Value, Unreadable, NotANumber };
+    State  state = State::Missing;
+    qint64 value = 0;   // Value only; 0 otherwise
+    bool failed() const { return state == State::Unreadable || state == State::NotANumber; }
+    // The counter_read_failed message, when failed().
+    QString error(const QString &counterPath) const;
+};
+RlCounter rlReadCounter(const QString &counterPath);
 QStringList rcSectionChildSlugs(const QVector<RoadmapIndex::Section> &index, const RoadmapIndex::Section &sec);
 
 QJsonDocument rcSectionHasSubsectionsRefusal(const QString &slug, const QStringList &children);
