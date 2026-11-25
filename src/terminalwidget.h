@@ -1154,7 +1154,7 @@ private:
 
     // Selection auto-scroll (drag past edge)
     QTimer m_selectionScrollTimer;
-    int m_selectionScrollDirection = 0; // -1=up, 0=none, 1=down
+    int m_selectionScrollDirection = 0; // 1=up (older), 0=none, -1=down (newer)
     QPoint m_lastMousePos;
 
     // Triple-click
