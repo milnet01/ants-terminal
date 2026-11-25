@@ -937,9 +937,12 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // event (last-prompt, ai-title, mode, atis-latch, api-request, …), so the
     // walk skips everything not on this list, rather than a list of the
     // bookkeeping types, which went stale and froze the state.
-    // ANTS-6306 — a local command (/mcp, /model) starts no turn. Its caveat,
-    // <command-name> and output records share one promptId, and none of them
-    // decides state; a skill's /command has no output record, so it still does.
+    // ANTS-6306 — a local command (/mcp, /model, /clear) starts no turn, and
+    // none of its records decides state; a skill's /command has no output
+    // record, so it still does. Claude Code writes one of two shapes: caveat,
+    // <command-name> and output as `user` records sharing one promptId; or
+    // (ANTS-6917, v2.1.332) no promptId, with the output a `system` record of
+    // subtype `local_command` whose parentUuid is the <command-name> record.
     // ANTS-6323 — an attachment only ever accompanies a turn's real records, and
     // a compact summary starts no turn: an idle session compacts itself and
     // writes one, then attachments, then nothing until the user types.
@@ -947,19 +950,33 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
         return ev.value("message").toObject().value("content").toString()
                    .startsWith(QLatin1String("<local-command-"));
     };
-    const auto findStateEvent = [&isLocalCommandOutput](const QList<QJsonObject> &evs) {
+    // ANTS-6917 — set when the walk skipped a local command's record. A /clear
+    // opens a transcript holding nothing else, and Claude Code is then at its
+    // prompt.
+    bool localCommandSkipped = false;
+    const auto findStateEvent = [&isLocalCommandOutput,
+                                 &localCommandSkipped](const QList<QJsonObject> &evs) {
         QSet<QString> localPrompts;
+        QSet<QString> localCommandUuids;
         for (const QJsonObject &ev : evs) {
             const QString promptId = ev.value("promptId").toString();
             if (!promptId.isEmpty() && isLocalCommandOutput(ev))
                 localPrompts.insert(promptId);
+            const QString parent = ev.value("parentUuid").toString();
+            if (!parent.isEmpty() &&
+                ev.value("type").toString() == QLatin1String("system") &&
+                ev.value("subtype").toString() == QLatin1String("local_command"))
+                localCommandUuids.insert(parent);
         }
         for (int i = evs.size() - 1; i >= 0; --i) {
             const QString t = evs[i].value("type").toString();
             if (t == QLatin1String("user") &&
                 (isLocalCommandOutput(evs[i]) ||
-                 localPrompts.contains(evs[i].value("promptId").toString())))
+                 localPrompts.contains(evs[i].value("promptId").toString()) ||
+                 localCommandUuids.contains(evs[i].value("uuid").toString()))) {
+                localCommandSkipped = true;
                 continue;
+            }
             if (evs[i].value("isCompactSummary").toBool()) continue;
             if (t == QLatin1String("assistant") || t == QLatin1String("user") ||
                 t == QLatin1String("human"))
@@ -1033,6 +1050,10 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
                                        : QStringLiteral("thinking");
             snap.stateDetermined = true;
         }
+    } else if (localCommandSkipped) {
+        snap.state = ClaudeState::Idle;
+        snap.detail = QStringLiteral("idle");
+        snap.stateDetermined = true;
     }
 
     // /compact override. The command is recorded in the transcript as a user

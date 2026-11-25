@@ -141,6 +141,11 @@ walk skips every record sharing a `promptId` with a local-command output
 record. A finished reply followed by `/mcp`'s three records returns `Idle`;
 a pending tool call followed by them returns `ToolUse`. A skill's
 `<command-name>` record with no output record still returns `Thinking`.
+Claude Code v2.1.332 writes a second shape (ANTS-6917): no `promptId`, and
+the output is a `system` record of subtype `local_command` whose
+`parentUuid` is the `<command-name>` record. The walk skips that record
+too, with the same three results. A transcript holding only a local
+command's records, as `/clear` opens, returns `Idle`.
 Before the fix the first case returned `Thinking`, so an idle tab showed
 "Claude: thinking".
 

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6916 -->
+<!-- ants-roadmap-id-high-water: ANTS=6917 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69788,6 +69788,26 @@ remainder, captured so they don't drop on the floor.
   Kind: fix.
   Source: user-report-2026-11-05 (RetroArch tab screenshot).
   Lanes: status-bar.
+
+- ✅ [ANTS-6917] **The status bar reads "Claude: thinking" on an idle tab right after /clear.**
+  User report 2026-11-25 (DOOM Ants tab, Claude Code v2.1.332).
+  After /clear the new transcript holds a <local-command-caveat> user
+  record, a <command-name>/clear user record, and a `system` record of
+  subtype `local_command` whose parentUuid is the command record. None
+  carries a promptId. ANTS-6306's skip (claude_transcript_robustness
+  INV-17) keys on a promptId shared with a user <local-command-stdout>
+  record, so the /clear record becomes the state event and
+  parseTranscriptTail returns Thinking. Where:
+  src/claudeintegration_sessions.cpp, findStateEvent in
+  ClaudeIntegration::parseTranscriptTail.
+  2026-11-25: findStateEvent also skips a user record named as
+  parentUuid by a system local_command record; a tail holding only
+  local-command records reads Idle. claude_transcript_robustness INV-17
+  covers both shapes (seen red, then green).
+  **Layman:** After you clear a Claude session, its tab says Claude is thinking when it is really waiting for you.
+  Kind: fix.
+  Source: user-report-2026-11-25.
+  Lanes: claude-session-widgets.
 
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 

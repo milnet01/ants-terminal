@@ -745,15 +745,48 @@ int inv17LocalCommandDoesNotDecideState() {
         R"({"type":"user","promptId":"p3","message":{"content":)"
         R"("<command-name>/go</command-name>\n<command-message>go</command-message>"}})" "\n");
 
+    // ANTS-6917: the shape Claude Code v2.1.332 writes (2026-11-25). No
+    // promptId; the output is a `system` record of subtype `local_command`
+    // whose parentUuid is the command record.
+    const QByteArray systemOutputCommand =
+        R"({"type":"user","isMeta":true,"uuid":"c1","message":{"content":)"
+        R"("<local-command-caveat>Caveat: run directly.</local-command-caveat>"}})" "\n"
+        R"({"type":"user","uuid":"c2","parentUuid":"c1","message":{"content":)"
+        R"("<command-name>/clear</command-name>\n<command-message>clear</command-message>"}})" "\n"
+        R"({"type":"system","subtype":"local_command","uuid":"c3","parentUuid":"c2",)"
+        R"("content":"<local-command-stdout></local-command-stdout>"})" "\n";
+    const ClaudeTranscriptSnapshot idle2 = parse("idle2", endTurn, systemOutputCommand);
+    const ClaudeTranscriptSnapshot busy2 = parse("busy2", toolUse, systemOutputCommand);
+    // A /clear opens a new transcript that holds only these records: Claude
+    // Code is at its prompt.
+    ClaudeTranscriptSnapshot cleared;
+    {
+        const QString path = tmp.path() + "/cleared.jsonl";
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly)) {
+            f.write(systemOutputCommand);
+            f.close();
+            cleared = ClaudeIntegration::parseTranscriptTail(path, false);
+        }
+    }
+
     const bool ok = idle.stateDetermined && idle.state == ClaudeState::Idle &&
                     busy.stateDetermined && busy.state == ClaudeState::ToolUse &&
-                    skill.stateDetermined && skill.state == ClaudeState::Thinking;
+                    skill.stateDetermined && skill.state == ClaudeState::Thinking &&
+                    idle2.stateDetermined && idle2.state == ClaudeState::Idle &&
+                    busy2.stateDetermined && busy2.state == ClaudeState::ToolUse &&
+                    cleared.stateDetermined && cleared.state == ClaudeState::Idle;
     std::fprintf(stderr,
                  "[inv17 local-command-does-not-decide-state] idle=%d (want %d) "
-                 "busy=%d (want %d) skill=%d (want %d)  %s\n",
+                 "busy=%d (want %d) skill=%d (want %d) idle2=%d busy2=%d "
+                 "cleared=%d determined=%d (want %d, %d, %d, 1)  %s\n",
                  static_cast<int>(idle.state), static_cast<int>(ClaudeState::Idle),
                  static_cast<int>(busy.state), static_cast<int>(ClaudeState::ToolUse),
                  static_cast<int>(skill.state), static_cast<int>(ClaudeState::Thinking),
+                 static_cast<int>(idle2.state), static_cast<int>(busy2.state),
+                 static_cast<int>(cleared.state), cleared.stateDetermined ? 1 : 0,
+                 static_cast<int>(ClaudeState::Idle), static_cast<int>(ClaudeState::ToolUse),
+                 static_cast<int>(ClaudeState::Idle),
                  ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

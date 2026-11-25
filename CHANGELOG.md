@@ -36,6 +36,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A tab reads "Claude: idle" right after /clear, and after any local command in the newer Claude Code transcript format** (ANTS-6917)
+
 - **The publish stamp is written when the live roadmap path is given relative to the project root** (ANTS-5879)
 
 - **Auditing a project leaves no rule-quality files in its top folder.** (ANTS-6862)
