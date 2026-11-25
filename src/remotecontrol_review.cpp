@@ -1,4 +1,4 @@
-// ANTS-3833 TU 12/25 — Indie review verbs.
+// ANTS-3833 TU 12/25 — Indie review verbs and verify_changes.
 #include "remotecontrol.h"
 #include "mcprefusal.h"
 #include "remotecontrol_internal.h"
@@ -156,16 +156,8 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
         }
         env["path"] = src.isEmpty() ? QStringLiteral("CLAUDE.md") : src;
     }
-    // ANTS-3567 — symmetry with cmdColdEyesPartition's sparse_partition_hint
-    // (ANTS-1634a). When the module-map deriver yields ≤1 lane (no CLAUDE.md
-    // `## Module map` of `- <name> — <summary>` subsystems, no
-    // docs/subsystems.md, or a file-list map that doesn't partition), point
-    // the caller at the review-code skill and the
-    // .indie-review/partition.json override, so a sweep on a non-canonical
-    // layout sees the workaround inline instead of giving up on the empty
-    // partition.
-    // ANTS-3709 — a computed partition gets the same hint: it is a usable
-    // starting point, not a declaration, and the fix is still to commit one.
+    // ANTS-3709 — a computed partition is a usable starting point, not a
+    // declaration, and the fix is still to commit one.
     if (derived) {
         env["derived"]      = true;
         env["derived_from"] = QStringLiteral(
@@ -261,6 +253,14 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             derived ? QStringLiteral("computed")
                     : (mapLaneCount > 0 ? QStringLiteral("module_map")
                                         : QStringLiteral("none"));
+        // ANTS-3567 — symmetry with cmdColdEyesPartition's sparse_partition_hint
+        // (ANTS-1634a). When the module-map deriver yields ≤1 lane (no CLAUDE.md
+        // `## Module map` of `- <name> — <summary>` subsystems, no
+        // docs/subsystems.md, or a file-list map that doesn't partition), point
+        // the caller at the review-code skill and the
+        // .indie-review/partition.json override, so a sweep on a non-canonical
+        // layout sees the workaround inline instead of giving up on the empty
+        // partition. A computed partition (ANTS-3709) gets it too.
         env["sparse_partition_hint"] = QStringLiteral(
             "Module-map deriver returned %1 lane(s). `map_lane_count` is that "
             "number and `partition_source` says which stage answered, so a "
@@ -658,8 +658,7 @@ QJsonDocument RemoteControl::corroborateWithRoot(const QJsonObject &req,
     }
     // ANTS-1344 — surface truncation. `truncated` is the headline flag;
     // `truncated_lanes` lets the caller know which inputs to re-fetch
-    // smaller / paginate. Both omitted when no truncation occurred
-    // (envelope stays byte-identical to v1 on the happy path).
+    // smaller / paginate. Both omitted when no truncation occurred.
     if (!truncatedLanes.isEmpty()) {
         env["truncated"]       = true;
         QJsonArray tl;
