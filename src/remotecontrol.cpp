@@ -171,6 +171,32 @@ QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir) {
     return findUpToRepo(canonicalRoot, probeDir, ownerDir);
 }
 
+RlRoadmapFile rlLocateRoadmap(const QString &callerRaw) {
+    RlRoadmapFile r;
+    r.callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
+    if (r.callerCanonical.isEmpty()) {
+        r.code  = QStringLiteral("no_roadmap");
+        r.error = QStringLiteral("roadmap_log: caller_cwd \"%1\" does not "
+                                 "canonicalise to an existing directory").arg(callerRaw);
+        return r;
+    }
+    r.roadmapPath = findRoadmapUnder(r.callerCanonical, &r.projectRootDir);
+    if (r.roadmapPath.isEmpty()) {
+        r.code  = QStringLiteral("no_roadmap");
+        r.error = QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
+                      .arg(r.callerCanonical);
+        return r;
+    }
+    QFile rf(r.roadmapPath);
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        r.code  = QStringLiteral("roadmap_read_failed");
+        r.error = QStringLiteral("roadmap_log: could not read \"%1\"").arg(r.roadmapPath);
+        return r;
+    }
+    r.markdown = QString::fromUtf8(rf.readAll());
+    return r;
+}
+
 // ANTS-4884 — the project root a path belongs to. The store keys a project on
 // its canonical ROOT, and every verb hands the dispatchers its caller_cwd,
 // which is at or below that root: from a subdirectory the lookup matched no row

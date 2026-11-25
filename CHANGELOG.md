@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log` finds and reads the roadmap through one shared step, and adding items or changing their status reads the file once instead of two or three times** (ANTS-6237)
+
 - **`roadmap_log` reads its id counter file in one place; adding items and changing their status still treat an empty or missing counter differently, and the code now says why** (ANTS-6235)
 
 - **When `roadmap_log` cannot find an item by headline, every roadmap format suggests the items that share the most words with it, and equal matches come back in file order** (ANTS-6234)

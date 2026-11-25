@@ -109227,7 +109227,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L19-F9).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6237] **Give roadmap_log one caller_cwd -> ROADMAP.md -> read prologue and one pass-headings check.**
+- ✅ [ANTS-6237] **Give roadmap_log one caller_cwd -> ROADMAP.md -> read prologue and one pass-headings check.**
   From ANTS-6128; feeds ANTS-5796 (dup:01e24a0a9e7b, dup:1455ba3add17,
   dup:fd04184f51da). append, flip and amend_body each resolve
   caller_cwd, find ROADMAP.md and read it; append's copy also returns
@@ -109247,6 +109247,17 @@ worked after these.
   All five sites call rcdetail::rlIsPassHeadings(markdown, root), which
   scans the head before any whole-file parse. What remains is the shared
   caller_cwd -> ROADMAP.md -> read prologue.
+  rlLocateRoadmap / RlRoadmapFile (remotecontrol.cpp,
+  remotecontrol_internal.h) is the one caller_cwd -> ROADMAP.md -> text
+  step; append, flip, amend_body, flip_batch, create_section, bundle_row
+  and append_batch use it, and append, flip and append_batch reuse the
+  pass-headings probe's read (append's three reads and append_batch's
+  three became one). Safe because the store rebuild between them never
+  writes the file (ANTS-4482). The subdirectory question: flip and amend
+  reach the store through roadmapWriteTarget, which resolves the root
+  itself (ANTS-4884), so no wrong root; roadmap_subdir_dispatch passes.
+  rcSectionNotFound's own findRoadmapUnder call is a diagnostic and
+  stays.
   **Layman:** Three roadmap edit tools each repeat the steps that find and read the roadmap, and one copy has drifted.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F10).

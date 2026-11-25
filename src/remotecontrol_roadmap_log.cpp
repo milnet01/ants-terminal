@@ -288,36 +288,30 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
     // writer here, BEFORE the GFM status/kind/source validation +
     // counter allocation below: pass append ignores kind/source,
     // validates status/pass itself (INV-3 bad_args), and never touches
-    // .roadmap-counter (INV-10). One extra read+parse on the GFM path is
-    // the cost of detecting before the counter machinery; appends are a
-    // low-frequency op so the absolute cost is negligible.
-    {
-        const QString cc = QFileInfo(callerRaw).canonicalFilePath();
-        const QString rp = cc.isEmpty() ? QString() : findRoadmapUnder(cc);
-        if (!rp.isEmpty()) {
-            QFile pf(rp);
-            if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString md = QString::fromUtf8(pf.readAll());
-                pf.close();
-                if (rlIsPassHeadings(md, cc)) {   // ANTS-3771
-                    if (hasBefore)
-                        return rlBeforeIdNeedsStore();
-                    // ANTS-5641 — a store-served pass project appends through
-                    // the store; the file writer would write behind it.
-                    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
-                    QString seamErr;
-                    auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
-                    const auto target = roadmapWriteTarget(cc, seamText, &why, &seamErr);
-                    QJsonObject refusal;
-                    if (rcRoadmapSourceRefused(refusal, why, seamErr))
-                        return QJsonDocument(refusal);
-                    if (target)
-                        return rlPassStoreAppend(req, /*batch=*/false, *target->store,
-                                                 target->projectId, cc, rp, md);
-                    return cmdRoadmapLogPassAppend(req, rp, md);
-                }
-            }
-        }
+    // .roadmap-counter (INV-10). ANTS-6237 — the one read of the roadmap
+    // serves this probe and every step below; a refusal from it waits until
+    // after the field checks. The store rebuild below never writes the file
+    // (ANTS-4482), so the read stays current.
+    const RlRoadmapFile located = rlLocateRoadmap(callerRaw);
+    if (located.ok() && rlIsPassHeadings(located.markdown, located.callerCanonical)) {   // ANTS-3771
+        const QString &cc = located.callerCanonical;
+        const QString &rp = located.roadmapPath;
+        const QString &md = located.markdown;
+        if (hasBefore)
+            return rlBeforeIdNeedsStore();
+        // ANTS-5641 — a store-served pass project appends through the store;
+        // the file writer would write behind it.
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
+        const auto target = roadmapWriteTarget(cc, seamText, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+        if (target)
+            return rlPassStoreAppend(req, /*batch=*/false, *target->store,
+                                     target->projectId, cc, rp, md);
+        return cmdRoadmapLogPassAppend(req, rp, md);
     }
 
     if (status.isEmpty()) {
@@ -357,30 +351,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                            "for recognised values").arg(rcdetail::ceSanitiseEcho(kind)));
     }
 
-    // Resolve ROADMAP.md path under caller_cwd. Anchored via
-    // canonicalFilePath; if the path doesn't resolve to a real
-    // directory, return no_roadmap rather than walking parents.
-    const QString callerCanonical =
-        QFileInfo(callerRaw).canonicalFilePath();
-    if (callerCanonical.isEmpty()) {
-        return rlErr(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not "
-                           "canonicalise to an existing directory")
-                .arg(callerRaw));
-    }
-    // ANTS-1459 — shared findRoadmapUnder helper widens the search
-    // to docs/, docs/private/, docs/internal/, .github/.
-    // ANTS-4882 — `projectRootDir` is the directory the roadmap was resolved
-    // under, which is the root the store keys this project on. From a
-    // subdirectory it is an ancestor of callerCanonical, and the store floor
-    // below has to ask by it or match nothing.
-    QString projectRootDir;
-    const QString roadmapPath = findRoadmapUnder(callerCanonical, &projectRootDir);
-    if (roadmapPath.isEmpty()) {
-        return rlErr(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
-                .arg(callerCanonical));
-    }
+    if (!located.ok())
+        return rlErr(located.code, located.error);
+    const QString &callerCanonical = located.callerCanonical;
+    // ANTS-4882 — from a subdirectory this is an ancestor of callerCanonical,
+    // and the store floor below has to ask by it or match nothing.
+    const QString &projectRootDir = located.projectRootDir;
+    const QString &roadmapPath = located.roadmapPath;
 
     // Counter path next to the RESOLVED ROADMAP.md. ANTS-3350 — when
     // caller_cwd is a subdirectory, findRoadmapUnder resolved the roadmap in a
@@ -875,15 +852,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
             return rlErr(QStringLiteral("counter_read_failed"), read.error(counterPath));
         if (read.state == RlCounter::State::Missing) {
             {
-                // Re-read the roadmap for the prefix sniffer. The
-                // markdown was about to be read for the section
-                // splice anyway; pull it here so we can diagnose
-                // before the splice setup.
-                QFile rmf(roadmapPath);
-                QString rmText;
-                if (rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                    rmText = QString::fromUtf8(rmf.readAll());
-                }
+                // The prefix sniffer diagnoses before the splice setup.
+                const QString &rmText = located.markdown;
                 const QString stablePrefix =
                     rlDetectStablePrefixId(rmText, rlDecl(callerCanonical));
                 if (!stablePrefix.isEmpty()) {
@@ -987,15 +957,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
         }
     }
 
-    // Read ROADMAP.md for section lookup + body splice.
-    QFile rf(roadmapPath);
-    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return rlErr(QStringLiteral("roadmap_read_failed"),
-            QStringLiteral("roadmap_log: could not read \"%1\"")
-                .arg(roadmapPath));
-    }
-    const QString markdown = QString::fromUtf8(rf.readAll());
-    rf.close();
+    // ROADMAP.md for section lookup + body splice.
+    const QString &markdown = located.markdown;
 
     // ANTS-1429 — refuse to splice into a file we can't parse.
     const auto preflightBullets = rlParse(markdown, callerCanonical);
@@ -1822,28 +1785,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     // to_status / note / locator guards), and the file is the render's output.
     // Writing the file there would put it behind the store, which the next
     // render then discards.
+    // ANTS-6237 — the one read of the roadmap serves this probe and step 4;
+    // a refusal from it waits until after the field checks.
     std::optional<RoadmapWriteTarget> passStoreTarget;
-    {
-        const QString cc = QFileInfo(callerRaw).canonicalFilePath();
-        const QString rp = cc.isEmpty() ? QString() : findRoadmapUnder(cc);
-        if (!rp.isEmpty()) {
-            QFile pf(rp);
-            if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString md = QString::fromUtf8(pf.readAll());
-                pf.close();
-                if (rlIsPassHeadings(md, cc)) {   // ANTS-3771
-                    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
-                    QString seamErr;
-                    auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
-                    passStoreTarget = roadmapWriteTarget(cc, seamText, &why, &seamErr);
-                    QJsonObject refusal;
-                    if (rcRoadmapSourceRefused(refusal, why, seamErr))
-                        return QJsonDocument(refusal);
-                    if (!passStoreTarget)
-                        return cmdRoadmapLogPassFlip(req, rp, md);
-                }
-            }
-        }
+    const RlRoadmapFile located = rlLocateRoadmap(callerRaw);
+    if (located.ok() && rlIsPassHeadings(located.markdown, located.callerCanonical)) {   // ANTS-3771
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(located.markdown);
+        passStoreTarget = roadmapWriteTarget(located.callerCanonical, seamText, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+        if (!passStoreTarget)
+            return cmdRoadmapLogPassFlip(req, located.roadmapPath, located.markdown);
     }
 
     const QString toStatus =
@@ -1982,33 +1937,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 .arg(locId));
     }
 
-    // 4. Resolve caller_cwd → ROADMAP.md path. Same logic as append.
-    const QString callerCanonical =
-        QFileInfo(callerRaw).canonicalFilePath();
-    if (callerCanonical.isEmpty()) {
-        return rlErr(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not "
-                           "canonicalise to an existing directory")
-                .arg(callerRaw));
-    }
-    // ANTS-1459 — shared findRoadmapUnder helper widens the search
-    // to docs/, docs/private/, docs/internal/, .github/.
-    const QString roadmapPath = findRoadmapUnder(callerCanonical);
-    if (roadmapPath.isEmpty()) {
-        return rlErr(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
-                .arg(callerCanonical));
-    }
-
-    // 5. Read markdown.
-    QFile rf(roadmapPath);
-    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return rlErr(QStringLiteral("roadmap_read_failed"),
-            QStringLiteral("roadmap_log: could not read \"%1\"")
-                .arg(roadmapPath));
-    }
-    const QString markdown = QString::fromUtf8(rf.readAll());
-    rf.close();
+    // 4. caller_cwd → ROADMAP.md → its text, read above.
+    if (!located.ok())
+        return rlErr(located.code, located.error);
+    const QString &callerCanonical = located.callerCanonical;
+    const QString &roadmapPath = located.roadmapPath;
+    const QString &markdown = located.markdown;
     const qint64 markdownBytes = markdown.toUtf8().size();
 
     // ANTS-2126 — a markdown-served pass-headings roadmap was already routed
@@ -2029,19 +1963,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                                "or `headline`"));
         // Only the locate is used. The markdown these compute is discarded:
         // the store is written, and its render publishes the file.
-        const PassHeadingWrite::WriteResult located = annotateMode
+        const PassHeadingWrite::WriteResult passHit = annotateMode
             ? PassHeadingWrite::annotatePass(markdown, locId, locHeadline, note)
             : PassHeadingWrite::flipPassStatus(
                   markdown, locId, locHeadline,
                   PassHeadingWrite::passStatusKeyword(targetStatusWord));
-        if (!located.ok)
-            return rlErr(located.code.isEmpty() ? QStringLiteral("bullet_not_found")
-                                                : located.code,
+        if (!passHit.ok)
+            return rlErr(passHit.code.isEmpty() ? QStringLiteral("bullet_not_found")
+                                                : passHit.code,
                 QStringLiteral("roadmap_log: no pass matched the locator"));
         return rlStoreFlipOrAnnotate({
             .req = &req, .store = passStoreTarget->store,
             .projectId = passStoreTarget->projectId,
-            .id = located.matchedId, .headline = located.matchedHeadline,
+            .id = passHit.matchedId, .headline = passHit.matchedHeadline,
             .fileStatus = QString(),   // a pass's Status line is a keyword
             .format = QStringLiteral("pass-headings"),
             .fileName = QFileInfo(roadmapPath).fileName(),
@@ -3040,31 +2974,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                            "alongside id or anchor"));
     }
 
-    // 3. Resolve caller_cwd → ROADMAP.md.
-    const QString callerCanonical =
-        QFileInfo(callerRaw).canonicalFilePath();
-    if (callerCanonical.isEmpty()) {
-        return rlErr(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not "
-                           "canonicalise to an existing directory")
-                .arg(callerRaw));
-    }
-    const QString roadmapPath = findRoadmapUnder(callerCanonical);
-    if (roadmapPath.isEmpty()) {
-        return rlErr(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
-                .arg(callerCanonical));
-    }
-
-    // 4. Read markdown.
-    QFile rf(roadmapPath);
-    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return rlErr(QStringLiteral("roadmap_read_failed"),
-            QStringLiteral("roadmap_log: could not read \"%1\"")
-                .arg(roadmapPath));
-    }
-    const QString markdown = QString::fromUtf8(rf.readAll());
-    rf.close();
+    // 3. caller_cwd → ROADMAP.md → its text.
+    const RlRoadmapFile located = rlLocateRoadmap(callerRaw);
+    if (!located.ok())
+        return rlErr(located.code, located.error);
+    const QString &callerCanonical = located.callerCanonical;
+    const QString &roadmapPath = located.roadmapPath;
+    const QString &markdown = located.markdown;
     const qint64 markdownBytes = markdown.toUtf8().size();
 
     // Pass-headings roadmaps store bodies under #### Pass headings, not
@@ -3121,15 +3037,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                                "anchors — address the pass by `id` (PASS-N-M) "
                                "or `headline`"));
         // Only the locate is used; the markdown it computes is discarded.
-        const PassHeadingWrite::WriteResult located =
+        const PassHeadingWrite::WriteResult passHit =
             PassHeadingWrite::flipPassStatus(markdown, locId, locHeadline,
                 PassHeadingWrite::passStatusKeyword(QStringLiteral("planned")));
-        if (!located.ok)
-            return rlErr(located.code.isEmpty() ? QStringLiteral("bullet_not_found")
-                                                : located.code,
+        if (!passHit.ok)
+            return rlErr(passHit.code.isEmpty() ? QStringLiteral("bullet_not_found")
+                                                : passHit.code,
                 QStringLiteral("roadmap_log: no pass matched the locator"));
-        matchedId       = located.matchedId;
-        matchedHeadline = located.matchedHeadline;
+        matchedId       = passHit.matchedId;
+        matchedHeadline = passHit.matchedHeadline;
         format          = QStringLiteral("pass-headings");
         storeLocated    = true;
     } else if (locAnchor.isEmpty() &&

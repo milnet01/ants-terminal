@@ -548,6 +548,19 @@ QString resolveRootCanonical(const ants::RootProvider *roots, const QJsonObject 
 // `ownerDir` (ANTS-4882, optional) receives the directory the roadmap was found
 // under — the project root the store is keyed on. Cleared when nothing is found.
 QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir = nullptr);
+// ANTS-6237 — roadmap_log's prologue: caller_cwd → its canonical folder → the
+// roadmap file → its text. A refusal sets `code` (no_roadmap or
+// roadmap_read_failed) and `error`; each verb wraps them in its own envelope.
+struct RlRoadmapFile {
+    QString callerCanonical;
+    QString roadmapPath;
+    QString projectRootDir;   // the root the store keys on (ANTS-4882)
+    QString markdown;
+    QString code;
+    QString error;
+    bool ok() const { return code.isEmpty(); }
+};
+RlRoadmapFile rlLocateRoadmap(const QString &callerRaw);
 // ANTS-4884 — resolves a path to the project root the store keys on, so a
 // caller in a subdirectory is not read as an unmigrated project of its own.
 QString rcProjectRootFor(const QString &path);
