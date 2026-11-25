@@ -520,8 +520,8 @@ abuse):
 
 The runtime enforces two hard limits per plugin VM:
 
-- **Wall-clock pcall budget:** each `loadScript` / `fireEvent`
-  starts a 1500 ms (`m_pcallBudgetMs` in `luaengine.h`) deadline. The watchdog hook
+- **Wall-clock pcall budget:** `loadScript`, and each event handler
+  a `fireEvent` calls, starts a 1500 ms (`m_pcallBudgetMs` in `luaengine.h`) deadline. The watchdog hook
   (`lua_sethook(LUA_MASKCOUNT | LUA_MASKLINE, 100000)` — i.e.
   every 100 000 VM instructions AND every Lua source line) checks
   the wall clock on each fire and calls `luaL_error("Script
@@ -529,8 +529,9 @@ The runtime enforces two hard limits per plugin VM:
   current pcall. The line-hook closes the historical
   instruction-count-only gap so a plugin executing few-but-slow
   Lua source lines still gets pre-empted. Design budget: a single
-  handler that runs longer than 1.5 s aborts; the next event
-  starts a fresh budget. Pure-C calls don't trigger either hook
+  handler that runs longer than 1.5 s aborts, and the event's
+  remaining handlers are skipped; the next handler call starts a
+  fresh budget. Pure-C calls don't trigger either hook
   variant (see the caveat above).
 - **Heap budget:** 10 MiB total Lua heap, enforced by a custom
   allocator (`MAX_LUA_MEMORY` in `luaengine.h`). On exceed,
