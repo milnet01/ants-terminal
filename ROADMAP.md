@@ -91247,11 +91247,17 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5708] **Peer messages that arrive mid-task are delivered as one digest at the next idle point.**
+- 🚫 [ANTS-5708] **Peer messages that arrive mid-task are delivered as one digest at the next idle point.**
   Measured 2026-10-15 in ants-terminal-95: 30 one-line survey replies
   each woke a full turn at ~200k context, and the git-context hook fired
   on each. Proposed by RetroDB; see also the Claude Code feedback filed
   the same day.
+  Dropped 2026-11-25 (user decision). Ants mail already arrives as one
+  notice per rise in the unread count, at most every 30 s, riding on the
+  current turn (hooks/ants-inbox-notice.sh, ANTS-5716), so it adds no
+  turn. The per-message wake-ups the survey measured come from Claude
+  Code's SendMessage delivery, which Ants cannot change. Waking an idle
+  session with a digest belongs to Colony.
   **Layman:** Bundle messages from other sessions instead of interrupting for each one.
   Kind: perf.
   Source: token-survey-2026-10-15.
@@ -91728,7 +91734,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config-request-2026-10-16.
   Lanes: mcp-tools.
 
-- 📋 [ANTS-5736] **A project's most-used Ants verbs arrive loaded, so a session does not spend a ToolSearch call to reach them.**
+- ✅ [ANTS-5736] **A project's most-used Ants verbs arrive loaded, so a session does not spend a ToolSearch call to reach them.**
   claude-config census 2026-10-16: 621 ToolSearch calls (87M tokens
   re-sent) over 200 transcripts, just to load deferred verbs. Most named:
   roadmap_query, roadmap_log, changelog_log, session_message, spec_log,
@@ -91737,6 +91743,16 @@ measured Ants adding about 5,250 tokens to every request.
   (the ANTS-5694 always-loaded mechanism) and the per-request byte cost of
   each added verb (ANTS-5725 trims schemas; this widens the set), then
   pick. Reload: runs in ants-mcpd; next reconnect.
+  Shipped 2026-11-25 as the one-line hint (user's choice over
+  always-load). ants-mcpd's initialize reply carries `instructions`
+  naming the Ants tools the project's newest five transcripts loaded
+  with ToolSearch select:, ranked by sessions, at most eight, as one
+  ready-made select line. Read from the head of each transcript; adds
+  about 13 ms to initialize. The terminal's own server sends none. Live
+  check in this project: the hint names the eight tools this session
+  loaded one by one. Code src/mcploadhint.{h,cpp}; tests
+  tests/features/mcp_load_hint, seen red then green. Reload: ants-mcpd,
+  next reconnect.
   **Layman:** The Ants tools a project uses most are ready from the start instead of being fetched one at a time.
   Kind: perf.
   Source: claude-config-request-2026-10-16 (demoreel, oneup, census).

@@ -242,6 +242,8 @@
         "src/claudeintegration_sessions.cpp",
         "src/claudeintegration_store.cpp",
         "src/claudeintegration_terminal.cpp",
+        "src/mcploadhint.cpp",
+        "src/mcploadhint.h",
         "src/mcptoolregistry.cpp",
         "src/mcptoolregistry.h",
         "src/mcptoolsink.h"

@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **A new Claude Code session is told which Ants tools its project's recent sessions loaded, as one ready-made line that loads them all in a single call** (ANTS-5736)
+
 - **Help → Report an Issue opens GitHub's issue form with your system details filled in** (ANTS-6911)
   You choose bug or idea and type a title. The form opens in your browser,
   and you send it from your own GitHub account; the app posts nothing. No

@@ -18,6 +18,7 @@
 #include "mcpdforwarder.h"
 #include "mcpdtrustclient.h"
 #include "mcpdversion.h"
+#include "mcploadhint.h"
 #include "mcpprojection.h"
 #include "mcpspill.h"
 #include "mcptoolregistry.h"
@@ -197,6 +198,14 @@ int main(int argc, char **argv) {
     ClaudeIntegration pipeline;
     pipeline.setMcpEnabled(config.claudeMcpEnabled());
     pipeline.setServerName(QStringLiteral("ants-mcpd"));
+    // ANTS-5736 — Claude Code starts this process in the session's folder, so
+    // its cwd names the project whose transcripts say which tools it loads.
+    pipeline.setInstructionsProvider([&pipeline] {
+        const QStringList names = pipeline.registeredToolNames();
+        return mcp::loadHintText(mcp::recentlyLoadedTools(
+            mcp::transcriptDirFor(QDir::currentPath()),
+            QSet<QString>(names.cbegin(), names.cend())));
+    });
 
     ants::ServerCwdRootProvider roots;
     RemoteControl rc(nullptr, nullptr, &roots);

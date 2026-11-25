@@ -616,6 +616,7 @@ add_library(ants_mcpcore_lib STATIC
     src/mutationprobe.cpp        # ANTS-4398
     src/processdrain.cpp         # ANTS-6497
     src/mutationjournal.cpp      # ANTS-5096
+    src/mcploadhint.cpp          # ANTS-5736
     # ANTS-1993 — Claude permission-prompt structural gate (Qt6::Core-only).
     src/claudepromptdetect.cpp
     # ANTS-1855 — read_log pure filtering helper (Qt6::Core-only).
@@ -3010,6 +3011,7 @@ if(ANTS_TESTS)
                 tests/features/fileoutline_cpp_scanner/test_fileoutline_cpp_scanner.cpp
                 # ANTS-2158 — eager-load high-frequency MCP verbs.
                 tests/features/mcp_eager_load/test_mcp_eager_load.cpp
+                tests/features/mcp_load_hint/test_mcp_load_hint.cpp   # ANTS-5736
                 # ANTS-2156 — similar_code include_bodies (exemplar retrieval).
                 tests/features/similar_code_bodies/test_similar_code_bodies.cpp
                 # ANTS-2157 — read_region call_sequence (integration brief).
