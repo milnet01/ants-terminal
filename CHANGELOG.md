@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_query`'s two fetch-by-id paths finish through one shared step, so a fix to how fetched items are shaped lands in both** (ANTS-6244)
+
 - **The roadmap tools' three store lookups share one step that works out the project folder and opens the store** (ANTS-6243)
 
 - **`roadmap_query` takes every status name, symbol and the meaning of "active" from the one shared status table** (ANTS-6242)

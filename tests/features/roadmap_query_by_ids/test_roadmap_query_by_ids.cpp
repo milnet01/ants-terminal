@@ -216,7 +216,9 @@ TEST(roadmap_query_by_ids, Inv2IdsBranchKeepsInputIndex) {
         EXPECT_EQ(0, expect_failures());
         return;
     }
-    const size_t projPos  = cpp.find("rcProjectHeadlineOnly(matches)", idsBranch);
+    // ANTS-6244 — the projection runs inside shapeTargetedRows, the tail the
+    // id and ids paths share.
+    const size_t projPos  = cpp.find("shapeTargetedRows(matches);", idsBranch);
     // The key's write, not the first mention: comments above it name it too.
     const size_t annotPos =
         cpp.find("QStringLiteral(\"input_index\")", idsBranch);
@@ -235,7 +237,7 @@ TEST(roadmap_query_by_ids, Inv2IdsBranchKeepsInputIndex) {
     // follows the projection to the accounting arrays, so it holds the whole
     // annotation block and any guard placed above it.
     const std::string annotBlock = ants_test::regionBetween(
-        cpp.substr(idsBranch), "projectAndReportBulletFields(matches);",
+        cpp.substr(idsBranch), "shapeTargetedRows(matches);",
         "QJsonArray matchedIds;");
     expect(!annotBlock.empty(),
            "INV-13: annotation block bounded (both anchors present)");

@@ -202,12 +202,16 @@ TEST(roadmap_query_headline_only, Inv5IdSelectorProjected) {
         // cover the full id-branch tail). Widened from 2000 → 3500 by
         // ANTS-3387, which inserted a bad_id_format guard inside the
         // not-found branch between matches.append and the projection.
+        // ANTS-6244 — the id and ids paths project in their shared tail,
+        // shapeTargetedRows; the id path must call it, and it must project.
         const std::string window = cpp.substr(idBranchPos,
             std::min<size_t>(3500, cpp.size() - idBranchPos));
-        expect(contains(window, "headline_only") ||
-               contains(window, "rcProjectHeadlineOnly") ||
-               contains(window, "projectHeadlineOnly"),
-               "INV-5: id-branch projects under mode:\"headline_only\"");
+        expect(contains(window, "shapeTargetedRows(matches);"),
+               "INV-5: id-branch runs the shared targeted tail");
+        const std::string tail = ants_test::slurpFunctionBody(
+            cpp, "void RemoteControl::RoadmapQueryCall::shapeTargetedRows");
+        expect(contains(tail, "rcProjectHeadlineOnly(matches)"),
+               "INV-5: the targeted tail projects under mode:\"headline_only\"");
     }
     EXPECT_EQ(0, expect_failures());
 }

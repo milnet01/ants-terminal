@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6917 -->
+<!-- ants-roadmap-id-high-water: ANTS=6918 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -109385,7 +109385,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L20-F13).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6244] **Share the id and ids branches' targeted tail in roadmap_query.**
+- ✅ [ANTS-6244] **Share the id and ids branches' targeted tail in roadmap_query.**
   From ANTS-6129 (confirms 5bed3ddefa1b). links, body_match, strip or
   cap, headline_only, bullet_fields and the cap echo. ANTS-4079, 5468,
   4904, 4837 and 4981 patched both. Queued: roadmap_query_by_id and
@@ -109393,6 +109393,15 @@ worked after these.
   rcStripBodyFields(matches)` and the order of
   rcProjectHeadlineOnly(matches) before input_index.
   Hot reload: none needed.
+  RoadmapQueryCall::shapeTargetedRows holds the shared tail: links,
+  body_match, strip or cap, headline_only projection, bullet_fields, and
+  the cap / mode / include_body echoes; byId and byIds call it (byIds
+  before its input_index annotation). Anchors moved:
+  roadmap_query_by_ids.Inv2 looks for the helper call before
+  input_index; roadmap_query_headline_only.Inv5 checks byId calls it and
+  that it projects; the by_ids spec names the call. The
+  duplicate_ids-after-shrinkToFit difference on the id path is filed
+  separately. Roadmap tests passed (1699 + the 67 re-run).
   **Layman:** The two ways of fetching roadmap items by id finish with the same steps written out twice, and five past fixes had to patch both.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L20-F14).
@@ -110395,6 +110404,19 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-11-06 row 695, split from ANTS-6215.
   Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6918] **roadmap_query's id path adds duplicate_ids after shrinkToFit; the ids path adds it before.**
+  RoadmapQueryCall::byId calls shrinkToFit(out) (ANTS-5477) and then sets
+  out["duplicate_ids"]; byIds sets it first. The id path's reply can
+  exceed the size shrinkToFit enforces when the roadmap has duplicate
+  ids. Decide that shrinkToFit runs last on both, and lock it with a test
+  on a roadmap with a duplicate id. Left out of ANTS-6244 because it
+  changes output.
+  Hot reload: ants-mcpd rebuild + client reconnect.
+  **Layman:** One of the two ways of fetching roadmap items by id adds a warning after trimming the reply to size, so that reply can end up over its size limit.
+  Kind: fix.
+  Source: in-session-2026-11-25 (found doing ANTS-6244).
+  Lanes: mcp-roadmap-query-log.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

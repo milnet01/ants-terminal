@@ -1004,6 +1004,7 @@ struct RemoteControl::RoadmapQueryCall {
     auto pruneAndFilter(QJsonArray &filtered) -> ListCounts;
     void emitBulletPage(QJsonArray &filtered, const ListCounts &n, bool inSection);
     void attachLinks(QJsonArray &arr);
+    void shapeTargetedRows(QJsonArray &matches);
 };
 
 // ANTS-6241 — the modes that answer with something other than item rows. A
@@ -3669,6 +3670,35 @@ void RemoteControl::RoadmapQueryCall::attachLinks(QJsonArray &arr) {
 // include_body:false. A case-only mismatch returns bad_case with
 // the canonical id so a wrong-case caller gets the exact spelling
 // (mirrors section= ANTS-1524) rather than a bare found:false.
+// ANTS-6244 — the targeted (id and ids) paths' shared tail: links, body_match,
+// the body strip or cap, the two projections, and their echoes. ANTS-4079,
+// 5468, 4904, 4837 and 4981 each had to patch both copies.
+void RemoteControl::RoadmapQueryCall::shapeTargetedRows(QJsonArray &matches) {
+    attachLinks(matches);     // ANTS-4079
+    applyBodyMatch(matches);  // ANTS-5468 — before the cap
+    if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
+    // ANTS-4904 — `body_from_end` is honoured on the TARGETED path only. A
+    // list query's 2000-char cap is a payload bound across many rows; this
+    // flag answers "where does THIS item stand", which is an id fetch.
+    else rcCapBodyFields(matches, idBodyCap,
+                         req.value(QStringLiteral("body_from_end"))
+                             .toBool(false));  // ANTS-3402
+    // ANTS-1881 — the targeted projection (second emission surface; INV-5
+    // anchors the dual-surface requirement). After the body strip, so the
+    // projected object has the same key set whatever include_body says.
+    if (mode == QLatin1String("headline_only")) {
+        rcProjectHeadlineOnly(matches);
+    }
+    // ANTS-4837 — after the strip and cap for the same reason.
+    projectAndReportBulletFields(matches);
+    if (bodyCapClamped && !(hasIncludeBodyArg && !includeBody)) {
+        out["body_cap_clamped"]         = true;   // ANTS-4981
+        out["max_body_bytes_effective"] = idBodyCap;
+    }
+    if (hasModeArg) out["mode"] = mode;
+    if (hasIncludeBodyArg) out["include_body"] = includeBody;
+}
+
 auto RemoteControl::RoadmapQueryCall::byId() -> QJsonDocument {
     QJsonArray matches;
     for (const auto &v : std::as_const(rc.m_roadmapCacheBullets)) {
@@ -3720,39 +3750,13 @@ auto RemoteControl::RoadmapQueryCall::byId() -> QJsonDocument {
             return QJsonDocument(out);
         }
     }
-    attachLinks(matches);     // ANTS-4079
-    applyBodyMatch(matches);  // ANTS-5468 — before the cap
-    if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
-    // ANTS-4904 — `body_from_end` is honoured on the TARGETED path only
-    // (this singular-id arm and the ids[] arm below). A list query's
-    // 2000-char cap is a payload bound across many rows; this flag answers
-    // "where does THIS item stand", which is an id fetch.
-    else rcCapBodyFields(matches, idBodyCap,
-                         req.value(QStringLiteral("body_from_end"))
-                             .toBool(false));  // ANTS-3402
-    // ANTS-1881 — id-branch projection (second emission surface;
-    // INV-5 anchors the dual-surface requirement). Applied after
-    // body-strip so the projected object inherits the same key
-    // set on every call regardless of include_body.
-    if (mode == QLatin1String("headline_only")) {
-        rcProjectHeadlineOnly(matches);
-    }
-    // ANTS-4837 — the id/ids surface. Applied after the body strip and cap
-    // for the same reason the projection above is: the emitted key set must
-    // not depend on include_body.
-    projectAndReportBulletFields(matches);
+    shapeTargetedRows(matches);
     out["ok"]      = true;
     out["bullets"] = matches;
     out["path"]    = path;
     out["count"]   = matches.size();
     out["id"]      = idArg;
     out["found"]   = !matches.isEmpty();
-    if (bodyCapClamped && !(hasIncludeBodyArg && !includeBody)) {
-        out["body_cap_clamped"]         = true;   // ANTS-4981
-        out["max_body_bytes_effective"] = idBodyCap;
-    }
-    if (hasModeArg) out["mode"] = mode;
-    if (hasIncludeBodyArg) out["include_body"] = includeBody;
     shrinkToFit(out);   // ANTS-5477
     // ANTS-1646 — surface duplicate-id descriptors (cache is the
     // full-file array, so they are current) when the same id was
@@ -3808,24 +3812,13 @@ auto RemoteControl::RoadmapQueryCall::byIds() -> QJsonDocument {
             seen.insert(bid);
         }
     }
-    attachLinks(matches);     // ANTS-4079
-    applyBodyMatch(matches);  // ANTS-5468 — before the cap
-    if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
-    // ANTS-4904 — the plural ids[] arm of the same targeted path.
-    else rcCapBodyFields(matches, idBodyCap,
-                         req.value(QStringLiteral("body_from_end"))
-                             .toBool(false));  // ANTS-3402
-    if (mode == QLatin1String("headline_only")) {
-        rcProjectHeadlineOnly(matches);
-    }
-    // ANTS-4837 — the plural ids[] surface. Deliberately ABOVE the
-    // `input_index` block below, so that key survives a projection that
-    // does not name it: ANTS-4712 makes it this path's documented
-    // exemption precisely because results come back in DOCUMENT order and a
-    // caller zipping them against its own array mis-pairs without it. A
-    // lean shape is where that bug is most likely, so this is the last
-    // place to drop it.
-    projectAndReportBulletFields(matches);
+    // Deliberately ABOVE the `input_index` block below, so that key survives
+    // a projection that does not name it: ANTS-4712 makes it this path's
+    // documented exemption precisely because results come back in DOCUMENT
+    // order and a caller zipping them against its own array mis-pairs
+    // without it. A lean shape is where that bug is most likely, so this is
+    // the last place to drop it.
+    shapeTargetedRows(matches);
     // INV-3 — accounting arrays. Preserve INPUT order so a caller
     // diffing against the request gets a positional read.
     // ANTS-4400 — `input_index` on each bullet, so a caller can restore
@@ -3907,10 +3900,6 @@ auto RemoteControl::RoadmapQueryCall::byIds() -> QJsonDocument {
         out["archived_sources"] = archivedSources;
     }
     out["found"]       = !matches.isEmpty();
-    if (bodyCapClamped && !(hasIncludeBodyArg && !includeBody)) {
-        out["body_cap_clamped"]         = true;   // ANTS-4981
-        out["max_body_bytes_effective"] = idBodyCap;
-    }
     // ANTS-4387 secondary (ANTS-4374's invariant again) — `found:true` on
     // a PARTIALLY resolved set reads as success, so a caller checking
     // `found` alone never learns two of its fifty did not resolve. Emitted
@@ -3919,8 +3908,6 @@ auto RemoteControl::RoadmapQueryCall::byIds() -> QJsonDocument {
         out["all_ids_resolved"] =
             missingIds.isEmpty() && archivedIdsArr.isEmpty();
     }
-    if (hasModeArg) out["mode"] = mode;
-    if (hasIncludeBodyArg) out["include_body"] = includeBody;
     if (!rc.m_roadmapCacheDuplicateIds.isEmpty()) {
         out["duplicate_ids"] = rc.m_roadmapCacheDuplicateIds;
     }

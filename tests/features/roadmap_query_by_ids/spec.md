@@ -92,7 +92,7 @@ matched_ids, missing_ids}`. Body included by default. Bypasses the
   key back on. Reversing that order strips the key silently and
   reintroduces the mis-pairing ANTS-4400 closed, for the mode carrying
   the least context to recover from it. The singular `id` selector takes
-  no annotation and emits four. Source anchors: `rcProjectHeadlineOnly(matches)`
-  and the `input_index` write, both taken from `wanted(idsArg.cbegin()`
+  no annotation and emits four. Source anchors: the `shapeTargetedRows(matches);`
+  call, which projects (ANTS-6244), and the `input_index` write, both taken from `wanted(idsArg.cbegin()`
   onward — `if (!idsArg.isEmpty())` is NOT usable as the window anchor,
   being a substring of an earlier `else if` (ANTS-4724).
