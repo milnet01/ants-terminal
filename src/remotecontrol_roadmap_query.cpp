@@ -984,6 +984,16 @@ QString rcdetail::rcExtractGateNote(const QString &body) {
     return QString();
 }
 
+RoadmapStore *RemoteControl::roadmapStoreFor(const QString &projectRoot, QString *root,
+                                             RoadmapSource::ReadError *openWhy,
+                                             QString *error) const {
+    *openWhy = RoadmapSource::ReadError::None;
+    *root = rcProjectRootFor(projectRoot);
+    if (root->isEmpty())
+        return nullptr;
+    return roadmapStoreOrNull(openWhy, error);
+}
+
 // ANTS-3793 § 2.1 — the owner wrapper. See remotecontrol.h for the contract;
 // the two rules discharged here are § 2.2's first and second, in that order.
 QVector<RoadmapParse::BulletRecord>
@@ -997,41 +1007,31 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
     if (error)
         error->clear();
 
-    // A caller with no project root cannot ask the marker anything —
-    // migratedProject() refuses a root it cannot canonicalise, and passing ""
-    // would turn every focused-tab call into a refusal.
-    // ANTS-4884 — callers hand this their caller_cwd, which is at or below the
-    // root the store keys on. Resolve before asking, or a subdirectory caller
-    // reads as an unmigrated project of its own. idFormatFor() below reads
-    // .ants/project.json, which lives at the root, and missed the same way.
-    const QString root = rcProjectRootFor(projectRoot);
-    if (!root.isEmpty()) {
-        // The local rather than `why` directly: a caller that passed nullptr
-        // would otherwise turn rule 2's refusal into a fall-through to
-        // markdown — the silent fallback INV-1 forbids, arriving through an
-        // omitted out-param.
-        RoadmapSource::ReadError openWhy = RoadmapSource::ReadError::None;
-        RoadmapStore *store = roadmapStoreOrNull(&openWhy, error);
-        if (openWhy != RoadmapSource::ReadError::None) {
-            if (why)
-                *why = openWhy;
+    // A caller with no project root cannot ask the marker anything — passing
+    // "" would turn every focused-tab call into a refusal. idFormatFor() below
+    // reads .ants/project.json at the resolved root (ANTS-4884).
+    QString root;
+    RoadmapSource::ReadError openWhy = RoadmapSource::ReadError::None;
+    RoadmapStore *store = roadmapStoreFor(projectRoot, &root, &openWhy, error);
+    if (openWhy != RoadmapSource::ReadError::None) {
+        if (why)
+            *why = openWhy;
+        return {};
+    }
+    if (store) {
+        RoadmapSource::ReadError seamWhy = RoadmapSource::ReadError::None;
+        auto records = RoadmapSource::bulletsFor(
+            *store, root, text, includeArchive,
+            &seamWhy, error,
+            ProjectSettings::idFormatFor(root));   // ANTS-3771
+        if (why)
+            *why = seamWhy;
+        if (records)
+            return *records;
+        // nullopt with a reason is a refusal and never a fallback (INV-1);
+        // nullopt with None means "not migrated", which falls through.
+        if (seamWhy != RoadmapSource::ReadError::None)
             return {};
-        }
-        if (store) {
-            RoadmapSource::ReadError seamWhy = RoadmapSource::ReadError::None;
-            auto records = RoadmapSource::bulletsFor(
-                *store, root, text, includeArchive,
-                &seamWhy, error,
-                ProjectSettings::idFormatFor(root));   // ANTS-3771
-            if (why)
-                *why = seamWhy;
-            if (records)
-                return *records;
-            // nullopt with a reason is a refusal and never a fallback (INV-1);
-            // nullopt with None means "not migrated", which falls through.
-            if (seamWhy != RoadmapSource::ReadError::None)
-                return {};
-        }
     }
     // ANTS-3863 — the line that makes the laziness pay. It is reached only when
     // the project is NOT migrated, which is the one case where the whole file
@@ -1135,18 +1135,11 @@ bool RemoteControl::roadmapStoreServes(const QString &projectRoot,
         *why = RoadmapSource::ReadError::None;
     if (error)
         error->clear();
-    if (projectRoot.isEmpty())
-        return false;
-    // Same guard as roadmapBullets(): a dropped `why` must not silently
-    // downgrade a refusal into "not migrated, parse the markdown".
+    QString root;
     RoadmapSource::ReadError localWhy = RoadmapSource::ReadError::None;
-    RoadmapStore *store = roadmapStoreOrNull(&localWhy, error);
-    // ANTS-4884 — as roadmapBullets() and roadmapWriteTarget(): resolve the
-    // caller's cwd to the root the store keys on before asking.
+    RoadmapStore *store = roadmapStoreFor(projectRoot, &root, &localWhy, error);
     const bool served =
-        store && RoadmapSource::migratedProject(*store,
-                                                rcProjectRootFor(projectRoot),
-                                                text, error,
+        store && RoadmapSource::migratedProject(*store, root, text, error,
                                                 &localWhy).has_value();
     if (why)
         *why = localWhy;
@@ -1166,17 +1159,9 @@ RemoteControl::roadmapWriteTarget(const QString &projectRoot,
         *why = RoadmapSource::ReadError::None;
     if (error)
         error->clear();
-    // Same rule as roadmapBullets(): a caller with no project root cannot ask
-    // the marker anything, and passing "" would turn every such call into a
-    // refusal rather than the markdown path it belongs on.
-    if (projectRoot.isEmpty())
-        return std::nullopt;
-
-    // The local rather than `why` directly: a caller that dropped `why` would
-    // otherwise turn a refusal into a fall-through to the splice path — the
-    // silent fallback INV-1 forbids, arriving through an omitted out-param.
+    QString root;
     RoadmapSource::ReadError localWhy = RoadmapSource::ReadError::None;
-    RoadmapStore *store = roadmapStoreOrNull(&localWhy, error);
+    RoadmapStore *store = roadmapStoreFor(projectRoot, &root, &localWhy, error);
     if (localWhy != RoadmapSource::ReadError::None) {
         if (why)
             *why = localWhy;
@@ -1185,11 +1170,8 @@ RemoteControl::roadmapWriteTarget(const QString &projectRoot,
     if (!store)
         return std::nullopt;
 
-    // ANTS-4884 — as roadmapBullets(): the caller's cwd is at or below the root
-    // the store keys on, and a subdirectory miss here silently splices markdown
-    // that the next store render discards.
     const auto projectId = RoadmapSource::migratedProject(
-        *store, rcProjectRootFor(projectRoot), text, error, &localWhy);
+        *store, root, text, error, &localWhy);
     if (why)
         *why = localWhy;
     if (!projectId)

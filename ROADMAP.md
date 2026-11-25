@@ -109365,13 +109365,21 @@ worked after these.
   Source: review-readability-2026-10-22 (L20-F12).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6243] **Share one resolve-and-open guard between roadmapBullets, roadmapStoreServes and roadmapWriteTarget.**
+- ✅ [ANTS-6243] **Share one resolve-and-open guard between roadmapBullets, roadmapStoreServes and roadmapWriteTarget.**
   From ANTS-6129 (confirms ad9aefe5e5d3). ANTS-4884 patched all three.
   roadmapBullets resolves rcProjectRootFor before its empty check; the
   other two check the raw path. Decide which is meant first.
   Hot reload: none needed.
   The 2026-11-06 reviews also found this: row 825
   `src/remotecontrol_roadmap_log.cpp:427`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Decided: the two orders were equivalent. rcProjectRootFor returns
+  empty only for an empty path (rcMainCheckoutOf never empties a
+  non-empty one), so checking the raw path or the resolved root gives
+  the same answer. RemoteControl::roadmapStoreFor (private,
+  remotecontrol.h) resolves the root, skips an empty one, and opens the
+  store; roadmapBullets, roadmapStoreServes and roadmapWriteTarget call
+  it and keep their own handling after it. Full build without warnings;
+  roadmap/store/session-message tests 1774/1774.
   **Layman:** Three functions repeat the same check before opening the roadmap store, and they differ in a way nobody wrote down.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L20-F13).

@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The roadmap tools' three store lookups share one step that works out the project folder and opens the store** (ANTS-6243)
+
 - **`roadmap_query` takes every status name, symbol and the meaning of "active" from the one shared status table** (ANTS-6242)
 
 - **`roadmap_query` decides in one place which modes return no item rows, so its refusals of row-shaping arguments under those modes cannot drift apart** (ANTS-6241)

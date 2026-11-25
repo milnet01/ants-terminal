@@ -1635,6 +1635,17 @@ private:
     RoadmapStore *roadmapStoreOrNull(RoadmapSource::ReadError *why,
                                      QString *error) const;
 
+    // ANTS-6243 — the guard roadmapBullets(), roadmapStoreServes() and
+    // roadmapWriteTarget() share. `*root` gets the root the store keys
+    // `projectRoot` on (ANTS-4884), empty only for an empty path, which has no
+    // project to ask. Returns the store, or nullptr: no root, no store file,
+    // or a refusal to open, which sets *openWhy. Pass a local, never the
+    // caller's own `why`, so a dropped out-param cannot turn a refusal into a
+    // markdown fall-through (INV-1).
+    RoadmapStore *roadmapStoreFor(const QString &projectRoot, QString *root,
+                                  RoadmapSource::ReadError *openWhy,
+                                  QString *error) const;
+
     // ANTS-3802 — feedback_query's cross-repo id resolver (compact_resolved,
     // its other caller, was retired by ANTS-4513). ANTS-3793 made it a member: the sibling
     // roadmaps it opens may themselves be migrated, so it reads through
