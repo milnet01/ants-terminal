@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6925 -->
+<!-- ants-roadmap-id-high-water: ANTS=6931 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -96736,7 +96736,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: changelog-feedback.
 
-- 📋 [ANTS-6550] **Correct the false or stale comments the 2026-11-06 reviews found in chrome-widgets.**
+- ✅ [ANTS-6550] **Correct the false or stale comments the 2026-11-06 reviews found in chrome-widgets.**
   18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 565 `src/globalshortcutsportal.cpp:111` (Medium)
   - row 570 `src/coloredtabbar.cpp:184` (Low)
@@ -96756,12 +96756,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1543 `src/globalshortcutsportal.cpp:325` (Low)
   - row 1544 `src/globalshortcutsportal.cpp:346` (Low)
   - row 1545 `src/globalshortcutsportal.h:117` (Low)
+  Closed 2026-11-25: 7 fixed, 11 dismissed. Per-row dispositions are in
+  the commit body. Dismissed rows cite shipped ids rotated out of the
+  store (they are in CHANGELOG.md) or example ids.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: chrome-widgets.
 
-- 📋 [ANTS-6551] **Correct the false or stale comments the 2026-11-06 reviews found in claude-integration.**
+- ✅ [ANTS-6551] **Correct the false or stale comments the 2026-11-06 reviews found in claude-integration.**
   26 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 90 `claudeintegration_store.cpp:1912-1915` (Medium)
   - row 94 `claudeintegration_docs.cpp:761` (Low)
@@ -96789,12 +96792,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1516 `src/claudeintegration_sessions.cpp:125` (Low)
   - row 1517 `src/claudeintegration_sessions.cpp:331` (Low)
   - row 1518 `src/claudeintegration_sessions.cpp:804` (Low)
+  Closed 2026-11-25: 18 fixed, 8 dismissed. Per-row dispositions are in
+  the commit body. Row 94 dismissed: doc_lint does replace five verbs.
+  Other dismissed rows cite shipped ids that are in CHANGELOG.md.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6552] **Correct the false or stale comments the 2026-11-06 reviews found in claude-session-widgets.**
+- ✅ [ANTS-6552] **Correct the false or stale comments the 2026-11-06 reviews found in claude-session-widgets.**
   24 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 352 `docs/subsystems.md:616` (Low)
   - row 353 `claudestateresolver.cpp:39-42` (Low)
@@ -96820,12 +96826,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1510 `src/claudeallowlist.cpp:164` (Low)
   - row 1511 `src/claudebgtasksdialog.cpp:56` (Low)
   - row 1519 `src/claudetranscript.h:18` (Low)
+  Closed 2026-11-25: 24 fixed. Per-row dispositions are in the commit
+  body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6553] **Correct the false or stale comments the 2026-11-06 reviews found in code-index-search.**
+- ✅ [ANTS-6553] **Correct the false or stale comments the 2026-11-06 reviews found in code-index-search.**
   17 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1063 `src/readregion.cpp:575` (Medium)
   - row 1064 `src/applyedits.cpp:79` (Medium)
@@ -96844,12 +96852,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1086 `src/trace/extract.h:73` (Low)
   - row 1521 `src/commentclaims.cpp:522` (Low)
   - row 1522 `src/commentclaims.cpp:522` (Low)
+  Closed 2026-11-25: 9 fixed, 6 already fixed, 2 dismissed (ANTS-1 in
+  commentclaims.cpp is an example of bullet shape). Per-row dispositions
+  are in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6554] **Correct the false or stale comments the 2026-11-06 reviews found in config-session-project.**
+- ✅ [ANTS-6554] **Correct the false or stale comments the 2026-11-06 reviews found in config-session-project.**
   18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 210 `src/projectlayoutengine.cpp:363` (High)
   - row 1133 `src/projectlayoutengine.h:141` (Medium)
@@ -96869,22 +96880,26 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1528 `src/config.cpp:394` (Low)
   - row 1529 `src/config.cpp:985` (Low)
   - row 1530 `src/config.h:599` (Low)
+  Closed 2026-11-25: 16 fixed, 2 already fixed. Per-row dispositions are
+  in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6555] **Correct the false or stale comments the 2026-11-06 reviews found in dev-python-ci-packaging.**
+- ✅ [ANTS-6555] **Correct the false or stale comments the 2026-11-06 reviews found in dev-python-ci-packaging.**
   3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 468 `flatpak/…AntsTerminal.yml:12` (Low)
   - row 469 `ci.yml:109` (Low)
   - row 470 `tools/measure/filemap_prototype.py:356` (Low)
+  Closed 2026-11-25: 1 fixed, 2 already fixed. Per-row dispositions are
+  in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: dev-python-ci-packaging.
 
-- 📋 [ANTS-6556] **Correct the false or stale comments the 2026-11-06 reviews found in diagnostics-logging.**
+- ✅ [ANTS-6556] **Correct the false or stale comments the 2026-11-06 reviews found in diagnostics-logging.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1193 `src/buildcache.h:61` (Low)
   - row 1196 `src/readlog.h:42-44` (Low)
@@ -96894,12 +96909,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1531 `src/debuglog.cpp:17` (Low)
   - row 1532 `src/debuglog.cpp:95` (Low)
   - row 1533 `src/debuglog.h:145` (Low)
+  Closed 2026-11-25: 3 fixed, 2 already fixed, 3 dismissed (shipped ids
+  that are in CHANGELOG.md). Per-row dispositions are in the commit
+  body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: diagnostics-logging.
 
-- 📋 [ANTS-6557] **Correct the false or stale comments the 2026-11-06 reviews found in dialog-chrome-theme.**
+- ✅ [ANTS-6557] **Correct the false or stale comments the 2026-11-06 reviews found in dialog-chrome-theme.**
   9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 577 `src/verifytrust.cpp:223` (High)
   - row 579 `src/verifytrust.h:97` (Medium)
@@ -96910,12 +96928,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1507 `src/aboutdialogs.h:1` (Low)
   - row 1646 `src/themes.cpp:361` (Low)
   - row 1647 `src/verifytrust.cpp:223` (Low)
+  Closed 2026-11-25: 8 fixed, 1 already fixed. Per-row dispositions are
+  in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: dialog-chrome-theme.
 
-- 📋 [ANTS-6558] **Correct the false or stale comments the 2026-11-06 reviews found in doc-engines.**
+- ✅ [ANTS-6558] **Correct the false or stale comments the 2026-11-06 reviews found in doc-engines.**
   6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 969 `src/doclint.cpp:390` (Medium)
   - row 971 `src/doccitations.h:49` (Low)
@@ -96923,12 +96943,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 973 `src/docfacts.cpp:144` (Low)
   - row 974 `src/docfacts.cpp:71` (Low)
   - row 975 `src/docsymbols.cpp:279` (Low)
+  Closed 2026-11-25: 6 fixed. Per-row dispositions are in the commit
+  body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: doc-engines.
 
-- 📋 [ANTS-6559] **Correct the false or stale comments the 2026-11-06 reviews found in hooks-packaging.**
+- ✅ [ANTS-6559] **Correct the false or stale comments the 2026-11-06 reviews found in hooks-packaging.**
   12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1271 `packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml:12` (Medium)
   - row 1276 `packaging/opensuse/ants-terminal.spec:317` (Medium)
@@ -96944,12 +96966,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1290 `packaging/obs/obs-status.sh:5` (Low)
   2026-11-19, ANTS-6156 (b4390f44) fixed the hooks rows: 1278, 1283,
   1284, 1285, 1286. The packaging rows remain.
+  Closed 2026-11-25: 3 fixed, 9 already fixed. Per-row dispositions are
+  in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: hooks-packaging.
 
-- 📋 [ANTS-6560] **Correct the false or stale comments the 2026-11-06 reviews found in mainwindow.**
+- ✅ [ANTS-6560] **Correct the false or stale comments the 2026-11-06 reviews found in mainwindow.**
   40 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 71 `docs/standards/menus.md (docs/standards/menus.md)` (Low)
   - row 533 `src/mainwindow.h:403` (High)
@@ -96991,12 +97015,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1576 `src/mainwindow_tabs.cpp:173` (Low)
   - row 1577 `src/mainwindow_tabs.cpp:190` (Low)
   - row 1578 `src/mainwindow_tabs.cpp:201` (Low)
+  Closed 2026-11-25: 19 fixed, 2 already fixed, 19 dismissed (shipped
+  ids in git history and CHANGELOG.md). Row 71 fixed in
+  docs/standards/menus.md. Per-row dispositions are in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6561] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-content-verbs.**
+- ✅ [ANTS-6561] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-content-verbs.**
   10 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 928 `src/remotecontrol_docs.cpp:973-974` (High)
   - row 933 `src/remotecontrol_terminal.cpp:188-190` (Medium)
@@ -97008,12 +97035,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1587 `src/remotecontrol_feedback.cpp:30` (Low)
   - row 1588 `src/remotecontrol_feedback.cpp:1418` (Low)
   - row 1599 `src/remotecontrol_terminal.cpp:382` (Low)
+  Closed 2026-11-25: 6 fixed, 1 already fixed, 3 dismissed (ANTS-12 is
+  an example id). Per-row dispositions are in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6562] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-infra.**
+- ✅ [ANTS-6562] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-infra.**
   16 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1087 `src/mcpprojection.h:75` (Medium)
   - row 1090 `src/jsonlfile.cpp:36` (Medium)
@@ -97031,12 +97060,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1105 `src/jsoncanonical.h:9` (Low)
   - row 1616 `src/secretredact.h:144` (Low)
   - row 1617 `src/secretredact.h:150` (Low)
+  Closed 2026-11-25: 6 fixed, 7 already fixed, 2 dismissed (ANTS-1184
+  shipped; it is in CHANGELOG.md). Per-row dispositions are in the
+  commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6563] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-review-verbs.**
+- ✅ [ANTS-6563] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-review-verbs.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 364 `remotecontrol_review.cpp:1279-1280` (Low)
   - row 921 `src/remotecontrol_review.cpp:159` (Medium)
@@ -97046,12 +97078,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1586 `src/remotecontrol_coldeyes.cpp:399` (Low)
   - row 1591 `src/remotecontrol_review.cpp:1106` (Low)
   - row 1592 `src/remotecontrol_review.cpp:1122` (Low)
+  Closed 2026-11-25: 3 fixed, 1 already fixed, 4 dismissed. Row 364:
+  runVerify does call loadGateConfig; the rest cite ANTS-1372, which
+  shipped. Per-row dispositions are in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: mcp-review-verbs.
 
-- 📋 [ANTS-6564] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-roadmap-batch.**
+- ✅ [ANTS-6564] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-roadmap-batch.**
   7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 120 `migrate.cpp:301-308` (Low)
   - row 863 `src/remotecontrol_roadmap_log_batch.cpp:3368-3373` (Low)
@@ -97060,12 +97095,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 879 `src/remotecontrol_roadmap_log_batch.cpp:245-260` (Low)
   - row 880 `src/remotecontrol_roadmap_migrate.cpp:105-113` (Low)
   - row 1593 `src/remotecontrol_roadmap_log_batch.cpp:95` (Low)
+  Closed 2026-11-25: 4 fixed, 2 already fixed, 1 dismissed (a sample id
+  in prose). Per-row dispositions are in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6565] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-roadmap-query-log.**
+- ✅ [ANTS-6565] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-roadmap-query-log.**
   14 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 817 `src/remotecontrol_roadmap_log.cpp:855` (Medium)
   - row 818 `src/remotecontrol_roadmap_log.cpp:3720` (Medium)
@@ -97081,12 +97118,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1595 `src/remotecontrol_roadmap_query.cpp:887` (Low)
   - row 1596 `src/remotecontrol_roadmap_query.cpp:2284` (Low)
   - row 1597 `src/remotecontrol_roadmap_query.cpp:2414` (Low)
+  Closed 2026-11-25: 6 fixed, 5 already fixed, 3 dismissed (example
+  ids). Per-row dispositions are in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6566] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-state-workspace.**
+- ✅ [ANTS-6566] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-state-workspace.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 892 `src/remotecontrol_workspace.cpp:1247` (Medium)
   - row 893 `src/remotecontrol_workspace.cpp:83` (Low)
@@ -97096,12 +97135,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 912 `src/remotecontrol_state.cpp:109` (Low)
   - row 913 `src/remotecontrol_state.cpp:1865` (Low)
   - row 1598 `src/remotecontrol_state.cpp:135` (Low)
+  Closed 2026-11-25: 6 fixed, 1 already fixed, 1 dismissed (ANTS-1169
+  shipped). Per-row dispositions are in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6567] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-transport.**
+- ✅ [ANTS-6567] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-transport.**
   26 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 80 `src/remotecontrolgate.h:28` (Medium)
   - row 81 `mcpdsocket.cpp:20` (Low)
@@ -97129,12 +97170,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1601 `src/remotecontrolgate.cpp:2` (Low)
   - row 1602 `src/remotecontrolgate.h:1` (Low)
   - row 1603 `src/remotecontrolgate.h:11` (Low)
+  Closed 2026-11-25: 17 fixed, 1 already fixed, 7 dismissed (a version
+  string, example ids, ANTS-1372 shipped). Row 81 (ANTS-4932 spec
+  section 2.1) queued as ANTS-6930. Per-row dispositions are in the
+  commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: mcp-transport.
 
-- 📋 [ANTS-6568] **Correct the false or stale comments the 2026-11-06 reviews found in model-switching.**
+- ✅ [ANTS-6568] **Correct the false or stale comments the 2026-11-06 reviews found in model-switching.**
   11 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 265 `docs/subsystems.md (docs/subsystems.md)` (Low)
   - row 1106 `src/modelrecommender.h:34` (High)
@@ -97147,12 +97192,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1124 `src/aidialog.cpp:160-163` (Low)
   - row 1508 `src/aidialog.cpp:139` (Low)
   - row 1509 `src/aidialog.h:27` (Low)
+  Closed 2026-11-25: 8 fixed, 1 already fixed, 2 dismissed. Row 265
+  fixed in docs/subsystems.md. Per-row dispositions are in the commit
+  bodies.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: model-switching.
 
-- 📋 [ANTS-6569] **Correct the false or stale comments the 2026-11-06 reviews found in other.**
+- 🚫 [ANTS-6569] **Correct the false or stale comments the 2026-11-06 reviews found in other.**
   24 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1487 `CMakeLists.txt:252` (Low)
   - row 1488 `CMakeLists.txt:374` (Low)
@@ -97178,12 +97226,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1650 `tools/check-shipped-coverage.sh:214` (Low)
   - row 1651 `tools/check-shipped-coverage.sh:215` (Low)
   - row 1652 `tools/safe-build.sh:2` (Low)
+  Closed 2026-11-25 with nothing to change: 23 rows dismissed, 1 already
+  fixed (6f7f5c21). ANTS-1217, 1332, 1372 and 1373 are shipped ids in
+  CHANGELOG.md; ANTS-1, 2, 12 and 123 are example ids; row 1490's quote
+  exists, wrapped across two lines.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: other.
 
-- 📋 [ANTS-6570] **Correct the false or stale comments the 2026-11-06 reviews found in plugins-lua.**
+- ✅ [ANTS-6570] **Correct the false or stale comments the 2026-11-06 reviews found in plugins-lua.**
   25 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 201 `PLUGINS.md (PLUGINS.md)` (Low)
   - row 202 `pluginmanager.cpp:208` (Low)
@@ -97210,22 +97262,28 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1579 `src/pluginmanager.cpp:115` (Low)
   - row 1580 `src/pluginmanager.cpp:676` (Low)
   - row 1581 `src/pluginmanager.h:57` (Low)
+  Closed 2026-11-25: 9 fixed, 5 already fixed, 10 dismissed (ANTS-1172,
+  1173 and 1332 are shipped ids). Row 201 fixed in PLUGINS.md. Rows
+  1552, 1553, 1580 and 1581 (ANTS-1736) were already fixed by 4fb65762.
+  Row 202 (ANTS-1750 spec) queued as ANTS-6930.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: plugins-lua.
 
-- 📋 [ANTS-6571] **Correct the false or stale comments the 2026-11-06 reviews found in review-engines.**
+- ✅ [ANTS-6571] **Correct the false or stale comments the 2026-11-06 reviews found in review-engines.**
   3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1007 `src/indiereviewengine.cpp:976` (Medium)
   - row 1016 `src/debtsweepengine.cpp:1060` (Low)
   - row 1017 `src/indiereviewdialog.cpp:150` (Low)
+  Closed 2026-11-25: 2 fixed, 1 already fixed. Per-row dispositions are
+  in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: review-engines.
 
-- 📋 [ANTS-6572] **Correct the false or stale comments the 2026-11-06 reviews found in roadmap-dialog.**
+- ✅ [ANTS-6572] **Correct the false or stale comments the 2026-11-06 reviews found in roadmap-dialog.**
   7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 701 `src/roadmapdialog.h:422` (Medium)
   - row 702 `src/roadmapdialog.cpp:1146` (Low)
@@ -97234,12 +97292,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 705 `src/roadmapdialog.cpp:1493` (Low)
   - row 706 `src/roadmapdialog.cpp:3422` (Low)
   - row 707 `src/roadmapdialog.cpp:173` (Low)
+  Closed 2026-11-25: 7 fixed. Per-row dispositions are in the commit
+  body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6573] **Correct the false or stale comments the 2026-11-06 reviews found in roadmap-parse-render.**
+- ✅ [ANTS-6573] **Correct the false or stale comments the 2026-11-06 reviews found in roadmap-parse-render.**
   26 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 335 `roadmaprender.cpp:56-63` (Low)
   - row 660 `src/roadmapparse.h:475` (High)
@@ -97267,12 +97327,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1609 `src/roadmapfoldin.h:77` (Low)
   - row 1613 `src/roadmapparse.cpp:1377` (Low)
   - row 1614 `src/roadmapparse.cpp:1401` (Low)
+  Closed 2026-11-25: 17 fixed, 1 already fixed, 8 dismissed (example
+  ids; ANTS-1342 shipped). Per-row dispositions are in the commit body.
+  Row 682's code side is ANTS-6928.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6574] **Correct the false or stale comments the 2026-11-06 reviews found in roadmap-store.**
+- ✅ [ANTS-6574] **Correct the false or stale comments the 2026-11-06 reviews found in roadmap-store.**
   9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 637 `src/roadmapstore.cpp:2280` (High)
   - row 641 `src/roadmapstore.cpp:3894` (Medium)
@@ -97287,32 +97350,38 @@ keeps the reviewer's remedy, which is a claim to check before building.
   cleared from BOTH ends" (deregister): rows other projects key by
   dst_project/dst_id_fold survive (roadmapstore.cpp:2214-2215).
   2026-11-09 paired review, L14-16.
+  Closed 2026-11-25: 5 fixed, 1 already fixed, 3 dismissed (example
+  ids). Per-row dispositions are in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6575] **Correct the false or stale comments the 2026-11-06 reviews found in shared-utilities.**
+- ✅ [ANTS-6575] **Correct the false or stale comments the 2026-11-06 reviews found in shared-utilities.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 225 `pathvalidation.cpp:252` (Low)
   - row 1203 `src/pathvalidation.cpp:44-58` (Low)
   - row 1205 `src/gitwrap.cpp:28` (Low)
   - row 1210 `src/subsystemmap.h:7` (Low)
   - row 1213 `src/guithread.h:106-107` (Low)
+  Closed 2026-11-25: 3 fixed, 1 already fixed. Row 225 queued as
+  ANTS-6930: its stored finding is cut off.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: shared-utilities.
 
-- 📋 [ANTS-6576] **Correct the false or stale comments the 2026-11-06 reviews found in shell-surface.**
+- 🚫 [ANTS-6576] **Correct the false or stale comments the 2026-11-06 reviews found in shell-surface.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 282 `None` (Low)
+  Closed 2026-11-25: its one row (282) needs an ANTS-1252 spec edit and
+  its stored finding is cut off; moved to ANTS-6930.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: shell-surface.
 
-- 📋 [ANTS-6577] **Correct the false or stale comments the 2026-11-06 reviews found in spec-engines.**
+- ✅ [ANTS-6577] **Correct the false or stale comments the 2026-11-06 reviews found in spec-engines.**
   18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 985 `src/speclog.h:40` (Medium)
   - row 990 `src/specparse.cpp:164` (Medium)
@@ -97332,12 +97401,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1535 `src/featurecoverage.h:123` (Low)
   - row 1620 `src/speclint.cpp:667` (Low)
   - row 1621 `src/speclint.cpp:668` (Low)
+  Closed 2026-11-25: 10 fixed, 4 already fixed, 4 dismissed (example
+  ids). Per-row dispositions are in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: spec-engines.
 
-- 📋 [ANTS-6578] **Correct the false or stale comments the 2026-11-06 reviews found in terminal-grid.**
+- ✅ [ANTS-6578] **Correct the false or stale comments the 2026-11-06 reviews found in terminal-grid.**
   19 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 483 `src/terminalgrid.h:787` (High)
   - row 485 `src/terminalgrid.cpp:2285` (Medium)
@@ -97358,12 +97429,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1633 `src/terminalgrid.h:203` (Low)
   - row 1634 `src/terminalgrid.h:809` (Low)
   - row 1635 `src/terminalgrid.h:968` (Low)
+  Closed 2026-11-25: 6 fixed, 3 already fixed, 10 dismissed (shipped ids
+  that are in CHANGELOG.md). Per-row dispositions are in the commit
+  body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: terminal-grid.
 
-- 📋 [ANTS-6579] **Correct the false or stale comments the 2026-11-06 reviews found in terminal-widget.**
+- ✅ [ANTS-6579] **Correct the false or stale comments the 2026-11-06 reviews found in terminal-widget.**
   21 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 499 `src/terminalwidget.h:1005` (Medium)
   - row 500 `src/terminalwidget.cpp:2645-2647` (Medium)
@@ -97386,12 +97460,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1643 `src/terminalwidget.cpp:6300` (Low)
   - row 1644 `src/terminalwidget.cpp:6312` (Low)
   - row 1645 `src/terminalwidget.cpp:6324` (Low)
+  Closed 2026-11-25: 11 fixed, 10 dismissed (shipped ids that are in
+  CHANGELOG.md). The dead setFamily calls are ANTS-6926.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6580] **Correct the false or stale comments the 2026-11-06 reviews found in test-audit-verify.**
+- ✅ [ANTS-6580] **Correct the false or stale comments the 2026-11-06 reviews found in test-audit-verify.**
   10 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1025 `src/mutationprobe.cpp:167` (Medium)
   - row 1028 `src/verifyengine.h:79` (Medium)
@@ -97403,6 +97479,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1040 `src/testauditdialog.cpp:438` (Low)
   - row 1043 `src/verifyengine.cpp:439` (Low)
   - row 1044 `src/testauditdialog.cpp:209` (Low)
+  Closed 2026-11-25: 8 fixed, 2 already fixed. Per-row dispositions are
+  in the commit body.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -97444,7 +97522,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: tools-roadmap-surveys.
 
-- 📋 [ANTS-6583] **Correct the false or stale comments the 2026-11-06 reviews found in vt-parser-pty.**
+- ✅ [ANTS-6583] **Correct the false or stale comments the 2026-11-06 reviews found in vt-parser-pty.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 474 `src/vtstream.cpp:20-21` (Medium)
   - row 475 `src/vtstream.cpp:35-36` (Low)
@@ -97454,6 +97532,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 479 `src/ptyhandler.cpp:357-358` (Low)
   - row 1582 `src/ptyhandler.cpp:440` (Low)
   - row 1583 `src/ptyhandler.cpp:667` (Low)
+  Closed 2026-11-25: 7 fixed, 1 dismissed. Row 476's finding was partly
+  wrong: a second ESC reaches the peek-state branch; only CAN and SUB do
+  not. The write-loss warning text is ANTS-6927.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -97512,6 +97593,80 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: session-338-2026-11-25 (found closing ANTS-6584).
   Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6926] **setFontFamily sets the three style families just before updateFontMetrics overwrites them.**
+  src/terminalwidget: the m_fontBold/italic setFamily calls in
+  setFontFamily are dead; updateFontMetrics() sets them again. Delete
+  them (ANTS-6579 fixed only the comment).
+  **Layman:** A few lines of font code do nothing, which misleads the next reader.
+  Kind: refactor.
+  Source: session-338-2026-11-25 (found closing the 2026-11-06 comment bundles).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6927] **The vtstream write-loss warning says "on write overflow" when a dead master also triggers it.**
+  src/vtstream.cpp: writeLost's qWarning text names overflow only. Say
+  which cause fired, or name both (found closing ANTS-6583).
+  **Layman:** A log message blames the wrong cause when the terminal's process has gone.
+  Kind: fix.
+  Source: session-338-2026-11-25 (found closing the 2026-11-06 comment bundles).
+  Lanes: vt-parser-pty.
+
+- 📋 [ANTS-6928] **PassHeadingWrite reads the system date directly instead of RoadmapClock::today().**
+  src/passheadingwrite.cpp calls QDate::currentDate(). Route both calls
+  through RoadmapClock::today(); ANTS-6573 row 682 narrowed the
+  roadmapclock.h comment to match the code as it stands.
+  **Layman:** One roadmap write ignores the test clock, so its dates cannot be pinned in tests.
+  Kind: fix.
+  Source: session-338-2026-11-25 (found closing the 2026-11-06 comment bundles).
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6929] **The contract_doc_drift INV-10 test passes for the standards lane on the specs lane's line.**
+  tests/features/contract_doc_drift RegistrationUncapped looks for
+  "maxLines = 0" within 800 chars after each id. The specs lane's
+  line sits inside the standards lane's window, so deleting the
+  standards lane's setting keeps the test green. Bound the window at
+  the next addInProcessCheck call.
+  **Layman:** A test would not notice if one audit lane lost its no-limit setting.
+  Kind: test.
+  Source: session-338-2026-11-25 (found closing the 2026-11-06 comment bundles).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6930] **Amend three specs that no longer match the code, found by the 2026-11-06 comment review.**
+  - ANTS-1750 INV-11/INV-12 say deleteLater is posted to the worker;
+    pluginmanager.cpp deletes on the main thread once the worker has
+    finished (ANTS-6570 row 202).
+  - ANTS-4932 § 2.1 says the picker reads the legacy /tmp name;
+    ANTS-5587 removed that (ANTS-6567 row 81).
+  - ANTS-1252 is wrong about the code in two places (ANTS-6576 row 282).
+    The review's text is cut off, so re-find the two.
+  - Row 225 (ANTS-6575): its finding is cut off and says the doc side is
+    wrong; re-check it.
+  The stored finding text for rows 225 and 282 ends mid-sentence in
+  docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Three design documents describe behaviour the code changed since.
+  Kind: doc-fix.
+  Source: session-338-2026-11-25 (found closing the 2026-11-06 comment bundles).
+  Lanes: plugins-lua, mcp-transport, shell-surface, shared-utilities.
+
+- 📋 [ANTS-6931] **Correct the stale comments found next door while closing the 2026-11-06 comment bundles.**
+  - src/themes.cpp: the corrupt-file comment says it mirrors config.cpp's
+    rotation; config.cpp copies the file, themes.cpp renames it.
+  - src/roadmapparse.cpp: the rxLanes comment's "worked purely because
+    `Kind:` sat first" is ANTS-2058 history, now stale.
+  - src/mainwindow.cpp showSendConfirmation: a "0.7.53 indie-review HIGH"
+    history comment; src/mainwindow.h: an ANTS-1181 "947-line block"
+    history comment.
+  - src/guithread.h joinRefusingMarshals: run-on last sentence and a
+    dated "src/ surveyed 2026-09-11" claim.
+  - src/remotecontrol_review.cpp: the near-misses block's
+    "byte-identical to before" claim; citations_seen and
+    citations_resolved are always sent.
+  - src/themedstylesheet.cpp cites the gitignored
+    INVESTIGATION_tab_close_x.md; cite ANTS-2098.
+  **Layman:** A few more notes in the code say something no longer true.
+  Kind: doc-fix.
+  Source: session-338-2026-11-25 (found closing the 2026-11-06 comment bundles).
+  Lanes: dialog-chrome-theme, roadmap-parse-render, mainwindow, shared-utilities, mcp-review-verbs.
 
 ### Duplicate folding (2026-11-06 review)
 
