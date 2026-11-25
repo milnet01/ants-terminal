@@ -204,6 +204,395 @@ QJsonObject rlSectionNotFound(const RoadmapStore &store, qint64 projectId,
                               const QString &slug);
 }  // namespace
 
+namespace {
+
+// ANTS-6238 — what op:append's store and markdown branches share, checked
+// before they part.
+struct RlAppendInput {
+    const QJsonObject &req;
+    QString section, status, headline, kind, source;
+    bool    hasBefore = false;
+    QString beforeId;
+    int     replaceNarrationAt = -1;
+    QString stableId;
+    bool    useStablePrefix = false;
+    QString idPrefixArg;
+    bool    dryRun = false;
+    QString callerCanonical, roadmapPath, counterPath;
+};
+
+// ANTS-3809 § 2.2 — op:append on a store-backed project: allocate from the
+// store, write the item, render. The markdown branch is the rest of
+// cmdRoadmapLogAppend.
+QJsonDocument rlAppendToStore(const RlAppendInput &in, RoadmapStore &store,
+                              qint64 projectId,
+                              RoadmapSource::RoadmapText &storeText,
+                              const QJsonObject &storeRebuilt) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        return QJsonDocument(env);
+    };
+    const QJsonObject &req = in.req;
+    const QString &section = in.section;
+    const QString &status = in.status;
+    const QString &headline = in.headline;
+    const QString &kind = in.kind;
+    const QString &source = in.source;
+    const bool hasBefore = in.hasBefore;
+    const QString &beforeId = in.beforeId;
+    const int replaceNarrationAt = in.replaceNarrationAt;
+    const QString &stableId = in.stableId;
+    const bool useStablePrefix = in.useStablePrefix;
+    const QString &idPrefixArg = in.idPrefixArg;
+    const bool dryRun = in.dryRun;
+    const QString &callerCanonical = in.callerCanonical;
+    const QString &roadmapPath = in.roadmapPath;
+    const QString &counterPath = in.counterPath;
+    QString seamErr;
+
+    // § 2.2 — create_section and bundle_row resolve a SECTION rather
+    // than an item, through findSection(); so does append, which files
+    // its new item into one.
+    const auto sectionId =
+        store.findSection(projectId, section, &seamErr);
+    if (!sectionId) {
+        // ANTS-4591 — rank near-misses here too. ANTS-4556 gave the
+        // FILE-backed refusal `candidates[]` + `sections_total`, and
+        // this arm — which every migrated project takes — kept a bare
+        // message under a different code. So the feature reached the
+        // path almost nobody runs, which is the same shape ANTS-4634
+        // had to repair for `would_be_id`.
+        //
+        // A hint, never a resolution: the write still refuses,
+        // because guessing which section was meant is how a
+        // composed body lands in the wrong one.
+        return QJsonDocument(rlSectionNotFound(store, projectId, section));
+    }
+    qint64 beforePk = 0;
+    if (hasBefore) {
+        const auto place = rlFindItemPlace(store, projectId, beforeId, &seamErr);
+        if (!place && !seamErr.isEmpty())
+            return rlErr(QStringLiteral("store_failed"), seamErr);
+        if (!place || place->sectionId != *sectionId)
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: `before_id` \"%1\" is not filed "
+                               "in section \"%2\"; nothing was written")
+                    .arg(rcdetail::ceSanitiseEcho(beforeId), section));
+        beforePk = place->pk;
+    }
+
+    // End-of-section position, pinned exactly as bundle_row's create
+    // case pins it: element carries UNIQUE (section_id, position) and
+    // item rows occupy positions too, so "at the end" left unpinned is a
+    // constraint violation rather than a mis-placement.
+    const auto elements = store.listElements(*sectionId, &seamErr);
+    if (!elements)
+        return rlErr(QStringLiteral("store_failed"), seamErr);
+    int maxPos = -1;
+    for (const RoadmapStore::ElementRow &e : *elements)
+        maxPos = std::max(maxPos, e.position);
+
+    // § 2.3 — allocation. `stable_prefix` is untouched by cutover: it
+    // takes the caller's id verbatim and consults neither idHighWater()
+    // nor raiseIdHighWater(), because a stable string id is not a
+    // counter value and seeding a counter from one would corrupt the
+    // next counter-project allocation on the same store.
+    QString idStr = stableId;
+    QString prefix;
+    bool prefixGuessed = false;   // ANTS-5353
+    qint64 allocated = 0;
+    if (!useStablePrefix) {
+        prefix = rlStoreCounterPrefix(store, projectId, idPrefixArg,
+                                      storeText, callerCanonical,
+                                      &prefixGuessed);
+        // ANTS-4631 — the store's own id columns decide this, with
+        // no reference to the rendered file. The corpus floor that
+        // used to live inside rlStoreIdHighWater() read a documented
+        // sample id as an allocation and burned ~5,370 ids.
+        const qint64 highWater =
+            rlStoreIdHighWater(store, projectId, prefix);
+        allocated = highWater + 1;
+        if (req.contains(QStringLiteral("id_hint"))) {
+            // The rule is the markdown path's, unchanged; only the
+            // comparison's right-hand side moves to the floor
+            // allocation itself uses.
+            const qint64 hint =
+                req.value(QStringLiteral("id_hint")).toInteger();
+            if (hint <= highWater)
+                return rlErr(QStringLiteral("id_taken"),
+                    QStringLiteral("roadmap_log: id_hint %1 is at or "
+                                   "below the highest existing %2 id "
+                                   "(%3) — pick a value > %3 or omit "
+                                   "the hint")
+                        .arg(hint).arg(prefix).arg(highWater));
+            allocated = hint;
+        }
+        // ANTS-6738 — the width the prefix's ids already use.
+        idStr = RoadmapStore::formatCounterId(
+            prefix, allocated, store.counterIdWidth(projectId, prefix));
+    }
+
+    RoadmapStore::ItemWrite w;
+    w.projectId = projectId;
+    w.id        = idStr;
+    // roadmap-data-model.md § 7.1: `synthesised` is "the model made it
+    // … and every id the store allocates after cutover". A caller's
+    // `stable_id` is the same kind of thing — `parsed` would claim it
+    // matched the grammar in source text, and `quarantined` would file
+    // a first-class project id with the junk (ANTS-3761 sorts those
+    // last). The column CHECKs exactly these three.
+    w.idOrigin  = QStringLiteral("synthesised");
+    w.status    = status;
+    w.headline  = rcSanitizeBulletField(headline, 500);
+    w.sectionId = *sectionId;
+    // ANTS-5379 — promote_element puts the item where the narration was.
+    w.position  = replaceNarrationAt >= 0 ? replaceNarrationAt : maxPos + 1;
+    // INV-10 — provenance is per field. `status` and `headline` came
+    // from the caller; the five trailer keys and `body` are added by
+    // the fill below.
+    // ANTS-3838 — `id` is the one field here the caller may not have
+    // supplied, so it is the one that branches. roadmap-data-model.md
+    // § 7.7 reserves `store-generated` for "the `write
+    // (store-populated)` fields of § 4.1", and § 4.1 marks `id`
+    // exactly that: a counter / high-water allocation is the store's
+    // value, not an author's. Only an `id_strategy:"stable_prefix"`
+    // id was genuinely asserted by the caller. Distinct from
+    // `idOrigin`, which is `synthesised` on BOTH branches — that
+    // records how the id was FORMED, this records who SUPPLIED it.
+    w.provenance = QJsonObject{
+        {QStringLiteral("id"),
+         useStablePrefix ? QStringLiteral("asserted")
+                         : QStringLiteral("store-generated")},
+        {QStringLiteral("status"),   QStringLiteral("asserted")},
+        {QStringLiteral("headline"), QStringLiteral("asserted")},
+    };
+
+    // ANTS-4501 § 2.2 — `created` and `last_modified` at insert, on the
+    // store-write path only. § 2.2's `shipped` rule is a transition
+    // INTO shipped, and an insert whose status IS shipped is that
+    // transition: there is no earlier value that was already shipped,
+    // so INV-5's re-stamp trap cannot fire here. Left NULL the row
+    // would be shipped-with-no-date on the one path where the date is
+    // known exactly, and only an opt-in backfill would ever repair it.
+    w.created      = rlStampToday();
+    w.lastModified = w.created;
+    if (w.status == QLatin1String("shipped"))
+        w.shipped = w.created;
+    w.provenance.insert(QStringLiteral("created"),
+                        QStringLiteral("store-generated"));
+    w.provenance.insert(QStringLiteral("last_modified"),
+                        QStringLiteral("store-generated"));
+    if (!w.shipped.isEmpty())
+        w.provenance.insert(QStringLiteral("shipped"),
+                            QStringLiteral("store-generated"));
+
+    // § 2.5 / § 2.6 — body, the five trailer columns, and the refusal
+    // for a column the body would out-vote.
+    QStringList scrubbedNames;
+    int scrubbedUnnamed = 0;              // ANTS-4572
+    QStringList scrubbedFragments;        // ANTS-4938
+    QString shadowErr;
+    QStringList evNotPath;                // ANTS-4527
+    if (!rlFillItemBody(req, w, scrubbedNames, &shadowErr,
+                        &scrubbedUnnamed, &evNotPath,
+                        &scrubbedFragments))
+        return rlErr(QStringLiteral("body_shadowed"),
+            QStringLiteral("roadmap_log: %1").arg(shadowErr));
+
+    // ANTS-4426 — the advisory's records, taken from the STORE and not
+    // from the file. ANTS-3793 INV-2 makes the store's records equal
+    // the rendered file's; rcComputePossibleDuplicates reads only `id`
+    // and `headline`, both of which INV-2 covers. Read inside `mutate`
+    // before putItem(): after it, the new item would be reported as a
+    // duplicate of itself. A read that refuses drops the advisory
+    // rather than the append.
+    std::optional<QVector<RoadmapParse::BulletRecord>> preWriteBullets;
+    // ANTS-6466 — a refusal found inside the transaction, for the
+    // envelope; mutate() can return only a bool.
+    QString lateCode;
+    QString duplicateOf;
+    const bool force   = req.value(QStringLiteral("force")).toBool();
+    const bool hinted  = req.contains(QStringLiteral("id_hint"));
+
+    const auto mutate = [&](QString *err) -> bool {
+        // ANTS-6466 — another session's append can land between the
+        // reads above and this transaction (BEGIN IMMEDIATE). So the
+        // end position, the counter id and the duplicate check are
+        // re-read here, where no other writer can move them.
+        if (hasBefore) {
+            w.position = rlOpenGapBefore(store, *sectionId, beforePk, 1, err);
+            if (w.position < 0)
+                return false;
+        } else if (replaceNarrationAt < 0) {
+            const auto now = store.listElements(*sectionId, err);
+            if (!now)
+                return false;
+            int endPos = -1;
+            for (const RoadmapStore::ElementRow &e : *now)
+                endPos = std::max(endPos, e.position);
+            w.position = endPos + 1;
+        }
+        if (!useStablePrefix) {
+            const qint64 highWater =
+                rlStoreIdHighWater(store, projectId, prefix);
+            if (allocated <= highWater) {
+                if (hinted) {
+                    lateCode = QStringLiteral("id_taken");
+                    *err = QStringLiteral(
+                        "roadmap_log: id_hint %1 was taken by another "
+                        "write; the highest %2 id is now %3")
+                        .arg(allocated).arg(prefix).arg(highWater);
+                    return false;
+                }
+                allocated = highWater + 1;
+                idStr = RoadmapStore::formatCounterId(
+                    prefix, allocated,
+                    store.counterIdWidth(projectId, prefix));
+                w.id = idStr;
+            }
+        }
+        RoadmapSource::ReadError dupWhy = RoadmapSource::ReadError::None;
+        preWriteBullets = RoadmapSource::bulletsFromStore(
+            store, projectId, /*includeArchive=*/false, &dupWhy);
+        // ANTS-4487 § 4.5 — an exact duplicate refuses before the write.
+        if (preWriteBullets && !force) {
+            const QString dupId =
+                rcExactDuplicateId(*preWriteBullets, headline);
+            if (!dupId.isEmpty()) {
+                lateCode    = QStringLiteral("duplicate_item");
+                duplicateOf = dupId;
+                *err = QStringLiteral(
+                    "roadmap_log: the headline exactly matches %1; "
+                    "nothing was written. Pass force:true to file it "
+                    "anyway").arg(dupId);
+                return false;
+            }
+        }
+        // ANTS-5379 — UNIQUE (section_id, position) holds one row per
+        // position, so the narration goes before the item arrives.
+        if (replaceNarrationAt >= 0 &&
+            !store.deleteElement(*sectionId, replaceNarrationAt, err))
+            return false;
+        if (!store.putItem(w, err))
+            return false;
+        if (useStablePrefix)
+            return true;
+        // § 2.3 — record the allocation so the next one cannot reissue
+        // it. Advances only upward, so an id_hint below the store's
+        // high-water (already refused above) could not lower it anyway.
+        return store.raiseIdHighWater(projectId, prefix, allocated, err);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun, mutate,
+        &outcome, &writeErr);
+    QJsonObject env;
+    // ANTS-4593 — under dry_run the row keyed `idStr` is created inside
+    // the transaction and rolled back, so the gate can name an id that
+    // will exist nowhere. Hand it over so the refusal reports it apart
+    // from genuine offenders. Empty on a real write, where it is real.
+    if (rcRoadmapWriteRefused(
+            env, r, writeErr, outcome,
+            dryRun ? QStringList{idStr} : QStringList{})) {
+        // ANTS-6466 — applied after the mapper, which knows only the
+        // commitAndRender result (the ANTS-4577 pattern).
+        if (!lateCode.isEmpty()) {
+            env[QStringLiteral("code")]  = lateCode;
+            env[QStringLiteral("error")] = writeErr;
+        }
+        if (!duplicateOf.isEmpty())
+            env[QStringLiteral("duplicate_of")] = duplicateOf;
+        return QJsonDocument(env);
+    }
+
+    env[QStringLiteral("ok")]   = true;
+    // ANTS-4634 — a preview reports `would_be_id`, never `id`, for the
+    // reason ANTS-4508 gives: a caller reading one field takes the real
+    // write's key for a reservation, and nothing is reserved. That
+    // rename landed on the MARKDOWN branch only, and every migrated
+    // project takes THIS one — so the guard covered the path almost
+    // nobody runs while the path everybody runs still emitted `id`.
+    // Reported by finbreak and reproduced here against this project.
+    env[dryRun ? QStringLiteral("would_be_id")
+               : QStringLiteral("id")] = idStr;
+    env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
+    if (!storeRebuilt.isEmpty())
+        env[QStringLiteral("store_rebuilt")] = storeRebuilt;   // ANTS-5638
+    // No `line` / `bytes_written`: a store has no lines (ANTS-3793
+    // INV-2's declared field difference) and the render decides
+    // placement. `.roadmap-counter` is not the allocation SOURCE here
+    // either — but it is a cache of it, and the block below keeps it
+    // in step, so the two counter fields are reported when it moves.
+    //
+    // ANTS-4141 part 2 — reconcile the derived counter cache with the
+    // allocation the store just made. The store owns allocation (that
+    // item's own ruling) and roadmap-format.md § 3.5.1 calls
+    // `.roadmap-counter` a derived, per-machine cache rather than
+    // source. But everything that still READS it — a fresh clone, a
+    // hand append, a tool — allocates from it, and this path never
+    // wrote it, so it drifted by one per allocation. Measured
+    // 2026-08-19 on this project: 4402 against a store high-water of
+    // 4501.
+    //
+    // On EVERY allocation rather than only after a migration, which is
+    // the other defensible reading of that item: a cache refreshed
+    // only at migration time starts drifting again with the next
+    // append, and the drift is what the collision needs.
+    //
+    // BEST EFFORT, deliberately, and this is the half that decides the
+    // shape: the item is already committed and the files already
+    // rendered by the time we get here, so there is nothing to roll
+    // back, and failing an append because a CACHE could not be
+    // refreshed would turn a completed write into an error. The
+    // markdown path treats the same failure as fatal because there the
+    // counter IS the allocation source and the write can still be
+    // undone.
+    //
+    // Only when the file already exists: a project with no counter has
+    // nothing drifting, and creating one here would hand a
+    // stable-id or counter-less project a file it never had. Advance
+    // only upward, for the reason raiseIdHighWater() does the same.
+    // ANTS-4635 — lifted into rcRoadmapReconcileCounterCache() so
+    // op:append_batch's store branch can run the same reconciliation,
+    // which it never did. The reasoning that used to sit here is on the
+    // declaration in remotecontrol_internal.h.
+    if (!dryRun && !useStablePrefix)
+        rcRoadmapReconcileCounterCache(env, counterPath, allocated);
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    // ANTS-2043 — the near-duplicate advisory, kept: the records are
+    // the store's own items, read BEFORE the write so the new bullet
+    // cannot match itself (ANTS-4426).
+    if (preWriteBullets) {
+        const QJsonArray possibleDuplicates =
+            rcComputePossibleDuplicates(*preWriteBullets, headline);
+        if (!possibleDuplicates.isEmpty())
+            env[QStringLiteral("possible_duplicates")] =
+                possibleDuplicates;
+    }
+    rlAddScrubWarning(env, scrubbedNames, scrubbedUnnamed,
+                      scrubbedFragments, /*batch=*/false);
+    // ANTS-4527
+    if (const QJsonObject ev = rlEvidenceAdvisory(evNotPath); !ev.isEmpty())
+        rlAddWarning(env, ev);
+    // ANTS-4989 — the review-provenance advisory, on the same footing.
+    if (const QJsonObject rk = rlReviewKindAdvisory(kind, source);
+        !rk.isEmpty())
+        rlAddWarning(env, rk);
+    if (prefixGuessed)                              // ANTS-5353
+        rlAddWarning(env, rlGuessedPrefixAdvisory(prefix));
+    if (rcReturnHeadlineOnly(req))
+        env[QStringLiteral("post_bullets")] =
+            QJsonArray{ rcCompactBullet(idStr, status, headline) };
+    return QJsonDocument(env);
+}
+
+}  // namespace
+
 // ANTS-1424 — append path, split out of cmdRoadmapLog (ANTS-1433) so a
 // test can drive it without the m_main guard. op-dispatch + m_main
 // guard stay in cmdRoadmapLog; everything from field validation onward
@@ -481,345 +870,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
         if (rcRoadmapSourceRefused(refusal, why, seamErr))
             return QJsonDocument(refusal);
         if (target) {
-            RoadmapStore &store = *target->store;
-            const qint64 projectId = target->projectId;
-
-            // § 2.2 — create_section and bundle_row resolve a SECTION rather
-            // than an item, through findSection(); so does append, which files
-            // its new item into one.
-            const auto sectionId =
-                store.findSection(projectId, section, &seamErr);
-            if (!sectionId) {
-                // ANTS-4591 — rank near-misses here too. ANTS-4556 gave the
-                // FILE-backed refusal `candidates[]` + `sections_total`, and
-                // this arm — which every migrated project takes — kept a bare
-                // message under a different code. So the feature reached the
-                // path almost nobody runs, which is the same shape ANTS-4634
-                // had to repair for `would_be_id`.
-                //
-                // A hint, never a resolution: the write still refuses,
-                // because guessing which section was meant is how a
-                // composed body lands in the wrong one.
-                return QJsonDocument(rlSectionNotFound(store, projectId, section));
-            }
-            qint64 beforePk = 0;
-            if (hasBefore) {
-                const auto place = rlFindItemPlace(store, projectId, beforeId, &seamErr);
-                if (!place && !seamErr.isEmpty())
-                    return rlErr(QStringLiteral("store_failed"), seamErr);
-                if (!place || place->sectionId != *sectionId)
-                    return rlErr(QStringLiteral("bad_args"),
-                        QStringLiteral("roadmap_log: `before_id` \"%1\" is not filed "
-                                       "in section \"%2\"; nothing was written")
-                            .arg(rcdetail::ceSanitiseEcho(beforeId), section));
-                beforePk = place->pk;
-            }
-
-            // End-of-section position, pinned exactly as bundle_row's create
-            // case pins it: element carries UNIQUE (section_id, position) and
-            // item rows occupy positions too, so "at the end" left unpinned is a
-            // constraint violation rather than a mis-placement.
-            const auto elements = store.listElements(*sectionId, &seamErr);
-            if (!elements)
-                return rlErr(QStringLiteral("store_failed"), seamErr);
-            int maxPos = -1;
-            for (const RoadmapStore::ElementRow &e : *elements)
-                maxPos = std::max(maxPos, e.position);
-
-            // § 2.3 — allocation. `stable_prefix` is untouched by cutover: it
-            // takes the caller's id verbatim and consults neither idHighWater()
-            // nor raiseIdHighWater(), because a stable string id is not a
-            // counter value and seeding a counter from one would corrupt the
-            // next counter-project allocation on the same store.
-            QString idStr = stableId;
-            QString prefix;
-            bool prefixGuessed = false;   // ANTS-5353
-            qint64 allocated = 0;
-            if (!useStablePrefix) {
-                prefix = rlStoreCounterPrefix(store, projectId, idPrefixArg,
-                                              storeText, callerCanonical,
-                                              &prefixGuessed);
-                // ANTS-4631 — the store's own id columns decide this, with
-                // no reference to the rendered file. The corpus floor that
-                // used to live inside rlStoreIdHighWater() read a documented
-                // sample id as an allocation and burned ~5,370 ids.
-                const qint64 highWater =
-                    rlStoreIdHighWater(store, projectId, prefix);
-                allocated = highWater + 1;
-                if (req.contains(QStringLiteral("id_hint"))) {
-                    // The rule is the markdown path's, unchanged; only the
-                    // comparison's right-hand side moves to the floor
-                    // allocation itself uses.
-                    const qint64 hint =
-                        req.value(QStringLiteral("id_hint")).toInteger();
-                    if (hint <= highWater)
-                        return rlErr(QStringLiteral("id_taken"),
-                            QStringLiteral("roadmap_log: id_hint %1 is at or "
-                                           "below the highest existing %2 id "
-                                           "(%3) — pick a value > %3 or omit "
-                                           "the hint")
-                                .arg(hint).arg(prefix).arg(highWater));
-                    allocated = hint;
-                }
-                // ANTS-6738 — the width the prefix's ids already use.
-                idStr = RoadmapStore::formatCounterId(
-                    prefix, allocated, store.counterIdWidth(projectId, prefix));
-            }
-
-            RoadmapStore::ItemWrite w;
-            w.projectId = projectId;
-            w.id        = idStr;
-            // roadmap-data-model.md § 7.1: `synthesised` is "the model made it
-            // … and every id the store allocates after cutover". A caller's
-            // `stable_id` is the same kind of thing — `parsed` would claim it
-            // matched the grammar in source text, and `quarantined` would file
-            // a first-class project id with the junk (ANTS-3761 sorts those
-            // last). The column CHECKs exactly these three.
-            w.idOrigin  = QStringLiteral("synthesised");
-            w.status    = status;
-            w.headline  = rcSanitizeBulletField(headline, 500);
-            w.sectionId = *sectionId;
-            // ANTS-5379 — promote_element puts the item where the narration was.
-            w.position  = replaceNarrationAt >= 0 ? replaceNarrationAt : maxPos + 1;
-            // INV-10 — provenance is per field. `status` and `headline` came
-            // from the caller; the five trailer keys and `body` are added by
-            // the fill below.
-            // ANTS-3838 — `id` is the one field here the caller may not have
-            // supplied, so it is the one that branches. roadmap-data-model.md
-            // § 7.7 reserves `store-generated` for "the `write
-            // (store-populated)` fields of § 4.1", and § 4.1 marks `id`
-            // exactly that: a counter / high-water allocation is the store's
-            // value, not an author's. Only an `id_strategy:"stable_prefix"`
-            // id was genuinely asserted by the caller. Distinct from
-            // `idOrigin`, which is `synthesised` on BOTH branches — that
-            // records how the id was FORMED, this records who SUPPLIED it.
-            w.provenance = QJsonObject{
-                {QStringLiteral("id"),
-                 useStablePrefix ? QStringLiteral("asserted")
-                                 : QStringLiteral("store-generated")},
-                {QStringLiteral("status"),   QStringLiteral("asserted")},
-                {QStringLiteral("headline"), QStringLiteral("asserted")},
-            };
-
-            // ANTS-4501 § 2.2 — `created` and `last_modified` at insert, on the
-            // store-write path only. § 2.2's `shipped` rule is a transition
-            // INTO shipped, and an insert whose status IS shipped is that
-            // transition: there is no earlier value that was already shipped,
-            // so INV-5's re-stamp trap cannot fire here. Left NULL the row
-            // would be shipped-with-no-date on the one path where the date is
-            // known exactly, and only an opt-in backfill would ever repair it.
-            w.created      = rlStampToday();
-            w.lastModified = w.created;
-            if (w.status == QLatin1String("shipped"))
-                w.shipped = w.created;
-            w.provenance.insert(QStringLiteral("created"),
-                                QStringLiteral("store-generated"));
-            w.provenance.insert(QStringLiteral("last_modified"),
-                                QStringLiteral("store-generated"));
-            if (!w.shipped.isEmpty())
-                w.provenance.insert(QStringLiteral("shipped"),
-                                    QStringLiteral("store-generated"));
-
-            // § 2.5 / § 2.6 — body, the five trailer columns, and the refusal
-            // for a column the body would out-vote.
-            QStringList scrubbedNames;
-            int scrubbedUnnamed = 0;              // ANTS-4572
-            QStringList scrubbedFragments;        // ANTS-4938
-            QString shadowErr;
-            QStringList evNotPath;                // ANTS-4527
-            if (!rlFillItemBody(req, w, scrubbedNames, &shadowErr,
-                                &scrubbedUnnamed, &evNotPath,
-                                &scrubbedFragments))
-                return rlErr(QStringLiteral("body_shadowed"),
-                    QStringLiteral("roadmap_log: %1").arg(shadowErr));
-
-            // ANTS-4426 — the advisory's records, taken from the STORE and not
-            // from the file. ANTS-3793 INV-2 makes the store's records equal
-            // the rendered file's; rcComputePossibleDuplicates reads only `id`
-            // and `headline`, both of which INV-2 covers. Read inside `mutate`
-            // before putItem(): after it, the new item would be reported as a
-            // duplicate of itself. A read that refuses drops the advisory
-            // rather than the append.
-            std::optional<QVector<RoadmapParse::BulletRecord>> preWriteBullets;
-            // ANTS-6466 — a refusal found inside the transaction, for the
-            // envelope; mutate() can return only a bool.
-            QString lateCode;
-            QString duplicateOf;
-            const bool force   = req.value(QStringLiteral("force")).toBool();
-            const bool hinted  = req.contains(QStringLiteral("id_hint"));
-
-            const auto mutate = [&](QString *err) -> bool {
-                // ANTS-6466 — another session's append can land between the
-                // reads above and this transaction (BEGIN IMMEDIATE). So the
-                // end position, the counter id and the duplicate check are
-                // re-read here, where no other writer can move them.
-                if (hasBefore) {
-                    w.position = rlOpenGapBefore(store, *sectionId, beforePk, 1, err);
-                    if (w.position < 0)
-                        return false;
-                } else if (replaceNarrationAt < 0) {
-                    const auto now = store.listElements(*sectionId, err);
-                    if (!now)
-                        return false;
-                    int endPos = -1;
-                    for (const RoadmapStore::ElementRow &e : *now)
-                        endPos = std::max(endPos, e.position);
-                    w.position = endPos + 1;
-                }
-                if (!useStablePrefix) {
-                    const qint64 highWater =
-                        rlStoreIdHighWater(store, projectId, prefix);
-                    if (allocated <= highWater) {
-                        if (hinted) {
-                            lateCode = QStringLiteral("id_taken");
-                            *err = QStringLiteral(
-                                "roadmap_log: id_hint %1 was taken by another "
-                                "write; the highest %2 id is now %3")
-                                .arg(allocated).arg(prefix).arg(highWater);
-                            return false;
-                        }
-                        allocated = highWater + 1;
-                        idStr = RoadmapStore::formatCounterId(
-                            prefix, allocated,
-                            store.counterIdWidth(projectId, prefix));
-                        w.id = idStr;
-                    }
-                }
-                RoadmapSource::ReadError dupWhy = RoadmapSource::ReadError::None;
-                preWriteBullets = RoadmapSource::bulletsFromStore(
-                    store, projectId, /*includeArchive=*/false, &dupWhy);
-                // ANTS-4487 § 4.5 — an exact duplicate refuses before the write.
-                if (preWriteBullets && !force) {
-                    const QString dupId =
-                        rcExactDuplicateId(*preWriteBullets, headline);
-                    if (!dupId.isEmpty()) {
-                        lateCode    = QStringLiteral("duplicate_item");
-                        duplicateOf = dupId;
-                        *err = QStringLiteral(
-                            "roadmap_log: the headline exactly matches %1; "
-                            "nothing was written. Pass force:true to file it "
-                            "anyway").arg(dupId);
-                        return false;
-                    }
-                }
-                // ANTS-5379 — UNIQUE (section_id, position) holds one row per
-                // position, so the narration goes before the item arrives.
-                if (replaceNarrationAt >= 0 &&
-                    !store.deleteElement(*sectionId, replaceNarrationAt, err))
-                    return false;
-                if (!store.putItem(w, err))
-                    return false;
-                if (useStablePrefix)
-                    return true;
-                // § 2.3 — record the allocation so the next one cannot reissue
-                // it. Advances only upward, so an id_hint below the store's
-                // high-water (already refused above) could not lower it anyway.
-                return store.raiseIdHighWater(projectId, prefix, allocated, err);
-            };
-
-            RoadmapRender::Outcome outcome;
-            QString writeErr;
-            const auto r = RoadmapWrite::commitAndRender(
-                store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun, mutate,
-                &outcome, &writeErr);
-            QJsonObject env;
-            // ANTS-4593 — under dry_run the row keyed `idStr` is created inside
-            // the transaction and rolled back, so the gate can name an id that
-            // will exist nowhere. Hand it over so the refusal reports it apart
-            // from genuine offenders. Empty on a real write, where it is real.
-            if (rcRoadmapWriteRefused(
-                    env, r, writeErr, outcome,
-                    dryRun ? QStringList{idStr} : QStringList{})) {
-                // ANTS-6466 — applied after the mapper, which knows only the
-                // commitAndRender result (the ANTS-4577 pattern).
-                if (!lateCode.isEmpty()) {
-                    env[QStringLiteral("code")]  = lateCode;
-                    env[QStringLiteral("error")] = writeErr;
-                }
-                if (!duplicateOf.isEmpty())
-                    env[QStringLiteral("duplicate_of")] = duplicateOf;
-                return QJsonDocument(env);
-            }
-
-            env[QStringLiteral("ok")]   = true;
-            // ANTS-4634 — a preview reports `would_be_id`, never `id`, for the
-            // reason ANTS-4508 gives: a caller reading one field takes the real
-            // write's key for a reservation, and nothing is reserved. That
-            // rename landed on the MARKDOWN branch only, and every migrated
-            // project takes THIS one — so the guard covered the path almost
-            // nobody runs while the path everybody runs still emitted `id`.
-            // Reported by finbreak and reproduced here against this project.
-            env[dryRun ? QStringLiteral("would_be_id")
-                       : QStringLiteral("id")] = idStr;
-            env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
-            if (!storeRebuilt.isEmpty())
-                env[QStringLiteral("store_rebuilt")] = storeRebuilt;   // ANTS-5638
-            // No `line` / `bytes_written`: a store has no lines (ANTS-3793
-            // INV-2's declared field difference) and the render decides
-            // placement. `.roadmap-counter` is not the allocation SOURCE here
-            // either — but it is a cache of it, and the block below keeps it
-            // in step, so the two counter fields are reported when it moves.
-            //
-            // ANTS-4141 part 2 — reconcile the derived counter cache with the
-            // allocation the store just made. The store owns allocation (that
-            // item's own ruling) and roadmap-format.md § 3.5.1 calls
-            // `.roadmap-counter` a derived, per-machine cache rather than
-            // source. But everything that still READS it — a fresh clone, a
-            // hand append, a tool — allocates from it, and this path never
-            // wrote it, so it drifted by one per allocation. Measured
-            // 2026-08-19 on this project: 4402 against a store high-water of
-            // 4501.
-            //
-            // On EVERY allocation rather than only after a migration, which is
-            // the other defensible reading of that item: a cache refreshed
-            // only at migration time starts drifting again with the next
-            // append, and the drift is what the collision needs.
-            //
-            // BEST EFFORT, deliberately, and this is the half that decides the
-            // shape: the item is already committed and the files already
-            // rendered by the time we get here, so there is nothing to roll
-            // back, and failing an append because a CACHE could not be
-            // refreshed would turn a completed write into an error. The
-            // markdown path treats the same failure as fatal because there the
-            // counter IS the allocation source and the write can still be
-            // undone.
-            //
-            // Only when the file already exists: a project with no counter has
-            // nothing drifting, and creating one here would hand a
-            // stable-id or counter-less project a file it never had. Advance
-            // only upward, for the reason raiseIdHighWater() does the same.
-            // ANTS-4635 — lifted into rcRoadmapReconcileCounterCache() so
-            // op:append_batch's store branch can run the same reconciliation,
-            // which it never did. The reasoning that used to sit here is on the
-            // declaration in remotecontrol_internal.h.
-            if (!dryRun && !useStablePrefix)
-                rcRoadmapReconcileCounterCache(env, counterPath, allocated);
-            rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
-            // ANTS-2043 — the near-duplicate advisory, kept: the records are
-            // the store's own items, read BEFORE the write so the new bullet
-            // cannot match itself (ANTS-4426).
-            if (preWriteBullets) {
-                const QJsonArray possibleDuplicates =
-                    rcComputePossibleDuplicates(*preWriteBullets, headline);
-                if (!possibleDuplicates.isEmpty())
-                    env[QStringLiteral("possible_duplicates")] =
-                        possibleDuplicates;
-            }
-            rlAddScrubWarning(env, scrubbedNames, scrubbedUnnamed,
-                              scrubbedFragments, /*batch=*/false);
-            // ANTS-4527
-            if (const QJsonObject ev = rlEvidenceAdvisory(evNotPath); !ev.isEmpty())
-                rlAddWarning(env, ev);
-            // ANTS-4989 — the review-provenance advisory, on the same footing.
-            if (const QJsonObject rk = rlReviewKindAdvisory(kind, source);
-                !rk.isEmpty())
-                rlAddWarning(env, rk);
-            if (prefixGuessed)                              // ANTS-5353
-                rlAddWarning(env, rlGuessedPrefixAdvisory(prefix));
-            if (rcReturnHeadlineOnly(req))
-                env[QStringLiteral("post_bullets")] =
-                    QJsonArray{ rcCompactBullet(idStr, status, headline) };
-            return QJsonDocument(env);
+            const RlAppendInput in{
+                .req = req, .section = section, .status = status,
+                .headline = headline, .kind = kind, .source = source,
+                .hasBefore = hasBefore, .beforeId = beforeId,
+                .replaceNarrationAt = replaceNarrationAt, .stableId = stableId,
+                .useStablePrefix = useStablePrefix, .idPrefixArg = idPrefixArg,
+                .dryRun = dryRun, .callerCanonical = callerCanonical,
+                .roadmapPath = roadmapPath, .counterPath = counterPath};
+            return rlAppendToStore(in, *target->store, target->projectId,
+                                   storeText, storeRebuilt);
         }
     }
     if (hasBefore)

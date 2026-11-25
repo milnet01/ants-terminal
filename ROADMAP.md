@@ -109263,7 +109263,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L19-F10).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6238] **Split cmdRoadmapLogAppend into a store branch and a markdown branch.**
+- ✅ [ANTS-6238] **Split cmdRoadmapLogAppend into a store branch and a markdown branch.**
   From ANTS-6128. The bare block in cmdRoadmapLogAppend returns for
   every store-backed project; everything after it is markdown-only, and
   it redeclares idStr, prefixGuessed and scrubbedNames. Keep the
@@ -109272,6 +109272,13 @@ worked after these.
   Hot reload: none needed.
   The 2026-11-06 reviews also found this: row 830
   `src/remotecontrol_roadmap_log.cpp:392`. Details: docs/reviews/close-findings-2026-11-06.md.
+  The store branch (the body of `if (target)`) moved unchanged into
+  rlAppendToStore (file-static, remotecontrol_roadmap_log.cpp), fed by
+  an RlAppendInput struct built from the validated fields;
+  cmdRoadmapLogAppend keeps the shared checks and the markdown branch,
+  so idStr, prefixGuessed and scrubbedNames are no longer declared twice
+  in one function. ANTS-1424-INV-6 and INV-8 tokens are where they were.
+  Full build without warnings; roadmap tests 1720/1720.
   **Layman:** The function that adds a roadmap item is over a thousand lines and is really two functions joined together.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F13).
