@@ -196,8 +196,8 @@ bool looksLikeDeclaration(const QString &line) {
     return !kClassKeys.contains(head.left(head.indexOf(QLatin1Char(' '))));
 }
 
-// Per-call compiled anchors for one language. `def` holds 1-2 patterns
-// (a line is a definition if any matches); `call` is the call anchor.
+// Per-call compiled anchors for one language. `def` holds the definition
+// patterns (a line is a definition if any matches); `call` is the call anchor.
 // `cppKind` selects the trailing-`;` declaration/definition split.
 struct Anchors {
     QVector<QRegularExpression> def;

@@ -37,8 +37,8 @@ Lang parseLang(const QString &s);
 struct Match {
     QString file;       // project-relative (root prefix stripped)
     int     line = 0;
-    QString signature;  // the matched signature line (trimmed by FileOutline)
-    QString kind;       // FileOutline kind: "class" / "func" / "qt"
+    QString signature;  // the matched signature, as FileOutline emits it
+    QString kind;       // the symbol's FileOutline kind
     QString lang;       // "cpp" / "py" / "generic"
     double  score = 0.0;// Jaccard similarity 0..1 (rounded to 4 dp)
 };

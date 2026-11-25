@@ -57,7 +57,7 @@ QStringList tokenise(const QString &topic);
 // Expand a single token into all its likely casing/separator variants
 // (lowercase, snake_case, camelCase, dropped-separator). De-duplicated;
 // case-insensitive matching is the caller's job (the variants here are
-// for filename matching).
+// the filename needles and the content needles).
 QStringList variantsForToken(const QString &token);
 
 // Resolve a free-text topic to ranked source files under projectRoot.

@@ -1,4 +1,5 @@
-// ANTS-1436 — pagination + auto-truncate helper for cmdRoadmapQuery.
+// ANTS-1436 — pagination + auto-truncate helper for the paged verbs
+// (roadmap_query, changelog_query).
 // Pure (Qt6::Core-only); lives in ants_core_lib. Stateless apart from the
 // live offload threshold softCapBytes() reads (ANTS-5571) — args
 // in, slice + envelope-augment hints out. See docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md.
@@ -55,10 +56,11 @@ struct PageResult {
                                      // lean shape to fit more items in budget.
 };
 
-// Slice `filtered` per `offset` + `limit`, applying auto-truncate
-// (measure-then-cut) when `limit < 0` (sentinel meaning
-// "caller omitted limit; auto-pick"). Returns a PageResult ready to
-// fold into the cmdRoadmapQuery envelope.
+// Slice `filtered` per `offset` + `limit`. Either way the slice is cut to the
+// byte budget, keeping at least one row: an explicit `limit` is a cap, not a
+// promise (ANTS-5651); `limit <= 0` (sentinel meaning "caller omitted limit;
+// auto-pick") takes the budget as the only cut. Returns a PageResult ready to
+// fold into a roadmap_query or changelog_query envelope.
 //
 // Argument semantics:
 // - `filtered`: post-status, post-rollup bullet array (caller has
@@ -66,9 +68,10 @@ struct PageResult {
 // - `offset`: 0-based start index. Clamped to [0, filtered.size()].
 //   Past-end is allowed; returns empty slice with offset == total.
 // - `limit`: caller's explicit limit (clamped to [kMinLimit,
-//   kMaxLimit]) when >= 1; pass -1 to request auto-pick (caller
-//   omitted the arg). 0 is invalid and the caller must reject
-//   upstream with bad_args before calling this helper.
+//   kMaxLimit]) when >= 1, as a cap: fewer rows come back when the byte
+//   budget cuts first. Pass -1 to request auto-pick (caller omitted the
+//   arg). 0 also takes the auto path, but callers should reject it
+//   upstream with bad_args.
 // - `downshift` (ANTS-3543): optional lean projector. When set AND the
 //   auto path (limit <= 0) truncated the fat set, re-pages a lean copy of
 //   the FULL `filtered` so a scanning caller keeps every row's identity

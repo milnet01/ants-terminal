@@ -29,7 +29,8 @@ namespace CodebaseIndex {
 // by the same rule — declared in codebaseindex.h.
 bool isIndexableSuffix(const QString &suffixLower) {
     // The in-step rule: count → outline → symbol query cover the same files,
-    // kept in step with SymbolQuery::langForExt. Every family is delegated
+    // kept in step with SymbolQuery::langForExt, except `.lua` and `.pyi`:
+    // it maps both and this gate admits neither. Every family is delegated
     // to FileOutline rather than re-listed. ANTS-2148 (the C family) and
     // ANTS-2150 (the brace family) each once had to patch a copy here.
     return FileOutline::isCFamilyExt(suffixLower)

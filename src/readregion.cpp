@@ -157,9 +157,7 @@ QString stripCommentsForScan(const QString &line, bool &inBlock) {
     return out;
 }
 
-// Resolve a symbol name to a 1-based inclusive [start, end] line range via
-// the flat file_outline (no nesting level exists). end is the line before
-// the next outline entry, or INT_MAX (to EOF) when the match is last.
+// A symbol's 1-based inclusive [start, end] line range, from resolveSymbol.
 struct SymRange {
     bool found      = false;
     int  start      = 0;
@@ -357,6 +355,10 @@ int braceBalancedEndLine(const QString &absPath, int startLine) {
     return (end == 0 && gaveUp) ? -1 : end;
 }
 
+// Resolve a symbol name to a SymRange via the flat file_outline (no nesting
+// level exists). end is the line before the next outline entry, or INT_MAX
+// (to EOF) when the match is last. A brace-language aggregate or function
+// instead ends at its brace-matched close (ANTS-2222, ANTS-2224).
 SymRange resolveSymbol(const QString &absPath, const QString &name) {
     SymRange r;
     // Ask for the cap so resolution sees every symbol compute will return.

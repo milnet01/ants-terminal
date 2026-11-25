@@ -304,9 +304,9 @@ Result findSources(const QString &topic,
         }
 
         // Content score: open the file (up to contentByteCap bytes),
-        // count total variant-occurrence hits across all tokens. We
-        // already know the filename matched; even files that didn't
-        // match by name can rank in via content.
+        // count total variant-occurrence hits across all tokens. The
+        // filename may not have matched; a file that didn't match by
+        // name can still rank in via content.
         int contentHits = 0;
         QStringList contentEvidence;
         QFile f(rootCanonical + QLatin1Char('/') + rel);

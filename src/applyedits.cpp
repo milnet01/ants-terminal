@@ -16,7 +16,7 @@ namespace ApplyEdits {
 namespace {
 
 // ANTS-4418 — collapse runs of horizontal whitespace to one space and drop
-// trailing whitespace, so two spellings that differ only in spacing compare
+// leading and trailing whitespace, so two spellings that differ only in spacing compare
 // equal. Deliberately NOT a full normalisation: newlines are left alone, since
 // they are what the line split below is keyed on.
 QString wsNormalised(const QString &s) {

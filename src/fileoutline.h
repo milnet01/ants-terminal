@@ -32,7 +32,7 @@ constexpr int kMaxSymbolsCap = 1000;
 // envelope (still useful for orientation).
 //
 // ANTS-2150 — `Generic` is one shared brace-family regex set (Rust, Go,
-// JS/TS, Java, C#, Kotlin, Swift, Scala, PHP). It is auto-detected from
+// JS/TS, Java, C#, Kotlin, Swift, Scala, PHP, Ruby, UnrealScript). It is auto-detected from
 // the file extension (pickModeByExt); the response `language` field still
 // reports the precise language name (rust / go / typescript …) so the map
 // stays useful. One mode covers many languages because their top-level
