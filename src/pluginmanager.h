@@ -87,8 +87,8 @@ public:
     void firePaletteAction(const QString &pluginName, const QString &actionId);
 
     // ANTS-1750 — targeted dispatch to one named plugin's worker (the
-    // queued twin of fireEvent's broadcast loop, sharing the
-    // healthyEngines() filter). The only supported entry into a worker
+    // queued twin of fireEvent's broadcast loop; it skips demoted engines
+    // as healthyEngines() does). The only supported entry into a worker
     // from the GUI thread; it queues and never blocks. Callers must NOT
     // use engineFor() to invoke a
     // lua_*-touching method on the GUI thread. firePaletteAction() and the

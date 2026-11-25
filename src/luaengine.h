@@ -312,6 +312,8 @@ private:
     static quint32 eventBit(PluginEvent event) {
         return 1u << static_cast<int>(event);
     }
+    // PaletteAction must stay the LAST PluginEvent value, or this guard stops
+    // covering the newer ones.
     static_assert(static_cast<int>(PluginEvent::PaletteAction) < 32,
                   "m_handledEvents holds one bit per PluginEvent");
 
@@ -336,7 +338,11 @@ private:
     // waiting on the GUI thread. It is not the plugin's time, so the hook
     // subtracts it from the budget. Worker-only; reset in startPcallBudget().
     qint64 m_pcallWaitedMs = 0;
-    qint64 m_pcallBudgetMs   = 1500;  // Tunable via setPcallBudgetMs().
+    // Default budget: big enough to let a normal plugin finish (most
+    // fire-and-forget handlers complete in single-digit ms), small enough
+    // that the user notices a stall as "snappy still" rather than "frozen."
+    // runQuery and the kill-path tests set their own via setPcallBudgetMs().
+    qint64 m_pcallBudgetMs   = 1500;
     QString m_recentOutput;
     QString m_cwd;
     // ANTS-2093 — canonical caller_cwd that scopes project.* reads in query

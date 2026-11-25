@@ -61,7 +61,7 @@ bool PluginManager::devMode() {
 
 PluginManager::PluginManager(QObject *parent) : QObject(parent) {
     // Hot-reload watcher — only used when ANTS_PLUGIN_DEV=1. Idle cost is
-    // zero because we never call watchPaths() in the non-dev path.
+    // zero because we never call addPath() in the non-dev path.
     m_watcher = new QFileSystemWatcher(this);
     // Debounce: editors often write-truncate-write, and a save can touch
     // several files. Each change restarts one timer, so a burst of changes
@@ -478,9 +478,8 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
 
     // Scan for plugin directories containing init.lua. NoSymLinks
     // rejects sub-entries whose name resolves through a symlink
-    // (the per-entry canonical-path check below catches more exotic
-    // cases — bind mounts, hardlinks under different names — but
-    // NoSymLinks is the cheap first-pass filter).
+    // (the per-entry canonical-path check below is a backstop that
+    // catches symlinks only; NoSymLinks is the cheap first-pass filter).
     QStringList dirs = dir.entryList(
         QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
 
@@ -495,10 +494,9 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
 
         // 0.7.33: confirm the entry's canonical path is anchored
         // INSIDE the canonical plugin root. NoSymLinks above filters
-        // most escape patterns; this check picks up the residue
-        // (entry that exists at scan time but resolves outside via a
-        // bind mount, a chain through a non-symlink the kernel has
-        // remapped, etc.). Reject silently — a plugin tree shouldn't
+        // most escape patterns; this check is a backstop that catches
+        // symlinks only (canonicalFilePath follows symlinks; it cannot
+        // see a bind mount). Reject silently — a plugin tree shouldn't
         // contain anything that needs canonicalization beyond a
         // single component.
         const QString canonicalPlugin =
@@ -573,11 +571,10 @@ bool PluginManager::stillWedged(const PluginInfo &info) {
 }
 
 void PluginManager::loadPlugin(const PluginInfo &info) {
-    // ANTS-1370 (lane-6 L-4) — belt-and-braces duplicate-name guard. Even
-    // after the name-spoofing fix (lane-6 C-1), two plugin directories that
-    // resolve to the same canonical name (symlink shenanigans) could still
-    // collide silently on m_engines.insert below, leaking the first engine +
-    // worker thread. Refuse the second load up front.
+    // ANTS-1370 (lane-6 L-4) — defensive duplicate-name guard. info.name is a
+    // directory name from one entryList call, so two entries cannot share it
+    // today; a second load under a taken name would collide silently on
+    // m_engines.insert below and leak the first engine + worker thread.
     if (m_engines.contains(info.name)) {
         emit logMessage(QString("Skipping duplicate plugin name: %1").arg(info.name));
         return;

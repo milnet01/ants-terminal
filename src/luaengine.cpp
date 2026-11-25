@@ -277,7 +277,7 @@ void LuaEngine::instructionHook(lua_State *L, lua_Debug * /*ar*/) {
     // fired for this pcall, every subsequent hook fire raises
     // luaL_error unconditionally. A Lua-level inner pcall in the
     // plugin will still catch the longjmp, but with the count-mask
-    // threshold dropped to 1 below (see "first expiry" branch) the
+    // threshold dropped to 1 below (see the `wallExpired` branch) the
     // plugin gets at most one VM instruction or one line-change
     // between catches. Loop-nested attacks unwind through the
     // engine's outer lua_pcall the moment the post-catch instruction
@@ -315,11 +315,7 @@ void LuaEngine::startPcallBudget() {
     m_killed = false;
     lua_sethook(m_state, &LuaEngine::instructionHook,
                 LUA_MASKCOUNT | LUA_MASKLINE, 100000);
-    // The default budget is big enough to let a normal plugin finish
-    // (most fire-and-forget handlers complete in single-digit ms), small
-    // enough that the user notices a stall as "snappy still" rather than
-    // "frozen." runQuery and the kill-path tests set their own budget
-    // through `setPcallBudgetMs()`.
+    // The default budget and why it is that size: see m_pcallBudgetMs.
     m_pcallTimer.start();  // ANTS-2205 — monotonic budget clock
     m_pcallWaitedMs = 0;
 }
@@ -1192,8 +1188,9 @@ struct QueryZombie {
 };
 QVector<QueryZombie> g_queryZombies;
 // ANTS-2194 — hard ceiling on wedged query workers. A worker can't be reaped
-// while it is wedged, so an unbounded wedge-loop would leak each wedged
-// worker's stack (LuaEngine::kWorkerStackBytes) and its result slot. Past
+// while it is wedged, so an unbounded wedge-loop would leak, per wedged
+// worker, its stack (LuaEngine::kWorkerStackBytes), its LuaEngine's Lua heap
+// (up to MAX_LUA_MEMORY) and its result slot. Past
 // this cap runQueryThreaded refuses new threaded queries (and logs the count) so
 // the leak is bounded and the pathology observable rather than silent.
 constexpr int kMaxQueryZombies = 64;
