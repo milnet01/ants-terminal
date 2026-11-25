@@ -417,11 +417,9 @@ public:
     }
     // ANTS-4932 — serverInfo.name in the initialize reply.
     void setServerName(const QString &name) { m_serverName = name; }
-    // ANTS-5736 — text for the initialize reply's `instructions`, asked for on
-    // each handshake; empty text, or no provider (the default), sends none.
-    void setInstructionsProvider(std::function<QString()> provider) {
-        m_instructionsProvider = std::move(provider);
-    }
+    // ANTS-5736 — the initialize reply's `instructions`; empty, the default,
+    // sends none.
+    void setInitializeInstructions(const QString &text) { m_initializeInstructions = text; }
     // ANTS-4659 — where a call's undeclared argument names are recorded
     // (McpUndeclaredArgs). Empty, the default, records nothing, so a test
     // that dispatches never writes the user's survey file.
@@ -850,7 +848,7 @@ private:
     QSet<QString> m_forwardedTools;
     Forwarder m_forwarder;
     QString m_serverName = QStringLiteral("ants-terminal");
-    std::function<QString()> m_instructionsProvider;   // ANTS-5736
+    QString m_initializeInstructions;   // ANTS-5736
     QString m_undeclaredArgsLedgerPath;   // ANTS-4659
     VerifyTrustPromptHandler m_verifyTrustPromptHandler;   // ANTS-5464
     // ANTS-1253: per-tool providers consolidated into a single

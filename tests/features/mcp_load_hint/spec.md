@@ -7,7 +7,10 @@ each one loaded with a ToolSearch `select:` query, and sends the most used
 as one ready-made load line in the reply's `instructions`.
 
 Code: `src/mcploadhint.{h,cpp}`; wired in `src/mcpdmain.cpp` through
-`ClaudeIntegration::setInstructionsProvider()`.
+`ClaudeIntegration::setInitializeInstructions()`, once every verb is
+registered. Plain text rather than a callback: one ants-mcpd process
+serves one session, and ANTS-1253 keeps provider callbacks out of
+`ClaudeIntegration`.
 
 ## Invariants
 
@@ -20,14 +23,16 @@ Code: `src/mcploadhint.{h,cpp}`; wired in `src/mcpdmain.cpp` through
   registers counts, so a retired verb and another server's tool are left
   out. Only the newest `maxFiles` transcripts are read. Ties rank by name.
   At most `maxNames` are returned. *Test:* `RanksToolsBySessionsThatLoadedThem`.
-- **INV-3 — the reply.** With a provider returning text, `initialize`
-  carries it as `instructions`; with none, or empty text, the key is
-  absent. *Test:* `InitializeCarriesTheHintOnlyWhenThereIsOne`.
+- **INV-3 — the reply.** With instructions set, `initialize` carries them
+  as `instructions`; unset or empty, the key is absent. *Test:*
+  `InitializeCarriesTheHintOnlyWhenThereIsOne`.
 
 ## Would break this
 
 - Counting every `select:` occurrence rather than once per transcript:
   Claude Code writes each tool call more than once, so one session would
   outrank several.
-- Setting a provider in the terminal's own MCP server: its folder is the
+- Setting instructions in the terminal's own MCP server: its folder is the
   terminal's, not the session's.
+- Computing the text before the forwarded verbs are registered: a tool
+  served through the terminal would never be named.

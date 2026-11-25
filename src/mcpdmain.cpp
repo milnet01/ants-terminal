@@ -198,14 +198,6 @@ int main(int argc, char **argv) {
     ClaudeIntegration pipeline;
     pipeline.setMcpEnabled(config.claudeMcpEnabled());
     pipeline.setServerName(QStringLiteral("ants-mcpd"));
-    // ANTS-5736 — Claude Code starts this process in the session's folder, so
-    // its cwd names the project whose transcripts say which tools it loads.
-    pipeline.setInstructionsProvider([&pipeline] {
-        const QStringList names = pipeline.registeredToolNames();
-        return mcp::loadHintText(mcp::recentlyLoadedTools(
-            mcp::transcriptDirFor(QDir::currentPath()),
-            QSet<QString>(names.cbegin(), names.cend())));
-    });
 
     ants::ServerCwdRootProvider roots;
     RemoteControl rc(nullptr, nullptr, &roots);
@@ -284,6 +276,16 @@ int main(int argc, char **argv) {
             forwarder.forward(TokenUsageEngine::wholeReportRequest(line),
                               std::move(onReply), std::move(onFail));
         });
+
+    // ANTS-5736 — after every verb, forwarded ones included, is registered.
+    // Claude Code starts this process in the session's folder, so its cwd
+    // names the project whose transcripts say which tools it loads.
+    {
+        const QStringList names = pipeline.registeredToolNames();
+        pipeline.setInitializeInstructions(mcp::loadHintText(mcp::recentlyLoadedTools(
+            mcp::transcriptDirFor(QDir::currentPath()),
+            QSet<QString>(names.cbegin(), names.cend()))));
+    }
 
     // ANTS-5311 § 2.4 — this process's usage snapshot, so the terminal's
     // token_usage and savings chip count the calls served here. The lock is

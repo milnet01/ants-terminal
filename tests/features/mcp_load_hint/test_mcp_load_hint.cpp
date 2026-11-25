@@ -95,11 +95,11 @@ TEST(McpLoadHint, RanksToolsBySessionsThatLoadedThem) {
 TEST(McpLoadHint, InitializeCarriesTheHintOnlyWhenThereIsOne) {
     ClaudeIntegration ci;
     EXPECT_FALSE(initialize(ci).contains(QStringLiteral("instructions")))
-        << "no provider: no instructions";
-    ci.setInstructionsProvider([] { return QString(); });
-    EXPECT_FALSE(initialize(ci).contains(QStringLiteral("instructions")))
-        << "empty text: no instructions";
-    ci.setInstructionsProvider([] { return QStringLiteral("load these"); });
+        << "the default sends no instructions";
+    ci.setInitializeInstructions(QStringLiteral("load these"));
     EXPECT_EQ(initialize(ci).value(QStringLiteral("instructions")).toString(),
               QStringLiteral("load these"));
+    ci.setInitializeInstructions(QString());
+    EXPECT_FALSE(initialize(ci).contains(QStringLiteral("instructions")))
+        << "empty text sends none";
 }

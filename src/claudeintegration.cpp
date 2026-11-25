@@ -1736,9 +1736,8 @@ QJsonObject ClaudeIntegration::mcpInitialize() {
     result["protocolVersion"] = "2025-11-25";
     result["capabilities"] = caps;
     result["serverInfo"] = serverInfo;
-    if (m_instructionsProvider)   // ANTS-5736
-        if (const QString text = m_instructionsProvider(); !text.isEmpty())
-            result["instructions"] = text;
+    if (!m_initializeInstructions.isEmpty())   // ANTS-5736
+        result["instructions"] = m_initializeInstructions;
     return result;
 }
 
