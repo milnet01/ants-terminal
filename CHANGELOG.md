@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log`'s body editor finds its target in the markdown file through its own named step, so the part that runs only for file-backed roadmaps reads as such** (ANTS-6239)
+
 - **`roadmap_log`'s add-an-item code is split in two: one function for projects kept in the roadmap store and one for plain markdown roadmaps** (ANTS-6238)
 
 - **`roadmap_log` finds and reads the roadmap through one shared step, and adding items or changing their status reads the file once instead of two or three times** (ANTS-6237)

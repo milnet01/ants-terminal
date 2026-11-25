@@ -109284,13 +109284,18 @@ worked after these.
   Source: review-readability-2026-10-22 (L19-F13).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6239] **Move amend_body's file-locate step (the unindented !storeLocated block) into its own function.**
+- ✅ [ANTS-6239] **Move amend_body's file-locate step (the unindented !storeLocated block) into its own function.**
   From ANTS-6128. The `if (!storeLocated) {` body runs about 135 lines
   unindented and closes with `}   // !storeLocated`. Return the located
   fields from a named function instead.
   Hot reload: none needed.
   The 2026-11-06 reviews also found this: row 829
   `src/remotecontrol_roadmap_log.cpp:3152`. Details: docs/reviews/close-findings-2026-11-06.md.
+  The unindented `if (!storeLocated)` body moved unchanged into
+  rlLocateInFile (file-static), which returns the refusal or fills an
+  RlFileLocate (bodyAnchorLine, reportLine, matchedId, matchedHeadline,
+  format). The size gate is passed in as bigEnough. Full build without
+  warnings; roadmap tests 1720/1720.
   **Layman:** A long block in the roadmap body editor is conditional but not indented, so a reader cannot see that it only sometimes runs.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F14).

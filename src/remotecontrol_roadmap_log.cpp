@@ -2890,6 +2890,186 @@ QJsonDocument rlSetBodyStore(
 
 }  // namespace
 
+namespace {
+
+// ANTS-6239 — where amend_body's target sits in the markdown when the store
+// did not locate it: GFM first, then ants-v1. `format` stays empty only on a
+// refusal.
+struct RlFileLocate {
+    int     bodyAnchorLine = -1;
+    int     reportLine     = -1;
+    QString matchedId;
+    QString matchedHeadline;   // ants-v1 only
+    QString format;
+};
+
+// Returns the refusal envelope, or fills `out`. `bigEnough` is the file size
+// past kRoadmapMinParseableSize, below which the ants-v1 walk is not tried.
+std::optional<QJsonDocument> rlLocateInFile(
+        const QStringList &lines, bool bigEnough, const QString &roadmapPath,
+        const QString &callerCanonical, const QString &locId,
+        const QString &locAnchor, const QString &locHeadline, RlFileLocate &out) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        return QJsonDocument(env);
+    };
+    auto rlSugErr = [](const QString &code, const QString &message,
+                       int matched) {
+        QJsonObject env;
+        env["ok"]      = false;
+        env["code"]    = code;
+        env["error"]   = message;
+        env["matched"] = matched;
+        return QJsonDocument(env);
+    };
+    int &bodyAnchorLine      = out.bodyAnchorLine;
+    int &reportLine          = out.reportLine;
+    QString &matchedId       = out.matchedId;
+    QString &matchedHeadline = out.matchedHeadline;
+    QString &format          = out.format;
+
+    const QVector<GfmBullet> bullets = walkGfmBullets(lines, rlDecl(callerCanonical));   // ANTS-3771
+    if (!bullets.isEmpty()) {
+        format = QStringLiteral("gfm");
+        const quint64 need = RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline));
+        QVector<int> m;
+        if (!locId.isEmpty()) {
+            for (int i = 0; i < bullets.size(); ++i)
+                if (bullets.at(i).boldId == locId) m.append(i);
+        } else if (!locAnchor.isEmpty()) {
+            for (int i = 0; i < bullets.size(); ++i)
+                if (bullets.at(i).anchor == locAnchor) m.append(i);
+        } else {
+            for (int i = 0; i < bullets.size(); ++i)
+                if (rcGfmHeadlineMatchHashes(bullets.at(i).headline,
+                                             bullets.at(i).boldId)
+                        .contains(need)) m.append(i);
+        }
+        if (m.size() == 1) {
+            const GfmBullet &t = bullets.at(m.first());
+            if (t.insideFenced) {
+                return rlErr(QStringLiteral("anchor_unsafe_context"),
+                    QStringLiteral("roadmap_log: located bullet is inside a "
+                                   "fenced code block — refusing to edit")
+                        + rcFenceOpenerHint(t.fenceOpenLine));
+            }
+            // Anchor the body span at firstLine (the checkbox line), NOT
+            // headlineLine: walkGfmBullets advances headlineLine past
+            // indented non-metadata continuation lines (they count as
+            // "headline content" for anchor placement), but for amend_body
+            // those lines ARE part of the searchable body. firstLine+1 is the
+            // true body start; the headline line itself is excluded from the
+            // search (amendBodyExact starts at bodyAnchorLine+1).
+            bodyAnchorLine = t.firstLine;
+            reportLine     = t.firstLine + 1;
+            matchedId      = t.boldId;
+        } else {
+            // ANTS-3565 — mixed-format fallback: a GFM-majority roadmap can
+            // carry appended ants-v1 emoji bullets (`- 📋 [ID] **…**`) that
+            // walkGfmBullets never sees. On a GFM zero-match for an
+            // id/headline locator (anchor is GFM-only), try the ants-v1 walker
+            // before refusing — mirrors cmdRoadmapLogFlip's step-7 fallback.
+            // A GFM ambiguous match (>1) is a real GFM problem — do not fall
+            // through.
+            QVector<int> vm;
+            QVector<AntsV1Bullet> v1;
+            if (m.isEmpty() && locAnchor.isEmpty() &&
+                bigEnough) {
+                v1 = walkAntsV1Bullets(lines);
+                if (!locId.isEmpty()) {
+                    for (int i = 0; i < v1.size(); ++i)
+                        if (v1.at(i).id == locId) vm.append(i);
+                } else if (!locHeadline.isEmpty()) {
+                    for (int i = 0; i < v1.size(); ++i)
+                        if (RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(v1.at(i).headline))
+                                == need) vm.append(i);
+                }
+            }
+            if (vm.size() != 1) {
+                return rlSugErr(m.isEmpty()
+                        ? QStringLiteral("bullet_not_found")
+                        : QStringLiteral("bullet_ambiguous"),
+                    m.isEmpty()
+                        ? QStringLiteral("roadmap_log: locator matched zero "
+                                         "GFM bullets")
+                        : QStringLiteral("roadmap_log: locator matched %1 GFM "
+                                         "bullets — narrow with id/anchor")
+                            .arg(m.size()),
+                    m.size());
+            }
+            const AntsV1Bullet &t = v1.at(vm.first());
+            if (t.insideFenced) {
+                return rlErr(QStringLiteral("anchor_unsafe_context"),
+                    QStringLiteral("roadmap_log: located bullet is inside a "
+                                   "fenced code block — refusing to edit")
+                        + rcFenceOpenerHint(t.fenceOpenLine));
+            }
+            format         = QStringLiteral("ants-v1");
+            bodyAnchorLine = t.firstLine;
+            reportLine     = t.firstLine + 1;
+            matchedId      = t.id;
+        }
+    } else if (bigEnough) {
+        const QVector<AntsV1Bullet> v1 = walkAntsV1Bullets(lines);
+        if (v1.isEmpty()) {
+            return rlErr(QStringLiteral("unrecognised_format"),
+                QStringLiteral("roadmap_log: \"%1\" parsed zero bullets "
+                               "(neither GFM-task-list nor ants-v1 native "
+                               "format)").arg(roadmapPath));
+        }
+        format = QStringLiteral("ants-v1");
+        if (!locAnchor.isEmpty()) {
+            return rlErr(QStringLiteral("bad_op_combo"),
+                QStringLiteral("roadmap_log: anchor locator is not supported "
+                               "on ants-v1 native format — use `id` or "
+                               "`headline`"));
+        }
+        QVector<int> m;
+        if (!locId.isEmpty()) {
+            for (int i = 0; i < v1.size(); ++i)
+                if (v1.at(i).id == locId) m.append(i);
+        } else {
+            const quint64 need = RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline));
+            for (int i = 0; i < v1.size(); ++i)
+                if (RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(v1.at(i).headline)) == need)
+                    m.append(i);
+        }
+        if (m.size() != 1) {
+            return rlSugErr(m.isEmpty()
+                    ? QStringLiteral("bullet_not_found")
+                    : QStringLiteral("bullet_ambiguous"),
+                m.isEmpty()
+                    ? QStringLiteral("roadmap_log: locator matched zero "
+                                     "ants-v1 bullets")
+                    : QStringLiteral("roadmap_log: locator matched %1 ants-v1 "
+                                     "bullets — narrow with id").arg(m.size()),
+                m.size());
+        }
+        const AntsV1Bullet &t = v1.at(m.first());
+        if (t.insideFenced) {
+            return rlErr(QStringLiteral("anchor_unsafe_context"),
+                QStringLiteral("roadmap_log: located bullet is inside a "
+                               "fenced code block — refusing to edit")
+                    + rcFenceOpenerHint(t.fenceOpenLine));
+        }
+        bodyAnchorLine  = t.firstLine;
+        reportLine      = t.firstLine + 1;
+        matchedId       = t.id;
+        matchedHeadline = t.headline;
+    } else {
+        return rlErr(QStringLiteral("unrecognised_format"),
+            QStringLiteral("roadmap_log: \"%1\" parsed zero bullets (neither "
+                           "GFM-task-list nor ants-v1 native format)")
+                .arg(roadmapPath));
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
 // ANTS-3406 — roadmap_log op:"amend_body". Locate a bullet (id > anchor
 // > headline, same rules as flip) and replace an exact substring of its
 // continuation body (`old_text` → `new_text`), guarded by
@@ -3152,143 +3332,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     if (lineRangeOnly)
         return noLocator();
 
-    if (!storeLocated) {
-    const QVector<GfmBullet> bullets = walkGfmBullets(lines, rlDecl(callerCanonical));   // ANTS-3771
-    if (!bullets.isEmpty()) {
-        format = QStringLiteral("gfm");
-        const quint64 need = RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline));
-        QVector<int> m;
-        if (!locId.isEmpty()) {
-            for (int i = 0; i < bullets.size(); ++i)
-                if (bullets.at(i).boldId == locId) m.append(i);
-        } else if (!locAnchor.isEmpty()) {
-            for (int i = 0; i < bullets.size(); ++i)
-                if (bullets.at(i).anchor == locAnchor) m.append(i);
-        } else {
-            for (int i = 0; i < bullets.size(); ++i)
-                if (rcGfmHeadlineMatchHashes(bullets.at(i).headline,
-                                             bullets.at(i).boldId)
-                        .contains(need)) m.append(i);
-        }
-        if (m.size() == 1) {
-            const GfmBullet &t = bullets.at(m.first());
-            if (t.insideFenced) {
-                return rlErr(QStringLiteral("anchor_unsafe_context"),
-                    QStringLiteral("roadmap_log: located bullet is inside a "
-                                   "fenced code block — refusing to edit")
-                        + rcFenceOpenerHint(t.fenceOpenLine));
-            }
-            // Anchor the body span at firstLine (the checkbox line), NOT
-            // headlineLine: walkGfmBullets advances headlineLine past
-            // indented non-metadata continuation lines (they count as
-            // "headline content" for anchor placement), but for amend_body
-            // those lines ARE part of the searchable body. firstLine+1 is the
-            // true body start; the headline line itself is excluded from the
-            // search (amendBodyExact starts at bodyAnchorLine+1).
-            bodyAnchorLine = t.firstLine;
-            reportLine     = t.firstLine + 1;
-            matchedId      = t.boldId;
-        } else {
-            // ANTS-3565 — mixed-format fallback: a GFM-majority roadmap can
-            // carry appended ants-v1 emoji bullets (`- 📋 [ID] **…**`) that
-            // walkGfmBullets never sees. On a GFM zero-match for an
-            // id/headline locator (anchor is GFM-only), try the ants-v1 walker
-            // before refusing — mirrors cmdRoadmapLogFlip's step-7 fallback.
-            // A GFM ambiguous match (>1) is a real GFM problem — do not fall
-            // through.
-            QVector<int> vm;
-            QVector<AntsV1Bullet> v1;
-            if (m.isEmpty() && locAnchor.isEmpty() &&
-                markdownBytes > kRoadmapMinParseableSize) {
-                v1 = walkAntsV1Bullets(lines);
-                if (!locId.isEmpty()) {
-                    for (int i = 0; i < v1.size(); ++i)
-                        if (v1.at(i).id == locId) vm.append(i);
-                } else if (!locHeadline.isEmpty()) {
-                    for (int i = 0; i < v1.size(); ++i)
-                        if (RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(v1.at(i).headline))
-                                == need) vm.append(i);
-                }
-            }
-            if (vm.size() != 1) {
-                return rlSugErr(m.isEmpty()
-                        ? QStringLiteral("bullet_not_found")
-                        : QStringLiteral("bullet_ambiguous"),
-                    m.isEmpty()
-                        ? QStringLiteral("roadmap_log: locator matched zero "
-                                         "GFM bullets")
-                        : QStringLiteral("roadmap_log: locator matched %1 GFM "
-                                         "bullets — narrow with id/anchor")
-                            .arg(m.size()),
-                    m.size());
-            }
-            const AntsV1Bullet &t = v1.at(vm.first());
-            if (t.insideFenced) {
-                return rlErr(QStringLiteral("anchor_unsafe_context"),
-                    QStringLiteral("roadmap_log: located bullet is inside a "
-                                   "fenced code block — refusing to edit")
-                        + rcFenceOpenerHint(t.fenceOpenLine));
-            }
-            format         = QStringLiteral("ants-v1");
-            bodyAnchorLine = t.firstLine;
-            reportLine     = t.firstLine + 1;
-            matchedId      = t.id;
-        }
-    } else if (markdownBytes > kRoadmapMinParseableSize) {
-        const QVector<AntsV1Bullet> v1 = walkAntsV1Bullets(lines);
-        if (v1.isEmpty()) {
-            return rlErr(QStringLiteral("unrecognised_format"),
-                QStringLiteral("roadmap_log: \"%1\" parsed zero bullets "
-                               "(neither GFM-task-list nor ants-v1 native "
-                               "format)").arg(roadmapPath));
-        }
-        format = QStringLiteral("ants-v1");
-        if (!locAnchor.isEmpty()) {
-            return rlErr(QStringLiteral("bad_op_combo"),
-                QStringLiteral("roadmap_log: anchor locator is not supported "
-                               "on ants-v1 native format — use `id` or "
-                               "`headline`"));
-        }
-        QVector<int> m;
-        if (!locId.isEmpty()) {
-            for (int i = 0; i < v1.size(); ++i)
-                if (v1.at(i).id == locId) m.append(i);
-        } else {
-            const quint64 need = RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(locHeadline));
-            for (int i = 0; i < v1.size(); ++i)
-                if (RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(v1.at(i).headline)) == need)
-                    m.append(i);
-        }
-        if (m.size() != 1) {
-            return rlSugErr(m.isEmpty()
-                    ? QStringLiteral("bullet_not_found")
-                    : QStringLiteral("bullet_ambiguous"),
-                m.isEmpty()
-                    ? QStringLiteral("roadmap_log: locator matched zero "
-                                     "ants-v1 bullets")
-                    : QStringLiteral("roadmap_log: locator matched %1 ants-v1 "
-                                     "bullets — narrow with id").arg(m.size()),
-                m.size());
-        }
-        const AntsV1Bullet &t = v1.at(m.first());
-        if (t.insideFenced) {
-            return rlErr(QStringLiteral("anchor_unsafe_context"),
-                QStringLiteral("roadmap_log: located bullet is inside a "
-                               "fenced code block — refusing to edit")
-                    + rcFenceOpenerHint(t.fenceOpenLine));
-        }
-        bodyAnchorLine  = t.firstLine;
-        reportLine      = t.firstLine + 1;
-        matchedId       = t.id;
-        matchedHeadline = t.headline;
-    } else {
-        return rlErr(QStringLiteral("unrecognised_format"),
-            QStringLiteral("roadmap_log: \"%1\" parsed zero bullets (neither "
-                           "GFM-task-list nor ants-v1 native format)")
-                .arg(roadmapPath));
+    if (!storeLocated) {   // ANTS-6239
+        RlFileLocate found;
+        if (auto refusal = rlLocateInFile(lines, markdownBytes > kRoadmapMinParseableSize,
+                                          roadmapPath, callerCanonical, locId,
+                                          locAnchor, locHeadline, found))
+            return *refusal;
+        bodyAnchorLine  = found.bodyAnchorLine;
+        reportLine      = found.reportLine;
+        matchedId       = found.matchedId;
+        matchedHeadline = found.matchedHeadline;
+        format          = found.format;
     }
-
-    }   // !storeLocated
 
     // ANTS-3809 § 2.2 — the store path, after the locate and before the
     // markdown patch below. ants-v1 only (§ 5), which the format gate above
