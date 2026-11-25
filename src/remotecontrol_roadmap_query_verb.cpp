@@ -463,16 +463,14 @@ void rcEmitSourcesRollup(QJsonObject &out, const QJsonArray &bullets,
                          const QString &group, int limit) {
     struct Counts { int active = 0, shipped = 0, total = 0; };
     QHash<QString, Counts> by;
-    const QString planned    = QString::fromUtf8(RoadmapParse::kEmojiPlanned);
-    const QString inProgress = QString::fromUtf8(RoadmapParse::kEmojiInProgress);
-    const QString shipped    = QString::fromUtf8(RoadmapParse::kEmojiDone);
     for (const auto &v : bullets) {
         const QJsonObject b = v.toObject();
         const QString src = b.value(QStringLiteral("source")).toString().trimmed();
         Counts &c = by[group == QLatin1String("exact") ? src : rcSourceStem(src)];
-        const QString st = b.value(QStringLiteral("status")).toString();
-        if (st == planned || st == inProgress) ++c.active;
-        else if (st == shipped)                ++c.shipped;
+        const auto *st = RoadmapParse::statusByGlyph(
+            b.value(QStringLiteral("status")).toString());
+        if (st && st->active)                                  ++c.active;
+        else if (st && st->glyph == RoadmapParse::kEmojiDone)  ++c.shipped;
         ++c.total;
     }
     QStringList keys = by.keys();
@@ -1182,12 +1180,10 @@ auto RemoteControl::RoadmapQueryCall::parseStatus() -> std::optional<QJsonDocume
     // ANTS-5376 — an array takes the union of its elements' aggregates, so
     // any mix of active and shipped, or anything with no tally, lists all.
     auto aggregateOf = [](const QString &f) {
-        if (f == QLatin1String("planned") || f == QLatin1String("in-progress"))
-            return QStringLiteral("active");
-        if (f == QLatin1String("considered") ||
-            f == QLatin1String("dropped"))   // ANTS-4977
-            return QStringLiteral("all");
-        return f;
+        const auto *st = RoadmapParse::statusByWord(f);
+        if (!st || f == QLatin1String("shipped")) return f;   // all, active, shipped
+        return st->active ? QStringLiteral("active")
+                          : QStringLiteral("all");   // considered, dropped (ANTS-4977)
     };
     sectionFilter = aggregateOf(filterSet.first());
     for (const QString &f : std::as_const(filterSet))
@@ -1201,10 +1197,10 @@ bool RemoteControl::RoadmapQueryCall::keepStatus(const QString &s) {
     // `s` is a bullet's glyph; a lifecycle word in the set keeps that word's
     // glyph. `active` is 📋 and 🚧 only: 💭 is open but is not active work.
     const QString word = rcStatusWord(s);
+    const auto *st = RoadmapParse::statusByGlyph(s);
     for (const QString &f : filterSet) {
         if (f == QLatin1String("all") || (f == word && word != s) ||
-            (f == QLatin1String("active") && (word == QLatin1String("planned") ||
-                                              word == QLatin1String("in-progress"))))
+            (f == QLatin1String("active") && st && st->active))
             return true;
     }
     return false;

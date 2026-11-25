@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_query` takes every status name, symbol and the meaning of "active" from the one shared status table** (ANTS-6242)
+
 - **`roadmap_query` decides in one place which modes return no item rows, so its refusals of row-shaping arguments under those modes cannot drift apart** (ANTS-6241)
 
 - **`roadmap_query` cleans every value it echoes back through one shared helper, which cuts it short and replaces control characters** (ANTS-6240)

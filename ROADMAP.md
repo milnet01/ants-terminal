@@ -109343,7 +109343,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L20-F11).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6242] **Take roadmap_query's status names and emoji from one table instead of five hand-kept copies.**
+- ✅ [ANTS-6242] **Take roadmap_query's status names and emoji from one table instead of five hand-kept copies.**
   From ANTS-6129. statusName, kAcceptedStatusFilters, aggregateOf,
   keepStatus and two emoji constant sets in
   remotecontrol_roadmap_query_verb.cpp. kRcStatuses (remotecontrol.cpp)
@@ -109352,6 +109352,14 @@ worked after these.
   The 2026-11-06 reviews also found this: row 844
   `src/remotecontrol_roadmap_query_verb.cpp:1006`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  Most of this had landed with ANTS-6215: statusName,
+  kAcceptedStatusFilters and keepStatus already read
+  RoadmapParse::kStatuses through rcStatusWord / rcStatusWords. The
+  rest: kStatuses gains an `active` column (planned, in-progress), and
+  keepStatus, aggregateOf and rcEmitSourcesRollup read it, so no list of
+  planned + in-progress or status emoji is left in
+  remotecontrol_roadmap_query_verb.cpp. Behaviour unchanged; roadmap
+  tests 1693/1693.
   **Layman:** The list of roadmap statuses is written out five times in the query tool.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L20-F12).

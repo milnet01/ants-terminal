@@ -47,24 +47,26 @@ inline constexpr const char *kEmojiDropped    = "🚫";
 // ANTS-6215 — the five lifecycle statuses, in roadmap-data-model.md § 7.3's
 // declared order, which is the order a legend is rendered and exported in.
 // Each carries its § 3.3 marker, the Status keyword a pass block spells it
-// with (ANTS-2126), the word a § 5.1 legend line opens with, and whether
-// § 3.4 counts it open. A new status is added here; every table keyed by
-// status reads this one. The store's SQL cannot: item.status's CHECK
-// constraint in roadmapstore.cpp lists the same words (so a new one is a
-// schema change), and kOpenStatusIn there lists the open ones.
+// with (ANTS-2126), the word a § 5.1 legend line opens with, whether § 3.4
+// counts it open, and whether roadmap_query's `active` filter takes it
+// (ANTS-6242: considered is open but not active work). A new status is added
+// here; every table keyed by status reads this one. The store's SQL cannot:
+// item.status's CHECK constraint in roadmapstore.cpp lists the same words (so
+// a new one is a schema change), and kOpenStatusIn there lists the open ones.
 struct LifecycleStatus {
     const char *word;
     const char *glyph;
     const char *passKeyword;
     const char *legendWord;
     bool open;
+    bool active;
 };
 inline constexpr LifecycleStatus kStatuses[] = {
-    {"planned",     kEmojiPlanned,    "todo",        "Planned",     true},
-    {"in-progress", kEmojiInProgress, "in-progress", "In progress", true},
-    {"shipped",     kEmojiDone,       "done",        "Done",        false},
-    {"considered",  kEmojiConsidered, "deferred",    "Considered",  true},
-    {"dropped",     kEmojiDropped,    "dropped",     "Dropped",     false},
+    {"planned",     kEmojiPlanned,    "todo",        "Planned",     true,  true},
+    {"in-progress", kEmojiInProgress, "in-progress", "In progress", true,  true},
+    {"shipped",     kEmojiDone,       "done",        "Done",        false, false},
+    {"considered",  kEmojiConsidered, "deferred",    "Considered",  true,  false},
+    {"dropped",     kEmojiDropped,    "dropped",     "Dropped",     false, false},
 };
 
 // The row for a lifecycle word or a status glyph, or nullptr.
