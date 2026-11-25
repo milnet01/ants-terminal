@@ -80,7 +80,7 @@ void MainWindow::setupClaudeMcpProviders() {
 
             // ANTS-1897 INV-14 — export the MCP socket path into the parent
             // process env so every PTY spawned after this point (via the
-            // non-flatpak `environ`-copy loop at ptyhandler.cpp:171)
+            // non-flatpak `environ`-copy in buildChildEnvp, ptyhandler.cpp)
             // inherits ANTS_MCP_SOCKET. The orientation prelude script
             // gates on this var being set + the socket file existing. The
             // ordering is correct because the MainWindow ctor calls
@@ -249,7 +249,7 @@ void MainWindow::setupClaudeMcpProviders() {
             if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             // ANTS-1244 INV-9 — tab=0 is a valid index distinct from
             // "tab omitted"; gate via isDouble(). Same shape for lines
-            // (matches the IPC verb at remotecontrol.cpp:347).
+            // (matches RemoteControl::cmdGetText).
             QJsonObject req;
             if (args.value("tab").isDouble())   req["tab"]   = args.value("tab").toInt();
             if (args.value("lines").isDouble()) req["lines"] = args.value("lines").toInt();

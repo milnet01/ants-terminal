@@ -210,11 +210,10 @@ void MainWindow::restoreSessions() {
         if (!savedPinnedTitle.isEmpty()) {
             // Re-pin via m_tabTitlePins[terminal] so the titleChanged
             // signal handler and the 2 s updateTabTitles tick both
-            // honor it. Can't call setTabTitleForRemote here because
-            // it resolves the tab by index against the *outer* widget
-            // identity, which is still `terminal` at restore time
-            // (splits are never persisted), so writing the pin map
-            // directly is equivalent and avoids one lookup.
+            // honor it. Written directly rather than through
+            // setTabTitleForRemote, which would pin the same widget (the
+            // tab at this index is still `terminal` at restore time;
+            // splits are never persisted) at the cost of one more lookup.
             m_tabTitlePins[terminal] = savedPinnedTitle;
             setTabLabel(newTabIdx, savedPinnedTitle);
         } else {

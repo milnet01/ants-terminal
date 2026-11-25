@@ -27,7 +27,7 @@ column of independent toggles forces a reopen per flip. That is a
 usability bug for toggles but correct for radios.
 
 **Mechanism — one shared event filter, installed in `setupMenus()`.**
-`StayOpenOnToggleFilter` (anonymous namespace in `mainwindow.cpp`)
+`StayOpenOnToggleFilter` (`namespace mainwindowdetail` in `mainwindow_internal.h`)
 consumes the mouse-release over a checkable action, triggers it (toggle
 + `triggered()`), and returns `true` so the menu does not close. The
 exclusive-group guard is what distinguishes a checkbox from a radio:

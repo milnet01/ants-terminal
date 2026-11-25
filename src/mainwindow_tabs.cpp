@@ -1069,27 +1069,6 @@ TerminalWidget *MainWindow::terminalAtTab(int index) const {
     return activeTerminalInTab(m_tabWidget->widget(index));
 }
 
-// ANTS-1392 — caller_cwd-anchored terminal lookup. Walks every tab
-// (including split-pane subtrees via activeTerminalInTab) for a
-// terminal whose canonical shellCwd matches the canonical callerCwd.
-// First match wins.
-//
-// ANTS-1396 — contract split. Three cases:
-//   1. caller_cwd is empty  → fall back to focusedTerminal()
-//      (preserves the pre-ANTS-1392 contract for tools invoked
-//      without the arg).
-//   2. caller_cwd given, matches a tab → return that tab.
-//   3. caller_cwd given, NO matching tab → return nullptr (do NOT
-//      fall back to focused). A caller that names a specific cwd
-//      is asking for *that* project's data; silently substituting
-//      whatever happens to be focused leaks cross-project data
-//      (the originating report was `get_git_status` returning the
-//      Ants Terminal repo while the caller's cwd was a different
-//      project with no Ants tab open).
-//
-// Callers already null-check the return (verified at the four
-// terminalForCaller call sites in this file:
-// `if (auto *t = terminalForCaller(...))` or `if (!t) return {};`).
 // ANTS-4932 § 2.4 — the terminal's root provider. Every read is of tab
 // state, so each one marshals to the GUI thread: the verbs that call it run
 // on the dispatch worker. A refused marshal (shutdown) answers "nothing".
@@ -1152,6 +1131,25 @@ std::unique_ptr<ants::RootProvider> MainWindow::makeRootProvider(
     return std::make_unique<MainWindowRootProvider>(w);
 }
 
+// ANTS-1392 — caller_cwd-anchored terminal lookup. Walks every tab
+// (including split-pane subtrees via activeTerminalInTab) for a
+// terminal whose canonical shellCwd matches the canonical callerCwd.
+// First match wins.
+//
+// ANTS-1396 — contract split, by caller_cwd:
+//   1. caller_cwd is empty  → fall back to focusedTerminal()
+//      (preserves the pre-ANTS-1392 contract for tools invoked
+//      without the arg).
+//   2. caller_cwd given, matches a tab → return that tab.
+//   3. caller_cwd given, NO matching tab → return nullptr (do NOT
+//      fall back to focused). A caller that names a specific cwd
+//      is asking for *that* project's data; silently substituting
+//      whatever happens to be focused leaks cross-project data
+//      (the originating report was `get_git_status` returning the
+//      Ants Terminal repo while the caller's cwd was a different
+//      project with no Ants tab open).
+//
+// Callers null-check the return.
 TerminalWidget *MainWindow::terminalForCaller(const QString &callerCwd) const {
     // ANTS-1401 — single source of truth. The four-case decision tree
     // ANTS-1396 introduced now lives in `ants::resolveCallerCwdRoot`
@@ -1213,8 +1211,8 @@ bool MainWindow::setTabTitleForRemote(int index, const QString &title) {
         // Pin the label. The titleChanged handler and updateTabTitles
         // both check the pin map before calling setTabText, so the
         // value sticks across both the per-shell signal and the 2 s
-        // refresh tick. Truncated to the same 30-char ceiling the
-        // signal handler uses to avoid the tab strip ballooning.
+        // refresh tick. setTabLabel shortens long labels so the tab
+        // strip does not balloon.
         m_tabTitlePins[w] = title;
         setTabLabel(index, title);
     }

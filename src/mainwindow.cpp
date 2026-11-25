@@ -1729,9 +1729,9 @@ void MainWindow::setupStatusWidgets() {
 // ClaudeIntegration + ClaudeTabTracker (services owned by
 // MainWindow), the ClaudeStatusBarController (chrome + per-session
 // render state), wires the controller's signals to MainWindow's
-// existing slots, then constructs the three orphan chrome items
-// (Roadmap button, update-available QAction, 5 s startup
-// update-check) that landed in this function for historical
+// existing slots, then constructs the remaining chrome items (Roadmap
+// button, version chip, peer-usage watcher, update-available QAction,
+// startup update-check) that landed in this function for historical
 // convenience and remain here as the status-bar chrome remainder.
 // MCP-provider plumbing for ClaudeIntegration is split into
 // setupClaudeMcpProviders below.
@@ -1928,9 +1928,8 @@ void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
         }
     }
     m_claudeDialog->show();
-    // raise() + activateWindow() are load-bearing, not cosmetic — same
-    // constraint as showDiffViewer (see the comment at the end of that
-    // function). The "Add to allowlist" button that invokes this dialog
+    // raise() + activateWindow() are load-bearing, not cosmetic. The
+    // "Add to allowlist" button that invokes this dialog
     // lives on the status bar of a frameless QMainWindow. KWin's window
     // stacking on a frameless parent, combined with the focusChanged
     // redirect lambda in the ctor that queues a terminal->setFocus()
@@ -2417,10 +2416,9 @@ void MainWindow::refreshStatusBarForActiveTab() {
     //      next permission prompt will re-create a fresh instance
     //      against whichever tab is then active.
     //
-    // Called from: onTabChanged, plus any place that wants to force a
-    // full refresh (fileChanged, post-approve/-decline on allowlist,
-    // etc.). Cheap: just reads cached values and schedules the async
-    // git probe.
+    // Called from onTabChanged only; a file change or a finished probe
+    // does not come through here. Cheap: just reads cached values and
+    // schedules the async git probe.
     const bool haveStatus = (m_statusGitBranch && m_statusProcess);
 
     auto *t = focusedTerminal();
@@ -2480,7 +2478,7 @@ void MainWindow::refreshStatusBarForActiveTab() {
     //     flow into the controller via the existing connection. State
     //     is CLEARED inside setShellPid when the PID changes, so the
     //     label never carries over from the previous tab. See
-    //     claudeintegration.cpp:58-71.
+    //     ClaudeIntegration::setShellPid.
     //   - refreshReviewButton() spawns an async `git status` probe;
     //     the button is hidden immediately and revealed only when the
     //     probe confirms the new tab's cwd is a git repo.

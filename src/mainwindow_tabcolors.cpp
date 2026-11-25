@@ -84,22 +84,11 @@ void MainWindow::showTabColorMenu(int tabIndex, bool fromPanel) {
     // colours. Preset names kept stable (Purple = Mauve, Orange = Peach) so
     // existing users' colour vocabulary still matches.
     //
-    // ON CONTRAST, because the previous note here was reassuring and wrong.
-    // It said the added colours "can't be darker/lower-contrast than what
-    // shipped" since all sit in one pastel band. Measured against Mocha base
-    // #1E1E2E with text #CDD6F4, through the alpha-140 wash paintEvent()
-    // composites OVER the label: the shipped pastels land at 2.50–2.9:1, and
-    // the neutrals added here are the BEST in the palette (Gray 3.2, Black
-    // 3.3, Charcoal 3.4) — a dark wash darkens the light text less than it
-    // darkens the tab beneath it. So the band was never what protected
-    // contrast, and lightness is the wrong axis to screen a candidate on.
-    //
-    // The real bar for a new entry: compute the ratio through the wash and
-    // require it to be no worse than the WORST colour already shipped. Every
-    // colour in ColoredTabBar::palette() clears that (ANTS-5238: the list is
-    // shared with View > Give Each Tab a Different Colour). ANTS-4690 has
-    // since capped the wash behind the name, so paintEvent() keeps every
-    // colour at 4.5:1 there.
+    // ON CONTRAST: the bar for a new entry is that the tab name keeps 4.5:1
+    // through the wash. paintEvent() caps the wash behind the name to hold
+    // that for any colour (ANTS-4690, which also holds the measurements), so
+    // a new colour needs no contrast screening of its own. ANTS-5238: the
+    // list is shared with View > Give Each Tab a Different Colour.
     struct ColorEntry { QString name; QColor color; };
     QList<ColorEntry> colors = {{"None", QColor()}};
     for (const ColoredTabBar::PaletteEntry &e : ColoredTabBar::palette())
@@ -258,9 +247,7 @@ void MainWindow::persistTabColor(QWidget *tabRoot, const QColor &color) {
     QJsonObject groups = m_config.tabGroups();
     if (color.isValid()) {
         // Store as "#rrggbbaa" so alpha round-trips losslessly. The
-        // colour-picker entries are all alpha=255, but storing the alpha
-        // keeps the format future-proof if a custom-colour entry lands
-        // later.
+        // presets are all alpha=255, but a custom pick can carry alpha.
         groups[tabId] = color.name(QColor::HexArgb);
     } else {
         // None / clear — drop the entry entirely so the JSON doesn't

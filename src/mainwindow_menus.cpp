@@ -43,11 +43,8 @@
 
 using namespace mainwindowdetail;
 
-// ANTS-1181 — setupMenus() was historically a 947-line block stuffed
-// inside this same TU. Each top-level menu is now its own helper so the
-// menu-bar wiring can be located + read + edited independently of its
-// neighbours. setupMenus() is the orchestrator; the helpers contain the
-// per-menu body verbatim (no behaviour change).
+// setupMenus() is the orchestrator. Each top-level menu has its own helper,
+// so the menu-bar wiring can be located, read and edited one menu at a time.
 
 void MainWindow::setupMenus() {
     setupFileMenu();
@@ -853,7 +850,7 @@ void MainWindow::setupSettingsMenu() {
     // ANTS-1165: previous defaults of Ctrl+Shift+Down / Ctrl+Shift+Up
     // collided with the OSC 133 prompt-navigation chord that
     // TerminalWidget::keyPressEvent intercepts before Qt dispatches
-    // QShortcuts (see view-menu comment near setupPromptNav). The
+    // QShortcuts (see the "Previous Prompt" comment in setupViewMenu). The
     // bookmark shortcut was therefore silently dead whenever the
     // terminal had focus. Move both defaults to Ctrl+Alt+Up/Down,
     // which TerminalWidget does not intercept.

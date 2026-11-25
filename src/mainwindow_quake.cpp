@@ -159,7 +159,7 @@ void MainWindow::setupQuakeMode() {
         // Ensure the QWindow exists before configuring layer-shell properties,
         // which must be set BEFORE show() so the xdg_surface role upgrade to
         // zwlr_layer_surface_v1 happens at the right point in the Wayland
-        // handshake. winId() on a QWidget forces a native window backing.
+        // handshake. create() on a QWidget forces a native window backing.
         create();
         if (QWindow *qw = windowHandle()) {
             auto *layer = LayerShellQt::Window::get(qw);

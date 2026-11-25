@@ -137,12 +137,11 @@ void MainWindow::refreshRepoVisibility() {
                     visibility = QString::fromUtf8(
                         proc->readAllStandardOutput()).trimmed();
                 }
-                // Cache both hits and negative results — a 60 s
-                // negative TTL avoids hammering on every tab switch
-                // when `gh` is unauthenticated. The full TTL applies
-                // to positive results; we encode "negative" by storing
-                // an empty visibility with the same fetchedAt so the
-                // hit-branch sees an empty string and hides.
+                // Cache both hits and negative results, so an
+                // unauthenticated `gh` is not re-run on every tab
+                // switch. Both share kCacheTtlMs; we encode "negative"
+                // by storing an empty visibility with the same fetchedAt
+                // so the hit-branch sees an empty string and hides.
                 self->m_repoVisibilityCache[repoRoot] = {
                     visibility,
                     QDateTime::currentMSecsSinceEpoch()};
@@ -170,9 +169,6 @@ void MainWindow::refreshRepoVisibility() {
                 // so a still-matching tab renders from the hit branch.
                 self->refreshRepoVisibility();
             });
-    // ANTS-1137 — mark in-flight before start so a re-entry within
-    // this 2 s tick (or any fast tab-switch before the QProcess
-    // completes) drops the redundant probe.
     // ANTS-5080 — a gh that fails to start never emits finished, which left
     // the in-flight flag set for the session. Clear it here (assignment, not
     // remove(): the remove() above sits in ANTS-1554's pragma block) and
@@ -186,6 +182,9 @@ void MainWindow::refreshRepoVisibility() {
             QString(), QDateTime::currentMSecsSinceEpoch()};
         self->m_repoVisibilityProbeInFlight[repoRoot] = false;
     });
+    // ANTS-1137 — mark in-flight before start so a re-entry within
+    // this 2 s tick (or any fast tab-switch before the QProcess
+    // completes) drops the redundant probe.
     m_repoVisibilityProbeInFlight[repoRoot] = true;
     HostExec::start(*proc);
     // ANTS-5080 — a gh that never exits (no network, a prompt) is killed;

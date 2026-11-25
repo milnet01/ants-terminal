@@ -420,9 +420,12 @@ private:
     //                             approves/declines.
     //   timeoutMs  > 0          : clear after that many milliseconds.
     void showStatusMessage(const QString &msg, int timeoutMs = -1);
-    // ANTS-4273 — one desktop-notification path for every caller. Returns
-    // false when neither the tray nor notify-send took it, so a caller that
-    // has a fallback (the plugin API promises the status bar) can use one.
+    // ANTS-4273 — shared by the OSC 9/777 handler and ants.notify(). Tray
+    // icon first, else notify-send. The trigger "notify" action (D-Bus) and
+    // the command-failed notice in terminalwidget.cpp (notify-send) do not
+    // use it. Returns false when neither the tray nor notify-send took it,
+    // so a caller that has a fallback (the plugin API promises the status
+    // bar) can use one.
     bool showDesktopNotification(const QString &title, const QString &body);
     void clearStatusMessage();
 
@@ -593,8 +596,8 @@ private:
     // Single entry point that refreshes every per-tab status-bar widget
     // (branch chip, notification, process label, Claude state, Review
     // Changes button, Add-to-allowlist button) against the currently
-    // active tab's terminal. Called from onTabChanged plus after any
-    // async probe completes. Replaces the scatter of direct
+    // active tab's terminal. Its only caller is onTabChanged. Replaces
+    // the scatter of direct
     // updateStatusBar / refreshReviewButton / applyClaudeStatusLabel
     // calls that accumulated in onTabChanged and let per-tab state
     // bleed from tab A to tab B. (ANTS-1146 — applyClaudeStatusLabel
@@ -609,8 +612,8 @@ private:
     static QString claudeLaunch(const QString &dir, const QString &args = {});
     // ANTS-1146 — formerly setupClaudeIntegration. Constructs
     // ClaudeIntegration, the controller, the MCP-provider helper,
-    // and the three orphan chrome items (Roadmap button,
-    // update QAction, 5 s startup update-check).
+    // and the remaining chrome items (Roadmap button, version chip,
+    // peer-usage watcher, update QAction, startup update-check).
     void setupStatusBarChrome();
     // ANTS-6184 — the status bar's left-hand widgets and the 2 s timer that
     // refreshes the whole bar. Needs setupStatusBarChrome() run first.
@@ -740,7 +743,7 @@ private:
     // ANTS-5558 — the open welcome dialog, if any (it deletes on close).
     QPointer<class WelcomeDialog> m_welcomeDialog;
 
-    // XCB position tracker (Qt's pos()/moveEvent broken for frameless windows on KWin)
+    // KWin D-Bus position tracker (Qt's pos()/moveEvent broken for frameless windows on KWin)
     KWinPositionTracker *m_posTracker = nullptr;
 
     // Hot-reload: watch config.json for external changes
