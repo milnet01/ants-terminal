@@ -177,7 +177,8 @@ protected:
     //   INV-13.
     bool appendAllowlistEntry(const Finding &f, const QString &reason);
     // actionableFindings — currently-visible findings (same filter as the
-    //   results pane) whose aiVerdict == TRUE_POSITIVE OR confidence >= 70.
+    //   results pane) whose aiVerdict == TRUE_POSITIVE OR confidence is at
+    //   least kActionableConfidence (auditdialog.cpp).
     //   Drives the "Fold actionable" button's enable state + fold set.
     QList<Finding> actionableFindings() const;
     // foldFindingsIntoRoadmap — allocate K ids, template the fold-in block,

@@ -1188,8 +1188,14 @@ bool AuditDialog::isFindingVisible(const Finding &f) const {
     return hay.contains(m_textFilter);
 }
 
+namespace {
+// ANTS-1257 — a finding at or above this confidence is actionable. The
+// fold button's tooltip and its empty-state message quote it.
+constexpr int kActionableConfidence = 70;
+}  // namespace
+
 // ANTS-1257 v2 — the visible findings that are actionable:
-// aiVerdict == TRUE_POSITIVE OR confidence >= 70.
+// aiVerdict == TRUE_POSITIVE OR confidence >= kActionableConfidence.
 QList<Finding> AuditDialog::actionableFindings() const {
     QList<Finding> out;
     for (const auto &r : m_completedResults) {
@@ -1197,7 +1203,8 @@ QList<Finding> AuditDialog::actionableFindings() const {
         for (const Finding &f : r.findings) {
             if (!isFindingVisible(f)) continue;
             const bool actionable =
-                f.aiVerdict == QStringLiteral("TRUE_POSITIVE") || f.confidence >= 70;
+                f.aiVerdict == QStringLiteral("TRUE_POSITIVE")
+                || f.confidence >= kActionableConfidence;
             if (actionable) out.append(f);
         }
     }
@@ -1253,8 +1260,9 @@ void AuditDialog::onFoldRoadmapClicked() {
     const QList<Finding> actionable = actionableFindings();
     if (actionable.isEmpty()) {
         QMessageBox::information(this, "Fold into ROADMAP",
-            "No actionable findings (none are AI-confirmed TRUE_POSITIVE or "
-            "confidence ≥ 70).");
+            QStringLiteral("No actionable findings (none are AI-confirmed "
+                           "TRUE_POSITIVE or confidence ≥ %1).")
+                .arg(kActionableConfidence));
         return;
     }
 
@@ -2356,14 +2364,16 @@ void AuditDialog::buildUI() {
     // ANTS-1257 — "Fold actionable into ROADMAP". Allocates stable IDs and
     // inserts a templated `### 🔍 Audit fold-in (DATE)` block after the
     // active release heading. Enabled only when ≥1 visible finding is
-    // actionable (AI TRUE_POSITIVE or confidence ≥ 70).
+    // actionable (AI TRUE_POSITIVE or confidence ≥ kActionableConfidence).
     m_foldRoadmapBtn = new QPushButton(QStringLiteral("🌳 Fold actionable"),
                                        m_filterBar);
     m_foldRoadmapBtn->setFixedHeight(26);
     m_foldRoadmapBtn->setEnabled(false);
     m_foldRoadmapBtn->setToolTip(
-        "Fold the actionable findings (AI-confirmed or confidence ≥ 70) into "
-        "ROADMAP.md as a dated audit fold-in block with freshly-allocated IDs.");
+        QStringLiteral("Fold the actionable findings (AI-confirmed or "
+                       "confidence ≥ %1) into ROADMAP.md as a dated audit "
+                       "fold-in block with freshly-allocated IDs.")
+            .arg(kActionableConfidence));
     connect(m_foldRoadmapBtn, &QPushButton::clicked, this,
             &AuditDialog::onFoldRoadmapClicked);
     filterRow->addWidget(m_foldRoadmapBtn);

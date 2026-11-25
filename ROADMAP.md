@@ -97534,12 +97534,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6585] **Fold the duplicated logic the 2026-11-06 reviews found in audit-dialog.**
+- ✅ [ANTS-6585] **Fold the duplicated logic the 2026-11-06 reviews found in audit-dialog.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 594 `src/auditdialog_debtsweep.cpp:243` (Medium)
   - row 595 `src/auditdialog.cpp:2173` (Medium)
   - row 602 `src/auditdialog.cpp:1227` (Low)
   - row 603 `src/auditdialog_catalogue.cpp:115` (Low)
+  Closed 2026-11-25. Row 594: the debt pane renders the known categories,
+  then any others the engine reports. Row 595: already fixed, both export
+  buttons call saveReportPrivately. Row 602: kActionableConfidence in
+  auditdialog.cpp; both user-facing strings quote it. Row 603:
+  addInProcessCheck registers the four in-process lanes; the two
+  contract-doc lanes still set filter.maxLines = 0 at the call.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).

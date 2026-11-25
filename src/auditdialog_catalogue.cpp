@@ -107,23 +107,34 @@ void AuditDialog::populateChecks() {
     //   3. Tests that are skipped/disabled/xfailed — silently green
     // Self-disable cleanly on projects that don't use the convention.
     //
+    // The four lanes below run in-process: a static AuditDialog runner,
+    // auto-selected and always available. Returns the new check so a lane
+    // can set what differs.
+    auto addInProcessCheck = [this](const QString &id, const QString &name,
+                                    const QString &description, CheckType type,
+                                    Severity severity,
+                                    QString (*runner)(const QString &)) -> AuditCheck & {
+        AuditCheck c;
+        c.id          = id;
+        c.name        = name;
+        c.description = description;
+        c.category    = "General";
+        c.type        = type;
+        c.severity    = severity;
+        c.autoSelect  = true;
+        c.available   = true;
+        c.inProcessRunner = runner;
+        m_checks.append(std::move(c));
+        return m_checks.last();
+    };
+
     // Lane 1 — spec ↔ code drift. For each tests/features/*/spec.md,
     // extract backtick-fenced identifier tokens and verify each still
     // exists somewhere under src/. A rename or deletion that didn't
     // update the spec shows up here at commit time.
-    {
-        AuditCheck c;
-        c.id          = "spec_code_drift";
-        c.name        = "Spec ↔ Code Drift";
-        c.description = "Identifiers referenced in tests/features/*/spec.md that no longer appear in src/";
-        c.category    = "General";
-        c.type        = CheckType::CodeSmell;
-        c.severity    = Severity::Minor;
-        c.autoSelect  = true;
-        c.available   = true;
-        c.inProcessRunner = &AuditDialog::runSpecDriftCheck;
-        m_checks.append(std::move(c));
-    }
+    addInProcessCheck("spec_code_drift", "Spec ↔ Code Drift",
+        "Identifiers referenced in tests/features/*/spec.md that no longer appear in src/",
+        CheckType::CodeSmell, Severity::Minor, &AuditDialog::runSpecDriftCheck);
 
     // Lane 1b — contract-doc ↔ code literal drift (ANTS-3600). Back-ticked
     // literals in a contract-doc directory that no longer appear in project
@@ -138,53 +149,25 @@ void AuditDialog::populateChecks() {
     // Both are left UNCAPPED (maxLines = 0): the FP-heavier docs/specs corpus
     // exceeds the default 100-line cap, which would silently drop every
     // alphabetically-later doc's findings (docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md § 2.2).
-    {
-        AuditCheck c;
-        c.id          = "contract_doc_drift_standards";
-        c.name        = "Contract-Doc ↔ Code Drift (standards)";
-        c.description = "Back-ticked literals in docs/standards that no longer appear in project sources";
-        c.category    = "General";
-        c.type        = CheckType::CodeSmell;
-        c.severity    = Severity::Minor;
-        c.autoSelect  = true;
-        c.available   = true;
-        c.filter.maxLines = 0;   // UNCAPPED — see § 2.2 / INV-10
-        c.inProcessRunner = &AuditDialog::runContractDocDriftStandardsCheck;
-        m_checks.append(std::move(c));
-    }
-    {
-        AuditCheck c;
-        c.id          = "contract_doc_drift_specs";
-        c.name        = "Contract-Doc ↔ Code Drift (specs)";
-        c.description = "Back-ticked literals in docs/specs that no longer appear in project sources";
-        c.category    = "General";
-        c.type        = CheckType::CodeSmell;
-        c.severity    = Severity::Minor;
-        c.autoSelect  = true;
-        c.available   = true;
-        c.filter.maxLines = 0;   // UNCAPPED — see § 2.2 / INV-10
-        c.inProcessRunner = &AuditDialog::runContractDocDriftSpecsCheck;
-        m_checks.append(std::move(c));
-    }
+    addInProcessCheck("contract_doc_drift_standards", "Contract-Doc ↔ Code Drift (standards)",
+        "Back-ticked literals in docs/standards that no longer appear in project sources",
+        CheckType::CodeSmell, Severity::Minor,
+        &AuditDialog::runContractDocDriftStandardsCheck)
+        .filter.maxLines = 0;   // UNCAPPED — see § 2.2 / INV-10
+    addInProcessCheck("contract_doc_drift_specs", "Contract-Doc ↔ Code Drift (specs)",
+        "Back-ticked literals in docs/specs that no longer appear in project sources",
+        CheckType::CodeSmell, Severity::Minor,
+        &AuditDialog::runContractDocDriftSpecsCheck)
+        .filter.maxLines = 0;   // UNCAPPED — see § 2.2 / INV-10
 
     // Lane 2 — CHANGELOG bullet ↔ feature-test coverage. Scans the top
     // `## [x.y.z]` section of CHANGELOG.md for Added/Fixed bullets that
     // don't plausibly match any tests/features/*/spec.md title. Info-
     // severity because the match is fuzzy — surfaces release-note claims
     // without a locking test, without hard-gating.
-    {
-        AuditCheck c;
-        c.id          = "changelog_test_coverage";
-        c.name        = "CHANGELOG ↔ Feature Tests";
-        c.description = "Top-section Added/Fixed bullets without a matching tests/features/*/spec.md";
-        c.category    = "General";
-        c.type        = CheckType::Info;
-        c.severity    = Severity::Info;
-        c.autoSelect  = true;
-        c.available   = true;
-        c.inProcessRunner = &AuditDialog::runChangelogCoverageCheck;
-        m_checks.append(std::move(c));
-    }
+    addInProcessCheck("changelog_test_coverage", "CHANGELOG ↔ Feature Tests",
+        "Top-section Added/Fixed bullets without a matching tests/features/*/spec.md",
+        CheckType::Info, Severity::Info, &AuditDialog::runChangelogCoverageCheck);
 
     // Lane 3 — test-health. Surfaces skipped / disabled / xfail / only-
     // blocks inside tests/ subtrees. An "all green" suite with one of

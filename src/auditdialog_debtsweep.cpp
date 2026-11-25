@@ -242,11 +242,16 @@ void AuditDialog::renderDebtResults() {
         return;
     }
 
-    static const QStringList catOrder = {
+    static const QStringList knownOrder = {
         "code_drift", "test_coverage", "doc_drift", "packaging_drift"};
     static const QHash<QString, QString> catLabel = {
         {"code_drift", "Code drift"}, {"test_coverage", "Test coverage"},
         {"doc_drift", "Doc drift"}, {"packaging_drift", "Packaging drift"}};
+    // Known categories first, then any the engine added since, so no
+    // finding goes unrendered while "Defer all" still files it.
+    QStringList catOrder = knownOrder;
+    for (const DebtSweepEngine::Finding &d : std::as_const(m_debtFindings))
+        if (!catOrder.contains(d.category)) catOrder << d.category;
 
     QString html;
     for (const QString &cat : catOrder) {
