@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_query` decides in one place which modes return no item rows, so its refusals of row-shaping arguments under those modes cannot drift apart** (ANTS-6241)
+
 - **`roadmap_query` cleans every value it echoes back through one shared helper, which cuts it short and replaces control characters** (ANTS-6240)
 
 - **`roadmap_log`'s body editor finds its target in the markdown file through its own named step, so the part that runs only for file-backed roadmaps reads as such** (ANTS-6239)

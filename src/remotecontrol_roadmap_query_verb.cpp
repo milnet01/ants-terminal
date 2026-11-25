@@ -1008,6 +1008,16 @@ struct RemoteControl::RoadmapQueryCall {
     void attachLinks(QJsonArray &arr);
 };
 
+// ANTS-6241 — the modes that answer with something other than item rows. A
+// row-shaping or row-filtering argument (bullet_fields, body_match, version)
+// is refused under them rather than ignored. headline_only emits rows, but
+// owns their shape and carries no body, so those two checks name it too.
+static bool modeEmitsRows(const QString &mode) {
+    return mode != QLatin1String("section_index") && mode != QLatin1String("bundles")
+        && mode != QLatin1String("report") && mode != QLatin1String("sources")
+        && mode != QLatin1String("ledger");
+}
+
 // ANTS-1117 v1: roadmap-query — parse the active tab's ROADMAP.md
 // (cached on mtime; INV-10 rate-limit) into a structured bullet
 // stream for Claude. Returns the unified `{ok, error, code}` shape
@@ -1801,13 +1811,9 @@ auto RemoteControl::RoadmapQueryCall::parseMode() -> std::optional<QJsonDocument
     }
     // Refused rather than ignored, for the same reason. Each of these modes
     // OWNS its row shape: headline_only's four keys are a tested contract,
-    // and section_index / bundles / report emit no bullets[] to project.
+    // and the rest emit no bullets[] to project.
     if (!bulletFields.isEmpty()
-        && (mode == QLatin1String("headline_only")
-            || mode == QLatin1String("section_index")
-            || mode == QLatin1String("bundles")
-            || mode == QLatin1String("report")
-            || mode == QLatin1String("sources"))) {
+        && (mode == QLatin1String("headline_only") || !modeEmitsRows(mode))) {
         out["ok"] = false;
         out["error"] = QStringLiteral(
             "bullet_fields does not combine with mode:\"%1\" — that mode owns "
@@ -2014,11 +2020,7 @@ auto RemoteControl::RoadmapQueryCall::checkCombos() -> std::optional<QJsonDocume
     // ANTS-5468 — refused where no body is emitted: an ignored body_match
     // would answer with rows that look filtered and are not.
     if (bodyMatchActive &&
-        (mode == QLatin1String("headline_only") ||
-         mode == QLatin1String("section_index") ||
-         mode == QLatin1String("bundles") ||
-         mode == QLatin1String("report") ||
-         mode == QLatin1String("sources") ||
+        (mode == QLatin1String("headline_only") || !modeEmitsRows(mode) ||
          (req.contains(QStringLiteral("include_body")) &&
           !req.value(QStringLiteral("include_body")).toBool(true)))) {
         out["ok"] = false;
@@ -2052,10 +2054,7 @@ auto RemoteControl::RoadmapQueryCall::parseVersion() -> std::optional<QJsonDocum
         if (!section.isEmpty())      why = QStringLiteral("section");
         else if (!idArg.isEmpty())   why = QStringLiteral("id");
         else if (!idsArg.isEmpty())  why = QStringLiteral("ids");
-        else if (mode == QLatin1String("section_index") ||
-                 mode == QLatin1String("bundles") ||
-                 mode == QLatin1String("report") ||
-                 mode == QLatin1String("sources"))
+        else if (!modeEmitsRows(mode))
             why = QStringLiteral("mode:") + mode;
         if (!why.isEmpty()) {
             out["ok"] = false;

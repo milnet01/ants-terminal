@@ -109324,12 +109324,20 @@ worked after these.
   Source: review-readability-2026-10-22 (L20-F10).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6241] **Decide which roadmap_query modes emit rows in one modeEmitsRows(mode) predicate.**
+- ✅ [ANTS-6241] **Decide which roadmap_query modes emit rows in one modeEmitsRows(mode) predicate.**
   From ANTS-6129 (folds dab54ceb2b41, f74db1a5df71). The sets at the
   bullet_fields, body_match, version and query refusals are hand-kept;
   query under mode:report is silently dropped, which is ANTS-5924. Fix
   the two together.
   Hot reload: none needed.
+  modeEmitsRows(mode) (remotecontrol_roadmap_query_verb.cpp) names the
+  row-less modes once: section_index, bundles, report, sources, ledger.
+  The bullet_fields, body_match and version refusals use it (the first
+  two also name headline_only). ledger keeps its own kNotWithLedger list
+  in ledger(), which already refused these, so no answer changes; ledger
+  now meets the shared refusal first. RoadmapQueryBulletFields.Inv4
+  covers report, sources and ledger too (passes before and after). The
+  query half of ANTS-5924 was fixed by ANTS-6734.
   **Layman:** Four places each keep their own list of query modes that return no item rows, and they already disagree.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L20-F11).
@@ -111776,13 +111784,16 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: mcp-roadmap-query-log-b.
 
-- 📋 [ANTS-5924] **remotecontrol_roadmap_query_verb.cpp:1777: query, kind, source and status are all silently ignored under mode:"report": no refusal fires, and the report branch (:2030-2143) reads none of them.**
+- ✅ [ANTS-5924] **remotecontrol_roadmap_query_verb.cpp:1777: query, kind, source and status are all silently ignored under mode:"report": no refusal fires, and the report branch (:2030-2143) reads none of them.**
   Lead L20-C2 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-b.
   Location: remotecontrol_roadmap_query_verb.cpp:1777
   `query`, `kind`, `source` and `status` are all silently ignored under `mode:"report"`: no refusal fires, and the report branch (:2030-2143) reads none of them. This is the "ignored filter reads as applied" failure the file refuses everywhere else. Searched: none beyond this file.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  Fixed by ANTS-6734: checkCombos refuses query, q, kind, source, status
+  and filter under mode:"report" (bundles keeps status). Confirmed in
+  the code while doing ANTS-6241.
   **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

@@ -135,7 +135,9 @@ TEST(RoadmapQueryBulletFields, Inv4RefusedOnModesThatOwnTheirRowShape) {
     const QString root = seedRoot(tmp);
     ASSERT_FALSE(root.isEmpty());
 
-    for (const char *mode : {"headline_only", "section_index", "bundles"}) {
+    // ANTS-6241 — every mode that emits no rows, ledger included.
+    for (const char *mode : {"headline_only", "section_index", "bundles",
+                             "report", "sources", "ledger"}) {
         QJsonObject req;
         req[QStringLiteral("mode")] = QString::fromLatin1(mode);
         req[QStringLiteral("bullet_fields")] =
