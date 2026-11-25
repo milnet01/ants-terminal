@@ -1,7 +1,7 @@
 #pragma once
 
 // ANTS-5560 — the update dialog (docs/specs/ANTS-5560-appimage-self-update.md
-// § 2.4 steps 2–6). Non-modal, like every dialog here (dialogs.md). It offers
+// § 2.4 steps 2–6). This dialog is non-modal (dialogs.md). It offers
 // the update, downloads and verifies it through SelfUpdate::Session, swaps it
 // in, then offers Restart now / Restart later. MainWindow owns the check, the
 // indicator and the restart itself; this dialog only reports what happened.

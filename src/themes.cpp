@@ -362,7 +362,7 @@ std::vector<Theme> Themes::loadUserThemes() {
             qWarning("Ants: user theme %s failed to parse: %s (byte offset %d)",
                      qUtf8Printable(filePath),
                      qUtf8Printable(err.errorString()), err.offset);
-            // ANTS-1179: rotate the bad file to .corrupt.<epoch> so:
+            // Rotate the bad file to .corrupt.<epoch> so:
             // (a) the user's data survives (forensic copy on disk);
             // (b) the next launch doesn't keep skipping it silently —
             //     the file disappears from the *.json glob, the cache

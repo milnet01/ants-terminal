@@ -1,4 +1,4 @@
-// ANTS-1181 — see aboutdialogs.h for rationale.
+// See aboutdialogs.h for rationale.
 
 #include "aboutdialogs.h"
 #include "antsversion.h"

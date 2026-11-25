@@ -821,7 +821,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // File→New Window instances, which default e2eMode=false).
     m_remoteControl->setE2eMode(e2eMode);
     // ANTS-1337 Phase 2 — install the verify-changes trust client.
-    // Chrome-layer VerifyTrustModalClient shows a QMessageBox when
+    // Chrome-layer VerifyTrust::ModalClient shows a QMessageBox when
     // verify_changes hits a .ants/verify.json whose SHA isn't
     // trusted; user can grant trust via "Trust this SHA" /
     // "Trust this repo". RemoteControl takes ownership.

@@ -1,4 +1,4 @@
-// VerifyTrustModalClient implementation. See verifytrustmodal.h +
+// VerifyTrust::ModalClient implementation. See verifytrustmodal.h +
 // docs/specs/ANTS-1337-first-run-trust-gate-ants.md § 4.3.
 
 #include "verifytrustmodal.h"

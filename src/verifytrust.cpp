@@ -273,7 +273,9 @@ bool FilePersistedTrustClient::loadFromDisk() {
         // design), then start fresh. ANTS-5082 — move the file aside
         // first, so the next write does not destroy the only copy of
         // whatever it still holds.
-        // Same naming as the config.cpp / themes.cpp rotation (ANTS-1179).
+        // Renamed to <file>.corrupt.<seconds>, as themes.cpp does, with no
+        // retry and no pruning. config.cpp's rotateCorruptFileAside differs:
+        // it copies to <file>.corrupt-<ms>, retries and keeps the newest 5.
         const QString aside = m_path
             + QStringLiteral(".corrupt.%1").arg(QDateTime::currentSecsSinceEpoch());
         const bool moved = QFile::rename(m_path, aside);

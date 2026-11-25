@@ -107,7 +107,7 @@ public:
 
     // ANTS-1337 Phase 2 — install the verify-changes trust client.
     // Called from MainWindow construction with a chrome-layer
-    // VerifyTrustModalClient. RemoteControl takes ownership. nullptr
+    // VerifyTrust::ModalClient. RemoteControl takes ownership. nullptr
     // (default) means cmdVerifyChanges runs without a trust gate,
     // preserving pre-ANTS-1337 behaviour — used by tests / headless
     // CI / ANTS_VERIFY_TRUST_AUTOTRUST=1.

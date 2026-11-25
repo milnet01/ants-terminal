@@ -1,4 +1,4 @@
-// ANTS-1181 — extracted from mainwindow.cpp's setupHelpMenu(). The two
+// Extracted from mainwindow.cpp's setupHelpMenu(). The two
 // About dialogs are pure presentation: they read ANTS_VERSION + qVersion
 // + (optionally) a Lua-version literal, ask ants-mcpd for its build line
 // (ANTS-5340), and pop a non-modal QDialog with a single OK button. Wayland-friendly pattern (see comment in cpp).

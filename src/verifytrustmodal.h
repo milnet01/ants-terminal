@@ -1,4 +1,4 @@
-// VerifyTrustModalClient — chrome-layer subclass of
+// VerifyTrust::ModalClient — chrome-layer subclass of
 // FilePersistedTrustClient that overrides `prompt()` to show a
 // QMessageBox-based modal trust dialog. ANTS-1337 Phase 2.
 //

@@ -453,10 +453,8 @@ bool ReviewDialogBase::insertFoldInBlock(const QString &heading,
         m_projectCwd, heading, block, RoadmapFoldIn::LockWait::Interactive,
         &busy);
     // ANTS-1990 — a failed write (heading not found verbatim, disk full, lock
-    // contention) must not silently look like success. The four performFoldIn
-    // callsites previously discarded this bool, so the user pressed "Fold into
-    // ROADMAP" and nothing happened with no feedback. Surface it here, at the
-    // single choke point.
+    // contention) must not silently look like success. Surface it here, at the
+    // single choke point every performFoldIn goes through.
     if (!ok) {
         QMessageBox::warning(
             this, tr("Fold into ROADMAP"),
