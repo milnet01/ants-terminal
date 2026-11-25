@@ -161,24 +161,13 @@ TEST(A11yChromeNames, Main) {
     coverageSweep(bar.get(), "TitleBar");
     coverageSweep(palette.get(), "CommandPalette");
 
-    // T8 — source-grep on titlebar.cpp.
+    // T8 — source-grep on titlebar.cpp. One builder sets every button's
+    // names, so T1-T4 above check those per button at runtime.
     {
         const std::string src = ants_test::slurpFile(TITLEBAR_CPP_PATH);
         if (src.empty()) {
             fail("TITLEBAR_CPP_PATH", "could not read source");
         } else {
-            const int n = countSubstr(src, "setAccessibleName(");
-            if (n < 4) {
-                fail("titlebar.cpp",
-                     "expected ≥4 setAccessibleName() calls, found " +
-                         std::to_string(n));
-            }
-            const int d = countSubstr(src, "setAccessibleDescription(");
-            if (d < 4) {
-                fail("titlebar.cpp",
-                     "expected ≥4 setAccessibleDescription() calls, found " +
-                         std::to_string(d));
-            }
             // Stable objectNames so Orca + the introspection sweep above
             // can always find them.
             for (const char *needle : {"\"centerBtn\"", "\"minimizeBtn\"",

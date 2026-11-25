@@ -97767,11 +97767,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: changelog-feedback.
 
-- 📋 [ANTS-6589] **Fold the duplicated logic the 2026-11-06 reviews found in chrome-widgets.**
+- ✅ [ANTS-6589] **Fold the duplicated logic the 2026-11-06 reviews found in chrome-widgets.**
   3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 566 `src/kwinpositiontracker.cpp:25` (Medium)
   - row 567 `src/opaquemenubar.h:58` (Low)
   - row 568 `src/titlebar.cpp:95` (Low)
+  Shipped 2026-11-25. Row 566: kwinCenterScript() beside kwinMoveScript
+  under the ANTS-1768 guard; centerWindow calls it. Row 567:
+  cross-references in opaquemenubar.h (the reviewer's lesser remedy; a
+  shared helper would rewrite three feature specs for a four-line fill).
+  Row 568: one addButton builder in TitleBar.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).

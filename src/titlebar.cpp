@@ -51,50 +51,35 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     // enabled. The button glyphs (✥ / ✕ / ⬜ / ⟩) + the hover-colour
     // feedback give enough affordance without tooltip text.
 
-    // Center window button. Glyph-only — accessible name overrides the
-    // codepoint Orca/AT-SPI would otherwise speak literally ("eight-spoked
-    // asterisk"). 0.7.41.
-    m_centerBtn = new QToolButton(this);
-    m_centerBtn->setText("\u2725");  // ✥ crosshair
-    m_centerBtn->setObjectName("centerBtn");
-    m_centerBtn->setAccessibleName(tr("Center window"));
-    m_centerBtn->setAccessibleDescription(tr("Center this window on the active screen"));
-    m_centerBtn->setAutoRaise(true);
-    m_centerBtn->setFixedSize(32, 28);
-    layout->addWidget(m_centerBtn);
-
-    // Minimize button
-    m_minimizeBtn = new QToolButton(this);
-    m_minimizeBtn->setText("\u2013");  // – en dash
-    m_minimizeBtn->setObjectName("minimizeBtn");
-    m_minimizeBtn->setAccessibleName(tr("Minimize window"));
-    m_minimizeBtn->setAccessibleDescription(tr("Minimize this window"));
-    m_minimizeBtn->setAutoRaise(true);
-    m_minimizeBtn->setFixedSize(32, 28);
+    // The four window buttons. Glyph-only, so each has an accessible name:
+    // Orca/AT-SPI would otherwise speak the codepoint literally
+    // ("eight-spoked asterisk"). 0.7.41.
+    auto addButton = [&](const char *glyph, const char *objectName,
+                         const QString &name, const QString &description) {
+        auto *btn = new QToolButton(this);
+        btn->setText(QString::fromUtf8(glyph));
+        btn->setObjectName(objectName);
+        btn->setAccessibleName(name);
+        btn->setAccessibleDescription(description);
+        btn->setAutoRaise(true);
+        btn->setFixedSize(32, 28);
+        layout->addWidget(btn);
+        return btn;
+    };
+    // MainWindow connects the centre button, through centerButton().
+    m_centerBtn = addButton("\u2725", "centerBtn",  // ✥ crosshair
+                            tr("Center window"),
+                            tr("Center this window on the active screen"));
+    m_minimizeBtn = addButton("\u2013", "minimizeBtn",  // – en dash
+                              tr("Minimize window"), tr("Minimize this window"));
     connect(m_minimizeBtn, &QToolButton::clicked, this, &TitleBar::minimizeRequested);
-    layout->addWidget(m_minimizeBtn);
-
-    // Maximize/restore button
-    m_maximizeBtn = new QToolButton(this);
-    m_maximizeBtn->setText("\u25A1");  // □ white square
-    m_maximizeBtn->setObjectName("maximizeBtn");
-    m_maximizeBtn->setAccessibleName(tr("Maximize window"));
-    m_maximizeBtn->setAccessibleDescription(tr("Maximize or restore this window"));
-    m_maximizeBtn->setAutoRaise(true);
-    m_maximizeBtn->setFixedSize(32, 28);
+    m_maximizeBtn = addButton("\u25A1", "maximizeBtn",  // □ white square
+                              tr("Maximize window"),
+                              tr("Maximize or restore this window"));
     connect(m_maximizeBtn, &QToolButton::clicked, this, &TitleBar::maximizeRequested);
-    layout->addWidget(m_maximizeBtn);
-
-    // Close button
-    m_closeBtn = new QToolButton(this);
-    m_closeBtn->setText("\u2715");  // ✕
-    m_closeBtn->setObjectName("closeBtn");
-    m_closeBtn->setAccessibleName(tr("Close window"));
-    m_closeBtn->setAccessibleDescription(tr("Close this window"));
-    m_closeBtn->setAutoRaise(true);
-    m_closeBtn->setFixedSize(32, 28);
+    m_closeBtn = addButton("\u2715", "closeBtn",  // ✕
+                           tr("Close window"), tr("Close this window"));
     connect(m_closeBtn, &QToolButton::clicked, this, &TitleBar::closeRequested);
-    layout->addWidget(m_closeBtn);
 }
 
 void TitleBar::setTitle(const QString &title) {

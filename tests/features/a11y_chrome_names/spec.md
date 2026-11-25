@@ -47,10 +47,7 @@ field (Orca speaks the period). Descriptions are full sentences.
 
 I1. Each TitleBar button assigns `setAccessibleName` and
     `setAccessibleDescription` immediately after `setText`, before
-    `connect`. The strings are literal English in source — no
-    `tr()` to keep the AT-SPI test deterministic across LANG values
-    (the wider `tr()` migration is the H10 i18n bundle in 0.9.0;
-    this pass just unblocks the screen-reader case).
+    `connect`. The strings are English, wrapped in `tr()`.
 
 I2. `centerBtn`, `minimizeBtn`, `maximizeBtn`, `closeBtn` each
     carry a stable `objectName` — Qt's title-bar code already sets
@@ -100,8 +97,9 @@ T7. **Coverage sweep.** Every `QAbstractButton` whose top-level
     introspection lane: it catches a future contributor adding a
     glyph-only button to the chrome without a name.
 
-T8. Source-grep: `titlebar.cpp` has at least four
-    `setAccessibleName(` calls (one per chrome button).
+T8. Source-grep: `titlebar.cpp` holds each button's `objectName`
+    literal (I2). One builder sets every button's names, so T1–T4
+    check them per button.
 
 T9. Source-grep: `commandpalette.cpp` has at least two
     `setAccessibleName(` calls (input + list).

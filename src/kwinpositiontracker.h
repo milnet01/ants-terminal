@@ -23,6 +23,10 @@ inline bool kwinPresent() {
 // the values are interpolated into JS unescaped, so every one is integral.
 QString kwinMoveScript(qint64 pid, int x, int y);
 
+// The KWin script that centres this process's window in its screen's
+// placement area. The same ANTS-1768 integral-only rule applies.
+QString kwinCenterScript(qint64 pid);
+
 // The one KWin scripting chain: write `kwinJs` to an unpredictable temp file,
 // then loadScript → start → unloadScript over dbus-send, removing the file on
 // every path. `tag` names the temp file (kwin_<tag>_ants_*) and, with the pid,

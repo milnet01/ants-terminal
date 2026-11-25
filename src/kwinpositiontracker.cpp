@@ -43,6 +43,28 @@ QString kwinMoveScript(qint64 pid, int x, int y) {
     ).arg(pid).arg(x).arg(y);
 }
 
+QString kwinCenterScript(qint64 pid) {
+    // ANTS-1768 — the same unescaped interpolation as kwinMoveScript.
+    static_assert(std::is_integral_v<decltype(pid)>,
+                  "KWin JS interpolation must stay integral-only (ANTS-1768)");
+    return QString(
+        "var clients = workspace.windowList();\n"
+        "for (var i = 0; i < clients.length; i++) {\n"
+        "    var c = clients[i];\n"
+        "    if (c.pid === %1) {\n"
+        "        var area = workspace.clientArea(workspace.PlacementArea, c);\n"
+        "        c.frameGeometry = {\n"
+        "            x: area.x + Math.round((area.width - c.frameGeometry.width) / 2),\n"
+        "            y: area.y + Math.round((area.height - c.frameGeometry.height) / 2),\n"
+        "            width: c.frameGeometry.width,\n"
+        "            height: c.frameGeometry.height\n"
+        "        };\n"
+        "        break;\n"
+        "    }\n"
+        "}\n"
+    ).arg(pid);
+}
+
 void runKWinScript(QObject *owner, const QString &kwinJs, const QString &tag) {
     // ANTS-1045 INV-4: bail before any temp-file write when KWin
     // isn't the active compositor. The KWin-script + dbus-send chain

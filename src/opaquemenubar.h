@@ -33,6 +33,10 @@
 // suppresses the open-dropdown compositor-damage flicker on KWin
 // (menubar_hover_stylesheet INV-3b). The override below is what
 // makes that contract actually true.
+//
+// The same fill is in OpaqueStatusBar::paintEvent (opaquestatusbar.h)
+// and ColoredTabBar::paintEvent (coloredtabbar.cpp). A change to it
+// here, such as its composition mode, goes in all three.
 
 #include <QMenuBar>
 #include <QPaintEvent>

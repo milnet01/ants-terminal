@@ -1187,25 +1187,8 @@ void MainWindow::centerWindow() {
     // The geometry update above already moved the window via the
     // KWinPositionTracker abstraction; the kwin-script chain below is the
     // KDE-specific frameGeometry refresh.
-    qint64 pid = QApplication::applicationPid();
-    QString kwinJs = QStringLiteral(
-        "var clients = workspace.windowList();\n"
-        "for (var i = 0; i < clients.length; i++) {\n"
-        "    var c = clients[i];\n"
-        "    if (c.pid === %1) {\n"
-        "        var area = workspace.clientArea(workspace.PlacementArea, c);\n"
-        "        c.frameGeometry = {\n"
-        "            x: area.x + Math.round((area.width - c.frameGeometry.width) / 2),\n"
-        "            y: area.y + Math.round((area.height - c.frameGeometry.height) / 2),\n"
-        "            width: c.frameGeometry.width,\n"
-        "            height: c.frameGeometry.height\n"
-        "        };\n"
-        "        break;\n"
-        "    }\n"
-        "}\n"
-    ).arg(pid);
-
-    runKWinScript(this, kwinJs, QStringLiteral("center"));
+    runKWinScript(this, kwinCenterScript(QApplication::applicationPid()),
+                  QStringLiteral("center"));
 }
 
 void MainWindow::resizeToCells(int cols, int rows) {
