@@ -21,6 +21,13 @@ for security-relevant changes.
   hold folder names, commands and other private text, and offers Open Log
   Folder so you can check it and attach it yourself.
 
+### Changed
+
+- **An idle Ants MCP server lets go of the roadmap and changelog it last read.** (ANTS-5208)
+  Once the server has no call waiting, it frees its copies of the last
+  roadmap and changelog it parsed, so each idle `ants-mcpd` stays small.
+  The next query reads the files again.
+
 ### Fixed
 
 - **Auditing a project leaves no rule-quality files in its top folder.** (ANTS-6862)

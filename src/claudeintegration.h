@@ -332,6 +332,12 @@ public:
     // picks the worker; both lanes share the one cap (§ 2.10).
     bool postWorkerJob(std::function<void()> job,
                        DispatchLane lane = DispatchLane::Shared);
+    // ANTS-5208 — runs on the shared-lane worker each time that lane has no
+    // job left, so it can drop what the jobs cached on that thread. Install
+    // it before the first job is posted; it is read on the worker unlocked.
+    void setSharedLaneIdleHook(std::function<void()> hook) {
+        m_sharedLaneIdleHook = std::move(hook);
+    }
 
     // ANTS-2132 — everything the response pipeline needs after the tool
     // handler has produced its body. Captured by value so the reply can be
@@ -873,6 +879,8 @@ private:
     QThread *m_bulkWorker = nullptr;
     QObject *m_bulkSink   = nullptr;
     QAtomicInt m_dispatchInFlight{0};
+    QAtomicInt m_sharedLaneInFlight{0};             // ANTS-5208
+    std::function<void()> m_sharedLaneIdleHook;     // ANTS-5208
     bool m_dispatchShuttingDown = false;
     // Counts the executing job too, so the 65th outstanding call is the first
     // refused and the boundary is stateable in a test.

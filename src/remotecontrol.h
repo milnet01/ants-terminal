@@ -1221,6 +1221,15 @@ public:
     // skipped[] while the rest apply. m_main-independent.
     QJsonDocument cmdChangelogLogAddBatch(const QJsonObject &req);
 
+    // ANTS-5208 — drop the roadmap, section and changelog parse caches and
+    // this thread's roadmap parse memo. Call it on the thread that serves
+    // roadmap_query and changelog_query, once no call is queued there; the
+    // next query refills them.
+    void releaseIdleCaches();
+    // ANTS-5208 — test-only: whether the bullets cache holds a parse.
+    bool roadmapCacheHeldForTest() const { return !m_roadmapCachePath.isEmpty(); }
+    bool changelogCacheHeldForTest() const { return !m_changelogCachePath.isEmpty(); }
+
     // ANTS-1346 test-only inspectors for the section-cache LRU.
     int sectionCacheSizeForTest() const {
         return m_roadmapSectionCache.size();

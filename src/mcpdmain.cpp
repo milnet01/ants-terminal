@@ -211,6 +211,9 @@ int main(int argc, char **argv) {
         [&pipeline] { return pipeline.registeredToolNames(); });
     // ANTS-5506 — doc_facts' argument map: the copy tools/list publishes.
     rc.setMcpVerbArgsProvider([&pipeline] { return pipeline.verbArgsSnapshot(); });
+    // ANTS-5208 — the shared lane fills rc's parse caches; it frees them once
+    // it has nothing queued, so an idle server does not hold a whole roadmap.
+    pipeline.setSharedLaneIdleHook([&rc] { rc.releaseIdleCaches(); });
 
     mcp::RegistryHost host;
     host.ci    = &pipeline;

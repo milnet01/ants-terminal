@@ -102665,17 +102665,27 @@ that extend an earlier perf-pass bundle name it.
   Triaged 2026-11-25: fixed by ANTS-5087. releaseParseMemo()
   (roadmapparse.cpp) is called after every worker dispatch
   (remotecontrol_terminal.cpp).
+  Correction 2026-11-25: ANTS-5087 released the memo only on the
+  remote-control socket route; an MCP tool call on the same worker kept
+  it. ANTS-5208's shared-lane idle hook now releases it for both, so
+  this stays closed.
   **Layman:** The roadmap parser remembers its last document on every thread that used it.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.
   Lanes: roadmap.
 
-- 📋 [ANTS-5208] **Release RemoteControl's roadmap and changelog parse caches when idle.**
+- ✅ [ANTS-5208] **Release RemoteControl's roadmap and changelog parse caches when idle.**
   Extends ANTS-5094. m_roadmapCacheBullets and m_changelogCache are single-slot caches refreshed on the next query past the TTL. Nothing frees them in between. m_roadmapSectionCache already evicts. Direction: drop the slots on a timer after expiry.
   Triaged 2026-11-25: live. m_roadmapCacheBullets and m_changelogCache
   are only replaced on a miss or a refusal
   (remotecontrol_roadmap_query_verb.cpp, remotecontrol_changelog.cpp);
   nothing frees them once the 100 ms TTL lapses.
+  Shipped 2026-11-25: when the shared MCP lane has no job left it runs
+  RemoteControl::releaseIdleCaches() (bullets, section and changelog
+  caches, and the worker's parse memo), in ants-mcpd and in each window.
+  Spec and tests: tests/features/mcp_idle_cache_release/. Measured that
+  day: one roadmap_query raised ants-mcpd --call's peak RSS from about
+  37 MB to about 129 MB.
   **Layman:** The last roadmap and changelog read stay in memory after the cache has expired.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.

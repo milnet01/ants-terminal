@@ -875,8 +875,15 @@ bool ClaudeIntegration::postWorkerJob(std::function<void()> job,
     }
 
     m_dispatchInFlight.fetchAndAddOrdered(1);
-    QMetaObject::invokeMethod(sink, [this, job = std::move(job)]() {
+    if (!bulk) m_sharedLaneInFlight.fetchAndAddOrdered(1);
+    QMetaObject::invokeMethod(sink, [this, bulk, job = std::move(job)]() {
         job();
+        // ANTS-5208 — the last queued shared-lane job lets that thread drop
+        // its caches. A job posted meanwhile runs after this one on the same
+        // thread, so the hook never overlaps a job.
+        if (!bulk && m_sharedLaneInFlight.fetchAndSubOrdered(1) == 1
+            && m_sharedLaneIdleHook)
+            m_sharedLaneIdleHook();
         m_dispatchInFlight.fetchAndSubOrdered(1);
     }, Qt::QueuedConnection);
     return true;

@@ -848,6 +848,10 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
             [ci = m_claudeIntegration](std::function<void()> job) {
                 return ci->postWorkerJob(std::move(job));
             });
+        // ANTS-5208 — that worker fills RemoteControl's parse caches, so it
+        // frees them once it has nothing queued.
+        m_claudeIntegration->setSharedLaneIdleHook(
+            [rc = m_remoteControl] { rc->releaseIdleCaches(); });
     }
     // Gated by config: any process under the user's UID can otherwise
     // drive the terminal via the rc socket (including send-text

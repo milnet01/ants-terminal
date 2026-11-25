@@ -2346,6 +2346,31 @@ RemoteControl::~RemoteControl() {
     }
 }
 
+// ANTS-5208 — the caches live at most kRoadmapCacheTtlMs, but nothing freed
+// them, so the last parse of the whole roadmap stayed resident between calls.
+// Assigning empty values releases the storage; clear() keeps a QList's.
+void RemoteControl::releaseIdleCaches() {
+    m_roadmapCachePath.clear();
+    m_roadmapCacheMtimeMs = 0;
+    m_roadmapCacheStampMs = 0;
+    m_roadmapCacheBullets = QJsonArray();
+    m_roadmapCacheDuplicateIds = QJsonArray();
+    m_roadmapCacheSource.clear();
+    m_roadmapCacheFileMaxId = 0;
+    m_roadmapCacheStoreHighWater = 0;
+    m_roadmapIndex = {};
+    m_roadmapSectionCache = {};
+    m_roadmapSectionShape = {};
+    m_roadmapSectionEtags = {};
+    m_roadmapSectionLru = {};
+    m_changelogCachePath.clear();
+    m_changelogCacheMtimeMs = 0;
+    m_changelogCacheStampMs = 0;
+    m_changelogCache = {};
+    m_changelogCachePrefix.clear();
+    RoadmapParse::releaseParseMemo();
+}
+
 QString RemoteControl::roadmapFileFor(const QString &canonicalDir) {
     return rcdetail::findRoadmapUnder(canonicalDir);   // ANTS-5667
 }
