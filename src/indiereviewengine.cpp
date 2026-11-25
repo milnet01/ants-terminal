@@ -955,9 +955,12 @@ QString assembleBriefForDispatch(const QString &projectPath,
 
 
 QHash<QString, QString> buildBasenameIndex(const QString &projectPath) {
-    // The same filters as deriveComputedPartition (indexable suffixes, no
-    // generated output, no noise directories), with its own, larger cap on
-    // the files it indexes.
+    // Most of deriveComputedPartition's filters (no generated output, no
+    // noise directories), with its own, larger cap on the files it indexes.
+    // Two differ: it does not drop git-ignored directories (underIgnoredDir),
+    // and it admits by suffix alone (isIndexableSuffix), not isIndexableFile,
+    // so an extensionless `#!` script is not indexed. A citation names
+    // `path.ext`, so such a file could never be cited.
     constexpr int kMaxFilesTotal = 20000;
     QHash<QString, QString> out;
     const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();

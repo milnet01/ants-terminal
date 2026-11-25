@@ -147,8 +147,9 @@ IndieReviewDialog::laneByName(const QString &name) const {
 QString IndieReviewDialog::assembleCappedPrompt(const QString &brief) {
     const QByteArray utf = brief.toUtf8();
     if (utf.size() <= kPromptCapBytes) return brief;
-    // assembleBriefForDispatch is uncapped (inlines whole source + standards
-    // bodies). Backstop a runaway lane at the budget; the fence preamble
+    // assembleBriefForDispatch caps each inlined body (kMaxSourceBodyBytes)
+    // but not their total (source + standards bodies). Backstop a runaway
+    // lane at the budget; the fence preamble
     // already frames the bodies as data, so a clipped tail stays safe.
     const QString marker = QStringLiteral(
         "\n[brief truncated — lane exceeds %1 KiB budget]\n")
