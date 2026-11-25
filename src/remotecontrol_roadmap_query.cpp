@@ -58,8 +58,9 @@ QString rcdetail::rlCanonicalToStatus(const QString &toStatus) {
 // ============================ ANTS-2126 ============================
 // Pass-headings (`#### Pass N.M`) write handlers. The GFM/ants-v1 write
 // paths route here (instead of returning the ANTS-2031 format_mismatch
-// refusal) when the target roadmap is pass-headings. File-static free
-// functions: each is pure given (req, roadmapPath, markdown) — invoked
+// refusal) when the target roadmap is pass-headings. Free functions in
+// `rcdetail`: each takes (req, roadmapPath, markdown) and writes the roadmap
+// unless `dry_run` is set — invoked
 // from inside the member handlers at the format-detection gate, so they
 // need no test seam of their own (the existing *ForTest seams reach them
 // through the gate). The splice/flip primitives live in

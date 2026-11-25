@@ -33,8 +33,6 @@ using namespace rcdetail;  // ANTS-3833
 // both writes land on the same date and those clauses pass against exactly the
 // build they exist to catch.
 
-// The local calendar date, formatted to satisfy the item table's GLOB CHECK.
-// Local and not UTC: a user asking "what did I close today?" means their day.
 void rcdetail::rlAddScrubWarning(QJsonObject &env, const QStringList &names,
                                  int unnamed, const QStringList &fragments,
                                  bool batch) {
@@ -78,6 +76,8 @@ std::optional<QJsonDocument> RemoteControl::rlUnrecognisedFormat(
     return QJsonDocument(env);
 }
 
+// The local calendar date, formatted to satisfy the item table's GLOB CHECK.
+// Local and not UTC: a user asking "what did I close today?" means their day.
 QString rcdetail::rlStampToday() {
     return RoadmapClock::today().toString(QStringLiteral("yyyy-MM-dd"));
 }
@@ -1665,48 +1665,14 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
     // decides placement. anchor_injected stays, and stays false —
     // ants-v1 never injects one.
     env[QStringLiteral("anchor_injected")] = false;
-    // ANTS-4844 — what the bullet will LOOK like. op:"append"'s
-    // dry run has echoed its would-be bullet since ANTS-2077;
-    // op:"flip" EDITS an existing bullet, which makes it the
-    // higher-stakes of the two, and it echoed nothing — so the only
-    // way to see what a flip produced was to run it for real and
-    // read the file back, which is what dry_run exists to avoid.
-    //
-    // `bytes` was no substitute and is not one here: this path
-    // emits none at all (a store has no lines), and on the markdown
-    // path it measures something different from append's, so it
-    // cannot be read as a change magnitude either.
-    //
-    // `would_be_bullet` on a preview, never `bullet`: ANTS-4508's
-    // rule, whose cost is already measured — a previewed value
-    // reported under the key a real write uses reads as a
-    // commitment, and two commits had to be amended over it.
-    //
-    // Covers op:"annotate" too, which shares this block: a note
-    // lands in the body and the body is part of the rendered
-    // bullet, so the echo answers "where did my note go?" as well.
-    // ANTS-5263 — SUPPRESSED under return:"headline_only". That
-    // flag adds `post_bullets`, the compact {id, status,
-    // headline} shape, and until now it ADDED it beside the full
-    // bullet rather than instead of it — so a caller asking for
-    // the compact form got both, which is incoherent and is not
-    // what anyone passing it expects.
-    //
-    // Measured by FinBreak: their project's rules mandate a
-    // dry_run before every write, so an item with accumulated
-    // notes echoed its ENTIRE rendered bullet twice per status
-    // change — once as `would_be_bullet`, once as `bullet` — for
-    // a call appending eight lines they had just composed. Five
-    // scalars were used from the two replies.
-    //
-    // ANTS-5263, second half — the whole bullet is now OPT-IN, via
-    // return:"full". Flip and annotate APPEND at most one line the
-    // caller has just composed, and each note lengthens the body the
-    // next echo carries, so the cost compounded on the items worked
-    // hardest. The default is the compact post_bullets below, which
-    // still shows the post-flip status ANTS-4844 asked a preview to
-    // show. ANTS-4097's joint-result echo belongs to amend_body and
-    // is untouched.
+    // ANTS-4844 / ANTS-5263 — the full bullet is opt-in via return:"full".
+    // The default is the compact post_bullets below, which still shows the
+    // post-flip status. Opt-in because each note lengthens the body that
+    // every echo carries. The full bullet rides as `would_be_bullet` on a
+    // dry run and `bullet` on a write, never one key for both (ANTS-4508).
+    // Covers op:"annotate" too, which shares this block. ANTS-4097's
+    // joint-result echo belongs to amend_body and is untouched. The history
+    // is on ANTS-4844 and ANTS-5263.
     const bool fullEcho =
         req.value(QStringLiteral("return")).toString() == QStringLiteral("full");
     if (fullEcho) {
@@ -2132,7 +2098,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                     + rcFenceOpenerHint(v1target.fenceOpenLine));
         }
         // ANTS-3809 § 2.2 — the store path, at the TOP of this lambda and so
-        // INSIDE the ants-v1 branch. § 2.4 requires exactly that ordering: the
+        // INSIDE the ants-v1 branch. Since ANTS-4485 the store is reached
+        // first, by the block before the GFM walk, whenever detectRoadmapFormat
+        // says ants-v1 and no `anchor` is given; this block serves what that
+        // test did not claim, such as a mixed GFM + ants-v1 file. § 2.4 requires exactly that ordering: the
         // `anchor` locator's bad_op_combo is a FORMAT refusal and must run
         // ahead of the store-versus-markdown dispatch, or an anchor locator
         // would be matched against a field the store path fills as empty and
@@ -3769,8 +3738,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
         // ANTS-3467 — distinguish the two common failure modes so the caller
         // self-corrects instead of concluding the text is absent: (a) the
         // phrase exists in ROADMAP.md but outside this bullet's block (wrong
-        // bullet targeted); (b) the phrase spans a hard-wrapped line break
-        // (bodies wrap at ~70 cols) so no single physical line contains it.
+        // bullet targeted); (b) the phrase exists elsewhere only with its
+        // whitespace folded, because a wrapped phrase inside this bullet
+        // already matches (ANTS-4550).
         QJsonObject env;
         env[QStringLiteral("ok")]    = false;
         // ANTS-4372 — the refusal codes name the surface the caller asked
