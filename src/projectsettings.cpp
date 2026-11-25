@@ -327,6 +327,8 @@ void proposeAuxLayout(Suggestion &s, const QString &root,
     preferResolved(s.changelog, aux.changelog, QStringLiteral("CHANGELOG.md"));
 }
 
+}  // namespace
+
 // ANTS-4092 — the candidate dirs git itself ignores. workspace_search
 // defaults to respect_gitignore:true (it shells out to rg), while this walk
 // looked at everything — two verbs in one server disagreeing about what is
@@ -341,10 +343,8 @@ void proposeAuxLayout(Suggestion &s, const QString &root,
 // absent git, a non-zero-beyond-1 exit or a timeout all yield an empty set,
 // i.e. exactly the pre-4092 behaviour; this narrows a suggestion, it never
 // blocks one.
-}  // namespace
-
-// ANTS-4809 — was gitIgnoredDirs() in the anonymous namespace above; see the
-// header for why it is shared now. Behaviour is unchanged.
+//
+// ANTS-4809 — shared through the header; see it for why.
 QSet<QString> gitIgnoredPaths(const QString &rootCanonical,
                               const QStringList &names) {
     QSet<QString> out;

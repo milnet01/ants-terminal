@@ -176,7 +176,7 @@ struct Suggestion {
 // already exists → {present:true} with NO directory walk — but loads the
 // file to echo its declared source_roots in `wouldUseRoots` + a `reason`
 // (ANTS-3369; an unparseable file → wouldUseRoots nullopt, reason still
-// non-empty). Else counts source files (CodebaseIndex::isIndexableSuffix)
+// non-empty). Else counts source files (CodebaseIndex::isIndexableFile)
 // per top-level dir (skipping the isNoiseDir set, capped at
 // kDetectFileCeiling) and, when the default src/+tests/ walk would miss
 // more than kMissRatio of the repo's source, suggests `sourceRoots` = ALL

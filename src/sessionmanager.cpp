@@ -705,7 +705,7 @@ void SessionManager::cleanupOldSessions(int maxAgeDays) {
             QFile::remove(fi.absoluteFilePath());
     }
     // ANTS-1141 — sweep orphan .tmp files older than 1 day.
-    // saveSession + saveTabOrder both write to <name>.<pid>.tmp and
+    // saveSession, saveSessionAsync and saveTabOrder write to <name>.<pid>.tmp and
     // rename(2) onto the canonical path; on rename failure
     // (ENOSPC, EROFS, EBUSY etc.) the tmp is QFile::removed in
     // the failure branch. But a hard kill mid-rename can leave

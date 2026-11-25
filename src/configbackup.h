@@ -12,17 +12,13 @@
 #include <time.h>
 #include <unistd.h>
 
-// Persistence hygiene helpers shared across Config, ClaudeAllowlist,
-// SessionManager, and SettingsDialog. Split out of secureio.h in 0.7.31
-// once the file straddled two concerns: 0600 perms (kept in secureio.h)
-// and silent-data-loss / write-coordination (this file).
+// Persistence hygiene helpers shared by every settings or session writer.
+// Split out of secureio.h once the file straddled two concerns: 0600 perms
+// (kept in secureio.h) and silent-data-loss / write-coordination (this file).
 
 // Rotate a corrupt JSON-ish file aside so the next save() doesn't
-// clobber it. Used by Config, Claude allowlist, SessionManager, and
-// SettingsDialog — the 0.7.12 /indie-review sweep flagged the same
-// silent-data-loss pattern (parse failure → next save overwrites user
-// bytes) in all four, and the reviewers asked for a shared helper
-// rather than four copies of the same ~30-line block.
+// clobber it. A parse failure that lets the next save overwrite the
+// user's bytes is silent data loss; one shared helper serves every caller.
 //
 // Behavior:
 //   - Builds `<path>.corrupt-<ms_timestamp>` and tries QFile::copy.

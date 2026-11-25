@@ -19,7 +19,7 @@
 #include <QTimer>
 
 namespace {
-// ANTS-1169: PATH_MAX-sized cap on user-typable path settings. The
+// PATH_MAX-sized cap on user-typable path settings. The
 // path/command setters below run user-supplied strings through this
 // gate. A nul-embedded value is also rejected — POSIX path
 // semantics treat nul as a terminator, so a value like
@@ -53,7 +53,7 @@ Config::Config() {
 }
 
 void Config::migrate(int from, int to) {
-    // ANTS-1183: placeholder. Future on-disk renames ship as a new
+    // Placeholder. Future on-disk renames ship as a new
     // arm:
     //
     //   if (from < 2) { ... rename "opacity" → "terminal_opacity"; }
@@ -100,7 +100,7 @@ void Config::load() {
     if (doc.isObject()) {
         m_data = doc.object();
         m_base = m_data;   // before migration, so migrated keys count as changed
-        // ANTS-1183: schema migration. Pre-stamp configs (no
+        // Schema migration. Pre-stamp configs (no
         // `_schema` key) are v0; everything written by 0.7.78+
         // carries the current version. Newer-than-current values
         // are read as-is — the binary that wrote them owned the
@@ -230,7 +230,7 @@ void Config::save() {
     m_saveRetry.retries = 0;
     mergeFileChanges(path);
 
-    // ANTS-1183: stamp schema version on every save so the next load
+    // Stamp schema version on every save so the next load
     // can decide whether to migrate. Cheap; idempotent.
     // ANTS-5106 — never LOWER it: an older build stamping its own version
     // over a newer one made the newer build re-run its migrations.
@@ -285,7 +285,7 @@ bool Config::storeIfChanged(const QString &key, const QJsonValue &value) {
 
 // Fixed-value settings. Each set is listed once and read by both ends: the
 // getter falls back to its default on an unknown value, and the setter drops
-// (or normalises) one, so a zombie string never lingers on disk (ANTS-1179).
+// (or normalises) one, so a zombie string never lingers on disk.
 static const QSet<QString> &knownRoadmapPresets() {
     static const QSet<QString> kKnown = {
         QStringLiteral("full"), QStringLiteral("history"),
@@ -450,7 +450,7 @@ QStringList Config::roadmapKindFilters() const {
 }
 
 void Config::setRoadmapKindFilters(const QStringList &kinds) {
-    // ANTS-1179: filter to the known kind set so unknowns can't
+    // Filter to the known kind set so unknowns can't
     // sneak through the setter and live on as zombies in the JSON
     // file. The getter checks the same set.
     const QSet<QString> &kKnown = RoadmapParse::canonicalKinds();
@@ -501,10 +501,9 @@ bool Config::hasRoadmapViewStates() const {
 }
 
 // ANTS-1735 §2.7 — typed accessor mirrors the roadmapStatusFilters() shape.
-// On-disk keys: claude.auto_model_switch / claude.auto_model_min_dwell_sec /
-// claude.auto_model_floor / claude.auto_model_composer_stale_ms (ANTS-1914) /
-// claude.auto_model_idle_ceiling_sec (ANTS-1917). Defaults applied here so
-// callers always see a fully-populated object. This object is a WHITELIST —
+// The keys and their on-disk names are listed once, at claudeAutoModel() in
+// config.h. Defaults applied here so callers always see a fully-populated
+// object. This object is a WHITELIST —
 // only keys inserted here are visible to claudestatuswidgets; a new tuning
 // knob MUST be surfaced here or the controller read silently gets the default.
 QJsonObject Config::claudeAutoModel() const {
@@ -1053,8 +1052,7 @@ void Config::setBackgroundBlur(bool enabled) {
 }
 
 // In menu order. next/prev_bookmark are Ctrl+Alt because TerminalWidget takes
-// Ctrl+Shift+Up/Down for prompt navigation before any shortcut sees it
-// (ANTS-1165).
+// Ctrl+Shift+Up/Down for prompt navigation before any shortcut sees it.
 const QVector<QPair<QString, QString>> &Config::defaultKeybindings() {
     static const QVector<QPair<QString, QString>> v = {
         {"new_tab", "Ctrl+Shift+T"},         {"close_tab", "Ctrl+Shift+W"},
@@ -1099,9 +1097,11 @@ void Config::setKeybinding(const QString &action, const QString &key) {
 
 // Session persistence — default ON. Modern terminals (iTerm2, WezTerm,
 // Kitty, Konsole) restore tabs out of the box; users expect the same here
-// without hunting through Settings. The only cost is ~a few KB of
-// scrollback per tab on disk, gated by a 5-second uptime floor in
-// saveAllSessions() so crash-test launches don't wipe real state.
+// without hunting through Settings. The cost is one compressed session file
+// per tab, holding its scrollback (50k lines by default) and capped at
+// SessionManager::MAX_RESTORE_FILE_BYTES; saving is gated by a 5-second
+// uptime floor in saveAllSessions() so crash-test launches don't wipe real
+// state.
 bool Config::sessionPersistence() const {
     return m_data.value("session_persistence").toBool(true);
 }

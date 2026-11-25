@@ -183,6 +183,8 @@ const QStringList kRoadmapCandidates = {
     QStringLiteral("docs/internal/ROADMAP.md"),
     QStringLiteral("docs/fork/ROADMAP.md"),
 };
+// The YAML subset is copied in remotecontrol.cpp's findYamlChangelogUnder;
+// keep the two in step.
 const QStringList kChangelogCandidates = {
     QStringLiteral("CHANGELOG.md"),
     QStringLiteral("CHANGELOG.yaml"),
@@ -360,8 +362,8 @@ void scanFile(const QString &cwd, const QString &rel,
 // helper docs (e.g. a 3-line CONTRIBUTING-style placeholder named
 // `STYLE.md`) don't get promoted to standards-class. Matches go into
 // `standardsFiles[]` AND `discovered[]` so callers that scan either
-// surface pick them up uniformly. probedPaths records the docs/
-// directory we tried so isStale() can detect later additions.
+// surface pick them up uniformly. probedPaths records a glob label for the
+// scan; isStale() cannot stat it, so later additions wait for the TTL.
 constexpr int kStandardsFallbackMinLines = 100;
 
 // Reads only until the answer is known.
@@ -394,7 +396,8 @@ bool keepWithinBudget(QStringList &out, int &usedBytes, const QString &rel) {
 
 void scanStandardsFallback(const QString &cwd, QStringList &out, int &total,
                            QStringList &probed, QStringList &discovered) {
-    // Marker so isStale picks up future additions / standards-name renames.
+    // A label for the probed_paths echo. isStale() stats each probed path and
+    // this string names no file, so it never invalidates the cache.
     probed.append(QStringLiteral("docs/*STANDARD*|*DESIGN*|*STYLE*|*GUIDE*.md"));
     const QString docsDir =
         caseInsensitiveResolve(cwd, QStringLiteral("docs"));

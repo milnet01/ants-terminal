@@ -121,6 +121,12 @@ public:
     //                              "sonnet" | "opus", default "sonnet"; the
     //                              auto-switcher's baseline/neutral tier
     //                              (ANTS-1974), clamped up to floor.
+    //   "composer_stale_ms" int — claude.auto_model_composer_stale_ms,
+    //                              default -1 (the gate's own default)
+    //   "idle_ceiling_sec" int — claude.auto_model_idle_ceiling_sec,
+    //                              default 180; <= 0 disables the gate
+    //   "debug"            bool — claude.auto_model_debug, default false
+    // The one list of keys. A new knob must be inserted in config.cpp too.
     QJsonObject claudeAutoModel() const;
     // The Settings dialog exposes the bool toggle + the home-tier dropdown
     // (ANTS-1974); dwell + floor stay config-file-only per §2.7.
@@ -613,7 +619,7 @@ public:
     bool loadFailed() const { return m_loadFailed; }
     const QString &loadFailureBackupPath() const { return m_loadFailureBackupPath; }
 
-    // ANTS-1183: schema version stamp. Bump kSchemaVersion when a
+    // Schema version stamp. Bump kSchemaVersion when a
     // breaking on-disk rename / type change ships, and add the
     // corresponding migration arm in migrate(). Pre-stamp configs
     // (those written by Ants ≤ 0.7.77 with no `_schema` key) are
