@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6923 -->
+<!-- ants-roadmap-id-high-water: ANTS=6924 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97488,6 +97488,17 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: doc-fix.
   Source: self: ANTS-6215 Phase 0 read 2026-11-23.
   Lanes: roadmap-parse-render.
+
+- ✅ [ANTS-6924] **The prepush_range test leaves an empty folder in the shared scratch root on every run.**
+  The test's fake repo lives under /tmp, so the global pre-push hook
+  named its scratch folder Scratchpad/<that name>/pre-push, outside the
+  folders the test's trap removes. 247 had piled up. run_hook now sets
+  ANTS_SCRATCH_ROOT to the test's own $WT. Shown: the old copy left one
+  folder per run, the fixed one none. The 248 empty leftovers removed.
+  **Layman:** A test left a stray empty folder behind each time it ran; it now cleans up after itself.
+  Kind: fix.
+  Source: session-338-2026-11-25 (found in the shared scratch root).
+  Lanes: hooks-packaging.
 
 ### Duplicate folding (2026-11-06 review)
 

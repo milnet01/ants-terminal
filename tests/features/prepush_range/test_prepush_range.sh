@@ -50,7 +50,10 @@ BASE="$(git -C "$T" rev-parse HEAD)"
 
 run_hook() {  # stdin lines -> combined output
     rm -rf "$T/.git/ants-gate-passed"
-    (cd "$T" && ANTS_GLOBAL_HOOKS="$GLOBAL_HOOKS" bash tools/hooks/pre-push origin url 2>&1)
+    # The hook's default scratch folder is named after $T but lives outside
+    # it, so the trap would leave it behind; keep it under $WT.
+    (cd "$T" && ANTS_SCRATCH_ROOT="$WT" ANTS_GLOBAL_HOOKS="$GLOBAL_HOOKS" \
+        bash tools/hooks/pre-push origin url 2>&1)
 }
 
 # INV-5 — with no machine-wide hook, the shim runs the project's gate in
