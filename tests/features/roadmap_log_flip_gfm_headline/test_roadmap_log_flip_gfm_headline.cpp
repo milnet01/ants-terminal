@@ -157,3 +157,34 @@ TEST(roadmap_log_flip_gfm_headline, Inv4MissSuggestionsCarryLine) {
     EXPECT_FALSE(first.value(QStringLiteral("headline"))
                      .toString().contains(QStringLiteral("**")));
 }
+
+// ANTS-6234 — an ants-v1 miss ranks by the same token overlap, so a locator
+// sharing words but not its opening letters still finds the bullet, and a tie
+// keeps file order.
+TEST(roadmap_log_flip_gfm_headline, Ants6234AntsV1MissRanksByTokens) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    // The preamble lifts the file past kRoadmapMinParseableSize, below which a
+    // roadmap the generic parser cannot read is refused before the ants-v1 walk.
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()),
+        QByteArray("# Test Roadmap\n\n") + QByteArray("Preamble prose. ").repeated(80)
+        + QByteArray(
+        "\n\n## Work Items\n\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **Zebra crossing paint.**\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0002] **Audio device hot-swap.**\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0003] **Audio device mixer.**\n")));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(
+        flipReq(tmp.path(), QStringLiteral("zzz audio device"))).object();
+
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bullet_not_found"))
+        << QJsonDocument(resp).toJson().toStdString();
+    const QJsonArray sugg = resp.value(QStringLiteral("suggestions")).toArray();
+    ASSERT_GE(sugg.size(), 2) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(sugg.at(0).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("DEMO-0002"));
+    EXPECT_EQ(sugg.at(1).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("DEMO-0003"));
+}

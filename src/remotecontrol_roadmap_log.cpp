@@ -1338,26 +1338,60 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
 // same-project siblings that share an id prefix are the useful hint. Returns
 // indices into `candidateIds` (≤ limit); empty when nothing shares a prefix, so
 // the caller emits no suggestions rather than misleading ones.
-static QVector<int> rcRankIdsBySharedPrefix(const QStringList &candidateIds,
-                                            const QString &locId, int limit) {
-    const QString need = locId.toLower();
-    QVector<QPair<int, int>> scored;  // (sharedPrefixLen, index)
-    for (int i = 0; i < candidateIds.size(); ++i) {
-        const QString cand = candidateIds.at(i).toLower();
-        if (cand.isEmpty()) continue;
-        int shared = 0;
-        const int lim = std::min(cand.size(), need.size());
-        while (shared < lim && cand.at(shared) == need.at(shared)) ++shared;
-        if (shared > 0) scored.append(qMakePair(shared, i));
-    }
-    std::sort(scored.begin(), scored.end(),
-        [](const QPair<int, int> &a, const QPair<int, int> &b) {
+static int rcSharedPrefixLen(const QString &a, const QString &b) {
+    const int lim = std::min(a.size(), b.size());
+    int n = 0;
+    while (n < lim && a.at(n) == b.at(n)) ++n;
+    return n;
+}
+
+// ANTS-6234 — the indices of the `limit` best (score, index) pairs, best
+// first. A tie keeps input order, so equal suggestions come back in file
+// order on every path.
+static QVector<int> rcTopScored(QVector<QPair<double, int>> scored, int limit) {
+    std::stable_sort(scored.begin(), scored.end(),
+        [](const QPair<double, int> &a, const QPair<double, int> &b) {
             return a.first > b.first;
         });
     QVector<int> out;
     for (int k = 0; k < scored.size() && out.size() < limit; ++k)
         out.append(scored.at(k).second);
     return out;
+}
+
+static QVector<int> rcRankIdsBySharedPrefix(const QStringList &candidateIds,
+                                            const QString &locId, int limit) {
+    const QString need = locId.toLower();
+    QVector<QPair<double, int>> scored;  // (sharedPrefixLen, index)
+    for (int i = 0; i < candidateIds.size(); ++i) {
+        const int shared = rcSharedPrefixLen(candidateIds.at(i).toLower(), need);
+        if (shared > 0) scored.append(qMakePair(double(shared), i));
+    }
+    return rcTopScored(scored, limit);
+}
+
+// ANTS-3378 — rank headlines against a headline locator by token overlap
+// (Jaccard, one shared token is enough). A headline sharing no token but an
+// opening run of characters scores below every overlap hit. Every flip and
+// amend miss ranks with this (ANTS-6234).
+static QVector<int> rcRankHeadlines(const QStringList &headlines,
+                                    const QString &needle, int limit) {
+    const QString norm = RoadmapParse::normaliseHeadline(needle);
+    const QStringList needleToks = norm.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    const QSet<QString> needleTokSet(needleToks.begin(), needleToks.end());
+    QVector<QPair<double, int>> scored;
+    for (int i = 0; i < headlines.size(); ++i) {
+        const QString h = RoadmapParse::normaliseHeadline(headlines.at(i));
+        const QStringList hToks = h.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        double score = rcHeadlineJaccard(needleTokSet,
+                                         QSet<QString>(hToks.begin(), hToks.end()), 1);
+        if (score < 0.0) {
+            const int shared = rcSharedPrefixLen(h, norm);
+            if (shared > 0) score = shared / 100000.0;  // below any Jaccard hit
+        }
+        if (score > 0.0) scored.append(qMakePair(score, i));
+    }
+    return rcTopScored(scored, limit);
 }
 
 // ANTS-4485 § 4.5 — the same rankers, over the STORE's items: on a store-backed
@@ -1389,21 +1423,7 @@ static QJsonArray rlStoreSuggestions(RoadmapStore &store, qint64 projectId,
         for (const int i : rcRankIdsBySharedPrefix(ids, locId, 3)) add(i);
         return out;
     }
-    const QString norm = RoadmapParse::normaliseHeadline(locHeadline);
-    QVector<QPair<int, int>> scored;
-    for (int i = 0; i < heads.size(); ++i) {
-        const QString h = RoadmapParse::normaliseHeadline(heads.at(i));
-        int shared = 0;
-        const int lim = std::min(h.size(), norm.size());
-        while (shared < lim && h.at(shared) == norm.at(shared)) ++shared;
-        if (shared > 0) scored.append(qMakePair(shared, i));
-    }
-    std::stable_sort(scored.begin(), scored.end(),
-        [](const QPair<int, int> &a, const QPair<int, int> &b) {
-            return a.first > b.first;
-        });
-    for (int k = 0; k < scored.size() && out.size() < 3; ++k)
-        add(scored.at(k).second);
+    for (const int i : rcRankHeadlines(heads, locHeadline, 3)) add(i);
     return out;
 }
 
@@ -2346,28 +2366,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                         suggestions.append(s);
                     }
                 } else {
-                    const QString norm = RoadmapParse::normaliseHeadline(locHeadline);
-                    QVector<QPair<int, int>> scored;
-                    for (int i = 0; i < v1bullets.size(); ++i) {
-                        const QString h = RoadmapParse::normaliseHeadline(
-                            v1bullets.at(i).headline);
-                        int sharedLen = 0;
-                        const int lim = std::min(h.size(), norm.size());
-                        while (sharedLen < lim &&
-                               h.at(sharedLen) == norm.at(sharedLen)) {
-                            ++sharedLen;
-                        }
-                        if (sharedLen > 0)
-                            scored.append(qMakePair(sharedLen, i));
-                    }
-                    std::sort(scored.begin(), scored.end(),
-                        [](const QPair<int,int> &a,
-                           const QPair<int,int> &b) {
-                            return a.first > b.first;
-                        });
-                    for (int k = 0; k < scored.size() &&
-                                    suggestions.size() < 3; ++k) {
-                        const auto &b = v1bullets.at(scored.at(k).second);
+                    QStringList heads;
+                    for (const auto &b : v1bullets) heads.append(b.headline);
+                    for (const int idx : rcRankHeadlines(heads, locHeadline, 3)) {
+                        const auto &b = v1bullets.at(idx);
                         QJsonObject s;
                         s["headline"] = b.headline;
                         s["id"]       = b.id;
@@ -2503,8 +2505,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     }
     if (matchedCount == 0 || matchedCount > 1) {
         // Suggestions: for ambiguous, the actual matches (≤ 3); for
-        // not-found, up to 3 nearest-neighbour bullets ranked by
-        // shared headline prefix with the locator string.
+        // not-found, up to 3 nearest-neighbour bullets (rcRankHeadlines,
+        // or rcRankIdsBySharedPrefix for an id locator).
         QJsonArray suggestions;
         if (matchedCount > 1) {
             for (int i = 0; i < matchIndices.size() &&
@@ -2533,49 +2535,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 suggestions.append(s);
             }
         } else {
-            // ANTS-3378 — rank nearest neighbours by token overlap against
-            // each bullet's CANONICAL headline (the form roadmap_query
-            // reports), not the raw stored head. Comparing the raw head
-            // (markdown + bold-ID + em-dash tail) made the old shared-prefix
-            // ranking surface unrelated bullets. Each suggestion carries the
+            // ANTS-3378 — rank against each bullet's CANONICAL headline (the
+            // form roadmap_query reports), not the raw stored head with its
+            // markdown, bold-ID and em-dash tail. Each suggestion carries the
             // bullet line so the caller can re-target precisely.
             const QString needle = !locHeadline.isEmpty()
                 ? locHeadline : locAnchor;
-            const QString norm = RoadmapParse::normaliseHeadline(needle);
-            const QStringList needleToks =
-                norm.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-            const QSet<QString> needleTokSet(needleToks.begin(),
-                                             needleToks.end());
-            // Score = token-Jaccard (≥1 shared token); shared-prefix as a
-            // small tie-breaker for the zero-overlap-but-near-prefix case.
-            QVector<QPair<double, int>> scored;
-            for (int i = 0; i < bullets.size(); ++i) {
-                const QString canon =
-                    rcGfmCanonicalHeadline(bullets.at(i).headline);
-                const QString h = RoadmapParse::normaliseHeadline(canon);
-                const QStringList hToks =
-                    h.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-                const QSet<QString> hTokSet(hToks.begin(), hToks.end());
-                double score = rcHeadlineJaccard(needleTokSet, hTokSet, 1);
-                if (score < 0.0) {
-                    int sharedLen = 0;
-                    const int lim = std::min(h.size(), norm.size());
-                    while (sharedLen < lim &&
-                           h.at(sharedLen) == norm.at(sharedLen)) {
-                        ++sharedLen;
-                    }
-                    // Keep below any real Jaccard hit (∈ (0,1]).
-                    if (sharedLen > 0) score = sharedLen / 100000.0;
-                }
-                if (score > 0.0) scored.append(qMakePair(score, i));
-            }
-            std::sort(scored.begin(), scored.end(),
-                [](const QPair<double,int> &a, const QPair<double,int> &b) {
-                    return a.first > b.first;
-                });
-            for (int k = 0; k < scored.size() &&
-                            suggestions.size() < 3; ++k) {
-                const auto &b = bullets.at(scored.at(k).second);
+            QStringList heads;
+            for (const auto &b : bullets) heads.append(rcGfmCanonicalHeadline(b.headline));
+            for (const int idx : rcRankHeadlines(heads, needle, 3)) {
+                const auto &b = bullets.at(idx);
                 QJsonObject s;
                 s["headline"] = rcGfmCanonicalHeadline(b.headline);
                 s["line"]     = b.firstLine + 1;

@@ -109166,13 +109166,21 @@ worked after these.
   Source: review-readability-2026-10-22 (L18-F7).
   Lanes: mcp-transport.
 
-- 📋 [ANTS-6234] **Rank roadmap_log's headline suggestions with one shared ranker and one sort.**
+- ✅ [ANTS-6234] **Rank roadmap_log's headline suggestions with one shared ranker and one sort.**
   From ANTS-6128; feeds ANTS-5796 (dup:43bff4aca698, dup:94e3365bb3d1).
   rlStoreSuggestions copies flip's ants-v1 headline ranking but uses
   stable_sort where the file path uses std::sort; the GFM branch uses a
   Jaccard ranking; the shared-prefix loop is written out four times.
   Queued: picking one sort changes suggestion order on ties.
   Hot reload: none needed.
+  Decided: the ranker is the GFM path's token Jaccard with the
+  shared-prefix fallback (ANTS-3378 moved off prefix-only for surfacing
+  unrelated bullets), and the sort is stable, so ties keep file order.
+  rcRankHeadlines serves the GFM, ants-v1 and store (rlStoreSuggestions)
+  misses; rcTopScored holds the one sort; rcSharedPrefixLen the one
+  prefix loop, which rcRankIdsBySharedPrefix uses too. Locked by
+  roadmap_log_flip_gfm_headline.Ants6234AntsV1MissRanksByTokens, seen
+  red against the old code.
   **Layman:** When an edit cannot find its roadmap item, the suggested matches are worked out three different ways, so equal matches come back in a different order depending on the path.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F6).
