@@ -24,13 +24,13 @@
 
 namespace rcdetail {
 
-// ANTS-1319 INV-11: cap user-supplied echo at 64 characters (UTF-16 units,
-// not bytes) + substitute control characters with '?'. Also session_memory's
-// echo (ANTS-1283 INV-12). The roadmap verbs still inline the same loop
-// (ANTS-6262).
-QString ceSanitiseEcho(const QString &raw) {
+// ANTS-1319 INV-11: cap user-supplied echo at `cap` characters (UTF-16 units,
+// not bytes; 64 by default) + substitute control characters with '?'. Also
+// session_memory's echo (ANTS-1283 INV-12) and every roadmap_query echo
+// (ANTS-6240).
+QString ceSanitiseEcho(const QString &raw, int cap) {
     QString verbatim = raw;
-    verbatim.truncate(64);
+    verbatim.truncate(cap);
     QString out;
     out.reserve(verbatim.size());
     for (int i = 0; i < verbatim.size(); ++i) {

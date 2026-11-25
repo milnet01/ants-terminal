@@ -109301,7 +109301,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L19-F14).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6240] **Clean every echoed caller value in roadmap_query through one rcScrubEcho(text, cap) helper.**
+- ✅ [ANTS-6240] **Clean every echoed caller value in roadmap_query through one rcScrubEcho(text, cap) helper.**
   From ANTS-6129. "Cut to 64, replace control bytes with ?" appears
   seven times in remotecontrol_roadmap_query_verb.cpp, once at 200
   chars, and once in remotecontrol_roadmap_query.cpp. Queued: the
@@ -109309,6 +109309,16 @@ worked after these.
   mcp_roadmap_section_slice) and `idArg.truncate(64)` pin the inline
   form; move them to the helper in the same commit.
   Hot reload: none needed.
+  The existing ceSanitiseEcho (remotecontrol_coldeyes.cpp) took a cap
+  (default 64) rather than adding rcScrubEcho; the nine copies (status,
+  query at 200, kind, source, id, ids, mode, two section echoes) call
+  it. Anchors moved with the code: McpColdEyes.EchoHygieneMatchesInv11
+  now calls the helper (64 and 200 caps, ESC and newline to '?');
+  mcp_roadmap_status_filter, mcp_roadmap_section_slice,
+  roadmap_query_section_index and roadmap_query_by_id look for the
+  helper call. Spec rows in ANTS-1319 and mcp_cold_eyes/spec.md say the
+  same. ANTS-6262 was named in the helper's old comment; check whether
+  it is now done.
   **Layman:** The same clean-up of text echoed back to the caller is written out nine times, so tightening it means finding every copy.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L20-F10).
@@ -109610,7 +109620,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L23-F3).
   Lanes: mcp-review-verbs.
 
-- 📋 [ANTS-6262] **Fold the four inline echo sanitisers in the roadmap verbs into ceSanitiseEcho.**
+- ✅ [ANTS-6262] **Fold the four inline echo sanitisers in the roadmap verbs into ceSanitiseEcho.**
   From ANTS-6132, which folded smSanitiseEcho into ceSanitiseEcho.
   Inline copies of the same cut-to-64 / control-to-? loop remain in
   remotecontrol_roadmap_query.cpp (bad_section),
@@ -109623,6 +109633,13 @@ worked after these.
   Hot reload: none needed.
   The 2026-11-06 reviews also found this: row 918
   `src/remotecontrol_review.cpp:1405`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Done with ANTS-6240: the roadmap_query copies and the last one,
+  cmdRoadmapLogAppend's bad_section echo, call ceSanitiseEcho; no
+  `unicode() < 0x20` echo loop is left in src/ (pathvalidation and
+  auditrunner use the test to refuse a path, not to echo). The scrape
+  tests moved to the helper call; the name stays ceSanitiseEcho. Row
+  918's remotecontrol_review.cpp:1405 no longer exists (the file ends
+  before it).
   **Layman:** Four places clean up user text before echoing it in an error, each with its own copy of the same code.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L23-F4).

@@ -1033,16 +1033,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
     const auto index = RoadmapIndex::buildIndex(markdown);
     const auto *sec = RoadmapIndex::findBySlug(index, section);
     if (!sec) {
-        // Sanitise echo (≤ 64 B + control-char filter) per the
-        // cmdRoadmapQuery convention so we don't reflect arbitrary
-        // bytes through the response.
-        QString verbatim = section;
-        if (verbatim.size() > 64) verbatim.truncate(64);
-        for (int i = 0; i < verbatim.size(); ++i) {
-            if (verbatim.at(i).unicode() < 0x20) {
-                verbatim[i] = QChar('?');
-            }
-        }
+        // Sanitise the echo as cmdRoadmapQuery does, so we don't reflect
+        // arbitrary bytes through the response.
+        const QString verbatim = rcdetail::ceSanitiseEcho(section);
         // ANTS-1524 — bad_case parity with cmdRoadmapQuery so a
         // caller that case-mangled the slug gets a loud refusal
         // with the canonical form instead of a silent-miss

@@ -72,12 +72,10 @@ TEST(roadmap_query_section_index, Inv2UnknownModeRejected) {
            "INV-2: bad_mode error code present");
     expect(contains(cpp, "unknown mode:"),
            "INV-2: unknown-mode error message present");
-    // Verbatim hygiene reuses the 64-byte + control-char-? pattern
-    // from bad_status (the next-door predicate); the bad_mode block
-    // does the same scrub before echoing the user's input.
-    expect(contains(cpp, "if (verbatim.size() > 64) verbatim.truncate(64)"),
-           "INV-2: 64-byte verbatim cap present (shared with "
-           "bad_status / bad_section)");
+    // The bad_mode block scrubs the user's input with the shared helper
+    // bad_status and bad_section use (ANTS-6240) before echoing it.
+    expect(contains(cpp, "ceSanitiseEcho(req.value(QStringLiteral(\"mode\"))"),
+           "INV-2: mode echo goes through ceSanitiseEcho");
     EXPECT_EQ(0, expect_failures());
 }
 

@@ -283,8 +283,8 @@ Mirrors `.indie-review/partition.json`. Missing file → use heuristic.
 - **INV-11: unknown-lane echo sanitised.** `bad_args` / `not_found`
   responses that echo the user-supplied lane name MUST cap at 64
   bytes and substitute `< 0x20 → '?'` per the ANTS-1287 INV-11
-  hygiene pattern. Same regex/treatment as `cmdRoadmapQuery`'s
-  `verbatim.truncate(64)` block.
+  hygiene pattern, through `ceSanitiseEcho`, the helper
+  `cmdRoadmapQuery`'s echoes also use.
 - **INV-12: mtime-cached discovery (5 s TTL).** Repeat `partition` or
   `brief` calls within 5 s reuse the cached lane list. Single-call
   dispatch (Phase 2's parallel batch hits partition once + N briefs
@@ -373,7 +373,7 @@ Status of a spec's ROADMAP entry is determined by:
 | REG-2 | Schema required-arrays match INV-10 (partition: none; brief: `["lane"]`; cross_doc_diff: `["reports_dir"]`; fold_in: `["actionable"]`) | INV-10 |
 | REG-3 | `cmdColdEyes*` extract args via `req.value(…)` | `lane`, `scope`, `reports_dir`, `actionable`, `date_iso` |
 | REG-4 | `bad_scope` code present | INV-8 |
-| REG-5 | INV-11 hygiene on `bad_args`/`not_found` echo | `verbatim.truncate(64)` + `< 0x20` substitute |
+| REG-5 | INV-11 hygiene on `bad_args`/`not_found` echo | `ceSanitiseEcho` caps at 64 and turns control characters into `?` |
 | REG-6 | `m_coldEyes*` cache members declared in header | mtime-cache fields per INV-12 |
 | REG-7 | Provider lambdas forward all args (INV-9) | `args.value("lane")`, etc. extracted in `mainwindow.cpp` |
 | REG-8 | `RoadmapFoldIn::allocateIds` + `insertBlock` called from `cmdColdEyesFoldIn` | per INV-6 |

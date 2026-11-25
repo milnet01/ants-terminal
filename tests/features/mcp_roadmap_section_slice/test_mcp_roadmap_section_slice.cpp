@@ -96,19 +96,13 @@ TEST(McpRoadmapSectionSlice, SectionEchoHygieneMatchesInv11) {
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find("\"bad_section\"");
     ASSERT_NE(pos, std::string::npos);
-    // Walk backwards ~1500 bytes to find the hygiene block tied to
-    // bad_section. The 64-byte truncate and < 0x20 → '?' substitution
-    // pattern must both appear in that window. Widened from 600 to
-    // 1500 in ANTS-1524 to accommodate the new bad_case refusal
-    // branch that legitimately sits between the hygiene block and
-    // the bad_section emission.
+    // Walk backwards ~1500 bytes to find the hygiene tied to bad_section:
+    // the shared 64-character + control-char scrub (ANTS-6240). Widened from
+    // 600 to 1500 in ANTS-1524 for the bad_case branch that sits between.
     const size_t windowStart = pos > 1500 ? pos - 1500 : 0;
     const std::string region = rc.substr(windowStart, pos - windowStart);
-    EXPECT_NE(region.find("verbatim.truncate(64)"), std::string::npos)
-        << "section echo not capped at 64 bytes";
-    EXPECT_NE(region.find("verbatim.at(i).unicode() < 0x20"),
-              std::string::npos)
-        << "section echo control-char substitution missing";
+    EXPECT_NE(region.find("ceSanitiseEcho(section)"), std::string::npos)
+        << "section echo does not go through ceSanitiseEcho";
 }
 
 // REG-6

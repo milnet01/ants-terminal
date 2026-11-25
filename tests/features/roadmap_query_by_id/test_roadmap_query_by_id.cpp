@@ -47,7 +47,7 @@ TEST(roadmap_query_by_id, Inv1IdReadAndHygiene) {
            "INV-1: ANTS-1856 anchor present in cmdRoadmapQuery");
     expect(contains(cpp, "req.value(QStringLiteral(\"id\"))"),
            "INV-1: cmdRoadmapQuery reads id from req");
-    expect(contains(cpp, "idArg.truncate(64)"),
+    expect(contains(cpp, "idArg = rcdetail::ceSanitiseEcho("),
            "INV-1: id echo truncated to 64 bytes");
     EXPECT_EQ(0, expect_failures());
 }

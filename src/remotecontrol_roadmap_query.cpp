@@ -180,11 +180,7 @@ static const RoadmapIndex::Section *rcPassFindSection(
     // Sanitise the echoed slug (≤ 64 B + control-char filter), same
     // hygiene as the GFM cmdRoadmapLogAppend bad_section path — never
     // reflect arbitrary caller bytes through the response.
-    QString verbatim = section;
-    if (verbatim.size() > 64) verbatim.truncate(64);
-    for (int i = 0; i < verbatim.size(); ++i) {
-        if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
-    }
+    const QString verbatim = ceSanitiseEcho(section);
     const QString sectionCi = section.toLower();
     for (const auto &s : index) {
         if (s.slug.toLower() == sectionCi && s.slug != section) {

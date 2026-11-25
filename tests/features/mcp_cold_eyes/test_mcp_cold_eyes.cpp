@@ -4,7 +4,16 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include <QString>
+
 #include <string>
+
+// The rcdetail helper REG-5 drives. remotecontrol_internal.h is for the
+// remotecontrol sources only (RcTuSplit INV-5); the linker checks the
+// signature.
+namespace rcdetail {
+QString ceSanitiseEcho(const QString &raw, int cap);
+}  // namespace rcdetail
 
 #ifndef ANTS_CLAUDEINTEGRATION_SOURCES
 #error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
@@ -96,25 +105,15 @@ TEST(McpColdEyes, BadScopeErrorCodePresent) {
         << "bad_scope error code not emitted on unknown scope arg";
 }
 
-// REG-5
+// REG-5 — the shared echo scrub (ANTS-1319 INV-11), which every
+// roadmap_query echo uses too (ANTS-6240): cut to the cap, 64 by default,
+// and control characters become '?'.
 TEST(McpColdEyes, EchoHygieneMatchesInv11) {
-    const std::string rc = ants_test::slurpRemoteControl();
-    ASSERT_FALSE(rc.empty());
-    // ANTS-1319 cold-eyes section uses a shared helper `ceSanitiseEcho`
-    // that internally applies `verbatim.truncate(64)` + `< 0x20` substitution.
-    const auto pos = rc.find("ceSanitiseEcho");
-    ASSERT_NE(pos, std::string::npos)
-        << "ceSanitiseEcho helper not declared in cold-eyes section";
-    // Verify the helper body itself carries both INV-11 markers.
-    const auto helperPos = rc.find("QString ceSanitiseEcho");
-    ASSERT_NE(helperPos, std::string::npos);
-    const auto helperEnd = rc.find("}\n", helperPos);
-    ASSERT_NE(helperEnd, std::string::npos);
-    const std::string body = rc.substr(helperPos, helperEnd - helperPos);
-    EXPECT_NE(body.find("verbatim.truncate(64)"), std::string::npos)
-        << "echo not capped at 64 bytes";
-    EXPECT_NE(body.find("verbatim.at(i).unicode() < 0x20"), std::string::npos)
-        << "control-char substitution missing";
+    const QString longText(100, QLatin1Char('a'));
+    EXPECT_EQ(rcdetail::ceSanitiseEcho(longText, 64).size(), 64);
+    EXPECT_EQ(rcdetail::ceSanitiseEcho(longText, 200).size(), 100);
+    EXPECT_EQ(rcdetail::ceSanitiseEcho(QStringLiteral("a\x1b[31mb\nc"), 64),
+              QStringLiteral("a?[31mb?c"));
 }
 
 // REG-6

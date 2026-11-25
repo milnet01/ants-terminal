@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_query` cleans every value it echoes back through one shared helper, which cuts it short and replaces control characters** (ANTS-6240)
+
 - **`roadmap_log`'s body editor finds its target in the markdown file through its own named step, so the part that runs only for file-backed roadmaps reads as such** (ANTS-6239)
 
 - **`roadmap_log`'s add-an-item code is split in two: one function for projects kept in the roadmap store and one for plain markdown roadmaps** (ANTS-6238)

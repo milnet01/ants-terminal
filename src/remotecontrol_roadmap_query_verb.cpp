@@ -1146,11 +1146,8 @@ auto RemoteControl::RoadmapQueryCall::parseStatus() -> std::optional<QJsonDocume
         badStatus = !kAcceptedStatusFilters.contains(filter);
     }
     if (badStatus) {
-        QString verbatim = unknownStatus;   // ANTS-3698 — status or its alias
-        if (verbatim.size() > 64) verbatim.truncate(64);
-        for (int i = 0; i < verbatim.size(); ++i) {
-            if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
-        }
+        // ANTS-3698 — status or its alias.
+        const QString verbatim = rcdetail::ceSanitiseEcho(unknownStatus);
         out["ok"] = false;
         out["error"] = QStringLiteral("unknown status filter: %1").arg(verbatim);
         out["code"] = QStringLiteral("bad_status");
@@ -1231,11 +1228,7 @@ auto RemoteControl::RoadmapQueryCall::parseTextFilters() -> std::optional<QJsonD
     // a fix rather than a convenience. Both together refuse (ANTS-6365).
     QJsonValue queryVal = req.value(QStringLiteral("query"));
     if (queryVal.isUndefined()) queryVal = req.value(QStringLiteral("q"));
-    queryArg = queryVal.toString().trimmed();
-    if (queryArg.size() > 200) queryArg.truncate(200);
-    for (int i = 0; i < queryArg.size(); ++i) {
-        if (queryArg.at(i).unicode() < 0x20) queryArg[i] = QChar('?');
-    }
+    queryArg = rcdetail::ceSanitiseEcho(queryVal.toString().trimmed(), 200);
     // ANTS-4367 — narrowing knobs for `query`. `regex` wins when both are
     // sent (it is the more explicit request); `whole_word` is the cheap one a
     // caller reaches for without composing a pattern.
@@ -1352,11 +1345,9 @@ auto RemoteControl::RoadmapQueryCall::parseKind() -> std::optional<QJsonDocument
     }();
     kindArg = req.value(QStringLiteral("kind")).toString().trimmed();
     if (!kindArg.isEmpty()) {
-        // Same 64-byte + control-char hygiene the status / id echoes use, so
-        // a stray value cannot smuggle ANSI bytes into the refusal.
-        if (kindArg.size() > 64) kindArg.truncate(64);
-        for (int i = 0; i < kindArg.size(); ++i)
-            if (kindArg.at(i).unicode() < 0x20) kindArg[i] = QChar('?');
+        // The status / id echoes' hygiene, so a stray value cannot smuggle
+        // ANSI bytes into the refusal.
+        kindArg = rcdetail::ceSanitiseEcho(kindArg);
         const QString folded = kindArg.toLower();
         if (!kAcceptedKinds.contains(folded)) {
             out["ok"]       = false;
@@ -1424,10 +1415,7 @@ auto RemoteControl::RoadmapQueryCall::parseSource() -> std::optional<QJsonDocume
         for (QString one : raw) {
             one = one.trimmed();
             if (one.isEmpty()) continue;   // an empty prefix matches everything
-            if (one.size() > 64) one.truncate(64);
-            for (int i = 0; i < one.size(); ++i)
-                if (one.at(i).unicode() < 0x20) one[i] = QChar('?');
-            sourceArgs << one.toLower();
+            sourceArgs << rcdetail::ceSanitiseEcho(one).toLower();
         }
         // Present but empty after scrubbing: refuse rather than return the FULL
         // set, which reads as "everything came from there" and cannot be told
@@ -1470,11 +1458,7 @@ auto RemoteControl::RoadmapQueryCall::parseIdSelectors() -> std::optional<QJsonD
     // the section= contract (ANTS-1524). 64-byte + control-char hygiene
     // matches bad_status / bad_section so a stray id can't smuggle
     // ANSI/control bytes into the echoed envelope.
-    idArg = req.value(QStringLiteral("id")).toString();
-    if (idArg.size() > 64) idArg.truncate(64);
-    for (int i = 0; i < idArg.size(); ++i) {
-        if (idArg.at(i).unicode() < 0x20) idArg[i] = QChar('?');
-    }
+    idArg = rcdetail::ceSanitiseEcho(req.value(QStringLiteral("id")).toString());
 
     // ANTS-3402 — opt-in higher body cap for a TARGETED id/ids fetch. The
     // list default stays kRoadmapQueryBodyCap; an ids[] fetch may raise it
@@ -1554,11 +1538,7 @@ auto RemoteControl::RoadmapQueryCall::parseIdSelectors() -> std::optional<QJsonD
         }
         for (const auto &v : arr) {
             if (!v.isString()) continue;  // skip non-string elements
-            QString s = v.toString();
-            if (s.size() > 64) s.truncate(64);
-            for (int i = 0; i < s.size(); ++i) {
-                if (s.at(i).unicode() < 0x20) s[i] = QChar('?');
-            }
+            const QString s = rcdetail::ceSanitiseEcho(v.toString());
             if (s.isEmpty()) continue;
             if (!idsArg.contains(s)) {
                 idsArg.append(s);
@@ -1753,11 +1733,8 @@ auto RemoteControl::RoadmapQueryCall::parseMode() -> std::optional<QJsonDocument
                                         QStringLiteral("sources"),   // ANTS-4119
                                         QStringLiteral("ledger") };  // ANTS-5516
     if (!kModes.contains(mode)) {
-        QString verbatim = req.value(QStringLiteral("mode")).toString();
-        if (verbatim.size() > 64) verbatim.truncate(64);
-        for (int i = 0; i < verbatim.size(); ++i) {
-            if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
-        }
+        const QString verbatim =
+            rcdetail::ceSanitiseEcho(req.value(QStringLiteral("mode")).toString());
         out["ok"] = false;
         out["error"] = QStringLiteral("unknown mode: %1").arg(verbatim);
         out["code"] = QStringLiteral("bad_mode");
@@ -3325,11 +3302,7 @@ auto RemoteControl::RoadmapQueryCall::sectionOrVersion() -> QJsonDocument {
     }
     if (!sec) {
         // ANTS-1287-INV-10 — bad_section, hygiene parity with INV-11.
-        QString verbatim = section;
-        if (verbatim.size() > 64) verbatim.truncate(64);
-        for (int i = 0; i < verbatim.size(); ++i) {
-            if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
-        }
+        const QString verbatim = rcdetail::ceSanitiseEcho(section);
         // ANTS-1524 — distinguish off-case slug from genuinely
         // unknown slug. Slugs are canonically lowercase; an
         // LLM caller that passed "Performance" instead of

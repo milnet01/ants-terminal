@@ -19,6 +19,6 @@ ANTS-5485 removed `cold_eyes_cross_doc_diff` and `cold_eyes_fold_in`.
 | REG-2 | Schema required-arrays match INV-10 | partition has none; brief→`["lane"]` |
 | REG-3 | `cmdColdEyes*` extracts every arg via `req.value(…)` | lane / scope |
 | REG-4 | `bad_scope` error code present (INV-8) | string `"bad_scope"` in remotecontrol.cpp |
-| REG-5 | INV-11 echo hygiene on bad scope + lane | `verbatim.truncate(64)` + `< 0x20` substitute, OR shared helper |
+| REG-5 | INV-11 echo hygiene on bad scope + lane | `ceSanitiseEcho`, called directly: caps at 64 and turns control characters into `?` |
 | REG-6 | Cache members declared in header (INV-12) | `m_coldEyesCache`, `m_coldEyesCacheStampMs`, `kColdEyesCacheTtlMs` |
 | REG-7 | Provider lambdas forward args (INV-9) | `cmdColdEyesPartition(args)` etc. wired in `mainwindow.cpp` |

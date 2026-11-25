@@ -735,7 +735,9 @@ QJsonObject runRenameSweepOp(const ants::RootProvider *roots,
                              const QJsonObject &req);   // ANTS-5508
 QByteArray runGit(const QString &root, const QStringList &argv);
 VerifyGitSnapshot collectGitSnapshot(const QString &root);
-QString ceSanitiseEcho(const QString &raw);
+// Cut to `cap` characters and turn control characters into '?', for any
+// caller value echoed back (ANTS-1319 INV-11, ANTS-6240).
+QString ceSanitiseEcho(const QString &raw, int cap = 64);
 QJsonArray ceLaneArrayToJson(const QList<ColdEyesEngine::Lane> &lanes);
 // ANTS-6360/6365 — bad_op_combo when two or more names for one argument
 // arrive together; empty otherwise. Canonical name first in `names`.

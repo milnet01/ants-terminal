@@ -240,10 +240,10 @@ TEST(mcp_roadmap_status_filter, Inv11ErrorMessageHygiene) {
     const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1247-INV-11"),
            "INV-11 anchor comment present");
-    expect(contains(cpp, "verbatim.truncate(64)"),
-           "INV-11: error echo capped at 64 bytes");
-    expect(contains(cpp, "QChar('?')"),
-           "INV-11: control-byte replacement uses '?' char");
+    // ANTS-6240 — the cap and the '?' substitution live in ceSanitiseEcho,
+    // whose behaviour McpColdEyes.EchoHygieneMatchesInv11 tests.
+    expect(contains(cpp, "ceSanitiseEcho(unknownStatus)"),
+           "INV-11: status echo goes through ceSanitiseEcho");
     EXPECT_EQ(0, expect_failures());
 }
 
