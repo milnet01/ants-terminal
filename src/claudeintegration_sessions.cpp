@@ -3,6 +3,7 @@
 #include "claudeintegration_internal.h"
 #include "configpaths.h"
 #include "debuglog.h"
+#include "procstat.h"
 #include "sessioncostverb.h"   // SessionCost::folderNameFor
 
 #include <QDateTime>
@@ -238,14 +239,10 @@ pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid, bool scanOrphans) {
 
         QFile statFile(QString("/proc/%1/stat").arg(pid));
         if (!statFile.open(QIODevice::ReadOnly)) continue;
-        QString stat = QString::fromUtf8(statFile.readAll());
+        const QString stat = QString::fromUtf8(statFile.readAll());
         statFile.close();
 
-        int closeParenIdx = stat.lastIndexOf(')');
-        if (closeParenIdx < 0) continue;
-        QStringList fields = stat.mid(closeParenIdx + 2).split(' ');
-        if (fields.size() < 2) continue;
-        if (fields[1].toInt() != shellPid) continue;
+        if (procstat::ppid(stat) != shellPid) continue;
         if (isClaudePid(pid)) return pid;
     }
     return 0;
@@ -482,22 +479,12 @@ qint64 ClaudeIntegration::processStartTimeMs(pid_t pid) {
     // warranted.
     QFile statF(QStringLiteral("/proc/%1/stat").arg(static_cast<int>(pid)));
     if (!statF.open(QIODevice::ReadOnly)) return 0;
-    const QByteArray statRaw = statF.readAll();
+    const std::optional<qulonglong> started =
+        procstat::starttime(QString::fromUtf8(statF.readAll()));
     statF.close();
-
-    // The `comm` field (parenthesized) can contain spaces/parens. The
-    // safe parse: scan after the closing `)` of comm, then split the
-    // remainder by space — field 22 is at index 19 (state is 0 in the
-    // post-comm slice; starttime is the 22nd field overall, indexed
-    // from 1; in the post-comm slice it's index 19).
-    const int closeParen = statRaw.lastIndexOf(')');
-    if (closeParen < 0) return 0;
-    const QByteArray rest = statRaw.mid(closeParen + 1).trimmed();
-    const QList<QByteArray> fields = rest.split(' ');
-    if (fields.size() < 20) return 0;
+    if (!started) return 0;
+    const qulonglong starttimeTicks = *started;
     bool ok = false;
-    const qulonglong starttimeTicks = fields[19].toULongLong(&ok);
-    if (!ok) return 0;
 
     // /proc/stat reports `size() == 0` so QFile::atEnd() / readLine()
     // loops bail out immediately. readAll() is the only reliable way

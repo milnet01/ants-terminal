@@ -5,6 +5,7 @@
 
 // cppcheck-suppress missingInclude  // ANTS-1682: generated at build time
 #include "build_info.h"
+#include "procstat.h"
 
 #include <QDir>
 #include <QFile>
@@ -37,16 +38,10 @@ QString registeredCommand(const QString &claudeJsonPath) {
         .value(QStringLiteral("command")).toString();
 }
 
-// Field 4 of /proc/<pid>/stat, read after the last ')' because the command
-// name in field 2 may itself hold spaces or parentheses.
 qint64 parentOf(qint64 pid) {
     QFile f(QStringLiteral("/proc/%1/stat").arg(pid));
     if (!f.open(QIODevice::ReadOnly)) return 0;
-    const QByteArray stat = f.readAll();
-    const qsizetype close = stat.lastIndexOf(')');
-    if (close < 0) return 0;
-    const QList<QByteArray> fields = stat.mid(close + 2).split(' ');
-    return fields.size() > 1 ? fields[1].toLongLong() : 0;
+    return procstat::ppid(QString::fromUtf8(f.readAll()));
 }
 
 QList<qint64> ancestorsOf(qint64 pid) {

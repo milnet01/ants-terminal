@@ -27,6 +27,24 @@ TEST(ProcStatFields, FieldOrderMatchesTheKernel) {
     EXPECT_EQ(fields[3].toInt(), static_cast<int>(getsid(0)));
 }
 
+TEST(ProcStatFields, PpidAndStarttimeReadTheirFields) {
+    // pid (comm) state ppid ... 19 more fields ... starttime
+    const QString line = QStringLiteral(
+        "100 (a) b) S 77 100 100 34816 4242 0 1 2 3 4 5 6 7 8 20 0 1 0 987654 9");
+    EXPECT_EQ(procstat::ppid(line), 77);
+    EXPECT_EQ(procstat::starttime(line), std::optional<qulonglong>(987654));
+    EXPECT_EQ(procstat::ppid(QStringLiteral("no paren here")), 0);
+    EXPECT_FALSE(procstat::starttime(QStringLiteral("100 (bash) S 1 100")).has_value());
+    EXPECT_FALSE(procstat::starttime(QString(line).replace(QStringLiteral("987654"),
+                                                          QStringLiteral("x"))).has_value());
+
+    QFile f(QStringLiteral("/proc/self/stat"));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QString self = QString::fromUtf8(f.readAll());
+    EXPECT_EQ(procstat::ppid(self), static_cast<qint64>(getppid()));
+    EXPECT_TRUE(procstat::starttime(self).has_value());
+}
+
 TEST(ProcStatFields, ForegroundProcessUsesTheHelper) {
     const QString src = QString::fromStdString(
         ants_test::slurpFile(SRC_TERMINALWIDGET_PATH));

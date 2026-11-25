@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Every reader of a process's `/proc` stat line now goes through one shared helper** (ANTS-6439)
+
 - **`roadmap_query`'s two fetch-by-id paths finish through one shared step, so a fix to how fetched items are shaped lands in both** (ANTS-6244)
 
 - **The roadmap tools' three store lookups share one step that works out the project folder and opens the store** (ANTS-6243)

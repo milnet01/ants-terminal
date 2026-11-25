@@ -90511,7 +90511,7 @@ project. Reported causes are claims until checked in source.
   Source: review-contract-2026-10-12 ANTS-5651 tail.
   Lanes: mcp.
 
-- 📋 [ANTS-6373] **file_outline sends each symbol's name again inside its signature.**
+- 🚫 [ANTS-6373] **file_outline sends each symbol's name again inside its signature.**
   Measured 2026-11-04 over 246 default calls: the name appears inside
   the signature for 5150 of 5685 symbols; those name fields are 18% of
   reply bytes. Dropping them changes the reply shape that callers and
@@ -90520,6 +90520,9 @@ project. Reported causes are claims until checked in source.
   Triaged 2026-11-25: live. outlineOneFile still sends name and a
   signature that repeats it. Dropping a field changes the reply shape,
   so the fix needs an opt-in or a contract note.
+  Dropped 2026-11-25 (user decision). The stand-alone name is the field
+  sessions search and read by; removing it costs readability on every
+  call, and an opt-in few sessions would pass saves little.
   **Layman:** The file-layout tool writes most names twice; saying them once would make its replies about a sixth smaller.
   Kind: optimize.
   Source: in-session-2026-11-04 ANTS-5525 measurement.
@@ -94278,11 +94281,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: close-findings sweep 2026-11-06 (out of scope, found next door).
   Lanes: model-switching.
 
-- 📋 [ANTS-6439] **Fold the three other `/proc/<pid>/stat` parsers onto `src/procstat.h`.**
+- ✅ [ANTS-6439] **Fold the three other `/proc/<pid>/stat` parsers onto `src/procstat.h`.**
   `claudeintegration_sessions.cpp` `findClaudeChildPid` and
   `processStartTimeMs`, and `mcpdversion.cpp` `parentOf`, each split
   the stat line after the last `)` and index by hand. ANTS-6436 was a
   wrong index in a fourth copy.
+  Shipped 2026-11-25. procstat::ppid and procstat::starttime join
+  tpgid; findClaudeChildPid, processStartTimeMs and mcpdversion's
+  parentOf use them. tests/_support/procwait.h and
+  test_claude_transcript_robustness.cpp still parse by hand in test
+  code; left as is.
   **Layman:** Four places read the same system file by hand; one of them got it wrong, so they should share one reader.
   Kind: refactor.
   Source: close-findings sweep 2026-11-06 (ANTS-6436).
