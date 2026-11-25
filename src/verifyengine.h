@@ -104,8 +104,8 @@ bool readAnchoredConfig(const QString &projectPath, QByteArray *raw);
 // Load `.ants/verify.json` if it exists and passes the INV-4
 // path-traversal guard; otherwise auto-detect per § 2.5. On total
 // failure (malformed config, no detectable build system) returns
-// an empty list and sets `*configSource` to "none" or the parse-
-// error sentinel — callers check the list size + configSource.
+// an empty list and sets `*configSource` to "none" or "bad_config"
+// (malformed config) — callers check the list size + configSource.
 //
 // ANTS-1337 — optional `trustClient`. When non-null, a found
 // `.ants/verify.json` is gated through the client's
@@ -113,8 +113,7 @@ bool readAnchoredConfig(const QString &projectPath, QByteArray *raw);
 // back to auto-detect AND sets `*verifyUntrusted=true` (when
 // non-null) so the caller can surface it in the response envelope.
 // When `trustClient` is null, the bespoke config is honoured
-// unconditionally — preserves pre-ANTS-1337 behaviour for callers
-// that haven't yet wired the trust client through.
+// unconditionally — kept for callers that hold no trust client.
 //
 // `*configSource` is filled when non-null.
 QList<GateConfig> loadGateConfig(const QString &projectPath,

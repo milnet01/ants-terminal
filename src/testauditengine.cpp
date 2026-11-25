@@ -64,7 +64,7 @@ const QStringList &g_kDimensions() {
 // 2026-07-30 ("they generate findings on every run, they crowd out the validity
 // findings in the triage, and this is one of the more expensive reviews to
 // run") and its SKILL.md has said test style is out of scope ever since — but
-// dimensions_active kept returning all 18, and the fast path tells a caller to
+// dimensions_active kept returning every dimension, and the fast path tells a caller to
 // seed subagents from that field. Following the verb therefore briefed
 // reviewers on exactly what the skill removed, and the skill had grown a
 // workaround telling sessions to intersect the envelope with its own list.
@@ -2179,7 +2179,7 @@ FoldInResult foldIn(const FoldInRequest &req) {
             // Ok/Empty here means inspect saw a valid counter, so the
             // failure was elsewhere — flock contention or the O_EXCL
             // rename-lock fallback (ANTS-1490) both gave up after the
-            // 5 s budget. Retain the legacy hint.
+            // lock wait. Retain the legacy hint.
             stateHint = QStringLiteral(
                 "flock + O_EXCL rename-lock both timed out — check "
                 "for a stale %1.lock sibling or a concurrent fold-in")
@@ -2268,7 +2268,7 @@ QJsonArray parseActionableFindings(const QStringList &reports) {
         QStringLiteral("\\]\\s*(\\S+):(\\d+)\\s*(?:—|–|--|-)\\s*(.+?)\\s*$"));
     static const QRegularExpression headerRx(
         QStringLiteral("^#{2,3}\\s+(.+?)\\s*$"));
-    // Trailing `(N)` count and any leading emoji in `## \U0001F9EA Naming (7)`.
+    // Trailing `(N)` count in `## \U0001F9EA Naming (7)`.
     static const QRegularExpression trailingCountRx(
         QStringLiteral("\\s*\\(\\d+\\)\\s*$"));
 

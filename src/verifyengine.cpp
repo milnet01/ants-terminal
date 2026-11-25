@@ -433,9 +433,8 @@ QList<GateConfig> loadGateConfig(const QString &projectPath,
                 setSource(QStringLiteral("auto (untrusted-bespoke)"));
                 return auto_;
             }
-            // Back-compat: no client → honour unconditionally
-            // (Phase 1; Phase 2 wires the client through
-            // cmdVerifyChanges).
+            // No client → honour unconditionally; kept for callers
+            // that hold no trust client.
             setSource(QStringLiteral(".ants/verify.json"));
             return gates;
         }

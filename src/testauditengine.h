@@ -50,7 +50,7 @@
 
 namespace TestAuditEngine {
 
-// 18 dimensions — engine canonical (INV-6). Skill markdown
+// The dimensions — engine canonical (INV-6). Skill markdown
 // (~/.claude/skills/test-audit/references/dimensions.md) is the
 // human prose, kept in sync manually; the in-tree source of truth is
 // docs/standards/test-audit-grep-patterns.json (ANTS-1450), against

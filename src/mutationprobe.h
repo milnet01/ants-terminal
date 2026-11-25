@@ -86,6 +86,7 @@ struct Counts {
 // ("100% tests passed, 0 tests failed out of 42"), jest's and vitest's
 // "Tests" line, gtest's ("[  PASSED  ] 5 tests." / "[  FAILED  ] 2
 // tests") and Catch2's ("All tests passed (...)" / "test cases: ...").
+// ctest's "No tests were found" and Catch2's "No tests ran" read as 0/0.
 // Anything else leaves both at -1 rather than guessing.
 [[nodiscard]] Counts parseCounts(const QString &output);
 

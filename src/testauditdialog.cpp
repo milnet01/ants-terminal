@@ -213,24 +213,18 @@ QList<ReviewLane> TestAuditDialog::derivePartition() {
 }
 
 void TestAuditDialog::prepareDispatch() {
-    // ANTS-1843 — re-derive the partition once up-front so m_token + m_chunks
-    // (and the lane set) are a single consistent snapshot before the base
-    // dispatch loop enqueues jobs; this pre-empts briefFor()'s own
-    // stale_partition recovery, which kept firing mid-loop and could diverge
-    // the token/lanes from enqueued jobs. briefFor() retains that recovery for
-    // direct callers (INV-6).
-    // ANTS-2114 — resume (ANTS-1580): re-read the persisted progress here, at
-    // the start of the dispatch path (the configured session-mem dir is set
-    // after construction, and resuming is meaningful at re-dispatch time, not
-    // at open). loadResume() is now a live production caller — the H1 zombie.
+    // ANTS-1843 — reload the resume state and refresh the partition once, so
+    // m_token and m_chunks are one snapshot before the dispatch loop enqueues.
+    // briefFor() keeps its own stale_partition recovery for direct callers
+    // (INV-6). ANTS-2114 — the resume read waits until dispatch time, because
+    // the session-mem dir is set after construction.
     loadResume();
     runEnginePartition();   // refresh m_token + m_chunks (no lane rebuild yet)
 
-    // When the persisted collection belongs to THIS partition (token match —
-    // the H2 staleness gate, previously decorative), enqueue only the chunks
-    // not yet reviewed, so a reopened mid-audit dialog doesn't re-spend AI
-    // tokens on chunks whose verbatim reports already sit on disk under the
-    // same token dir. The engine synthesis still reads every report file in
+    // When the persisted collection belongs to THIS partition (token match),
+    // enqueue only the chunks not yet reviewed, so a reopened mid-audit
+    // dialog doesn't re-spend AI tokens on chunks whose verbatim reports
+    // already sit on disk under the same token dir. The engine synthesis still reads every report file in
     // reportsRelDir() (old + new), so the summary stays complete. A changed
     // test tree re-hashes to a new token → the stale collection is ignored.
     const bool resuming =
@@ -468,7 +462,7 @@ void TestAuditDialog::performFoldIn() {
         fr.actionable   = actionable;
         fr.rawFindings  = actionable.size();
     }
-    // The engine owns ID allocation + insert (testauditengine.h:21) — do
+    // The engine owns ID allocation + insert (INV-3 in testauditengine.h) — do
     // NOT call the base allocateFoldInIds / insertFoldInBlock helpers here
     // or the IDs would be double-allocated.
     fr.interactive = true;   // ANTS-5102 — ~1 s lock wait on the GUI thread
