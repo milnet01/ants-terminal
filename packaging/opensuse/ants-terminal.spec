@@ -19,7 +19,7 @@
 # RPM spec for Ants Terminal. Primary target is openSUSE Tumbleweed; the
 # BuildRequires below carry %%if arms so the same file resolves on Fedora and
 # Mageia too (ANTS-3727). Every macro used here (%%cmake, %%cmake_build,
-# %%cmake_install, %%ctest, %%autosetup, %%{_*dir}) is common to openSUSE and
+# %%cmake_install, %%autosetup, %%{_*dir}) is common to openSUSE and
 # Fedora, so the macros were never the portability problem — the package NAMES
 # were, and each arm below records which name each distro actually uses.
 #
@@ -305,8 +305,8 @@ export.
 # Twins: debian/rules override_dh_auto_test and archlinux/PKGBUILD check() run
 # this same suite. They carry settings this recipe has and they lack, so a
 # test-environment fix made here belongs in both.
-# The whole ctest suite, which includes Qt widget tests — not only the
-# shell-based audit-rule fixtures. CMakeLists.txt wires QT_QPA_PLATFORM=offscreen
+# The ctest suite minus the perf lane (ANTS-4720, below), which includes Qt
+# widget tests — not only the shell-based audit-rule fixtures. CMakeLists.txt wires QT_QPA_PLATFORM=offscreen
 # for the opt-in `e2e` label only, so a build VM with no
 # display server needs it exported here or every widget test aborts on platform
 # plugin init. Locally the tests pass because a real session is present, which is
@@ -421,7 +421,7 @@ cd ..
 %dir %{_datadir}/fish
 %dir %{_datadir}/fish/vendor_completions.d
 %{_datadir}/fish/vendor_completions.d/%{name}.fish
-# OSC 133 shell-integration hooks (CMakeLists.txt:777). Sourced by the user from
+# OSC 133 shell-integration hooks (the install(FILES) rule in CMakeLists.txt). Sourced by the user from
 # ~/.bashrc / ~/.zshrc, so they must ship — rpm refuses to leave them unpackaged
 # and the build fails with "Installed (but unpackaged) file(s) found".
 #

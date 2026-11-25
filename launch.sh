@@ -14,7 +14,8 @@
 # is the app-icon fallback (applicationDirPath()/../assets), which never
 # fires because the icon is installed in the hicolor theme; the MCP
 # project root is resolved per-call from caller_cwd / the focused tab's
-# cwd, not from the binary's location (see remotecontrol.cpp:8129); all
+# cwd, not from the binary's location (see rcProjectRootFor() in
+# remotecontrol.cpp); all
 # user state lives under XDG paths. So running from ~/.local/share is
 # fully equivalent to running from build/.
 set -eu
