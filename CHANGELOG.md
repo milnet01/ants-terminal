@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Every roadmap id pattern the roadmap tools use is built from one prefix rule, so a change to what an id may look like is made once** (ANTS-6232)
+
 - **`changelog_log` from an outer folder that declares `repo_root` writes the clone's changelog, as the roadmap tools already do; the roadmap and changelog finders share one folder walk** (ANTS-6231)
 
 - **The background-task reader starts and ends every task one way, so a shell whose completion is read before its launch result counts as finished** (ANTS-6230)

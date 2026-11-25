@@ -16,10 +16,12 @@
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
 #include "remotecontrol.h"
+#include "roadmapparse.h"
 
 #include <gtest/gtest.h>
 
 #include <QByteArray>
+#include <QRegularExpression>
 #include <QDir>
 #include <QFile>
 #include <QIODevice>
@@ -207,9 +209,18 @@ TEST(roadmap_id_format_guard, Inv1ClassifierPresent) {
            "INV-1: classifier helper defined");
     expect(contains(cpp, "^[A-Za-z0-9][A-Za-z0-9_-]*-"),
            "INV-1: loose id-ish (kIdIsh) regex present");
-    // ANTS-3492 — canonical gate now carries the contains-a-letter lookahead.
-    expect(contains(cpp, "(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-"),
-           "INV-1: canonical (letter-containing) regex present");
+    // ANTS-6232 — the canonical gate is built from the shared prefix fragment,
+    // which carries ANTS-3492's contains-a-letter lookahead.
+    expect(contains(cpp, "RoadmapParse::idPrefixPattern() + QStringLiteral(\"-\\\\d+$\")"),
+           "INV-1: canonical regex built from idPrefixPattern");
+    const QRegularExpression canonical(QLatin1Char('^')
+        + RoadmapParse::idPrefixPattern() + QStringLiteral("-\\d+$"));
+    expect(canonical.match(QStringLiteral("3D_E-0042")).hasMatch(),
+           "INV-1: a digit-led prefix holding a letter is canonical");
+    expect(canonical.match(QStringLiteral("mame-curator-1065")).hasMatch(),
+           "INV-1: a lowercase prefix is canonical");
+    expect(!canonical.match(QStringLiteral("2026-07")).hasMatch(),
+           "INV-1: a letter-free prefix is not canonical");
     EXPECT_EQ(0, expect_failures());
 }
 

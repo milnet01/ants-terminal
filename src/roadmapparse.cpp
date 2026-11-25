@@ -1861,7 +1861,11 @@ QString idTokenPattern() {
     // unreachable by every id locator. `S?` and not `[A-Za-z]?` — one reserved
     // letter, so a typo'd suffix still refuses rather than silently becoming a
     // namespace of its own.
-    return QStringLiteral("(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-S?\\d+");
+    return idPrefixPattern() + QStringLiteral("-S?\\d+");
+}
+
+QString idPrefixPattern(QLatin1String tail) {
+    return QStringLiteral("(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]") + tail;
 }
 
 // Detect format by scanning the head of the document for one of
@@ -1947,8 +1951,8 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
 bool isIdPrefix(const QString &prefix) {
     // ANTS-3498 — the prefix half of idTokenPattern(), capped at 16 chars:
     // digit-led is fine iff a letter is present (3D_E ✓, 2026 ✗).
-    static const QRegularExpression kShape(QStringLiteral(
-        "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
+    static const QRegularExpression kShape(
+        QLatin1Char('^') + idPrefixPattern(QLatin1String("{0,15}")) + QLatin1Char('$'));
     return kShape.match(prefix).hasMatch();
 }
 

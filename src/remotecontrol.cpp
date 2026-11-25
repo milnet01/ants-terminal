@@ -620,8 +620,8 @@ constexpr int kIdSniffBullets = 50;
 // is what `id_prefix` has always done.
 const QRegularExpression &rlStableIdShape() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(
-            QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]+$"));
+        QRegularExpression r(QLatin1Char('^')
+            + RoadmapParse::idPrefixPattern(QLatin1String("+")) + QLatin1Char('$'));
         r.optimize();
         return r;
     }();
@@ -668,13 +668,17 @@ bool rlRoadmapHasAnyBulletId(const QString &markdown,
 // falls back to "ANTS" (back-compat for a fresh/id-less roadmap). The
 // prefix is the run before the FINAL `-digits`, so "mame-curator-1065"
 // → "mame-curator" and "ANTS-2057" → "ANTS".
+// A counter id, capturing (1) its prefix and (2) its number. ANTS-3492 — the
+// prefix may be digit-led if it holds a letter (3D_E-0042).
+static const QRegularExpression &counterIdRe() {
+    static const QRegularExpression rx(QStringLiteral("^(")
+        + RoadmapParse::idPrefixPattern() + QStringLiteral(")-([0-9]{1,8})$"));
+    return rx;
+}
+
 QString rlDetectCounterPrefix(const QString &markdown,
                               const RoadmapParse::IdFormat &fmt) {
-    static const QRegularExpression counterRe(
-        // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
-        QStringLiteral(
-            "^((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*)"
-            "-([0-9]{1,8})$"));
+    const QRegularExpression &counterRe = counterIdRe();
     const auto bullets = RoadmapParse::parseBullets(markdown, fmt);
     const int upTo = std::min<int>(bullets.size(), kIdSniffBullets);
     QHash<QString, int> counts;
@@ -696,11 +700,10 @@ QString rlDetectCounterPrefix(const QString &markdown,
 // prefix (e.g. "mame-curator", "DOOM").
 // ANTS-3492 — prefix may be digit-led if it contains ≥1 letter (3D_E);
 // a letter-free prefix (2026) is still rejected. {0,15} cap unchanged.
-// ANTS-3498 — the same grammar is single-sourced as
-// RoadmapFoldIn::isValidIdPrefix (used by the three fold-in verbs); keep the
-// two literals in sync (both carry the ANTS-3492 letter-lookahead).
-const QRegularExpression kIdPrefixShape(
-    QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
+// ANTS-3498 — the same grammar as RoadmapParse::isIdPrefix, which
+// RoadmapFoldIn::isValidIdPrefix asks; both are built from idPrefixPattern.
+const QRegularExpression kIdPrefixShape(QLatin1Char('^')
+    + RoadmapParse::idPrefixPattern(QLatin1String("{0,15}")) + QLatin1Char('$'));
 
 // ANTS-2076 — project-default counter-ID prefix derived from the
 // caller's leaf directory (RoadmapParse::leafIdPrefix) — the same source
@@ -765,11 +768,7 @@ QJsonObject rlGuessedPrefixAdvisory(const QString &prefix) {
 qint64 rlMaxExistingIdForPrefix(
         const QVector<RoadmapParse::BulletRecord> &bullets,
         const QString &pfx) {
-    static const QRegularExpression idRe(
-        // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
-        QStringLiteral(
-            "^((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*)"
-            "-([0-9]{1,8})$"));
+    const QRegularExpression &idRe = counterIdRe();
     qint64 maxN = 0;
     for (const auto &b : bullets) {
         if (b.id.isEmpty()) continue;
@@ -1799,9 +1798,8 @@ bool rcIsNonconformingIdToken(const QString &tok) {
     // canonical); kIdIsh above stays digit-permissive — do NOT widen it, or
     // this guard collapses to X && !X ≡ always-false. A letter-free id-shaped
     // token (2026-07) stays non-canonical → bad_id_format, as before.
-    static const QRegularExpression kCanonical(
-        QStringLiteral(
-            "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\\d+$"));
+    static const QRegularExpression kCanonical(QLatin1Char('^')
+        + RoadmapParse::idPrefixPattern() + QStringLiteral("-\\d+$"));
     return kIdIsh.match(tok).hasMatch() &&
            !kCanonical.match(tok).hasMatch();
 }
@@ -2221,13 +2219,11 @@ void applyGfmFlip(QStringList &lines,
 // emoji + space. Anchored loosely; the walker checks the prefix
 // explicitly before invoking this.
 // ANTS-2051 — the write parser must accept the bracket ids the READ path
-// does (RoadmapParse::idTokenPattern()). Keep the two in step: the lowercase
-// prefix (ANTS-2051), the digit-led prefix (ANTS-3492) and `S?` (ANTS-4500)
-// each reached the read path first, and roadmap_log then matched zero
-// bullets. The one deliberate difference is the {1,8} digit bound, a sanity
+// does (RoadmapParse::idTokenPattern()), so the prefix comes from the same
+// source. The one deliberate difference is the {1,8} digit bound, a sanity
 // ceiling.
-static const QRegularExpression rxAntsV1IdBracket(
-    QStringLiteral("\\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-S?\\d{1,8})\\]"));
+static const QRegularExpression rxAntsV1IdBracket(QStringLiteral("\\[(")
+    + RoadmapParse::idPrefixPattern() + QStringLiteral("-S?\\d{1,8})\\]"));
 
 QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
     QVector<AntsV1Bullet> out;

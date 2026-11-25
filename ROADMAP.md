@@ -109130,7 +109130,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L18-F2).
   Lanes: mcp-transport.
 
-- 📋 [ANTS-6232] **Build remotecontrol.cpp's six id-prefix regexes from one pattern.**
+- ✅ [ANTS-6232] **Build remotecontrol.cpp's six id-prefix regexes from one pattern.**
   From ANTS-6127. kIdPrefixShape, rlStableIdShape, counterRe, idRe
   (identical to counterRe), kCanonical and rxAntsV1IdBracket each
   spell the prefix rule. RoadmapParse::idTokenPattern() may already be
@@ -109141,6 +109141,14 @@ worked after these.
   The 2026-11-06 reviews also found this: row 791
   `src/remotecontrol.cpp:701`; row 794 `src/remotecontrol.cpp:674`.
   Details: docs/reviews/close-findings-2026-11-06.md.
+  RoadmapParse::idPrefixPattern(tail) is the one prefix fragment;
+  idTokenPattern, isIdPrefix, kIdPrefixShape, rlStableIdShape,
+  kCanonical, rxAntsV1IdBracket and counterIdRe (the old counterRe and
+  idRe, which were identical) are built from it. Names kept, since specs
+  and roadmap-format.md cite kIdPrefixShape.
+  roadmap_id_format_guard.Inv1 now checks the fragment's behaviour
+  (3D_E, lowercase, 2026) instead of its text. Not in scope: tpExtract's
+  regex in remotecontrol_state.cpp and roadmapfoldin.cpp's sniffRe.
   **Layman:** The rule for what a roadmap id looks like is copied six times in one file, so changing it means finding every copy.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L18-F3).

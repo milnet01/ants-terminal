@@ -273,6 +273,11 @@ bool idWasInferred(const BulletRecord &rec);
 // survive it.
 QString idTokenPattern();
 
+// The id prefix alone, as a bare fragment: a letter somewhere (ANTS-3492), not
+// led by `_` or `-`. `tail` counts the characters after the first ("*", "+",
+// "{0,15}"). Build every id-shaped regex from this rather than copying it.
+QString idPrefixPattern(QLatin1String tail = QLatin1String("*"));
+
 // ANTS-1428 — the synthetic-id hash and its headline normaliser: lowercase,
 // collapse whitespace, drop trailing punctuation. The roadmap_log flip
 // locator and the duplicate detector hash with the same pair.
