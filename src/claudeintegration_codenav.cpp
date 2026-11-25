@@ -103,7 +103,6 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     schema["properties"] = props;
                     QJsonArray req; req.append(QStringLiteral("topic"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -224,7 +223,6 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -909,7 +907,6 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     required.append("anchors");
                     required.append("caller_cwd");
                     schema["required"]             = required;
-                    schema["additionalProperties"] = false;
                     cbTool["inputSchema"] = schema;
                 }
                 tools.append(cbTool);
@@ -1531,7 +1528,6 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject pathProp; pathProp["type"] = "string";
                         pathProp["description"] = QStringLiteral(
@@ -1716,7 +1712,6 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject itemsProp;
                     itemsProp["type"] = "array";
@@ -1873,7 +1868,6 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject hP; hP["type"] = "string";
                         hP["description"] = QStringLiteral(
@@ -2030,7 +2024,6 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject editsProp; editsProp["type"] = "array";
                         editsProp["description"] = QStringLiteral(
@@ -2323,7 +2316,6 @@ void appendToolSchemasTrace(QJsonArray &tools) {
                              "Row cursor: pass back next_offset.")}};
                     schema["properties"] = props;
                     schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }

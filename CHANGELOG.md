@@ -66,6 +66,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Every MCP tool schema says it refuses undeclared arguments** (ANTS-6934)
+  About half the tools' schemas left out `additionalProperties:false`,
+  although the server refuses an undeclared argument on every tool.
+  The tool list now sets it on every schema.
+
 - **MCP tool descriptions name every option the tools accept** (ANTS-6590)
   `get_text` declares its `max_bytes` cap; `changelog_log` lists its
   `release` and `add_subsection` ops; `file_outline` names shell, asm,

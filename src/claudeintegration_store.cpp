@@ -1717,7 +1717,6 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2102,7 +2101,6 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2329,7 +2327,6 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2417,7 +2414,6 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2577,7 +2573,6 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     req.append(QStringLiteral("caller_cwd"));
                     req.append(QStringLiteral("op"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2646,7 +2641,6 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }

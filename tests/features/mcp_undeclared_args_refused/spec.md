@@ -36,6 +36,9 @@ name opens with its number.
   verb: a verb absent from the tools list, or any verb before the first
   `tools/list`. Claude Code lists on connect, and `ants-mcpd --call` lists
   first (`src/mcpdcall.cpp`).
+- **INV-8** — Every schema in `tools/list` sets `additionalProperties:false`,
+  so it says what INV-1 enforces. `mcpToolsList` sets it once, for every tool
+  (ANTS-6934); no descriptor sets it by hand.
 
 ## Tests
 

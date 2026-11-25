@@ -155,6 +155,22 @@ TEST(McpUndeclaredArgsRefused, Inv6UnhonouredDispatchArgumentsAreRefused) {
     EXPECT_EQ(s.handlerRuns, 0);
 }
 
+// INV-8
+TEST(McpUndeclaredArgsRefused, Inv8EveryListedSchemaIsStrict) {
+    Server s;
+    const QJsonArray tools = QJsonDocument::fromJson(
+        s.send({{"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/list"}}))
+        .object().value("result").toObject().value("tools").toArray();
+    ASSERT_GT(tools.size(), 50) << "precondition: the full tools list";
+    for (const QJsonValue &v : tools) {
+        const QJsonObject schema = v.toObject().value("inputSchema").toObject();
+        if (schema.isEmpty()) continue;
+        EXPECT_EQ(schema.value("additionalProperties"), QJsonValue(false))
+            << v.toObject().value("name").toString().toStdString()
+            << "'s schema does not say an undeclared argument is refused";
+    }
+}
+
 // INV-7
 TEST(McpUndeclaredArgsRefused, Inv7VerbWithoutAKnownSchemaIsNotRefused) {
     const QString unlisted = QStringLiteral("zz_test_no_schema");

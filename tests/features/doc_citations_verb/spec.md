@@ -34,9 +34,8 @@ same reason.
   *Test:* `DocCitationsVerb.Inv21ClampAndCoerce`.
 - **INV-19** — the verb is registered across both files: seven sites plus two
   negative assertions. *Test:* `DocCitationsVerb.Inv19RegisteredAtSevenSites`.
-- **INV-22** — the authored descriptor carries `type:"object"`,
-  `additionalProperties:false`, an explicit `required[]`, and all nine
-  properties; no descriptor comment contains the literal `props["`, and the
+- **INV-22** — the authored descriptor carries `type:"object"`, an explicit
+  `required[]`, and all nine properties (its strictness is `mcp_undeclared_args_refused` INV-8); no descriptor comment contains the literal `props["`, and the
   description does not begin with `[`.
   *Test:* `DocCitationsVerb.Inv22DescriptorShape`.
 - **INV-48** — the `Required` caller-cwd contract, which is what makes the

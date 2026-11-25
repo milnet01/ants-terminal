@@ -312,7 +312,6 @@ TEST(FunctionSizes, Inv8Wiring) {
     ASSERT_NE(end, std::string::npos);
     const std::string body = ci.substr(schema, end - schema);
     EXPECT_NE(body.find("schema[\"type\"] = \"object\";"), std::string::npos);
-    EXPECT_NE(body.find("schema[\"additionalProperties\"] = false;"), std::string::npos);
 }
 
 // INV-11 (ANTS-6501) — a file over CodeWalk::kMaxFileBytes is never read; the

@@ -97782,7 +97782,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: chrome-widgets.
 
-- 🚧 [ANTS-6590] **Fold the duplicated logic the 2026-11-06 reviews found in claude-integration.**
+- ✅ [ANTS-6590] **Fold the duplicated logic the 2026-11-06 reviews found in claude-integration.**
   17 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 91 `src/claudeintegration_terminal.cpp:1691` (Medium)
   - row 710 `src/claudeintegration.cpp:172` (Medium)
@@ -97807,6 +97807,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   and selection_hint; the details keep per-runner flags), 732 (constants
   in testauditengine.h), 735, 736, 742. Already fixed: 726; 711 and 737
   by ANTS-6221. Open: 730 and 738, as ANTS-6934.
+  Rows 730 and 738 shipped as ANTS-6934, 2026-11-25.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -98218,7 +98219,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: found-while-fixing ANTS-6588 2026-11-25.
   Lanes: changelog-feedback.
 
-- 📋 [ANTS-6934] **Close every MCP tool schema through one helper with an explicit strict flag.**
+- ✅ [ANTS-6934] **Close every MCP tool schema through one helper with an explicit strict flag.**
   Rows 730 and 738 of docs/reviews/close-findings-2026-11-06.md. Each
   descriptor in src/claudeintegration_{codenav,docs,orientation,reports,
   store,terminal}.cpp sets properties, required, maybe
@@ -98231,6 +98232,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   block; move them to the helper call. Making an open schema strict
   changes what clients see: check each against its handler first.
   Hot reload: none needed; ants-mcpd picks it up on rebuild.
+  Shipped 2026-11-25. Narrower than the remedy: only the strict flag
+  drifted, and the server refuses undeclared arguments on every verb
+  (ANTS-4659), so mcpToolsList sets additionalProperties:false once for
+  every schema, beside the fields/compact injection. 64 descriptor lines
+  removed; mcp_undeclared_args_refused INV-8 checks every listed schema
+  at runtime (red with the line removed: every tool listed). 13 per-tool
+  text checks dropped, their specs point at INV-8; mcp-tools.md § Schema
+  hygiene says a descriptor does not set it.
   **Layman:** Every tool's argument list ends with the same hand-copied lines, and some copies forgot the line that rejects unknown arguments.
   Kind: refactor.
   Source: split from ANTS-6590 (rows 730, 738) 2026-11-25.

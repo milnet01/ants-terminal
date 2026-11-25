@@ -1649,7 +1649,6 @@ void appendToolSchemasTerminal(QJsonArray &tools) {
                     }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1704,7 +1703,6 @@ void appendToolSchemasTerminal(QJsonArray &tools) {
                     }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }

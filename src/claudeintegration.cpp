@@ -2256,6 +2256,18 @@ QJsonObject ClaudeIntegration::mcpToolsList(const QJsonObject &request) {
                     t.value(QStringLiteral("name")).toString());
             }
         }
+        // ANTS-6934 — every schema is strict, set here for the reason
+        // `fields` is declared here: handleMcpRequest refuses an
+        // undeclared argument on every verb (ANTS-4659), so each schema
+        // says so, and no descriptor sets it by hand.
+        {
+            QJsonObject schema =
+                t.value(QStringLiteral("inputSchema")).toObject();
+            if (!schema.isEmpty()) {
+                schema[QStringLiteral("additionalProperties")] = false;
+                t[QStringLiteral("inputSchema")] = schema;
+            }
+        }
         // ANTS-2158 — exempt the highest-frequency verbs from
         // Claude Code's MCP tool-search DEFERRAL so they are
         // callable without a ToolSearch round-trip (the

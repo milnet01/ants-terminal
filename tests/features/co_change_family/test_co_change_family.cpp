@@ -401,7 +401,6 @@ TEST(CoChangeFamily, RegistrationAndSchema) {
     ASSERT_FALSE(desc.empty()) << "no tools/list descriptor";
     const std::string flat = ants_test::squashWhitespace(desc);
     EXPECT_TRUE(has(flat, "\"object\""));
-    EXPECT_TRUE(has(flat, "additionalProperties"));
     EXPECT_TRUE(has(flat, "makeEtagMatchProp()"));
     EXPECT_TRUE(has(flat, "makeFieldsProp()"));
     EXPECT_TRUE(has(flat, "\"stem\""));

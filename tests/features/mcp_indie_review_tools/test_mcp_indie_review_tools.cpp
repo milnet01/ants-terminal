@@ -170,35 +170,3 @@ TEST(McpIndieReviewTools, Inv15DispatchSelectionHintNamesTheWeakerReviewer) {
         << "INV-15: dispatch is not the entry point for a Claude review";
 }
 
-TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
-    // Defensive: every new tool's inputSchema sets additionalProperties=false
-    // so unknown keys are rejected. Region scoped to JUST the indie_review_*
-    // block — start at indie_review_partition, end at the next non-indie
-    // tool block (verify_changes, ANTS-1289).
-    const std::string ci = ants_test::slurpClaudeIntegration();
-    ASSERT_FALSE(ci.empty());
-    // ANTS-4919 — the descriptors live in their own files, after the
-    // handler code, so search only the descriptor pieces.
-    const std::string desc = ants_test::toolSchemaPiecesText(ci);
-    const auto block_start = desc.find("\"indie_review_partition\"");
-    ASSERT_NE(block_start, std::string::npos);
-    // End: the next tool series after indie_review_dispatch.
-    const auto dispatch_pos = desc.find("\"indie_review_dispatch\"", block_start);
-    ASSERT_NE(dispatch_pos, std::string::npos);
-    const auto block_end = desc.find("// ANTS-1289", dispatch_pos);
-    ASSERT_NE(block_end, std::string::npos);
-    const std::string region = desc.substr(block_start, block_end - block_start);
-    int count = 0;
-    size_t pos = 0;
-    while ((pos = region.find("additionalProperties", pos)) != std::string::npos) {
-        ++count;
-        ++pos;
-    }
-    // ANTS-2068 — floor, not exact: every indie_review_* tool schema must
-    // pin additionalProperties:false, so adding a tool shouldn't false-fail
-    // this; a drop below the known floor means one was loosened/removed.
-    EXPECT_GE(count, 3)
-        << "expected >= 3 additionalProperties=false in the indie_review "
-           "tool block (partition, corroborate, dispatch); "
-           "fewer means a schema dropped its additionalProperties guard";
-}

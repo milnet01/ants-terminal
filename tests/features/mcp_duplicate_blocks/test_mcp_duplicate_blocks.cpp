@@ -263,5 +263,4 @@ TEST(DuplicateBlocks, Inv9Wiring) {
     ASSERT_NE(end, std::string::npos);
     const std::string body = ci.substr(schema, end - schema);
     EXPECT_NE(body.find("schema[\"type\"] = \"object\";"), std::string::npos);
-    EXPECT_NE(body.find("schema[\"additionalProperties\"] = false;"), std::string::npos);
 }

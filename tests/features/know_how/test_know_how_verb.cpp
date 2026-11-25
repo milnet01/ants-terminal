@@ -253,7 +253,6 @@ TEST(KnowHowVerb, SchemaDeclaresEveryArgumentRead) {
     for (const char *op : {"find", "get", "list", "add", "update", "retire", "purge"})
         EXPECT_TRUE(block.contains(QStringLiteral("e.append(QStringLiteral(\"%1\"))").arg(QString::fromLatin1(op))))
             << "op enum is missing " << op;
-    EXPECT_TRUE(block.contains(QStringLiteral("schema[\"additionalProperties\"] = false")));
 
     // § 4.3 and § 4.2 — the two limits the description must state.
     EXPECT_TRUE(block.contains(QStringLiteral("known secret shapes only")));

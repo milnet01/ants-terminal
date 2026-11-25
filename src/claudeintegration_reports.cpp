@@ -114,7 +114,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                              "file's checks. A filtered report is not saved.")}};
                     schema["properties"] = props;
                     schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -260,7 +259,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     req.append(QStringLiteral("caller_cwd"));
                     req.append(QStringLiteral("items"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -308,7 +306,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -373,7 +370,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -422,7 +418,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -495,7 +490,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -996,7 +990,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     QJsonArray clReq;
                     clReq.append(QStringLiteral("caller_cwd"));
                     clSchema["required"] = clReq;
-                    clSchema["additionalProperties"] = false;
                     t["inputSchema"] = clSchema;
                     tools.append(t);
                 }
@@ -1209,7 +1202,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     QJsonArray cqReq;
                     cqReq.append(QStringLiteral("caller_cwd"));
                     cqSchema["required"] = cqReq;
-                    cqSchema["additionalProperties"] = false;
                     t["inputSchema"] = cqSchema;
                     tools.append(t);
                 }
@@ -1277,7 +1269,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     // needs `catalog:true`. The handler enforces the
                     // choice at runtime, so `required` is empty (was
                     // `["name"]` pre-1985).
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1352,7 +1343,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1428,7 +1418,6 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     req.append(QStringLiteral("op"));
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }

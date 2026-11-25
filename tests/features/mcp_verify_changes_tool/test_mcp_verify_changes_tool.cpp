@@ -87,27 +87,6 @@ size_t verifyChangesBlockEnd(const std::string &ci, size_t start) {
 }
 }  // namespace
 
-TEST(McpVerifyChangesTool, SchemaSetsAdditionalPropertiesFalse) {
-    const std::string ci = ants_test::slurpClaudeIntegration();
-    ASSERT_FALSE(ci.empty());
-    const auto block_start = ci.find("// ANTS-1289");
-    ASSERT_NE(block_start, std::string::npos)
-        << "// ANTS-1289 anchor missing — region scan can't run";
-    const auto block_end = verifyChangesBlockEnd(ci, block_start);
-    ASSERT_NE(block_end, std::string::npos);
-    const std::string region = ci.substr(block_start, block_end - block_start);
-
-    int count = 0;
-    size_t pos = 0;
-    while ((pos = region.find("additionalProperties", pos)) != std::string::npos) {
-        ++count;
-        ++pos;
-    }
-    EXPECT_EQ(count, 1)
-        << "expected exactly 1 additionalProperties=false in the "
-           "verify_changes registration block";
-}
-
 TEST(McpVerifyChangesTool, SchemaListsOptionalArgs) {
     const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());

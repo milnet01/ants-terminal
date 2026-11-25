@@ -16,9 +16,8 @@ The end-to-end MCP wiring for `mcp__ants__token_usage`:
   `src/remotecontrol.h`.
 - **REG-4** — `RemoteControl::cmdTokenUsage` is defined in
   the remotecontrol TUs.
-- **REG-5** — region-scoped check: the `// ANTS-1284` registration
-  block in `claudeintegration.cpp` declares
-  `additionalProperties: false`.
+- **REG-5** — the schema is strict; `mcp_undeclared_args_refused` INV-8 checks it
+  for every tool.
 - **REG-6** — region-scoped check: the block lists the optional
   args (`reset`, `include_zero`) the spec § 2.1 declares; the
   `required` array is empty.

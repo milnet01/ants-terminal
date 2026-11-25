@@ -12,7 +12,7 @@ codes the handler emits.
 
 - **INV-1.** `tool_info` registered as an MCP tool in
   `claudeintegration.cpp`'s `tools/list` block with `name`
-  required and `additionalProperties: false`.
+  required. Its schema's strictness is `mcp_undeclared_args_refused` INV-8.
 - **INV-2.** `tools/list` end-of-build site stores `tools`
   into `m_lastToolsList` (anchor: `ANTS-1399-INV-2`).
 - **INV-3.** Handler scans `m_lastToolsList` and emits the
@@ -36,7 +36,7 @@ call. INV-9..INV-13 are source-scrape tests here; INV-14 lives in
 `mcp_orientation_install` (the prelude template owner).
 
 - **INV-9.** The `tool_info` descriptor declares a boolean `catalog`
-  property, keeps `additionalProperties:false`, and no longer lists
+  property and no longer lists
   `name` in `required`.
 - **INV-10.** The catalog branch emits the grouped envelope keys
   (`catalog`, `tool_count`, `category_count`) via a `catalogMode` flag.

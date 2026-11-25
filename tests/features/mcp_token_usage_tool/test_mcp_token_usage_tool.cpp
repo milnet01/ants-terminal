@@ -75,28 +75,6 @@ TEST(McpTokenUsageTool, CmdMethodDefinedInCpp) {
            "remotecontrol.cpp";
 }
 
-// REG-5
-TEST(McpTokenUsageTool, SchemaSetsAdditionalPropertiesFalse) {
-    const std::string ci = ants_test::slurpClaudeIntegration();
-    ASSERT_FALSE(ci.empty());
-    const auto block_start = ci.find("// ANTS-1284 — token_usage");
-    ASSERT_NE(block_start, std::string::npos)
-        << "// ANTS-1284 anchor missing — region scan can't run";
-    const auto block_end = tokenUsageBlockEnd(ci, block_start);
-    ASSERT_NE(block_end, std::string::npos);
-    const std::string region = ci.substr(block_start, block_end - block_start);
-
-    int count = 0;
-    size_t pos = 0;
-    while ((pos = region.find("additionalProperties", pos)) != std::string::npos) {
-        ++count;
-        ++pos;
-    }
-    EXPECT_EQ(count, 1)
-        << "expected exactly 1 additionalProperties=false in the "
-           "token_usage registration block";
-}
-
 // ANTS-1355 REG-V2-1/2 — the session fields carry the envelope's
 // total_wrap_bytes and each call's wrap_bytes and latency. Built by
 // TokenUsageEngine::sessionFieldsJson, which cmdTokenUsage and ants-mcpd

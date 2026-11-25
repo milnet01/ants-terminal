@@ -232,8 +232,6 @@ TEST(DocCitationsVerb, Inv22DescriptorShape) {
 
     expect(region.contains(QStringLiteral("schema[\"type\"] = \"object\"")),
            "INV-22: type is object");
-    expect(region.contains(QStringLiteral("schema[\"additionalProperties\"] = false")),
-           "INV-22: additionalProperties is false");
     // Anchored on the assignment, not on the bare word: the description ends
     // "caller_cwd required." and would match first.
     const int req = region.indexOf(QStringLiteral("schema[\"required\"]"));

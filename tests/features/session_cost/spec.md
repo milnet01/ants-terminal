@@ -48,8 +48,8 @@ on its next `/mcp` reconnect; no terminal relaunch.
 - **INV-5** — with no `session_id`, the newest transcript is read and
   `session_inferred` is true. *Test:* `SessionCost.Inv5NewestWhenUnnamed`.
 - **INV-6** — the verb is registered in `registerProjectScopedVerbs` with
-  `CallerCwdContract::Required`, has a `callerCwdContractFor` branch, and
-  its schema sets `additionalProperties` false.
+  `CallerCwdContract::Required` and has a `callerCwdContractFor` branch.
+  Its schema's strictness is `mcp_undeclared_args_refused` INV-8.
   *Test:* `SessionCost.Inv6Registration`.
 - **INV-7** — in a transcript under a `subagents` folder, `isSidechain`
   lines are counted: they are that helper agent's own.

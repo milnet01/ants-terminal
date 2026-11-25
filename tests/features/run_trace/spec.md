@@ -74,6 +74,6 @@ clock and the random source passed in.
   first projects directory that has it (ANTS-6271). A transcript path
   outside the projects directory refuses. No code path picks "the newest"
   transcript.
-- **INV-14 — the verb is registered with the Required contract.** Its schema
-  sets `additionalProperties: false`. This case is a source scrape of
+- **INV-14 — the verb is registered with the Required contract.** Its
+  schema's strictness is `mcp_undeclared_args_refused` INV-8. This case is a source scrape of
   `mcptoolregistry.cpp` and `claudeintegration.cpp`.

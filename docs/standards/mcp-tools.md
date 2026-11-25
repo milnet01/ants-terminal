@@ -492,9 +492,10 @@ place when it saves a Claude session real tokens or round-trips
    go cold or orphan across a project move but MUST NEVER shadow (serve
    the old path's data under the new path).
 
-10. **Schema hygiene.** `inputSchema.type == "object"`,
-    `additionalProperties == false`, an explicit `required[]`, and a
-    one-line `description` per property. Document `caller_cwd` with
+10. **Schema hygiene.** `inputSchema.type == "object"`, an explicit
+    `required[]`, and a one-line `description` per property.
+    `mcpToolsList` sets `additionalProperties == false` on every schema;
+    a descriptor does not set it. Document `caller_cwd` with
     its step-2 contract word — all four are permissible, not just
     `Required` / `Optional`.
 
@@ -558,8 +559,7 @@ MCP feature tests use (e.g.
   `EXPECT_NE(src.find("registerToolProvider(\"<name>\""),
   std::string::npos)`.
 - **`tools/list` schema validity** — assert the `tools[]` entry exists
-  with `inputSchema.type == "object"` and
-  `additionalProperties == false`.
+  with `inputSchema.type == "object"`.
 - **Contract behaviour** — at minimum: a `Required` tool refuses empty
   `caller_cwd` with `code:"caller_cwd_required"`; a path arg outside
   the root refuses with `code:"bad_path"`; the happy path returns the

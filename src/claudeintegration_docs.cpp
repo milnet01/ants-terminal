@@ -54,7 +54,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject symProp; symProp["type"] = "string";
                         symProp["description"] = QStringLiteral(
@@ -128,7 +127,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject topicProp; topicProp["type"] = "string";
                         topicProp["description"] = QStringLiteral(
@@ -246,7 +244,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject pathProp; pathProp["type"] = "string";
                         pathProp["description"] = QStringLiteral(
@@ -372,7 +369,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
                     QJsonObject props;
                     QJsonObject dsPath; dsPath["type"] = "string";
@@ -537,7 +533,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
                     QJsonObject props;
                     QJsonObject slPath; slPath["type"] = "string";
@@ -633,7 +628,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     schema["required"] = QJsonArray{QStringLiteral("caller_cwd"),
                                                     QStringLiteral("path")};
                     QJsonObject props;
@@ -713,7 +707,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
                     QJsonObject props;
                     QJsonObject ddPath; ddPath["type"] = "string";
@@ -804,7 +797,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
                     QJsonObject props;
                     QJsonObject dlPath; dlPath["type"] = "string";
@@ -992,7 +984,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     schema["required"] = QJsonArray{QStringLiteral("caller_cwd"),
                                                     QStringLiteral("path")};
                     QJsonObject props;
@@ -1227,7 +1218,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject opProp; opProp["type"] = "string";
                         opProp["enum"] = QJsonArray{QStringLiteral("get"),
@@ -1389,7 +1379,6 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                         "back only the answer.");
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject codeProp;
                     codeProp["type"] = "string";

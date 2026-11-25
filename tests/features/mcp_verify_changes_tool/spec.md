@@ -18,9 +18,8 @@ registered consistently across all four layers:
 - **REG-3** — `cmdVerifyChanges` is declared in remotecontrol.h.
 - **REG-4** — `RemoteControl::cmdVerifyChanges` is defined in
   remotecontrol.cpp.
-- **REG-5** — the tool's inputSchema block sets
-  `additionalProperties: false` (verifies INV-7 from the engine spec
-  at the registration layer).
+- **REG-5** — the schema is strict (INV-7 of the engine spec);
+  `mcp_undeclared_args_refused` INV-8 checks it for every tool.
 - **REG-6** — the optional args (`gates`, `max_log_lines`,
   `timeout_sec`) appear in the schema's properties{} block.
 

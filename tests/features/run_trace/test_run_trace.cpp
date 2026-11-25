@@ -520,8 +520,6 @@ TEST(RunTrace, RegisteredRequiredWithStrictSchema) {
     ASSERT_NE(schema, std::string::npos);
     const auto end = ci.find("tools.append(t);", schema);
     ASSERT_NE(end, std::string::npos);
-    EXPECT_NE(ci.substr(schema, end - schema).find("schema[\"additionalProperties\"] = false;"),
-              std::string::npos);
 }
 
 // ANTS-6271 — a session_id resolves as session_cost resolves it: every

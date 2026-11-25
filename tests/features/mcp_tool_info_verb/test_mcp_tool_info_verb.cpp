@@ -180,8 +180,6 @@ TEST(mcp_tool_info_verb, Inv9CatalogPropertyDeclared) {
            "INV-9: tool_info descriptor declares a `catalog` property");
     expect(contains(block, "catalogProp[\"type\"] = \"boolean\""),
            "INV-9: `catalog` property is typed boolean");
-    expect(contains(block, "schema[\"additionalProperties\"] = false"),
-           "INV-9: additionalProperties stays false");
     expect(!contains(block, "req.append(QStringLiteral(\"name\"))"),
            "INV-9: `name` is no longer appended to the tool_info "
            "schema's required array");

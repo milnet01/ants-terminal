@@ -75,7 +75,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "changed (ANTS-1499 \"304 Not Modified\" pattern).");
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     const QJsonObject cwdProp = makeCallerCwdReadProp();
                     QJsonObject etagProp;
                     etagProp["type"] = "string";
@@ -130,7 +129,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "ANTS-1723.");
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["additionalProperties"] = false;
                     QJsonObject opProp;
                     opProp["type"] = "string";
                     QJsonArray opEnum;
@@ -320,7 +318,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     // express it cleanly without oneOf.
                     req.append("caller_cwd");
                     schema["required"]            = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -672,7 +669,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req.append("files");
                     req.append("caller_cwd");
                     schema["required"]             = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -746,7 +742,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req.append("description");
                     req.append("caller_cwd");
                     schema["required"]             = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -799,7 +794,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req.append("task_type");
                     req.append("caller_cwd");
                     schema["required"]             = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -888,7 +882,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     QJsonArray req;
                     req.append("caller_cwd");
                     schema["required"]             = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1018,7 +1011,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     QJsonArray req;
                     req.append("caller_cwd");
                     schema["required"]             = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1148,7 +1140,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     QJsonArray req;
                     req.append("caller_cwd");
                     schema["required"]             = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1255,7 +1246,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req2.append("caller_cwd");
                     req2.append("path");
                     schema["required"]             = req2;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1361,7 +1351,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req.append("symbol");
                     req.append("caller_cwd");
                     schema["required"]             = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1496,7 +1485,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req.append("symbol");
                     req.append("caller_cwd");
                     schema["required"]             = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1607,7 +1595,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req.append("shape");
                     req.append("caller_cwd");
                     schema["required"]             = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1709,7 +1696,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1846,7 +1832,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     // Code's schema validator handles oneOf poorly.
                     // The handler returns bad_args if both or
                     // neither is provided.
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -1932,7 +1917,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req.append("caller_cwd");
                     req.append("reports_dir");
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2065,7 +2049,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     QJsonArray req;
                     req.append("caller_cwd");
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2363,7 +2346,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     QJsonArray req;
                     req.append("caller_cwd");
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2411,7 +2393,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req.append("caller_cwd");
                     req.append("job_id");
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2563,7 +2544,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     schema["properties"] = props;
                     QJsonArray req; req.append("caller_cwd");
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2605,7 +2585,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     req.append("chunk_id");
                     req.append("partition_token");
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2648,7 +2627,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     props["include_zero"] = zeroProp;
                     schema["properties"] = props;
                     schema["required"] = QJsonArray();
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2693,7 +2671,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     props["limit"] = limitProp;
                     schema["properties"] = props;
                     schema["required"] = QJsonArray();
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2756,7 +2733,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2922,7 +2898,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     QJsonArray req;
                     req.append("lane");
                     schema["required"] = req;
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -2972,7 +2947,6 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     props["caller_cwd"] = callerProp;
                     schema["properties"] = props;
                     schema["required"] = QJsonArray();
-                    schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
