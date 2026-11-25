@@ -397,9 +397,10 @@ void setStoreBacking(QJsonObject &env, const RoadmapMigrate::MigrationPlan &plan
     // the store after this call? RoadmapSource::migratedProject() returns
     // nullopt for every dialect the store does not serve ("legitimately
     // markdown-served"), so a github-task-list project migrates ok:true with
-    // faithful counts and is still answered from markdown. ANTS-5335 — asked
-    // through the same predicate, which this used to restate as ants-v1 only. Vestige could detect that only by
-    // noticing which fields a LATER roadmap_query response did not carry.
+    // faithful counts and is still answered from markdown. Vestige could detect
+    // that only by noticing which fields a LATER roadmap_query response did not
+    // carry. ANTS-5335 — asked through the same predicate, which this used to
+    // restate as ants-v1 only.
     //
     // Index 0 is the live roadmap and is what project.source_format records
     // (ANTS-3815 INV-2). Unchanged by dry_run on purpose: this answers a

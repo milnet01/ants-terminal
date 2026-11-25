@@ -112,23 +112,6 @@ StoreSnapshot snapshotStore(RoadmapStore &store, const QString &storePath,
                             const QString &snapshotDirSource,
                             const QString &fileName);
 
-// ANTS-4491 § 4.3 — the migration half of a dialect convert, run inside a
-// transaction the CALLER has already opened.
-//
-// It lives here, and not in the convert's own TU, because INV-1 is a real
-// contract: `findRoadmaps`, `planFrom` and `load` have exactly one production
-// call site under src/, and this file is it. A second caller open-coding the
-// three would be a second migration implementation, which is the drift that
-// invariant exists to prevent — so the convert asks the seam instead.
-//
-// It takes the caller's OPEN store rather than a path, which is the whole
-// point: `RoadmapStore::begin()` refuses to nest, and ANTS-4491 INV-4 requires
-// the id allocation and the commit to be one transaction. `run()` above cannot
-// serve that — it opens its own connection and owns its own transaction.
-//
-// The store must be Access::Bulk and already in a transaction; the load refuses
-// otherwise. On failure NOTHING is rolled back here: the caller owns the
-// transaction and may have written before calling.
 // ANTS-5252 — one row per bullet the convert will write, so a bulk id
 // assignment can be REVIEWED before it lands rather than counted after.
 //
@@ -208,6 +191,24 @@ struct InTransactionLoad {
     // refusal or a count cannot miss an ambiguous pairing past the cap.
     int         ambiguousRematches = 0;
 };
+
+// ANTS-4491 § 4.3 — the migration half of a dialect convert, run inside a
+// transaction the CALLER has already opened.
+//
+// It lives here, and not in the convert's own TU, because INV-1 is a real
+// contract: `findRoadmaps`, `planFrom` and `load` have exactly one production
+// call site under src/, and this file is it. A second caller open-coding the
+// three would be a second migration implementation, which is the drift that
+// invariant exists to prevent — so the convert asks the seam instead.
+//
+// It takes the caller's OPEN store rather than a path, which is the whole
+// point: `RoadmapStore::begin()` refuses to nest, and ANTS-4491 INV-4 requires
+// the id allocation and the commit to be one transaction. `run()` above cannot
+// serve that — it opens its own connection and owns its own transaction.
+//
+// The store must be Access::Bulk and already in a transaction; the load refuses
+// otherwise. On failure NOTHING is rolled back here: the caller owns the
+// transaction and may have written before calling.
 InTransactionLoad loadInOpenTransaction(RoadmapStore &store,
                                         const QString &projectRoot,
                                         const QString &name,

@@ -283,7 +283,9 @@ public:
     // RoadmapRender INV-11 keeps project-row reads in ONE owner, so a handler
     // that hand-rolled `SELECT project_id FROM project WHERE export_slug = ?`
     // would be a second reader of the same row. nullopt = no such project,
-    // which the mailbox surfaces as `unknown_project`.
+    // which the mailbox surfaces as `unknown_project`. A DEREGISTERED project
+    // is returned on purpose (its mailbox stays reachable, ANTS-5366);
+    // readProject*() is the call that hides it.
     std::optional<qint64> projectIdForSlug(const QString &exportSlug,
                                            QString *error = nullptr) const;
 
@@ -291,15 +293,17 @@ public:
     // registerProject() is upsert-shaped, so a verb that used it merely to
     // learn the caller's id would silently register any root it was handed —
     // which is the machine-global-store hazard ANTS-4600's guard exists for.
-    // nullopt = not registered, which the mailbox surfaces as `no_project`.
-    // Canonicalises its argument, so it takes the same form registerProject()
-    // stores.
+    // nullopt = not registered, which the mailbox surfaces as `no_project`. A
+    // DEREGISTERED root is returned on purpose, as projectIdForSlug() does;
+    // readProject*() is the call that hides it. Canonicalises its argument, so
+    // it takes the same form registerProject() stores.
     std::optional<qint64> projectIdForRoot(const QString &root,
                                            QString *error = nullptr) const;
     // ANTS-5620 — the registered project whose root is `path` or the nearest
     // directory above it, so a tab whose shell sits in a subdirectory still
     // finds its project. Read-only, like projectIdForRoot(): it never
-    // registers. nullopt = under no registered root (or a query failed).
+    // registers. nullopt = under no root in the table (or a query failed); a
+    // deregistered root counts, because it goes through projectIdForRoot().
     std::optional<qint64> projectIdContaining(const QString &path,
                                               QString *error = nullptr) const;
 

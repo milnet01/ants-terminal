@@ -4122,7 +4122,8 @@ std::optional<qint64> RoadmapStore::maxAllocatedId(qint64 projectId,
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
     // GLOB narrows to this prefix's ids in SQL; the suffix is then a plain
     // integer cast. The trailing pattern is `[0-9]*` rather than `*` so a
-    // sibling prefix sharing a leading run (ANTS / ANTSX) cannot contribute.
+    // synthesised `-S` id and a hyphen-extended sibling prefix (`ANTS-X-0001`
+    // for prefix ANTS) cannot contribute.
     q.prepare(QStringLiteral(
         "SELECT MAX(CAST(substr(id, ?) AS INTEGER)) FROM item "
         "WHERE project_id = ? AND id GLOB ? AND substr(id, ?) NOT GLOB '*[^0-9]*'"));
@@ -4180,7 +4181,7 @@ std::optional<qint64> RoadmapStore::maxSynthesisedId(qint64 projectId,
     // The sibling above with `-S` spliced in. The cast starts past "PFX-S",
     // one further than maxAllocatedId's "PFX-", and the trailing `[0-9]*`
     // does the same job here: a project whose prefix is `ANTS` must not
-    // collect `ANTSX-S0001`.
+    // collect a hyphen-extended sibling prefix's id (`ANTS-S-0001`).
     q.prepare(QStringLiteral(
         "SELECT MAX(CAST(substr(id, ?) AS INTEGER)) FROM item "
         "WHERE project_id = ? AND id GLOB ? AND substr(id, ?) NOT GLOB '*[^0-9]*'"));

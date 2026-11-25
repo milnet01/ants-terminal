@@ -55,11 +55,11 @@ struct Outcome {
     // of that id then resolves to the wrong work. It is not reviewable
     // afterwards, because the output is well-formed either way.
     //
-    // `matchedOrigin` is deliberately ABSENT. Both match passes in
-    // matchItems() require `idFromMigration` on the candidate, so every
-    // matched row is migration-allocated BY CONSTRUCTION — a field for it
-    // could only ever hold one value, and a constant dressed as data invites a
-    // reader to believe it was checked.
+    // There is no `matchedOrigin` field. matchItems() has three passes: the id
+    // pass matches any stored row by folded id, hand-filed or migration-
+    // allocated, and only the two weak-key passes require `idFromMigration`.
+    // So a matched row's origin is not constant, and this struct does not
+    // carry it.
     struct ItemMatch {
         bool    matched = false;
         QString matchedId;         // the stored id claimed; empty when !matched
