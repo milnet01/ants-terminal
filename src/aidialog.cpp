@@ -159,10 +159,11 @@ void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
     // 0.7.52 (2026-04-27 indie-review HIGH) — scheme allowlist on the
     // configured AI endpoint. The dialog routes user prompts + terminal
     // context (potentially carrying secrets, file paths, command output)
-    // to whatever URL is here. A `file://` / `gopher://` / bare-host
-    // schema with no transport encryption would leak that traffic, so
-    // reject anything other than http/https up-front rather than at
-    // request-time when the body is already serialised. Empty endpoint
+    // to whatever URL is here. Only http/https are network schemes Qt
+    // can POST to, so reject anything else (`file://`, `gopher://`,
+    // bare host) up-front rather than at request-time when the body is
+    // already serialised. Plain http's cleartext risk is handled by
+    // `plaintextPromptWarning`, not here. Empty endpoint
     // still means "AI disabled" (handled below); we only validate when
     // a non-empty value is supplied.
     if (!endpoint.isEmpty()) {

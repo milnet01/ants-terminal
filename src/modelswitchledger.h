@@ -267,8 +267,8 @@ QJsonObject statsEnvelope(const QList<Record> &recs,
 QJsonObject statsForScope(const QString &ledgerPath,
                           const QString &projectRoot,
                           const StatsConfig &cfg);
-// Back-compat thin wrapper — defaults to scope:"project" with a
-// disabled switcher (no config surfaced). Prefer statsForScope at the
+// Back-compat thin wrapper — default StatsConfig: project scope, 30-day
+// window, no epoch filter. Prefer statsForScope at the
 // MCP dispatch site so the live config triple lands in the envelope.
 QJsonObject statsForProject(const QString &ledgerPath, const QString &projectRoot);
 

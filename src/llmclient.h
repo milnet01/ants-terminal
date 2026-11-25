@@ -61,8 +61,9 @@ public:
     // memory-DoS bound on streamed responses, not a per-tick limit.
     static constexpr qint64 kMaxBytes = 10 * 1024 * 1024;
 
-    // True iff `endpoint` parses with an http/https scheme. On true,
-    // *schemeOut (when non-null) receives the lowercased scheme.
+    // True iff `endpoint` parses with an http/https scheme. *schemeOut (when
+    // non-null) receives the lowercased scheme whenever endpoint is non-empty,
+    // true or false (callers print it on rejection).
     static bool isEndpointAllowed(const QString &endpoint, QString *schemeOut = nullptr);
 
     // True iff endpoint is plaintext http to a non-local host (caller

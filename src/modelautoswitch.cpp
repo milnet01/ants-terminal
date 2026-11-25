@@ -106,59 +106,31 @@ Decision decide(const Gate &g) {
     // downgrade_requires_active_work (9th). New tokens always go last.
     if (!g.enabled)
         d.blockedBy << QStringLiteral("auto_switch_disabled");
-    // ANTS-1939 — focused_state_not_idle soft-veto. Mirrors the ANTS-1908
-    // composer gate: when the agent is busy (state != Idle) but the human
-    // hasn't typed for >= composerStaleThresholdMs, treat it as an autonomous
-    // window and allow the downgrade. This is exactly when a cheaper model
-    // saves the most without interrupting the user. Composes safely with
-    // ANTS-1917 idle_end_of_session: that gate only fires when the shell IS
-    // idle (idleElapsedMs >= 0); this gate fires when it is NOT idle — the
-    // two gates cover complementary, non-overlapping cases.
-    // -1 sentinel preserves legacy hard-veto behaviour for callers without
-    // keystroke telemetry (bit-for-bit pre-1939 semantics).
-    // ANTS-1959 — long-ToolUse window: a Bash/tool call running for
-    // >= kLongToolUseMs means the main loop is I/O-bound and human-idle
-    // (a build/test wait). Computed once here and shared by the
-    // focused-state gate (ANTS-1959) and the composer gate (ANTS-1973).
-    // Sentinel -1 (no tool-use telemetry) preserves v1 behaviour.
-    // kLongToolUseMs is positive, so the sentinel never passes.
+    // focused_state_not_idle yields when the human has been idle for the
+    // composer-stale threshold, or during a long ToolUse (below). It applies
+    // only while the agent is not Idle, so it never overlaps
+    // idle_end_of_session. -1 telemetry sentinels keep the hard veto.
+    // History: ANTS-1939, ANTS-1959.
+    // longToolUse: a tool call running >= kLongToolUseMs means the loop is
+    // waiting on a command, not the user. Shared by this gate and the composer
+    // gate. -1 (no telemetry) never passes.
     const bool longToolUse = g.toolUseElapsedMs >= kLongToolUseMs;
-    // One threshold for both gates below: the human-idle bar and the
-    // composer-stale bar (ANTS-1914).
+    // One human-idle threshold for both gates below (ANTS-1914).
     const qint64 composerStaleThreshold = (g.composerStaleThresholdMs >= 0)
         ? g.composerStaleThresholdMs
         : kComposerStaleVetoMs;
     if (g.focusedState != ClaudeState::Idle) {
         const bool humanIdle = (g.composerStaleMs >= 0) &&
                                (g.composerStaleMs >= composerStaleThreshold);
-        // Safe to downgrade regardless of composer state during a long
-        // ToolUse: the user is waiting on the command, not driving the agent.
+        // A long ToolUse also yields: the user is waiting on the command.
         if (!humanIdle && !longToolUse)
             d.blockedBy << QStringLiteral("focused_state_not_idle");
     }
-    // ANTS-1908 — composer_not_empty soft-veto. The veto YIELDS when
-    // the composer carries text but hasn't been touched within the
-    // configurable stale window — this unblocks long autonomous
-    // sessions where the dominant blocker is leftover continuation-
-    // prompt text sitting idle in the composer. -1 sentinel keeps the
-    // legacy hard-veto behaviour for any caller that doesn't supply
-    // keystroke telemetry. The blocker token name stays
-    // `composer_not_empty` for back-compat with the persisted near-
-    // miss ledger; semantics now mean "user is *actively editing*",
-    // matching the safety intent.
-    // ANTS-1914 — composerStaleThresholdMs is configurable (default
-    // kComposerStaleVetoMs ~ 5 min). Advanced users can lower it to
-    // unblock slash-command queueing. Full detection of slash-commands
-    // requires Claude Code to expose composer text via MCP.
-    // ANTS-1973 — yield additionally during a long foreground ToolUse
-    // wait. composer_not_empty is a common near-miss blocker. The 5-min
-    // stale window above is far too long for an ~18 s
-    // build wait, so when a command has been running >= kLongToolUseMs AND
-    // the composer has not been touched for >= kComposerStaleDuringToolUseMs
-    // (a SHORT threshold), the staged text is queued/abandoned — not active
-    // typing — and the veto yields. Needs only composerStaleMs +
-    // toolUseElapsedMs, both already on the Gate (no composer-content
-    // visibility required; ANTS-1931). Sentinel -1 preserves v1 behaviour.
+    // composer_not_empty means the user is *actively editing*. It yields when
+    // the composer has been untouched for composerStaleThreshold, or, during
+    // a long ToolUse, for the shorter kComposerStaleDuringToolUseMs. The token
+    // name stays for the persisted near-miss ledger. -1 telemetry keeps the
+    // hard veto. History: ANTS-1908, ANTS-1914, ANTS-1973.
     if (!g.composerEmpty) {
         const bool stale = (g.composerStaleMs >= 0) &&
                            (g.composerStaleMs >= composerStaleThreshold);
@@ -196,22 +168,12 @@ Decision decide(const Gate &g) {
             d.blockedBy << QStringLiteral("idle_end_of_session");
     }
 
-    // ANTS-1959 — downgrades are unsafe while the shell is idle (9th token,
-    // appended last to preserve the first eight tokens' order — INV-9). A downgrade
-    // at idle — end of work, between turns, winding down — is ALL-RISK and
-    // little reward: it can pollute the next session's default model, it
-    // precedes a reasoning burst as often as not, and (the user's key concern)
-    // when paired with any continuation it can start BILLABLE work that wasn't
-    // asked for. Meanwhile the cheaper tier isn't even exercised while idle —
-    // the recommender re-scores the tier on the next active turn anyway, so a
-    // genuinely-mechanical stretch still gets its downgrade then (during the
-    // ToolUse grind, where focused_state_not_idle yields — Signal 1). So we
-    // suppress downgrades whenever the shell IS idle and permit them only
-    // during active work. Keyed on idleElapsedMs >= 0 (real idle telemetry,
-    // mirroring idle_end_of_session); the -1 sentinel keeps legacy/no-telemetry
-    // callers bit-for-bit. UPGRADES are unrestricted — you always want Opus the
-    // moment work turns hard. Tier enum is Haiku<Sonnet<Opus, so a smaller rank
-    // == a cheaper tier == a downgrade.
+    // downgrade_requires_active_work (9th token, appended last to preserve the
+    // existing 8-token ordering — INV-9): a downgrade while the shell is idle
+    // is all risk and little reward, so downgrades wait for active work.
+    // Needs real idle telemetry (idleElapsedMs >= 0); -1 keeps legacy callers
+    // unchanged. Upgrades are unrestricted. Tier order is Haiku<Sonnet<Opus,
+    // so a smaller rank is a downgrade. History: ANTS-1959.
     const bool isDowngrade =
         static_cast<int>(target) < static_cast<int>(g.current);
     if (isDowngrade && g.idleElapsedMs >= 0)

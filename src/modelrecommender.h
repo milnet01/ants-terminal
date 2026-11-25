@@ -1,5 +1,5 @@
 // ANTS-1226 — Passive model-tier recommender for the status-bar chip.
-// Stateless free function: score(transcriptPath) → Tier + reason.
+// Free function: score(transcriptPath) → Tier + reason. Memoised; see score().
 #pragma once
 #include <QString>
 #include <QtGlobal>   // qint64 (ANTS-1944)
@@ -31,7 +31,7 @@ constexpr int kScoreWindowTurns = 20;
 // score() reads at most 512 KB from the tail of the JSONL transcript
 // at transcriptPath, scores the last kScoreWindowTurns assistant turns.
 // Returns the home tier if the file is absent or has no assistant turns.
-// Stateless: no per-call mutable state.
+// Memoised per (path, mtime, size, homeTier); GUI-thread only, not thread-safe.
 // ANTS-1974 — `homeTier` is the user's baseline/neutral tier. The default
 // Tier::Sonnet reproduces the pre-1974 mapping byte-for-byte (so every existing
 // caller + test is unchanged). The memo cache keys on homeTier too.
