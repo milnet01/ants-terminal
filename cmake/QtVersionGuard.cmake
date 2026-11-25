@@ -49,9 +49,9 @@ if(NOT EXISTS "${QCONFIG_FILE}")
         "${_remedy}")
 endif()
 
+include("${CMAKE_CURRENT_LIST_DIR}/QtVersionPattern.cmake")
 file(READ "${QCONFIG_FILE}" _qconfig)
-string(REGEX MATCH "#[ \t]*define[ \t]+QT_VERSION_STR[ \t]+\"([0-9]+\\.[0-9]+\\.[0-9]+)\""
-       _matched "${_qconfig}")
+string(REGEX MATCH "${ANTS_QT_VERSION_STR_REGEX}" _matched "${_qconfig}")
 
 if(NOT _matched OR "${CMAKE_MATCH_1}" STREQUAL "")
     message(FATAL_ERROR

@@ -122,6 +122,9 @@ find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLW
 # carries the define, ANTS_QCONFIG_H stays unset and the else() branch below
 # warns loudly rather than wiring a guard that would refuse every build.
 set(ANTS_QCONFIG_H "ANTS_QCONFIG_H-NOTFOUND")
+# The guard's own pattern, so "found here" at configure time and "readable
+# there" at build time cannot disagree.
+include(${CMAKE_SOURCE_DIR}/cmake/QtVersionPattern.cmake)
 foreach(_hdr qconfig.h qtversionchecks.h qtversion.h qglobal.h)
     unset(_ants_qt_hdr CACHE)
     find_file(_ants_qt_hdr ${_hdr}
@@ -129,10 +132,7 @@ foreach(_hdr qconfig.h qtversionchecks.h qtversion.h qglobal.h)
         PATH_SUFFIXES QtCore)
     if(_ants_qt_hdr)
         file(READ "${_ants_qt_hdr}" _ants_qt_hdr_text)
-        # Same pattern the guard matches with, so "found here" at configure
-        # time and "readable there" at build time cannot disagree.
-        string(REGEX MATCH
-            "#[ \t]*define[ \t]+QT_VERSION_STR[ \t]+\"[0-9]+\\.[0-9]+\\.[0-9]+\""
+        string(REGEX MATCH "${ANTS_QT_VERSION_STR_REGEX}"
             _ants_qt_hdr_match "${_ants_qt_hdr_text}")
         if(_ants_qt_hdr_match)
             set(ANTS_QCONFIG_H "${_ants_qt_hdr}")
@@ -154,8 +154,7 @@ if(NOT ANTS_QCONFIG_H)
         list(SORT _ants_qt_hdrs)
         foreach(_cand ${_ants_qt_hdrs})
             file(READ "${_cand}" _ants_qt_hdr_text)
-            string(REGEX MATCH
-                "#[ \t]*define[ \t]+QT_VERSION_STR[ \t]+\"[0-9]+\\.[0-9]+\\.[0-9]+\""
+            string(REGEX MATCH "${ANTS_QT_VERSION_STR_REGEX}"
                 _ants_qt_hdr_match "${_ants_qt_hdr_text}")
             if(_ants_qt_hdr_match)
                 set(ANTS_QCONFIG_H "${_cand}")
@@ -401,15 +400,20 @@ endif()
 # of embedding into .o. The linker no longer reads/relocates hundreds of MiB
 # of debug strings, cutting linker peak RSS 30–50%. Release builds keep the
 # standard format so distro debuginfo packaging is unchanged.
+# Security hardening. The compile flags go to every target, the vendored
+# tree-sitter C included; the link flags go to each shipped executable.
+set(ANTS_HARDENING_COMPILE_FLAGS
+    -fstack-protector-strong -fstack-clash-protection -fcf-protection)
+add_library(ants_link_hardening INTERFACE)
+target_link_options(ants_link_hardening INTERFACE
+    -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)
+
 add_library(ants_warnings INTERFACE)
 target_compile_options(ants_warnings INTERFACE
     -Wall -Wextra -Wpedantic
     -Wformat=2 -Wformat-security
     -Wshadow=local -Wnull-dereference
-    # Security hardening
-    -fstack-protector-strong
-    -fstack-clash-protection
-    -fcf-protection
+    ${ANTS_HARDENING_COMPILE_FLAGS}
     $<$<NOT:$<CONFIG:Debug>>:-U_FORTIFY_SOURCE>
     $<$<NOT:$<CONFIG:Debug>>:-D_FORTIFY_SOURCE=3>
     -D_GLIBCXX_ASSERTIONS
@@ -582,6 +586,13 @@ list(JOIN _ants_rc_abs ";" _ants_rc_joined)
 # a definition that still compiles, still looks present, and names exactly
 # the one TU this whole item exists to stop the tests reading alone.
 string(REPLACE ";" "\\;" _ants_rc_joined "${_ants_rc_joined}")
+# The definition every RemoteControl source scrape reads (ANTS-3833). The
+# class is the TUs in ANTS_RC_SOURCES_REL. There is no single-file macro: a
+# scrape reading one TU sees a fraction of the class, in which a verb that
+# moved to a sibling TU is indistinguishable from one that was deleted. Pass
+# it QUOTED, "${_ants_rc_sources_def}": the value holds ";" separators, which
+# an unquoted argument would split on.
+set(_ants_rc_sources_def "ANTS_RC_SOURCES=\"${_ants_rc_joined}\"")
 
 # ANTS-1677 — ClaudeIntegration's source list. Entry 1 is
 # src/claudeintegration.cpp; the pieces follow in ascending order of where
@@ -969,6 +980,14 @@ list(TRANSFORM ANTS_MAINWINDOW_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
 list(JOIN _ants_mainwindow_abs ";" _ants_mainwindow_joined)
 # Escaped for the reason given beside _ants_rc_joined.
 string(REPLACE ";" "\\;" _ants_mainwindow_joined "${_ants_mainwindow_joined}")
+# The definitions ants_test::slurpMainWindow() reads: the MainWindow TUs, and
+# the MCP registry, through which setupClaudeMcpProviders() registers the
+# project-scoped verbs (ANTS-4932 § 2.3). Pass each QUOTED, as
+# _ants_rc_sources_def says.
+set(_ants_mainwindow_sources_def
+    "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\"")
+set(_ants_mcp_registry_def
+    "ANTS_MCP_REGISTRY_SOURCE=\"${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp\"")
 
 add_library(ants_chrome_lib STATIC
     ${ANTS_MAINWINDOW_SOURCES_REL}
@@ -1219,26 +1238,25 @@ endif()
 # Just main.cpp — every other src/*.cpp is in a STATIC library above and is
 # reached transitively through target_link_libraries.
 add_executable(ants-terminal src/main.cpp)
-# ANTS-1444: the static-lib graph has symbol cycles (chrome↔claude↔dialogs
-# via mainwindow.cpp, plus chrome↔audit_dialog via the AuditDialog ctor).
-# Wrap the archives in --start-group so GNU ld/lld re-scan until every
-# symbol resolves, regardless of archive order — the same guard the test
-# bundles already use. ants_warnings is an INTERFACE flag lib and stays
-# outside the group.
-target_link_libraries(ants-terminal PRIVATE
-    -Wl,--start-group
-    ants_core_lib
-    ants_vt_lib
-    ants_chrome_lib
-    ants_claude_lib
-    ants_audit_lib
-    ants_audit_dialog_lib
-    ants_dialogs_lib
-    $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
-    # ANTS-3794 — main.cpp calls RoadmapExport::runExportCommand() for
-    # --export-roadmaps before QApplication exists.
+# The whole terminal: every library a target needs once it reaches
+# mainwindow.cpp. ants-terminal, the full-stack test bundles and the benches
+# that drive real widgets all link this one list, inside --start-group:
+# ANTS-1444, the static-lib graph has symbol cycles (chrome↔claude↔dialogs
+# via mainwindow.cpp, plus chrome↔audit_dialog via the AuditDialog ctor), so
+# GNU ld/lld must re-scan until every symbol resolves. An ordered link
+# resolved under mold here and failed on the Qt 6.2 floor's GNU ld.
+# ants_roadmapstore_lib is named although ants_core_lib links it: that link
+# is PRIVATE, so it would land outside the group (ANTS-3809) and bring none
+# of Qt6::Sql's include dirs (ANTS-3793). main.cpp calls
+# RoadmapExport::runExportCommand() before QApplication exists (ANTS-3794).
+set(ANTS_FULL_STACK_LIBS
+    ants_chrome_lib ants_vt_lib ants_core_lib
+    ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
     ants_roadmapstore_lib
-    -Wl,--end-group
+    $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>)
+# ants_warnings is an INTERFACE flag lib and stays outside the group.
+target_link_libraries(ants-terminal PRIVATE
+    -Wl,--start-group ${ANTS_FULL_STACK_LIBS} -Wl,--end-group
     ants_warnings
 )
 
@@ -1392,11 +1410,7 @@ if(ANTS_SANITIZERS)
     target_link_options(ants_warnings INTERFACE
         -fsanitize=address,undefined)
 endif()
-target_link_options(ants-terminal PRIVATE
-    -Wl,-z,relro
-    -Wl,-z,now
-    -Wl,-z,noexecstack
-)
+target_link_libraries(ants-terminal PRIVATE ants_link_hardening)
 set_target_properties(ants-terminal PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ANTS-5734 § 2.3 — the vendored tree-sitter runtime and grammars, and the
@@ -1426,7 +1440,7 @@ target_include_directories(ants_treesitter_lib
 target_compile_definitions(ants_treesitter_lib PRIVATE
     _POSIX_C_SOURCE=200112L _DEFAULT_SOURCE)
 target_compile_options(ants_treesitter_lib PRIVATE
-    -w -fstack-protector-strong -fstack-clash-protection -fcf-protection)
+    -w ${ANTS_HARDENING_COMPILE_FLAGS})
 set_target_properties(ants_treesitter_lib PROPERTIES
     C_STANDARD 11 UNITY_BUILD OFF POSITION_INDEPENDENT_CODE ON)
 
@@ -1469,13 +1483,9 @@ target_link_libraries(ants-mcpd PRIVATE
     $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
     -Wl,--end-group
     ants_warnings
+    ants_link_hardening
 )
 target_precompile_headers(ants-mcpd PRIVATE <QtCore/QtCore>)
-target_link_options(ants-mcpd PRIVATE
-    -Wl,-z,relro
-    -Wl,-z,now
-    -Wl,-z,noexecstack
-)
 set_target_properties(ants-mcpd PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(LUA_FOUND)
     target_compile_definitions(ants-mcpd PRIVATE ANTS_LUA_PLUGINS=1)
@@ -1489,12 +1499,8 @@ add_custom_command(TARGET ants-mcpd POST_BUILD
 # ANTS-5428 — signs an OSC 133 marker with the key read from stdin, so the
 # shell integration never puts the key on a command line.
 add_executable(ants-osc133-sign src/osc133signmain.cpp)
-target_link_libraries(ants-osc133-sign PRIVATE Qt6::Core ants_warnings)
-target_link_options(ants-osc133-sign PRIVATE
-    -Wl,-z,relro
-    -Wl,-z,now
-    -Wl,-z,noexecstack
-)
+target_link_libraries(ants-osc133-sign PRIVATE
+    Qt6::Core ants_warnings ants_link_hardening)
 set_target_properties(ants-osc133-sign PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 include(GNUInstallDirs)
@@ -1666,6 +1672,33 @@ if(ANTS_TESTS)
     endif()
     include(GoogleTest)
 
+    # Registers a bundle's tests with ctest, one entry per TEST().
+    #
+    # TIMEOUT is a HANG detector, not a performance budget, and 10s was
+    # calibrated against Release only. Under ANTS_SANITIZERS the same
+    # tests run several times slower — measured 2026-07-31 in build-asan:
+    # McpWorkspaceSearch.WiringContract 14.05s, EveryToolDeclaresSelection
+    # Hint 11.12s, Osc8ApcMemoryCaps.ApcOverflowDropped 10.17s, all three
+    # of them Release-fast and all three over the 10s cap. CI's build-asan
+    # job passes them only on its runner being marginally quicker, so this
+    # was a red build waiting for a slower runner. 60s still terminates a
+    # genuine hang promptly; it just stops killing a sanitized build for
+    # being sanitized. One slow test gets its own TIMEOUT in
+    # tests/slow_test_timeouts.cmake (ANTS-3658), not here: DISCOVERY_MODE
+    # PRE_TEST means no test exists at configure time for
+    # set_tests_properties to name. DISCOVERY_TIMEOUT is the same hang
+    # detector for the listing run: its 5s default killed test_claude's
+    # listing once on a memory-starved host (0.1s when re-timed). 60s then
+    # killed build-asan's on a busy spinning disk: evicted from the page
+    # cache, the 600 MB binary took 39s to list with 0.65s of CPU (ANTS-6331).
+    # 300s matches ci.yml's per-test --timeout.
+    function(ants_discover_bundle_tests name)
+        gtest_discover_tests(${name}
+            DISCOVERY_MODE PRE_TEST
+            DISCOVERY_TIMEOUT 300
+            PROPERTIES LABELS "features;fast" TIMEOUT 60)
+    endfunction()
+
     # GUI bundle helper. The Qt6::Widgets link surface comes through
     # transitively from each ants_*_lib (PUBLIC).
     #
@@ -1701,28 +1734,7 @@ if(ANTS_TESTS)
         # compile of test_core + test_claude from 3.9 s to 2.9 s, and their
         # cold wall time from 484 s to 371 s (ccache off, 2026-10-19).
         ants_apply_qt_pch(${name})
-        # TIMEOUT is a HANG detector, not a performance budget, and 10s was
-        # calibrated against Release only. Under ANTS_SANITIZERS the same
-        # tests run several times slower — measured 2026-07-31 in build-asan:
-        # McpWorkspaceSearch.WiringContract 14.05s, EveryToolDeclaresSelection
-        # Hint 11.12s, Osc8ApcMemoryCaps.ApcOverflowDropped 10.17s, all three
-        # of them Release-fast and all three over the 10s cap. CI's build-asan
-        # job passes them only on its runner being marginally quicker, so this
-        # was a red build waiting for a slower runner. 60s still terminates a
-        # genuine hang promptly; it just stops killing a sanitized build for
-        # being sanitized. One slow test gets its own TIMEOUT in
-        # tests/slow_test_timeouts.cmake (ANTS-3658), not here: DISCOVERY_MODE
-        # PRE_TEST means no test exists at configure time for
-        # set_tests_properties to name. DISCOVERY_TIMEOUT is the same hang
-        # detector for the listing run: its 5s default killed test_claude's
-        # listing once on a memory-starved host (0.1s when re-timed). 60s then
-        # killed build-asan's on a busy spinning disk: evicted from the page
-        # cache, the 600 MB binary took 39s to list with 0.65s of CPU (ANTS-6331).
-        # 300s matches ci.yml's per-test --timeout.
-        gtest_discover_tests(${name}
-            DISCOVERY_MODE PRE_TEST
-            DISCOVERY_TIMEOUT 300
-            PROPERTIES LABELS "features;fast" TIMEOUT 60)
+        ants_discover_bundle_tests(${name})
     endfunction()
 
     # Core-only bundle helper — Qt::Core only, no Widgets. Its own QtCore
@@ -1738,12 +1750,7 @@ if(ANTS_TESTS)
         target_include_directories(${name} PRIVATE
             ${CMAKE_SOURCE_DIR}/tests)
         target_precompile_headers(${name} PRIVATE <QtCore/QtCore>)
-        # TIMEOUT and DISCOVERY_TIMEOUT: why each value, and where one slow
-        # test's own TIMEOUT goes, is under ants_add_gui_bundle above.
-        gtest_discover_tests(${name}
-            DISCOVERY_MODE PRE_TEST
-            DISCOVERY_TIMEOUT 300
-            PROPERTIES LABELS "features;fast" TIMEOUT 60)
+        ants_discover_bundle_tests(${name})
     endfunction()
 
     # ANTS-3841 — gtest_discover_tests uses DISCOVERY_MODE PRE_TEST, so no
@@ -2071,12 +2078,7 @@ if(ANTS_TESTS)
     # never extracts them, but CI's GCC 13 + mold does, and the link fails.
     # Link the whole group, as bench_transcript_walk does.
     target_link_libraries(bench_partition_walk PRIVATE
-        -Wl,--start-group
-        ants_chrome_lib ants_vt_lib ants_core_lib
-        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
-        ants_roadmapstore_lib
-        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
-        -Wl,--end-group
+        -Wl,--start-group ${ANTS_FULL_STACK_LIBS} -Wl,--end-group
         Qt6::Widgets Qt6::Core Qt6::Gui
     )
     target_compile_definitions(bench_partition_walk PRIVATE
@@ -2126,16 +2128,9 @@ if(ANTS_TESTS)
     )
     # ANTS-1444 — ants_claude_lib is PUBLIC-linked to ants_chrome_lib, so
     # linking the trackers pulls mainwindow.cpp.o in and makes the
-    # chrome<->claude<->dialogs symbol cycle reachable. Same --start-group
-    # guard bench_full_paint uses, and for the same reason: an ordered link
-    # resolves under mold here and fails on the Qt 6.2 floor's GNU ld.
+    # chrome<->claude<->dialogs symbol cycle reachable.
     target_link_libraries(bench_transcript_walk PRIVATE
-        -Wl,--start-group
-        ants_chrome_lib ants_vt_lib ants_core_lib
-        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
-        ants_roadmapstore_lib
-        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
-        -Wl,--end-group
+        -Wl,--start-group ${ANTS_FULL_STACK_LIBS} -Wl,--end-group
         Qt6::Widgets Qt6::Core Qt6::Gui
     )
     target_compile_definitions(bench_transcript_walk PRIVATE
@@ -2184,12 +2179,7 @@ if(ANTS_TESTS)
         tests/perf/bench_mcp_reply_tail.cpp
     )
     target_link_libraries(bench_mcp_reply_tail PRIVATE
-        -Wl,--start-group
-        ants_chrome_lib ants_vt_lib ants_core_lib
-        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
-        ants_roadmapstore_lib
-        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
-        -Wl,--end-group
+        -Wl,--start-group ${ANTS_FULL_STACK_LIBS} -Wl,--end-group
         Qt6::Widgets Qt6::Core Qt6::Gui
     )
     target_compile_definitions(bench_mcp_reply_tail PRIVATE
@@ -2208,24 +2198,13 @@ if(ANTS_TESTS)
     # A benchmark that drives the real TerminalWidget, built as
     # bench_<name> and registered as ctest <name> under the `perf` label.
     #
-    # ANTS-1444 — the static-lib graph has symbol cycles (chrome<->claude<->
-    # dialogs via mainwindow.cpp, chrome<->audit_dialog via the AuditDialog
-    # ctor), so the archives must sit inside --start-group for the linker to
-    # re-scan until every symbol resolves. Same guard ants-terminal and the
-    # test bundles use. Linking TerminalWidget pulls mainwindow.cpp.o in with
-    # it, which is what makes the cycle reachable from a benchmark.
-    #
-    # An ordered link resolved here with mold and failed on the Qt 6.2 floor's
-    # GNU ld, which is stricter about archive order — caught by the pre-push
-    # qt62-guard, not by any local build.
+    # Linking TerminalWidget pulls mainwindow.cpp.o in with it, which makes
+    # the ANTS-1444 symbol cycle reachable from a benchmark, so it links the
+    # full stack in a group like ants-terminal.
     function(ants_add_widget_bench name)
         add_executable(bench_${name} tests/perf/bench_${name}.cpp)
         target_link_libraries(bench_${name} PRIVATE
-            -Wl,--start-group
-            ants_chrome_lib ants_vt_lib ants_core_lib
-            ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
-            $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
-            -Wl,--end-group
+            -Wl,--start-group ${ANTS_FULL_STACK_LIBS} -Wl,--end-group
             Qt6::Widgets Qt6::Core Qt6::Gui
         )
         target_include_directories(bench_${name} PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
@@ -2409,10 +2388,8 @@ if(ANTS_TESTS)
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_TERMINALGRID_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_VTPARSER_PATH="${CMAKE_SOURCE_DIR}/src/vtparser.cpp"
-        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
-        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
-        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
-        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
+        "${_ants_mainwindow_sources_def}"
+        "${_ants_mcp_registry_def}"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
         # ANTS-4534 INV-5/INV-6 scrape config.cpp, mainwindow_tabs.cpp and
@@ -2467,10 +2444,7 @@ if(ANTS_TESTS)
     # through (PluginManager construction); pulling the lib is harmless
     # since it's STATIC and only adds the symbols actually referenced.
     ants_add_gui_bundle(test_chrome
-        LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
-                ants_claude_lib ants_dialogs_lib ants_audit_lib
-                ants_audit_dialog_lib
-                $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        LIBS    ${ANTS_FULL_STACK_LIBS}
         SOURCES tests/features/tab_rename_persist/test_tab_rename_persist.cpp
                 tests/features/status_bar_elision/test_status_bar_elision.cpp
                 tests/features/status_info_window/test_status_info_window.cpp
@@ -2649,10 +2623,8 @@ if(ANTS_TESTS)
     target_link_libraries(test_chrome PRIVATE Qt6::Test)
     target_compile_definitions(test_chrome PRIVATE
         SRC_MAIN_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp"
-        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
-        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
-        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
-        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
+        "${_ants_mainwindow_sources_def}"
+        "${_ants_mcp_registry_def}"
         # ANTS-4273 INV-5 — the doc claimed ants.notify() was a no-op.
         PLUGINS_MD_PATH="${CMAKE_SOURCE_DIR}/PLUGINS.md"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
@@ -2801,15 +2773,7 @@ if(ANTS_TESTS)
     # (c) chrome_lib requires its claude/dialogs/audit cross-refs to
     # link, just like test_chrome.
     ants_add_gui_bundle(test_claude
-        LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
-                ants_claude_lib ants_dialogs_lib ants_audit_lib
-                ants_audit_dialog_lib
-                # ANTS-3809 — roadmap_write_half drives the roadmap_log verbs
-                # against a real store, so this bundle needs the store library
-                # INSIDE the --start-group (ants_core_lib links it PRIVATE, and
-                # a LINK_ONLY dependency lands outside the group).
-                ants_roadmapstore_lib
-                $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        LIBS    ${ANTS_FULL_STACK_LIBS}
         SOURCES tests/features/claude_status_bar/test_claude_status.cpp
                 tests/features/claude_status_bar_per_tab/test_claude_status_bar_per_tab.cpp
                 tests/features/claude_plan_mode_detection/test_claude_plan_mode.cpp
@@ -3588,10 +3552,8 @@ if(ANTS_TESTS)
         # that runs the suite, not the workflow alone.
         SRC_CI_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/ci.yml"
         ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
-        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
-        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
-        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
+        "${_ants_mainwindow_sources_def}"
+        "${_ants_mcp_registry_def}"
         # ANTS-5734 § 2.8 — the verbs only ants-mcpd registers.
         SRC_TRACE_VERB_CPP_PATH="${CMAKE_SOURCE_DIR}/src/trace/traceverb.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
@@ -3607,15 +3569,7 @@ if(ANTS_TESTS)
         SRC_CONFIG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
         SRC_CLAUDESETUP_CPP="${CMAKE_SOURCE_DIR}/src/claudesetup.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
-        # ANTS-3833 — the RemoteControl implementation is the TUs in
-        # ANTS_RC_SOURCES_REL. The two
-        # single-file path macros are retired: a scrape reading one TU sees a
-        # fraction of the class, in which a verb that moved to a sibling TU is
-        # indistinguishable from a verb that was deleted. Deleting the macros
-        # turns every missed call site into a compile error, so there is no
-        # partial-scrape state to reach. Quoted as ONE argument: the value
-        # contains ";" separators, which an unquoted argument would split on.
-        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
+        "${_ants_rc_sources_def}"
         ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}"
         # ANTS-3665 — parseSpecBody was hoisted out of remotecontrol.cpp into
@@ -3750,7 +3704,7 @@ if(ANTS_TESTS)
         SRC_AUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         # RcTuSplit INV-11 — a remotecontrol TU is never named outside the
         # ANTS_RC_SOURCES_REL block, so this scrapes the whole set instead.
-        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\"")
+        "${_ants_rc_sources_def}")
     set_property(SOURCE tests/features/claude_git_context_hook/test_installer_grep.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SETTINGSDIALOG_H="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
@@ -3827,8 +3781,7 @@ if(ANTS_TESTS)
         SRC_AUDITSCOPE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditscope.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_CLAUDESETUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudesetup.cpp"
-        # Quoted as ONE argument: the value contains ";" separators.
-        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\"")
+        "${_ants_rc_sources_def}")
     set_property(SOURCE tests/features/mcp_subsystem/test_mcp_subsystem.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SUBSYSTEMMAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.cpp"
@@ -4028,15 +3981,7 @@ if(ANTS_TESTS)
         SRC_AUDIT_ENGINE_H="${CMAKE_SOURCE_DIR}/src/auditengine.h"
         # ANTS-1372 source-grep tests: roadmap_fold_in needs visibility
         # into remotecontrol.cpp + roadmapfoldin.cpp for S1-S5.
-        # ANTS-3833 — the RemoteControl implementation is the TUs in
-        # ANTS_RC_SOURCES_REL. The two
-        # single-file path macros are retired: a scrape reading one TU sees a
-        # fraction of the class, in which a verb that moved to a sibling TU is
-        # indistinguishable from a verb that was deleted. Deleting the macros
-        # turns every missed call site into a compile error, so there is no
-        # partial-scrape state to reach. Quoted as ONE argument: the value
-        # contains ";" separators, which an unquoted argument would split on.
-        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
+        "${_ants_rc_sources_def}"
         ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}"
         SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
@@ -4105,16 +4050,7 @@ if(ANTS_TESTS)
     # require the full chrome+claude+dialogs+audit set, --start-group
     # resolves the cycle via the existing helper).
     ants_add_gui_bundle(test_dialogs
-        LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
-                ants_claude_lib ants_dialogs_lib ants_audit_lib
-                ants_audit_dialog_lib
-                # ANTS-3793 — named EXPLICITLY, not inherited: dialogs links the
-                # store PRIVATE, so the bundle gets the symbols but none of
-                # Qt6::Sql's include dirs, and roadmap_dialog_legend's case
-                # includes roadmapstore.h itself. test_core names it for the
-                # same reason.
-                ants_roadmapstore_lib
-                $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        LIBS    ${ANTS_FULL_STACK_LIBS}
         SOURCES tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
                 # ANTS-5390 — the About dialog never clips its body.
                 tests/features/about_dialog_fits/test_about_dialog_fits.cpp
@@ -4234,10 +4170,8 @@ if(ANTS_TESTS)
         SRC_CLAUDESETUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudesetup.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
-        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
-        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
-        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
-        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
+        "${_ants_mainwindow_sources_def}"
+        "${_ants_mcp_registry_def}"
         SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
         ROADMAPDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapdialog.h"
         ROADMAPDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
@@ -4248,15 +4182,7 @@ if(ANTS_TESTS)
         SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
-        # ANTS-3833 — the RemoteControl implementation is the TUs in
-        # ANTS_RC_SOURCES_REL. The two
-        # single-file path macros are retired: a scrape reading one TU sees a
-        # fraction of the class, in which a verb that moved to a sibling TU is
-        # indistinguishable from a verb that was deleted. Deleting the macros
-        # turns every missed call site into a compile error, so there is no
-        # partial-scrape state to reach. Quoted as ONE argument: the value
-        # contains ";" separators, which an unquoted argument would split on.
-        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
+        "${_ants_rc_sources_def}"
         ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}")
 
@@ -4320,9 +4246,9 @@ if(ANTS_TESTS)
             SRC_LUAENGINE_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp"
             SRC_LUAENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.h"
             SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.cpp"
-            "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
+            "${_ants_mainwindow_sources_def}"
             "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\""
-            ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp")
+            "${_ants_mcp_registry_def}")
 
     # ANTS-4797 — a per-TEST path define belongs on its own source, not on
     # the bundle. Every define in the block above lands on EVERY TU's command
@@ -4720,21 +4646,11 @@ if(ANTS_TESTS)
         SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
         "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
-        # ANTS-3833 — the RemoteControl implementation is the TUs in
-        # ANTS_RC_SOURCES_REL. The two
-        # single-file path macros are retired: a scrape reading one TU sees a
-        # fraction of the class, in which a verb that moved to a sibling TU is
-        # indistinguishable from a verb that was deleted. Deleting the macros
-        # turns every missed call site into a compile error, so there is no
-        # partial-scrape state to reach. Quoted as ONE argument: the value
-        # contains ";" separators, which an unquoted argument would split on.
-        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
+        "${_ants_rc_sources_def}"
         ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         SRC_MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
-        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
-        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
-        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
-        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
+        "${_ants_mainwindow_sources_def}"
+        "${_ants_mcp_registry_def}"
         # ANTS-3358 — ChromeGuard -Wnull-dereference pragma-guard source-grep.
         SRC_DIALOGCHROME_CPP="${CMAKE_SOURCE_DIR}/src/dialogchrome.cpp"
         # ANTS-3505 — diffviewer positionBackToTop -Wnull-dereference source-grep.

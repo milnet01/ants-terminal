@@ -97734,13 +97734,19 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6587] **Fold the duplicated logic the 2026-11-06 reviews found in build-system.**
+- ✅ [ANTS-6587] **Fold the duplicated logic the 2026-11-06 reviews found in build-system.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1215 `CMakeLists.txt:2057` (High)
   - row 1216 `CMakeLists.txt:1678` (Medium)
   - row 1221 `CMakeLists.txt:4559` (Medium)
   - row 1222 `CMakeLists.txt:132` (Medium)
   - row 1234 `CMakeLists.txt:1368` (Low)
+  Rows 1215, 1216, 1221, 1222, 1234 closed 2026-11-25:
+  ANTS_FULL_STACK_LIBS, ants_discover_bundle_tests(),
+  _ants_*_def scrape-define variables, cmake/QtVersionPattern.cmake,
+  ants_link_hardening + ANTS_HARDENING_COMPILE_FLAGS. Proof: build.ninja
+  before/after differs only where expected (test_chrome and the widget
+  benches gain ants_roadmapstore_lib); test registration identical.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
