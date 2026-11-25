@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6918 -->
+<!-- ants-roadmap-id-high-water: ANTS=6919 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -96640,7 +96640,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6546] **Correct the false or stale comments the 2026-11-06 reviews found in audit-dialog.**
+- ✅ [ANTS-6546] **Correct the false or stale comments the 2026-11-06 reviews found in audit-dialog.**
   7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 590 `src/auditdialog_catalogue.cpp:858` (Medium)
   - row 596 `src/auditdialog_triage.cpp:170` (Low)
@@ -96649,6 +96649,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 599 `src/auditdialog_catalogue.cpp:1182` (Low)
   - row 600 `src/auditdialog.cpp:447` (Low)
   - row 601 `src/auditdialog_catalogue.cpp:103` (Low)
+  Closed 2026-11-25. Fixed: 590 (clang-tidy is offered when a
+  compile database exists, never auto-selected), 597 (call site named
+  by file, no line), 599 (semgrep ignores a local .semgrep.yml once
+  --config is given; measured with a probe rule; the twin claim beside
+  the pack list went too), 600 (the stale parsing banners became one
+  pointer to AuditEngine; the classifier banner names
+  AuditHygiene::lineHasCode), 601 (count dropped). Already fixed
+  earlier: 596 by ANTS-6174, 598 by ANTS-6195.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -117613,6 +117621,18 @@ reports are asked for separately, each time.
   Kind: audit-fix.
   Source: in-session-2026-11-22, found while closing ANTS-5712.
   Lanes: mcp.
+
+- 📋 [ANTS-6919] **clangd reports unused includes in auditdialog.cpp and auditdialog_catalogue.cpp.**
+  auditdialog.cpp: debtsweepengine.h, llmclient.h, secretredact.h.
+  auditdialog_catalogue.cpp: auditautofix.h, auditfpledger.h,
+  debtsweepengine.h, llmclient.h, dialogchrome.h, tooldetectionengine.h,
+  config.h, secretredact.h. Seen 2026-11-25 while closing ANTS-6546.
+  Check each against a build before removing: a header may be needed
+  for a type the class split moved between files.
+  **Layman:** Some audit-window code files pull in other files they no longer use, which slows the build a little.
+  Kind: refactor.
+  Source: clangd 2026-11-25 (seen during ANTS-6546).
+  Lanes: audit-dialog.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

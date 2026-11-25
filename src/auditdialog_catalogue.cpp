@@ -100,8 +100,8 @@ void AuditDialog::populateChecks() {
 
     // ========== Feature-coverage lanes ==========
     //
-    // Each of the three lanes below addresses a distinct "feature-e2e
-    // quality" gap that unit tests and static analysis won't catch:
+    // The lanes below address "feature-e2e quality" gaps that unit tests
+    // and static analysis won't catch:
     //   1. Spec referencing code that was renamed/removed (drift)
     //   2. CHANGELOG advertising features that shipped without a test
     //   3. Tests that are skipped/disabled/xfailed — silently green
@@ -877,8 +877,8 @@ void AuditDialog::populateChecks() {
         // to that single driver-level configuration error.
         //
         // Fixes applied:
-        //   1. Auto-select is gated on presence of compile_commands.json
-        //      (reuses the clazy build-dir probe).
+        //   1. The check is offered only when compile_commands.json exists
+        //      (reuses the clazy build-dir probe). It is never auto-selected.
         //   2. The shell pipeline collapses `file not found` storms into
         //      a single banner line — if headers still don't resolve for
         //      some reason, the user sees one actionable diagnostic
@@ -1209,18 +1209,18 @@ void AuditDialog::populateChecks() {
     // etc. — things our hardcoded regex `unsafe_c_funcs` approximates more
     // crudely.
     //
-    // Silent no-op when `semgrep` is missing. User can pin a project-local
-    // `audit_rules.semgrep.yaml` (or `.semgrep.yml`) and it's picked up
-    // automatically. We ask for text output (file:line:col:msg) so our
-    // existing parseFindings() pattern matches without a JSON pivot.
+    // Silent no-op when `semgrep` is missing. Only the registry packs below
+    // run: semgrep ignores a project-local `.semgrep.yml` once `--config` is
+    // given, and this lane reads that file only for its exclusion header.
+    // We ask for text output (file:line:col:msg) so our existing
+    // parseFindings() pattern matches without a JSON pivot.
     const bool hasSemgrep = toolExists("semgrep");
     if (hasSemgrep) {
         const bool hasCpp = m_detectedTypes.contains("C/C++");
         const bool hasPy  = m_detectedTypes.contains("Python");
         const bool hasJs  = m_detectedTypes.contains("JavaScript");
         // Pick community packs matching detected languages. `p/security-audit`
-        // is universally useful. Project-local `.semgrep.yml` (if present)
-        // is auto-included by semgrep.
+        // is universally useful.
         QStringList packs = {"p/security-audit"};
         if (hasCpp) packs << "p/c" << "p/cpp";
         if (hasPy)  packs << "p/python";

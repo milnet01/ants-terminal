@@ -39,8 +39,8 @@ class AuditDialog : public QDialog {
 
 public:
     // ANTS-1150: third arg is `Config *config`, REQUIRED (no
-    // nullptr default per cold-eyes HIGH #3 — single call site
-    // at mainwindow.cpp:1351 always has &m_config available).
+    // nullptr default per cold-eyes HIGH #3 — single call site,
+    // in mainwindow_menus.cpp, always has &m_config available).
     AuditDialog(const QString &projectPath,
                 QWidget *parent,
                 Config *config);

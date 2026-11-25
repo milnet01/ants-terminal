@@ -435,45 +435,14 @@ void AuditDialog::addToolCheck(const QString &id, const QString &name,
                      filter, autoSelect && ok, ok, nullptr});
 }
 
-// ---------------------------------------------------------------------------
-// Filter application
-// ---------------------------------------------------------------------------
-
-// applyFilter / parseFindings / capFindings now live in
-// auditengine.cpp (ANTS-1119 v1). Call sites use the
-// `AuditEngine::` namespace directly.
-
-// ---------------------------------------------------------------------------
-// Parsing raw command output into Findings
-// ---------------------------------------------------------------------------
-//
-// Most checker output follows a small family of shapes:
-//   file:line:col: message               (cppcheck, clang-tidy, gcc, grep -n)
-//   file:line: message                   (shellcheck, luacheck, various)
-//   file                                 (find, ls, wc output)
-//   free-form                            (git status, build logs, whatever)
-//
-// We parse in that order and fall back to treating the line as a free-form
-// finding with no file/line. Parsing is best-effort; incorrectly-parsed
-// lines still appear, just without navigable location metadata.
-
-// sourceForCheck() lives in AuditEngine — ANTS-1123 indie-review
-// H1 unification. ANTS-1136 (0.7.67) dropped the local trampoline
-// here; the single call site at onCheckFinished now uses the
-// fully-qualified `AuditEngine::sourceForCheck(check.id)` form.
-
-// computeDedup() moved into AuditEngine (auditengine.cpp anonymous
-// namespace) per ANTS-1119 v1; was only referenced by the now-extracted
-// parseFindings.
-
-// parseFindings / capFindings extracted to AuditEngine — see
-// auditengine.cpp (ANTS-1119 v1).
+// Filtering and parsing a check's output (applyFilter, parseFindings,
+// capFindings, sourceForCheck) live in AuditEngine; handleCheckOutput
+// calls them.
 
 // ---------------------------------------------------------------------------
 // Comment/string-aware line classification — the single biggest false-
-// positive source for grep-style pattern checks. Runs a tiny state machine
-// over the file up to the target line and reports whether that line's
-// contents are actually code (vs. // comment, /* comment */, or "string").
+// positive source for grep-style pattern checks. The lexer is
+// AuditHygiene::lineHasCode; lineIsCode below reads the file for it.
 // ---------------------------------------------------------------------------
 
 QString AuditDialog::resolveProjectPath(const QString &maybeRelative) const {
