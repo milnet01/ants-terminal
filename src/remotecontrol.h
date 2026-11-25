@@ -1392,7 +1392,7 @@ private:
 
     QJsonDocument dispatch(const QJsonObject &req);
     // ANTS-1428 — adapter-mode write path for GFM-format roadmaps.
-    // Dispatched from cmdRoadmapLog when req["op"] == "flip". See
+    // Dispatched from cmdRoadmapLogDispatch when req["op"] == "flip". See
     // docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md § Tier 2.
     QJsonDocument cmdRoadmapLogFlip(const QJsonObject &req);
     // ANTS-4667 — op:"amend_field": write one trailer column of one item.
@@ -1408,7 +1408,7 @@ private:
     QJsonDocument cmdRoadmapLogAmendSection(const QJsonObject &req);
     // ANTS-3406 — amend_body: patch a bullet's continuation body prose
     // in place (exact single-line old_text→new_text). Dispatched from
-    // cmdRoadmapLog when req["op"] == "amend_body". Standalone (not
+    // cmdRoadmapLogDispatch when req["op"] == "amend_body". Standalone (not
     // threaded into cmdRoadmapLogFlip); reuses the shared walk/scrub
     // helpers. See tests/features/roadmap_log_amend_body/spec.md.
     // ANTS-4372 — `headlineMode` retargets the same locate / format-gate /
@@ -1425,12 +1425,11 @@ private:
                                          bool setBodyMode  = false);
     // ANTS-1690 — batch flip: flip N bullets to one to_status in a
     // single read + single QSaveFile commit. Dispatched from
-    // cmdRoadmapLog when req["op"] == "flip_batch".
+    // cmdRoadmapLogDispatch when req["op"] == "flip_batch".
     QJsonDocument cmdRoadmapLogFlipBatch(const QJsonObject &req);
     // ANTS-1433 — append path, split out of cmdRoadmapLog so the
     // mcp_roadmap_log_atomicity test can drive it without the m_main
-    // guard. cmdRoadmapLog keeps op-dispatch + the m_main guard, then
-    // delegates here for op:"append".
+    // guard. cmdRoadmapLogDispatch routes op:"append" here.
     // ANTS-5379 — `replaceNarrationAt` >= 0 files the item AT that position of
     // the section and removes the narration element there in the same write:
     // op:"promote_element", which has checked the element is narration.

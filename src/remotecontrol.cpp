@@ -1,12 +1,8 @@
 // ANTS-3833 TU 1/25 — Shared helpers. The dispatcher and the --remote socket
 // are GUI-side, at the head of TU 2 (ANTS-4932 § 2.2).
 //
-// ANTS-4125 — include list swept 2026-08-12. The ANTS-3833 decomposition moved
-// most verb bodies out to the sibling remotecontrol_*.cpp TUs but left their
-// engine headers behind here: 48 project headers (plus a stray <cmath>) named
-// nothing this TU uses, leaving the 13 that do. Add an
-// include only when THIS TU names the symbol; a verb body that lives in a
-// sibling takes its header with it.
+// ANTS-4125 — add an include only when THIS TU names the symbol; a verb body
+// that lives in a sibling takes its header with it.
 #include <limits>
 #include "remotecontrol.h"
 #include "readregion.h"   // ANTS-4700 — shared clipToBytes
@@ -60,9 +56,8 @@
 #include <QTimer>
 #include <cmath>     // ANTS-5158 — std::lround
 
-// safeToUnlinkLocalSocket lives in secureio.h as of ANTS-1132 (0.7.66)
-// so the Claude hook + MCP server start paths can share the same
-// helper. The file-scope static here was unified with that lift.
+// safeToUnlinkLocalSocket lives in secureio.h (ANTS-1132), shared with the
+// Claude hook and MCP server start paths.
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -197,15 +192,8 @@ RlRoadmapFile rlLocateRoadmap(const QString &callerRaw) {
     return r;
 }
 
-// ANTS-4884 — the project root a path belongs to. The store keys a project on
-// its canonical ROOT, and every verb hands the dispatchers its caller_cwd,
-// which is at or below that root: from a subdirectory the lookup matched no row
-// and the dispatcher read "not migrated", taking the markdown path against a
-// file the store renders.
-//
-// Returns `path` unchanged when nothing at or above it holds a roadmap, so a
-// caller outside any project behaves exactly as before — the resolution can
-// only turn a miss into a hit.
+QString rcGitDirOf(const QString &dotGit) { return GitRepo::gitDirOf(dotGit); }   // ANTS-6187
+
 // ANTS-4887 — a git WORKTREE of a registered project. The store keys a project
 // on the main checkout's path, so a worktree is a different path with no row:
 // every roadmap verb fell through to the markdown path, and ROADMAP.md there is
@@ -225,8 +213,6 @@ RlRoadmapFile rlLocateRoadmap(const QString &callerRaw) {
 // gitdir, a `/worktrees/<name>` tail, and a main checkout that actually holds a
 // roadmap. So a non-worktree, and a worktree whose main checkout is gone,
 // behave exactly as before.
-QString rcGitDirOf(const QString &dotGit) { return GitRepo::gitDirOf(dotGit); }   // ANTS-6187
-
 static QString rcMainCheckoutOf(const QString &dir) {
     const QString dotGit = dir + QStringLiteral("/.git");
     if (!QFileInfo(dotGit).isFile())
@@ -262,6 +248,15 @@ QString rcWorktreeMainCheckout(const QString &path) {
     return main == root ? QString() : main;
 }
 
+// ANTS-4884 — the project root a path belongs to. The store keys a project on
+// its canonical ROOT, and every verb hands the dispatchers its caller_cwd,
+// which is at or below that root: from a subdirectory the lookup matched no row
+// and the dispatcher read "not migrated", taking the markdown path against a
+// file the store renders.
+//
+// Returns `path` unchanged when nothing at or above it holds a roadmap, so a
+// caller outside any project behaves exactly as before — the resolution can
+// only turn a miss into a hit.
 QString rcProjectRootFor(const QString &path) {
     if (path.isEmpty())
         return path;
@@ -525,10 +520,9 @@ void rcCapBodyFields(QJsonArray &arr, int cap, bool fromEnd) {
         if (it == o.constEnd()) continue;
         const QString body = it->toString();
         if (body.size() > cap) {
-            // ANTS-3736 — head + tail here too. Re-eliding an already-elided
-            // cached body is safe: the emission cap is <= the store cap, so
-            // the new head sits inside the old head and the new tail inside
-            // the old tail — the stored marker falls in neither slice.
+            // ANTS-3736 — head + tail here too. The cache holds whole bodies
+            // (kRoadmapQueryBodyCacheCap, ANTS-4630), so this elides the full
+            // text once.
             o["body"] = rcElideBody(body, cap, fromEnd);
             o["body_truncated"] = true;
             // ANTS-4904 — only when nobody upstream knew better. The cache
@@ -633,9 +627,8 @@ void rcApplyHeadlineOnly(QJsonArray &matches) {
 constexpr int kIdSniffBullets = 50;
 
 // ANTS-1877 — sniff the existing roadmap for stable-prefix bullet
-// IDs (e.g. "Sh4", "MT8" — anything matching
-// ^[A-Za-z][A-Za-z0-9_-]+$ that is NOT the canonical ^ANTS-[0-9]+$
-// shape). Returns the first matching id within the first
+// IDs (e.g. "Sh4", "MT8" — anything matching rlStableIdShape that is NOT
+// a counter id like ANTS-0042). Returns the first matching id within the first
 // kIdSniffBullets parsed bullets, or empty string when none. Used by
 // cmdRoadmapLogAppend to surface a helpful hint when the
 // .roadmap-counter is missing AND the project uses stable IDs the
@@ -691,7 +684,8 @@ bool rlRoadmapHasAnyBulletId(const QString &markdown,
 // instead of the hardcoded "ANTS-1073". Scans the first
 // kIdSniffBullets parsed bullets for ids of shape ^(<prefix>)-(<digits>)$ and returns the
 // most common prefix; empty when none found, in which case the caller
-// falls back to "ANTS" (back-compat for a fresh/id-less roadmap). The
+// falls back to rlLeafDirPrefix, the folder name (see
+// rlResolveCounterPrefix). The
 // prefix is the run before the FINAL `-digits`, so "mame-curator-1065"
 // → "mame-curator" and "ANTS-2057" → "ANTS".
 // A counter id, capturing (1) its prefix and (2) its number. ANTS-3492 — the
@@ -1373,9 +1367,7 @@ constexpr int kRcMaxSetBodyChars = 65536;
 //
 // Bodies and notes are written as continuation lines indented two spaces
 // under their bullet, and that indent saves nobody: CommonMark opens a
-// fence at `^ {0,3}(```|~~~)`, and this file's own walkGfmBullets /
-// walkAntsV1Bullets toggle on a `trimmed()` line starting with ``` at ANY
-// indent. So one quoted-but-unclosed fence opener in a body swallows every
+// fence at `^ {0,3}(```|~~~)`. So one quoted-but-unclosed fence opener in a body swallows every
 // bullet below it until the next stray fence. That is not hypothetical:
 // ANTS-3635's body quoted a fence opener, ANTS-3638's quoted another, and
 // the pair fenced off ANTS-3637 between them — surfacing two ops later as
@@ -1985,12 +1977,12 @@ static QString rcExtractCaretAnchor(const QString &line) {
 // The write-path walker (walkGfmBullets) stores the RAW post-checkbox
 // head: `**AX11. Audio device hot-swap** — automatically re-route audio`,
 // markdown emphasis + bold-ID label + em-dash tail intact. roadmap_query
-// (roadmapdialog.cpp parseBullets) reports a *de-marked-up* headline: the
+// (roadmapparse.cpp) reports a *de-marked-up* headline: the
 // post-em-dash prose when a `**ID** — text` split exists, else the bold
 // span / plain head, in both cases with the `**` emphasis and any trailing
 // caret anchor removed. A caller copies THAT token, so the flip headline
-// locator must derive the same form. Mirrors splitOnEmDash + the
-// rxTrailAnchor strip in roadmapdialog.cpp's GFM branch.
+// locator must derive the same form. Mirrors roadmapparse.cpp's splitOnEmDash +
+// stripTrailingCaretAnchor.
 QString rcGfmCanonicalHeadline(const QString &rawHead) {
     QString s = rawHead;
     static const QString kEmDash = QString::fromUtf8(" \xE2\x80\x94 ");  // " — "
@@ -2202,8 +2194,7 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
 }
 
 // Apply a status flip + (optional) anchor injection to `lines` in
-// place. Returns the byte count written so callers can surface
-// bytes_written. The bullet must be located in `lines` already.
+// place. The bullet must be located in `lines` already.
 //
 // statusEmoji is the target Ants emoji ("✅"/"📋"/"🚧"/"💭"/"🚫"); the
 // adapter encodes ✅ as `[x]`, 🚫 as `[x] 🚫` (ANTS-4977), and the other
@@ -2352,8 +2343,7 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
     return out;
 }
 
-// Apply a status-emoji swap in place. No anchor injection (ants-v1
-// bullets already have the canonical [PREFIX-NNNN] id), no counter
+// Apply a status-emoji swap in place. No anchor injection, no counter
 // consumption. Just replace the emoji byte sequence.
 void applyAntsV1Flip(QStringList &lines, const AntsV1Bullet &b,
                      const QString &targetEmoji) {

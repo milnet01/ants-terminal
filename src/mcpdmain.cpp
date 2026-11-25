@@ -313,7 +313,8 @@ int main(int argc, char **argv) {
 
     // Sessions ended by a second `initialize` in this process, so a reset of
     // the pipeline's tracker loses nothing. At most kMaxTokenProjects roots:
-    // a new root displaces the one with the fewest bytes.
+    // a new root displaces the one with the fewest bytes, but only when it
+    // holds more; otherwise it is dropped.
     QHash<QString, TokenUsageEngine::ToolCounter> accTools;
     QHash<QString, qint64> accBytes;
     const auto addBytes = [](QHash<QString, qint64> &into, const QHash<QString, qint64> &from) {

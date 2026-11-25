@@ -4,9 +4,9 @@
 //
 // TWO RULES THIS HEADER EXISTS TO HOLD.
 //
-//  1. A definition stays in a .cpp. Only the three structs and nothing else
-//     move their text here, and only because a type used by value across TUs
-//     must have one definition visible to each. The test tree scrapes the
+//  1. A definition stays in a .cpp. The only exceptions are the structs and
+//     the `kPlanApplyKey` constant, and only because a type used by value
+//     across TUs must have one definition visible to each. The test tree scrapes the
 //     remotecontrol sources for helper text, and anything whose
 //     text leaves those files disappears from every such assertion silently.
 //
@@ -66,7 +66,7 @@ namespace rcdetail {
 //     bullet whose headline spans continuation lines before any
 //     metadata key (Lanes: / Kind: / Source: / Layman:) or blank.
 //   - status / headline / boldId / anchor extracted per the same
-//     rules as roadmapdialog.cpp's GFM branch.
+//     rules as roadmapparse.cpp's GFM branch.
 //   - insideFenced: true iff the checkbox line was reached while
 //     inside an open ```...``` block — surfaces the
 //     anchor_unsafe_context refusal.
@@ -134,17 +134,10 @@ using PathValidation::kFeedbackSuffix;
 
 // ---- file-scope statics promoted by the cut (ANTS-3833 § 2.5 commit 1b) ----
 //
-// These were never in an anonymous namespace, so the first promotion pass —
-// which walked the 24 anonymous blocks — did not see them. A file-scope
-// `static` has internal linkage just the same, which is invisible while the
-// implementation is ONE translation unit and an undefined reference the
-// moment it is eleven. Found by cutting and reading the linker, which is what
-// INV-7 says the arbiter is.
-//
-// Nineteen of the file's 36 file-scope statics are referenced from a slice
-// other than the one defining them; only those are promoted. The definitions
-// keep every byte except the `static` keyword, which becomes an `rcdetail::`
-// qualification — so the cut that follows stays pure motion.
+// A declaration is here because another TU uses it. A file-scope `static` has
+// internal linkage: invisible while the implementation was one translation
+// unit, an undefined reference once it is several. The definitions keep every
+// byte except the `static` keyword, which becomes an `rcdetail::` qualification.
 extern bool g_forceCounterCommitFail;
 
 QString rlCanonicalToStatus(const QString &toStatus);
@@ -185,6 +178,14 @@ bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QStri
 // 25 KB over 164 rows, and the copies say nothing the count does not. Rows
 // that differ in anything else, an error naming its id included, are all kept.
 void rcSetAllRefusedSkipped(QJsonObject &out, const QJsonArray &skipped);
+// ANTS-5161 — the store-only ops' refusal when the shared prologue found no
+// store-served project. It asks the store which case it is: a registered
+// project in a dialect the store does not serve gets `unsupported_format`
+// naming that dialect and the served ones; a missing row gets
+// `project_not_registered` and `noRowAdvice`. `opLead` opens the message.
+QJsonObject rlNotStoreServedRefusal(QJsonObject env, RoadmapStore *store,
+                                    const QString &root, const QString &roadmapPath,
+                                    const QString &opLead, const QString &noRowAdvice);
 // ANTS-4463 — the dry-run field policy, in ONE place because nine sites emit
 // these fields and nine copies of a rule is nine chances to miss one.
 //
@@ -200,14 +201,6 @@ void rcSetAllRefusedSkipped(QJsonObject &out, const QJsonArray &skipped);
 // noticed — and the same information is carried under `would_write`, matching
 // what changelog_log's dry_run already documents for `bytes`. Callers get both
 // properties: the misleading name is gone, and the useful value is kept.
-// ANTS-5161 — the store-only ops' refusal when the shared prologue found no
-// store-served project. It asks the store which case it is: a registered
-// project in a dialect the store does not serve gets `unsupported_format`
-// naming that dialect and the served ones; a missing row gets
-// `project_not_registered` and `noRowAdvice`. `opLead` opens the message.
-QJsonObject rlNotStoreServedRefusal(QJsonObject env, RoadmapStore *store,
-                                    const QString &root, const QString &roadmapPath,
-                                    const QString &opLead, const QString &noRowAdvice);
 // ANTS-5399 — `semanticWrite` false on op:"render" and op:"convert", which
 // ARE the re-layout, so the hint pointing at render is not emitted there.
 void rcRoadmapWriteFields(QJsonObject &out, const RoadmapRender::Outcome &outcome, bool dryRun,
@@ -585,10 +578,6 @@ void rcCapBodyFields(QJsonArray &arr, int cap, bool fromEnd = false);
 void rcStripBodyFields(QJsonArray &arr);
 void rcClipMatchTextFields(QJsonArray &matches, int cap);
 void rcApplyHeadlineOnly(QJsonArray &matches);
-// ANTS-3771 — each of these four reads BulletRecord::id out of a markdown
-// sniff, so each takes the project's DECLARED id format. Defaulted for the
-// caller that holds no project root; a caller that holds one and omits it would
-// sniff ids the rest of the same verb does not agree with (INV-13).
 // ANTS-4849 — the shape of a stable-prefix ID, in ONE place. Three sites
 // carried a private `^[A-Za-z][A-Za-z0-9_-]+$`: op:"append"'s validator,
 // op:"append_batch"'s, and the sniffer below. All three demanded a leading
@@ -602,6 +591,10 @@ void rcApplyHeadlineOnly(QJsonArray &matches);
 // because no locator could tell a bare number from a counter ID. Shared
 // rather than re-listed, per the Rule of Three that three copies triggered.
 const QRegularExpression &rlStableIdShape();
+// ANTS-3771 — each of these three reads BulletRecord::id out of a markdown
+// sniff, so each takes the project's DECLARED id format. Defaulted for the
+// caller that holds no project root; a caller that holds one and omits it would
+// sniff ids the rest of the same verb does not agree with (INV-13).
 QString rlDetectStablePrefixId(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 bool rlRoadmapHasAnyBulletId(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 QString rlDetectCounterPrefix(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});

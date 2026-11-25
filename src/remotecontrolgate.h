@@ -25,8 +25,8 @@ struct CallerCwdGate {
     QString error;     // human-readable
 };
 
-// Read `caller_cwd` from `req`, canonicalise both it and `focusedRaw`,
-// compare. Returns a verdict struct; caller materialises a JSON error
+// Read `caller_cwd` from `req`, canonicalise it, compare it with
+// `focusedRaw`. Returns a verdict struct; caller materialises a JSON error
 // envelope on `!ok`.
 //
 // `focusedRaw` is the focused-tab cwd as already-canonicalised by the
@@ -44,7 +44,7 @@ struct CallerCwdGate {
                                            const QString &verb);
 
 // Materialise the standard JSON-RPC error envelope from a gate
-// verdict. Key order matches ANTS-1295: {ok, error, code}.
+// verdict: {ok, error, code}.
 QJsonObject gateErrorEnvelope(const CallerCwdGate &g);
 
 } // namespace RcGate
