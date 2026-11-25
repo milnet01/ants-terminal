@@ -112,12 +112,6 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
         return QJsonDocument(e);
     }
 
-    // ANTS-4617 — the inverse. Branches BEFORE the migrate request is built,
-    // because deregister shares only `caller_cwd` with it: no project_name, no
-    // export_slug default, no clock. It also deliberately sits AFTER the
-    // ANTS-4600 transient-root guard above, so a scratchpad under the temp dir
-    // is refused by the same rule on both verbs rather than being registrable
-    // one way and prunable the other.
     // ANTS-5086 — the exclusive half of the busy guard (ANTS-2132 § 2.10). One
     // hold per call, released on every return path by this scope's end. A dry
     // run takes none: it writes nothing a concurrent writer could lose.
@@ -134,6 +128,12 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     } hold;
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool(false);
 
+    // ANTS-4617 — the inverse. Branches BEFORE the migrate request is built,
+    // because deregister shares only `caller_cwd` with it: no project_name, no
+    // export_slug default, no clock. It also deliberately sits AFTER the
+    // ANTS-4600 transient-root guard above, so a scratchpad under the temp dir
+    // is refused by the same rule on both verbs rather than being registrable
+    // one way and prunable the other.
     if (req.value(QStringLiteral("op")).toString() == QLatin1String("deregister")) {
         RoadmapMigrateVerb::DeregisterRequest d;
         d.projectRoot = root;

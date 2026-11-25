@@ -1,4 +1,6 @@
-// ANTS-3833 TU 7/25 — Roadmap batch and section write ops.
+// ANTS-3833 TU 7/25 — Roadmap batch and section write ops. Also the
+// workspace_search constants and pattern helpers; cmdWorkspaceSearch itself is
+// in remotecontrol_workspace.cpp.
 //
 // ANTS-4620 — cut out of TU 5, which had reached INV-6's 6,000-line cap with
 // zero headroom. The seam is a member boundary and the slice is contiguous, so
@@ -264,13 +266,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     // single-flip).
     // ANTS-2048 — pass-headings check FIRST, unconditionally, mirroring the
     // single-flip path (cmdRoadmapLogFlip). A `#### Pass N.M` heading
-    // roadmap routinely carries stray `- [ ]` sub-tasks under its passes;
-    // those make walkGfmBullets non-empty, so the OLD code (which gated the
-    // pass-headings refusal behind `!isGfm`) let isGfm win and the batch
-    // silently walked the GFM path → per-locator bullet_not_found instead
-    // of the precise format_mismatch the caller needs. parseBullets
-    // classifies the whole doc, so the strong 2+2 pass-headings signal
-    // beats a lone checkbox (see detectRoadmapFormat).
+    // roadmap routinely carries stray `- [ ]` sub-tasks under its passes, so
+    // gating this check behind `!isGfm` would send the batch down the GFM
+    // path. parseBullets classifies the whole doc, so the strong 2+2
+    // pass-headings signal beats a lone checkbox (see detectRoadmapFormat).
     // ANTS-2126 — route to the pass-headings flip_batch writer (replaces
     // the ANTS-2031 format_mismatch refusal). The pre-gate validation
     // (to_status canonical + non-empty locators) matches what it needs.
@@ -3394,11 +3393,11 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
         return std::nullopt;
     }
     // ANTS-4602 — assigned as soon as each is known, NOT on the success path
-    // alone. Two callers (`repair_trailers`, `backfill_dates`) remap this
-    // function's refusals and interpolate `root.isEmpty() ? roadmapPath : root`
-    // into the message; assigning at the end left both empty on every refusal,
-    // so the one envelope a caller has to act on named neither the project nor
-    // the file, and its ternary had nothing to fall back to.
+    // alone. Callers that remap this function's refusals name the project in
+    // rlNotStoreServedRefusal, which uses `root.isEmpty() ? roadmapPath : root`;
+    // assigning at the end left both empty on every refusal, so the one
+    // envelope a caller has to act on named neither the project nor the file,
+    // and that ternary had nothing to fall back to.
     *projectRoot = callerCanonical;
 
     const QString found = findRoadmapUnder(callerCanonical);
@@ -4604,7 +4603,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
 // {matches[], truncated, elapsed_ms} envelope. ~6-15 K tokens saved
 // per typical "investigate a bug" session.
 //
-// Process model: QProcess::start("rg", argv) — argv-only, no shell
+// Process model (cmdWorkspaceSearch, remotecontrol_workspace.cpp; this file
+// holds only its constants and pattern helpers):
+// QProcess::start("rg", argv) — argv-only, no shell
 // interpolation (INV-3). Hard wall-clock budget enforced via
 // waitForFinished(kWorkspaceSearchHardKillMs) then SIGTERM, then
 // waitForFinished(kWorkspaceSearchKillGraceMs) then SIGKILL (INV-5).
