@@ -477,6 +477,35 @@ QHash<QString, QString> renderPreImage(RoadmapStore &store, qint64 projectId,
     return preImage;
 }
 
+// ANTS-4681 — the files the last publish wrote, when every one is still
+// byte-identical on disk and the store has not changed since. Such a file is a
+// render of the store as it stands, so it holds no hand-edit and no id the
+// store never imported: the pre-image comparison and the divergence guard can
+// only find nothing in it, and both cost a whole-project pass. nullopt — the
+// full checks run — when there is no stamp, an older stamp with no file list,
+// or anything has moved.
+std::optional<QSet<QString>> filesUnchangedSincePublish(RoadmapStore &store,
+                                                        qint64 projectId,
+                                                        const QString &projectRoot,
+                                                        const QString &liveRoadmapPath) {
+    const auto liveAbs = RoadmapRender::resolveLivePath(projectRoot, liveRoadmapPath);
+    const auto stamp = liveAbs ? RoadmapRender::readPublishStamp(*liveAbs) : std::nullopt;
+    if (!stamp || stamp->files.isEmpty())
+        return std::nullopt;
+    QSet<QString> unchanged;
+    for (auto it = stamp->files.cbegin(); it != stamp->files.cend(); ++it) {
+        QFile f(it.key());
+        if (!f.open(QIODevice::ReadOnly)
+            || QCryptographicHash::hash(f.readAll(), QCryptographicHash::Sha256) != it.value())
+            return std::nullopt;
+        unchanged.insert(it.key());
+    }
+    const auto digest = store.contentDigest(projectId);
+    if (!digest || *digest != stamp->storeSha256)
+        return std::nullopt;
+    return unchanged;
+}
+
 }  // namespace
 
 void setForcePostMutateFailForTest(bool on) { g_forcePostMutateFail = on; }
@@ -533,8 +562,11 @@ std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
     Drift out = externalDrift(preImage);   // drops lostFiles, which is the write path's
     if (out.total > 0) {
         // ANTS-5381 — compare each side with what the last publish recorded.
-        const auto stamp = RoadmapRender::readPublishStamp(liveRoadmapPath);
-        QFile live(liveRoadmapPath);
+        // ANTS-5879 — under the path render() stamped, not the raw option.
+        const auto liveAbs = RoadmapRender::resolveLivePath(projectRoot, liveRoadmapPath);
+        const auto stamp = liveAbs ? RoadmapRender::readPublishStamp(*liveAbs)
+                                   : std::nullopt;
+        QFile live(liveAbs.value_or(QString()));
         const auto digest = store.contentDigest(projectId);
         if (!stamp || !digest || !live.open(QIODevice::ReadOnly)) {
             out.cause = QStringLiteral("unknown");
@@ -599,8 +631,15 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     DriftBreakdown drift;
     bool driftChecked = false;
     const bool measureBefore = (basis == DriftBasis::BeforeMutation);
-    if (const auto preDialect = measureBefore ? dialectOf(store, projectId)
-                                              : std::nullopt) {
+    // ANTS-4681 — files the publish stamp vouches for need neither the
+    // pre-image nor the divergence guard's reparse; see the helper.
+    const auto stamped = measureBefore
+        ? filesUnchangedSincePublish(store, projectId, projectRoot, liveRoadmapPath)
+        : std::nullopt;
+    if (stamped) {
+        driftChecked = true;
+    } else if (const auto preDialect = measureBefore ? dialectOf(store, projectId)
+                                                     : std::nullopt) {
         // ANTS-5087 — and skipped outright when the dialect could not be read.
         // `externalEditsChecked:false` already means "nobody looked", which is
         // the truth here; measuring against the wrong emission would report
@@ -744,13 +783,25 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // step 0's measurement (which that path skipped).
     QHash<QString, QString> postImage;
     const auto dry = RoadmapRender::render(store, projectId, projectRoot, opts, error,
-                                           measureBefore ? nullptr : &postImage);
+                                           measureBefore && !stamped ? nullptr : &postImage);
     if (!dry)
         return abort(Result::RenderFailed);
     if (!measureBefore && !postImage.isEmpty()) {
         dropFromPostImageForTest(postImage);
         drift = externalDrift(postImage);
         driftChecked = true;
+    }
+    // ANTS-4681 — a file this render owns that the stamp does not cover had
+    // no pre-image taken. Measured against this render instead: that can also
+    // count this write's own lines, so it over-reports, never under-reports.
+    // externalDrift() skips a file that does not exist yet.
+    if (stamped) {
+        QHash<QString, QString> uncovered;
+        for (auto it = postImage.cbegin(); it != postImage.cend(); ++it)
+            if (!stamped->contains(it.key()))
+                uncovered.insert(it.key(), it.value());
+        if (!uncovered.isEmpty())
+            drift = externalDrift(uncovered);
     }
     // Set before the gate check: GateUnmet's envelope is built from
     // `gateFailures`, so the refusal path needs the Outcome as much as the
@@ -810,6 +861,8 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         // count, so the guard reads both halves and its coverage is unchanged.
         const QStringList owned = dry->filesWritten + dry->filesUnchanged;
         for (const QString &path : owned) {
+            if (stamped && stamped->contains(path))   // ANTS-4681
+                continue;
             for (const QString &id : fileIds(path)) {
                 if (rendered.contains(id) || seen.contains(id))
                     continue;

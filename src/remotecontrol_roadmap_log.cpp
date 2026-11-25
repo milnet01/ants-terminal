@@ -299,7 +299,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
             if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
-                if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
+                if (rlIsPassHeadings(md, cc)) {   // ANTS-3771
                     if (hasBefore)
                         return rlBeforeIdNeedsStore();
                     // ANTS-5641 — a store-served pass project appends through
@@ -1842,7 +1842,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
-                if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
+                if (rlIsPassHeadings(md, cc)) {   // ANTS-3771
                     RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
                     QString seamErr;
                     auto seamText = RoadmapSource::RoadmapText::fromMemory(md);
@@ -3153,7 +3153,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     // located by the pass writer's own rule and edited through the store path
     // below, exactly as op:flip does (ANTS-5334).
     const bool passHeadings =
-        rcBulletsArePassHeadings(rlParse(markdown, callerCanonical));
+        rlIsPassHeadings(markdown, callerCanonical);
     std::optional<RoadmapWriteTarget> passStoreTarget;
     if (passHeadings) {
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;

@@ -18,12 +18,14 @@
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapparse.h"
+#include "roadmaprender.h"
 #include "roadmapstore.h"
 #include "roadmapwrite.h"
 
 #include <gtest/gtest.h>
 
 #include <QByteArray>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -1213,6 +1215,95 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
     ASSERT_TRUE(after.value(QStringLiteral("ok")).toBool());
     EXPECT_FALSE(after.value(QStringLiteral("publish_overwrote_file_text")).toBool())
         << "a stale true would train callers to ignore the field";
+}
+
+// ANTS-4681 — a write trusts the publish stamp instead of re-rendering the
+// pre-image, but only while the store is the one the stamp recorded. The
+// shortcut changes no output on an honest stamp, so a FORGED one is the only
+// way to see which path ran: it vouches for a hand-edited file, and the write
+// that believes it reports nothing.
+TEST(RoadmapWriteHalf, Ants4681StampVouchesOnlyWhileTheStoreIsUnchanged) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    RemoteControl rc(nullptr);
+
+    // The first write canonicalises the file and stamps it.
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("First.")))
+                    .object().value(QStringLiteral("ok")).toBool());
+    const auto liveAbs = RoadmapRender::resolveLivePath(root, QStringLiteral("ROADMAP.md"));
+    ASSERT_TRUE(liveAbs);
+    const QString stampPath = RoadmapRender::publishStampPath(*liveAbs);
+    const auto stamp = RoadmapRender::readPublishStamp(*liveAbs);
+    ASSERT_TRUE(stamp) << "a committed write must leave a publish stamp";
+    EXPECT_TRUE(stamp->files.contains(*liveAbs)) << "the stamp lists every file it owns";
+
+    // Hand-edit the file, then re-stamp it as if the render had written it.
+    const auto editAndForge = [&](const QByteArray &line) {
+        QByteArray hand = readAll(roadmap);
+        hand.insert(hand.indexOf('\n') + 1, line);
+        ASSERT_TRUE(writeFile(roadmap, hand));
+        QJsonObject o = QJsonDocument::fromJson(readAll(stampPath)).object();
+        const QString sha = QString::fromLatin1(
+            QCryptographicHash::hash(hand, QCryptographicHash::Sha256).toHex());
+        QJsonObject files = o.value(QStringLiteral("files")).toObject();
+        files[*liveAbs] = sha;
+        o[QStringLiteral("files")] = files;
+        o[QStringLiteral("file_sha256")] = sha;
+        ASSERT_TRUE(writeFile(stampPath, QJsonDocument(o).toJson()));
+    };
+
+    // 1. File and store both match the stamp: the pre-image is not rendered.
+    editAndForge("> Vouched for by a forged stamp.\n");
+    const QJsonObject trusted =
+        rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("Second."))).object();
+    ASSERT_TRUE(trusted.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(trusted.value(QStringLiteral("publish_overwrote_file_text")).toBool())
+        << "a stamp matching the file and the store is trusted";
+
+    // 2. The store moves behind the stamp: the full check runs and finds the edit.
+    editAndForge("> Not vouched for: the store moved.\n");
+    {
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        ASSERT_TRUE(store);
+        QString err;
+        const auto pk = store->findItem(projectId, QStringLiteral("DEMO-0003"), &err);
+        ASSERT_TRUE(pk) << err.toStdString();
+        ASSERT_TRUE(store->begin(&err));
+        ASSERT_TRUE(store->setItemField(*pk, QStringLiteral("headline"),
+                                        QStringLiteral("Changed in the store."), &err))
+            << err.toStdString();
+        ASSERT_TRUE(store->commit(&err));
+    }
+    const QJsonObject checked =
+        rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("Third."))).object();
+    ASSERT_TRUE(checked.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(checked.value(QStringLiteral("publish_overwrote_file_text")).toBool())
+        << "a store that changed since the stamp voids it";
+}
+
+// ANTS-5879 — a render given the live path relative to the project root still
+// stamps it. contentOf is keyed by the resolved path, so the raw option never
+// matched and no stamp was written.
+TEST(RoadmapWriteHalf, Ants5879RelativeLivePathIsStamped) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    auto store = openStore(RoadmapStore::Access::Interactive);
+    ASSERT_TRUE(store);
+    RoadmapRender::Options opts;
+    opts.liveRoadmapPath = QStringLiteral("ROADMAP.md");
+    QString err;
+    const auto out = RoadmapRender::render(*store, projectId, root, opts, &err);
+    ASSERT_TRUE(out && out->committed) << err.toStdString();
+    EXPECT_TRUE(RoadmapRender::readPublishStamp(root + QStringLiteral("/ROADMAP.md")));
 }
 
 // ANTS-4729 — the renderer's own format marker is not a discarded hand-edit.

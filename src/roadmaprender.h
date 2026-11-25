@@ -316,20 +316,30 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
 // so it never shows in `git status`. Best-effort: a stamp that cannot be
 // written fails nothing, and check_sync then reports its cause as unknown.
 struct PublishStamp {
-    QByteArray fileSha256;    // raw digest bytes, not hex
+    QByteArray fileSha256;    // the live file's; raw digest bytes, not hex
     QByteArray storeSha256;
+    // ANTS-4681 — every file that render owned, absolute path → SHA-256, so a
+    // write can tell that none was edited since. Empty on an older stamp.
+    QHash<QString, QByteArray> files;
 };
 
-// The stamp file for one live roadmap path, keyed by its absolute path.
-QString publishStampPath(const QString &liveRoadmapPath);
+// The live roadmap file's absolute path as render() resolves it, so a stamp
+// is read under the key it was written under; nullopt when it escapes the
+// project root. A relative path is taken from the project root (ANTS-5879).
+std::optional<QString> resolveLivePath(const QString &projectRoot,
+                                       const QString &liveRoadmapPath);
 
-// Called by render() after a committed real render. A nullopt digest removes
-// the stamp instead of writing a half one.
-void writePublishStamp(const QString &liveRoadmapPath, const QByteArray &fileBytes,
+// The stamp file for one live roadmap path, keyed by its absolute path.
+QString publishStampPath(const QString &liveAbsPath);
+
+// Called by render() after a committed real render, with every file it owned.
+// A nullopt digest removes the stamp instead of writing a half one.
+void writePublishStamp(const QString &liveAbsPath,
+                       const QHash<QString, QString> &contentOf,
                        const std::optional<QByteArray> &storeDigest);
 
 // nullopt when there is no stamp or it cannot be parsed.
-std::optional<PublishStamp> readPublishStamp(const QString &liveRoadmapPath);
+std::optional<PublishStamp> readPublishStamp(const QString &liveAbsPath);
 
 namespace testing {
 // Called by a real render after its store reads and before its file writes;

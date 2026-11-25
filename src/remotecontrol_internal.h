@@ -474,6 +474,9 @@ QString rlDeclaredIdRefusal(const QString &writtenId,
 RoadmapParse::IdFormat rlDecl(const QString &root);
 QVector<RoadmapParse::BulletRecord> rlParse(const QString &markdown,
                                             const QString &root);
+// ANTS-4681 — rcBulletsArePassHeadings(rlParse(markdown, root)), parsing the
+// whole file only when the bounded format scan says pass-headings.
+bool rlIsPassHeadings(const QString &markdown, const QString &root);
 // ANTS-4612 — the whole refusal envelope for "re-flowing this wrapped span
 // would collapse a structured block". Both amend_body paths (store and
 // markdown) refuse identically, and remotecontrol_roadmap_log.cpp sits AT

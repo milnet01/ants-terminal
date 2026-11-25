@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6915 -->
+<!-- ants-roadmap-id-high-water: ANTS=6916 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85723,7 +85723,7 @@ it.
   Kind: doc.
   Source: in-session-2026-08-25 (noticed while shipping ANTS-4664).
 
-- 📋 [ANTS-4681] **A roadmap_log write renders only the sections it changed, not the whole project.**
+- ✅ [ANTS-4681] **A roadmap_log write skips its whole-project checks when the publish stamp shows nothing changed since the last write.**
   Measured today: roadmap_log ran 7 of 7 calls between 137 ms and 256 ms,
   the slowest repeatable verb on the surface. Every op — annotate, flip, a
   one-line append — renders all 2,315 items and writes three files, of
@@ -85767,9 +85767,34 @@ it.
   (files_unchanged). Still live: each write renders the whole project
   (items_rendered 4550 on this session's flips). Headline amended to
   match.
+  Shipped 2026-11-25. The publish stamp now lists every file the render
+  owns, by SHA-256. A write whose files and store both match it skips
+  the pre-image render and the divergence guard's reparse. The write
+  path's pass-headings check scans the file head before parsing it
+  whole. Measured on this roadmap with one-shot ants-mcpd --call: a dry
+  run 0.92 s to 0.42 s, a real write about 1.6 s to 0.79 s. Before/after
+  differential over eight writes (hand-edit, hand-added bullet, dry
+  run): files byte-identical; replies identical but for the backup
+  name's path-hash tag. The third render is ANTS-6916.
   **Layman:** Filing one roadmap note rewrites the entire roadmap file, which freezes the window for a fifth of a second every time.
   Kind: perf.
   Source: in-session-2026-08-25, found while diagnosing a user report of the terminal locking up.
+  Lanes: mcp, roadmap, perf.
+
+- 📋 [ANTS-6916] **A roadmap_log write publishes the text its validating render already built, instead of rendering the project again after the commit.**
+  Measured 2026-11-25 after ANTS-4681, Ants_Terminal's roadmap, one-shot
+  ants-mcpd --call: a dry run 0.42 s, a real write 0.79 s. The gap is
+  commit, the publishing render and the stamp's store digest; the
+  publishing render repeats the validating one on the same rows.
+  Design to settle first: another connection can commit between this
+  write's commit and its publish, and the second render is what picks
+  that change up. PRAGMA data_version read after commit() and again under
+  the publish lock would tell the two cases apart; reuse the dry text
+  only when it has not moved. Needs a compose/publish split in
+  RoadmapRender::render(). Reload: ants-mcpd, next reconnect.
+  **Layman:** Saving a roadmap change builds the whole roadmap twice; building it once would make each save faster still.
+  Kind: perf.
+  Source: in-session-2026-11-25 ANTS-4681 measurement.
   Lanes: mcp, roadmap, perf.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-26 triage
@@ -111060,7 +111085,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: roadmap-parse-render-b.
 
-- 📋 [ANTS-5879] **src/roadmaprender.cpp:884: contentOf is keyed by the resolved absolute path, but the check uses the raw opts.liveRoadmapPath.**
+- ✅ [ANTS-5879] **src/roadmaprender.cpp:884: contentOf is keyed by the resolved absolute path, but the check uses the raw opts.liveRoadmapPath.**
   Lead L12-C3 from the readability review of 2026-10-22, lane roadmap-parse-render-b.
   Location: src/roadmaprender.cpp:884
   `contentOf` is keyed by the resolved absolute path, but the check uses the raw `opts.liveRoadmapPath`. With a relative path, the publish stamp is never written. `measureDrift` (roadmapwrite.cpp:521) also opens the raw path relative to the current working directory. Tests pass `"ROADMAP.md"`, and `remotecontrol_roadmap_backfill.cpp:88` builds a relative path. Whether the production write callers pass relative paths I did not confirm. — Searched: `liveRoadmapPath = `, plus the regex search for live-path helpers in remotecontrol*.cpp.
@@ -111069,6 +111094,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   readability fixes land (user, 2026-10-22).
   The 2026-11-06 reviews also found this: row 333
   `roadmaprender.cpp:888`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Confirmed and fixed 2026-11-25 with ANTS-4681: a relative live path
+  never matched contentOf's resolved key, so no stamp was written.
+  render() and both readers now use RoadmapRender::resolveLivePath().
+  Test: Ants5879RelativeLivePathIsStamped, seen red then green.
   **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

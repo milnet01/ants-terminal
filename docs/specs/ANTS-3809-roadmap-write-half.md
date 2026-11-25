@@ -899,6 +899,9 @@ transaction buys it nothing. It ran *inside* the lock from the day it was added
 until ANTS-5087 moved it, which held `BEGIN IMMEDIATE` across two render walks
 plus `externalDrift()`'s reparse of the file on disk — the doubled window this
 section warns against, arriving by a later edit rather than by a misreading.
+ANTS-4681 skips it when the publish stamp vouches for every file the last
+publish wrote and the store is unchanged since; the divergence guard then
+skips those files too.
 
 **Nothing can observe the intermediate state, and that is a consequence of
 ANTS-3793's design rather than of WAL.** That spec gives the process **one**

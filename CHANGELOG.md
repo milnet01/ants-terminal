@@ -23,12 +23,16 @@ for security-relevant changes.
 
 ### Changed
 
+- **A roadmap_log write takes about half the time on a large roadmap: it skips the hand-edit check and the delete guard's reparse when the publish stamp shows nothing changed since the last write** (ANTS-4681)
+
 - **An idle Ants MCP server lets go of the roadmap and changelog it last read.** (ANTS-5208)
   Once the server has no call waiting, it frees its copies of the last
   roadmap and changelog it parsed, so each idle `ants-mcpd` stays small.
   The next query reads the files again.
 
 ### Fixed
+
+- **The publish stamp is written when the live roadmap path is given relative to the project root** (ANTS-5879)
 
 - **Auditing a project leaves no rule-quality files in its top folder.** (ANTS-6862)
   The audit keeps its rule-quality history and that file's lock in

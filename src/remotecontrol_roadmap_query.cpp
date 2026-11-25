@@ -2415,6 +2415,15 @@ QVector<RoadmapParse::BulletRecord> rcdetail::rlParse(const QString &markdown,
     return RoadmapParse::parseBullets(markdown, rlDecl(root));
 }
 
+// parseBulletLines() tags a record pass-headings only on the branch
+// detectRoadmapFormat() routes there, so a document the scan calls anything
+// else cannot answer true.
+bool rcdetail::rlIsPassHeadings(const QString &markdown, const QString &root) {
+    return RoadmapParse::detectRoadmapFormat(markdown.split(QLatin1Char('\n')))
+               == QLatin1String("pass-headings")
+        && rcBulletsArePassHeadings(rlParse(markdown, root));
+}
+
 // § 2.3 — see the declaration for the two tests, the two codes, and why this is
 // gated on the project having declared.
 QString rcdetail::rlDeclaredIdRefusal(const QString &writtenId,

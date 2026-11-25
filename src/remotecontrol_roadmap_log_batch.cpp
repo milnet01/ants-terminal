@@ -290,7 +290,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     // ANTS-4470 — the pass writer takes the mode too, so annotate_batch reaches
     // a pass-headings roadmap rather than silently flipping every located pass
     // to a status the caller never named.
-    if (rcBulletsArePassHeadings(rlParse(markdown, callerCanonical))) {
+    if (rlIsPassHeadings(markdown, callerCanonical)) {
         // ANTS-5334 — no store route for a pass batch yet; op:flip and
         // op:annotate have one.
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
@@ -2692,7 +2692,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
-                if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
+                if (rlIsPassHeadings(md, cc)) {   // ANTS-3771
                     if (hasBefore)
                         return rlBeforeIdNeedsStore();
                     // ANTS-5344 — the pass writer files the batch under one

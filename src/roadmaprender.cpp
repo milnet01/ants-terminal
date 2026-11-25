@@ -905,20 +905,28 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     out.committed = true;
     // ANTS-5381 — stamped on EVERY committed real render, an unchanged file
     // included: the render just confirmed these bytes are what the store says.
-    if (contentOf.contains(opts.liveRoadmapPath))
-        writePublishStamp(opts.liveRoadmapPath,
-                          contentOf.value(opts.liveRoadmapPath).toUtf8(),
-                          store.contentDigest(projectId));
+    // ANTS-5879 — keyed by liveAbs, as contentOf is; the raw option can be
+    // relative, which never matched and so never stamped.
+    if (contentOf.contains(liveAbs))
+        writePublishStamp(liveAbs, contentOf, store.contentDigest(projectId));
     return out;
 }
 
-QString publishStampPath(const QString &liveRoadmapPath) {
+std::optional<QString> resolveLivePath(const QString &projectRoot,
+                                       const QString &liveRoadmapPath) {
+    QString abs;
+    if (!resolveUnderRoot(projectRoot, liveRoadmapPath, false, &abs, nullptr))
+        return std::nullopt;
+    return abs;
+}
+
+QString publishStampPath(const QString &liveAbsPath) {
     const QString base =
         QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    if (base.isEmpty() || liveRoadmapPath.isEmpty())
+    if (base.isEmpty() || liveAbsPath.isEmpty())
         return {};
     // Every project calls its file ROADMAP.md, so the absolute path is hashed.
-    const QByteArray key = QFileInfo(liveRoadmapPath).absoluteFilePath().toUtf8();
+    const QByteArray key = QFileInfo(liveAbsPath).absoluteFilePath().toUtf8();
     return QStringLiteral("%1/ants-terminal/render-stamps/%2.json")
         .arg(base, QString::fromLatin1(
                        QCryptographicHash::hash(key, QCryptographicHash::Sha256)
@@ -926,9 +934,10 @@ QString publishStampPath(const QString &liveRoadmapPath) {
                            .left(16)));
 }
 
-void writePublishStamp(const QString &liveRoadmapPath, const QByteArray &fileBytes,
+void writePublishStamp(const QString &liveAbsPath,
+                       const QHash<QString, QString> &contentOf,
                        const std::optional<QByteArray> &storeDigest) {
-    const QString path = publishStampPath(liveRoadmapPath);
+    const QString path = publishStampPath(liveAbsPath);
     if (path.isEmpty())
         return;
     // A digest that could not be taken leaves no stamp, rather than one that
@@ -937,11 +946,18 @@ void writePublishStamp(const QString &liveRoadmapPath, const QByteArray &fileByt
         QFile::remove(path);
         return;
     }
+    const auto sha = [](const QString &text) {
+        return QString::fromLatin1(
+            QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha256).toHex());
+    };
+    QJsonObject files;
+    for (auto it = contentOf.cbegin(); it != contentOf.cend(); ++it)
+        files[it.key()] = sha(it.value());
     QJsonObject o;
-    o[QStringLiteral("path")] = QFileInfo(liveRoadmapPath).absoluteFilePath();
-    o[QStringLiteral("file_sha256")] = QString::fromLatin1(
-        QCryptographicHash::hash(fileBytes, QCryptographicHash::Sha256).toHex());
+    o[QStringLiteral("path")] = QFileInfo(liveAbsPath).absoluteFilePath();
+    o[QStringLiteral("file_sha256")] = sha(contentOf.value(liveAbsPath));
     o[QStringLiteral("store_sha256")] = QString::fromLatin1(storeDigest->toHex());
+    o[QStringLiteral("files")] = files;
     if (!QDir().mkpath(QFileInfo(path).path()))
         return;
     QSaveFile f(path);
@@ -951,16 +967,26 @@ void writePublishStamp(const QString &liveRoadmapPath, const QByteArray &fileByt
     }
 }
 
-std::optional<PublishStamp> readPublishStamp(const QString &liveRoadmapPath) {
-    QFile f(publishStampPath(liveRoadmapPath));
+std::optional<PublishStamp> readPublishStamp(const QString &liveAbsPath) {
+    QFile f(publishStampPath(liveAbsPath));
     if (!f.open(QIODevice::ReadOnly))
         return std::nullopt;
     const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+    const auto digest = [](const QJsonValue &v) {
+        return QByteArray::fromHex(v.toString().toLatin1());
+    };
     PublishStamp s;
-    s.fileSha256 = QByteArray::fromHex(o.value(QStringLiteral("file_sha256")).toString().toLatin1());
-    s.storeSha256 = QByteArray::fromHex(o.value(QStringLiteral("store_sha256")).toString().toLatin1());
+    s.fileSha256 = digest(o.value(QStringLiteral("file_sha256")));
+    s.storeSha256 = digest(o.value(QStringLiteral("store_sha256")));
     if (s.fileSha256.size() != 32 || s.storeSha256.size() != 32)
         return std::nullopt;
+    const QJsonObject files = o.value(QStringLiteral("files")).toObject();
+    for (auto it = files.constBegin(); it != files.constEnd(); ++it) {
+        const QByteArray d = digest(it.value());
+        if (d.size() != 32)
+            return std::nullopt;
+        s.files.insert(it.key(), d);
+    }
     return s;
 }
 

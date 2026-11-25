@@ -296,6 +296,7 @@ whole-project gate on exactly the callers this amendment exists for.
 **`commitAndRender` is the only production caller, and it states the scope for
 all three of its renders.** It drives three: the ANTS-4462 pre-image, the
 validating dry render, and the publishing render after the commit. The
+pre-image is skipped where the publish stamp vouches for the files (ANTS-4681). The
 pre-image gets an engaged EMPTY scope — it is a diagnostic whose output is
 thrown away except for the drift measurement, and gating it meant that on a
 project carrying debt the pre-image rendered nothing, the drift check silently
