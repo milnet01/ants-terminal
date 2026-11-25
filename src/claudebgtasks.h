@@ -88,7 +88,8 @@ public:
     // Pure parser — exposed for tests. Returns all background tasks
     // observed in the transcript at `path`, with `finished` set when a
     // matching completion or kill event appears later in the same
-    // transcript. Stateless and safe to call concurrently.
+    // transcript. Stateless and safe to call concurrently: each call opens
+    // its own file handle.
     static QList<ClaudeBackgroundTask> parseTranscript(const QString &path);
 
     // ANTS-5050 — parse only what has been appended since `cursor`, folding
@@ -123,8 +124,8 @@ public slots:
     // 0.7.55 (2026-04-27 indie-review) — lightweight liveness sweep,
     // separate from rescan(). Walks m_tasks only and updates the
     // `finished` flag based on whether each task's output file exists. NO
-    // transcript reparse — costs N stat() calls instead of a 16 MiB
-    // file read. Called from the status-bar 2 s timer
+    // transcript reparse — costs N stat() calls instead of a
+    // transcript walk. Called from the status-bar 2 s timer
     // (ClaudeStatusBarController::refreshBgTasksButton); rescan() continues to
     // run on actual transcript changes.
     void sweepLiveness();

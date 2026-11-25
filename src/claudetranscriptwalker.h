@@ -13,10 +13,10 @@
 
 // ANTS-1261 — shared Claude Code transcript walker.
 //
-// `ClaudeTaskListTracker::parseTranscript` (TodoWrite / TaskCreate plans)
-// and `ClaudeBgTaskTracker::parseTranscript` (run_in_background launches)
-// parse *different* event payloads, but both walked the JSONL transcript
-// with byte-identical scaffolding — the 16 MiB tail cap, the
+// `ClaudeTaskListTracker` (TodoWrite / TaskCreate plans) and
+// `ClaudeBgTaskTracker` (run_in_background launches), through
+// `parseIncremental` / `walkFrom`, parse *different* event payloads, but
+// both walked the JSONL transcript with byte-identical scaffolding — the 16 MiB tail cap, the
 // blank-line / non-object skip, and the isSidechain / isCompactSummary
 // gating — and that shared prologue had begun to drift between the two
 // copies. This factors the walk + gating into one place; each tracker
@@ -78,8 +78,8 @@ inline bool canResume(const QString &path, const Cursor &cur) {
 }
 
 // Walk the transcript from `cur`, invoking `handler(ev, evMs)` per surviving
-// event and advancing `cur` over what it consumed. The gating above applies
-// unchanged — this is the one implementation of it.
+// event and advancing `cur` over what it consumed. The gating below, at
+// walk(), applies unchanged — this is the one implementation of it.
 //
 // Two rules the full walk did not need (ANTS-5050):
 //

@@ -126,7 +126,7 @@ QString tierTitle(ModelRecommender::Tier tier);   // ANTS-1893, defined below
 // Claude is active. Cache the parsed object and re-read only when the file's
 // mtime OR size changes (Settings Apply rewrites config.json via QSaveFile, so
 // either moves; size is a cheap tiebreaker for a same-millisecond rewrite).
-// GUI-thread only — all three refreshers run on the status-bar timer.
+// GUI-thread only: call it from the GUI thread and nowhere else.
 const Config &cachedConfig() {
     static Config cfg;  // loaded once here at first-call static init…
     static qint64 cachedMtimeMs =
@@ -1369,29 +1369,14 @@ void ClaudeStatusBarController::refreshTasksButton() {
         }
     }
 
-    // ANTS-1219-INV-3 / ANTS-1216 / ANTS-1246: hide branch covers
-    // (a) the empty-resolver case (path was "", tracker cleared,
-    // total == 0) and (b) the "all done" case (every task in
-    // status `completed`). ANTS-1216 user report 2026-05-08: a tab
-    // whose tasks are all completed kept the chip visible at
-    // "☰ N/N", which read as actionable chrome when there was
-    // nothing left to do. ANTS-1246 (2026-05-12) refined the
-    // visibility predicate: the chip's purpose is now pure
-    // *progress*, visible end-to-end from 0/N to N/N; an all-done
-    // state hides because the user already sees the completed
-    // list in the dialog. The "is Claude doing something?" signal
-    // is carried separately by the Claude: <state> widget.
+    // ANTS-1219-INV-3: the chip shows only while 0 <= done < total. It is
+    // pure progress, so an empty or all-done list hides it. History: ANTS-1216,
+    // ANTS-1246.
     if (total <= 0 || done >= total) {
         m_tasksBtn->hide();
         return;
     }
-    // ANTS-1218 / ANTS-1246: chip reads `☰ <done>/<total>` —
-    // pure completion progress. Numerator was previously
-    // `total - unfinished` (= done + in_progress under post-1221
-    // semantics), which kept the chip hidden when only in_progress
-    // tasks remained (no pending), surprising the user mid-run.
-    // ANTS-1246 switches to `done` so the chip is visible during
-    // the entire active task list and hides only on completion.
+    // Text is `☰ <done>/<total>`. History: ANTS-1218, ANTS-1246.
     m_tasksBtn->setText(QStringLiteral("☰ %1/%2").arg(done).arg(total));
     m_tasksBtn->setToolTip(
         tr("Claude Code task list — %1 task%2 (%3 done, %4 running, "
@@ -1940,8 +1925,8 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
         emit firstRunNudgeRequested();
     }
 
-    // A queued switch dies with the setting: the model pill's slot is sized
-    // without the "(auto → X)" suffix while auto-switch is off (pinSlots).
+    // A queued switch dies with the setting: with auto-switch off nothing will
+    // fire it, so the pill must not keep showing the "(auto → X)" suffix.
     if (!enabled) {
         if (!m_autoSwitchPendingTier.isEmpty()) {
             m_autoSwitchPendingTier.clear();
@@ -2527,7 +2512,7 @@ void ClaudeStatusBarController::maybeFireDeferredChipSwitch(pid_t shellPid) {
     performModelSwitchHandshake(term);
     // ANTS-1890 / ANTS-1915 — seed the per-project override cool-down so the
     // autonomous switcher does not immediately undo this user-initiated switch
-    // (mirrors the undo + chip-click-while-idle paths).
+    // (mirrors the undo path).
     m_lastOverrideMsByProject[term->shellCwd()] =
         QDateTime::currentMSecsSinceEpoch();
     dropOldestKeys(m_lastOverrideMsByProject, kMaxProjectKeys);
@@ -2576,7 +2561,7 @@ QString tierTitle(ModelRecommender::Tier tier) {
 // wins; the precedence is defensive against future reason-string
 // reshapings (today commit_intent never appears alongside the
 // scoring-path tokens — the override returns early). All labels
-// are wrapped in tr() at the call site (Qt i18n discipline).
+// are wrapped in tr() here (Qt i18n discipline); callers do not re-wrap.
 QString shortenReason(const QString &reason) {
     if (reason.contains(QStringLiteral("commit_intent")))
         return QObject::tr("commit intent");

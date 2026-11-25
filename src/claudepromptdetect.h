@@ -10,7 +10,10 @@
 // footer/question anchor PLUS a selection UI (numbered Yes/No options or
 // the navigation hint footer). A single hostile line carries at most one
 // of those, so requiring co-occurrence raises the bar from "any one
-// string" to "reproduce the whole prompt shape". Pure (Qt6::Core-only)
+// string" to "reproduce the whole prompt shape". The exception: the
+// "Tab to accept" footer is both anchor and corroboration, so that one
+// line fires alone; a hostile program can print it, which this
+// defense-in-depth gate accepts. Pure (Qt6::Core-only)
 // so it unit-tests without instantiating TerminalWidget.
 
 #ifndef ANTS_CLAUDEPROMPTDETECT_H

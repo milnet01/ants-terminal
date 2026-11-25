@@ -111,9 +111,9 @@ public:
 
     // External refresh entry-points called from MainWindow's
     // tab/timer plumbing (status timer pulse, onTabChanged,
-    // showBgTasksDialog dismissal). Body reads focusedTerminal()
-    // + m_claudeIntegration (both already supplied) + internal
-    // tracker state.
+    // showBgTasksDialog dismissal). Body reads the
+    // focused terminal via m_focusedTerminalProvider + m_integration
+    // (both already supplied) + internal tracker state.
     void refreshBgTasksButton();
 
     // ANTS-1158 — task-list chip refresh. Called from the same
@@ -302,7 +302,7 @@ private slots:
     // ANTS-1893 — Undo handler. Refuses on cwd or shellPid mismatch
     // (per-tab guard); on a dead shellPid distinguishes "session
     // ended" from "different session". On success, injects
-    // `/model <fromTier>\n` and seeds m_lastOverrideMsByProject so
+    // `/model <fromTier>\r` and seeds m_lastOverrideMsByProject so
     // the gate's 10-min cool-down (ANTS-1890) trips on the next tick.
     void onUndoSwitchClicked();
 

@@ -171,7 +171,7 @@ ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) 
 
 void ClaudeAllowlistDialog::setSettingsPath(const QString &path) {
     m_settingsPath = path;
-    // ANTS-1168: clear transient editing state so a stale unsaved
+    // Clear transient editing state so a stale unsaved
     // rule + validation hint from the previous open don't carry over
     // to a fresh project's allowlist. Cleared BEFORE loading, so a load
     // error reported below survives (ANTS-5092).
@@ -276,14 +276,6 @@ void ClaudeAllowlistDialog::loadSettings() {
 bool ClaudeAllowlistDialog::saveSettings() {
     if (m_settingsPath.isEmpty()) return false;
 
-    // Read existing file to preserve non-permission keys (model, editor
-    // prefs, custom hooks, ...). If the file EXISTS but fails to parse,
-    // refuse to save — otherwise the write below would produce a file
-    // containing only {"permissions": {...}} and silently destroy every
-    // other key the user had. Rotate the corrupt file aside first so
-    // the user can hand-recover. 0.7.12 /indie-review fix — the same
-    // silent-data-loss pattern Config::load had.
-
     // Create .claude directory if needed; the lock file lives in it.
     if (!QDir().mkpath(QFileInfo(m_settingsPath).absolutePath()))
         return false;
@@ -302,6 +294,12 @@ bool ClaudeAllowlistDialog::saveSettings() {
         return false;
     }
 
+    // Read existing file to preserve non-permission keys (model, editor
+    // prefs, custom hooks, ...). If the file EXISTS but fails to parse,
+    // refuse to save — otherwise the write below would produce a file
+    // containing only {"permissions": {...}} and silently destroy every
+    // other key the user had. Copy the corrupt file aside first (the
+    // original stays) so the user can hand-recover.
     QJsonObject root;
     {
         QFile file(m_settingsPath);

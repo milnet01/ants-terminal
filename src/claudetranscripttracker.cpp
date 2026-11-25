@@ -77,7 +77,10 @@ void ClaudeTranscriptTracker::poll() {
         return;
     }
     // ANTS-1458 phase 2 — re-parse when EITHER signal moved. mtime alone
-    // misses a same-millisecond append; size catches it.
+    // misses a same-millisecond append; size catches it. otherSourcesMoved()
+    // has a side effect (the bg tracker folds helper events into its
+    // accumulator) and runs only when mtime and size are unchanged; keep it
+    // last in the condition.
     const qint64 mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
     const qint64 sizeBytes = fi.size();
     if (mtimeMs == m_lastRescanMtimeMs && sizeBytes == m_lastRescanSizeBytes

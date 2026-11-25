@@ -124,9 +124,10 @@ void ClaudeTabTracker::forceRefreshForTest(pid_t shellPid,
     if (!transcriptPath.isEmpty()) {
         // Seed the entry for this pid with the injected transcript path.
         // Bypasses the proc-walk (which needs a real Claude child under
-        // /proc/shellPid/children) by setting claudePid to a sentinel so
-        // detectClaudeChild sees the shell as "has Claude" and doesn't
-        // wipe the path out on the next poll.
+        // /proc/shellPid/children) by setting claudePid to a sentinel. The
+        // sentinel does not protect the path: with no real Claude child, the
+        // next poll's detectClaudeChild releases the watch and clears it.
+        // Read the state before the next poll runs.
         ShellEntry &entry = m_shells[shellPid];
         if (entry.shellPid == 0) entry.shellPid = shellPid;
         if (entry.claudePid == 0) entry.claudePid = -1;  // sentinel
@@ -355,6 +356,11 @@ void ClaudeTabTracker::maybeEmit(pid_t shellPid, const ShellState &before) {
     auto it = m_shells.constFind(shellPid);
     if (it == m_shells.constEnd()) return;
     const ShellState &after = it->state;
+    // Only these fields raise the signal: state, tool, planMode,
+    // awaitingInput, auditing and the three background counts. The rest
+    // (contextTokens, contextEstimated, idleSinceMs, awaitingRule,
+    // claudeStartMs) are skipped on purpose: they change without a
+    // visible glyph change, and a signal for each would redraw every tick.
     if (before.state == after.state &&
         before.tool == after.tool &&
         before.planMode == after.planMode &&

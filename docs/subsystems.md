@@ -449,7 +449,9 @@ Listed only where behavior isn't obvious from the name.
   source-of-truth helper for the focused Claude session's display
   state. `Resolved` value (`base/tool/planMode/auditing/awaitingInput`)
   + `Display` precedence ladder
-  (`awaitingInput → planMode → auditing → base`), consumed by
+  (`awaitingInput` — which includes a blocking `AskUserQuestion` /
+  `ExitPlanMode` tool, ANTS-5718 — `→ planMode → auditing → base`; an
+  idle base with pending background work shows Background), consumed by
   `claudestatuswidgets`' tab-dot lambda + `apply()` and (in due
   course) `modelautoswitch`'s INV-2 gate. ANTS-1873.
 - `modelrecommender` (Qt6::Core) — stateless `score(transcriptPath)`:
@@ -635,4 +637,4 @@ Listed only where behavior isn't obvious from the name.
   is bg-only. Parser:
   `TodoWrite` (snapshot replace), `TaskCreate` + tool_result (add),
   `TaskUpdate` (status flip). Chip reads `done/total` (ANTS-1246). Both
-  filter `isSidechain` + reset on `isCompactSummary`.
+  filter `isSidechain` and skip `isCompactSummary` events.

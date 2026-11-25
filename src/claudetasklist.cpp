@@ -67,18 +67,9 @@ bool ClaudeTaskListTracker::sameRow(const ClaudeTask &a, const ClaudeTask &b) co
 }
 
 int ClaudeTaskListTracker::unfinishedCount() const {
-    // ANTS-1221 — pending only. The chip surfaces user-actionable
-    // work, and "Claude is currently running it" is not actionable
-    // by the user. ANTS-1216 originally widened this to
-    // `pending + in_progress` to match the dialog's "outstanding"
-    // wording, but the user reported (2026-05-10 screenshot:
-    // "41 tasks — 40 done, 1 running, 0 outstanding" → chip read
-    // "☰ 1/41") that the chip kept lingering on a single in-flight
-    // task with nothing left for them to action. Splitting the
-    // contract: chip = pending; dialog header still splits running
-    // from outstanding. Pairs with ANTS-1218 (chip numerator flipped
-    // to `total - unfinished`, so the chip counts up and hides
-    // cleanly at 100% via the existing `unfinished <= 0` branch).
+    // Pending only: the chip surfaces work the user can act on, and a task
+    // Claude is running is not. The dialog header still splits running from
+    // outstanding. History: ANTS-1216, ANTS-1218, ANTS-1221.
     return pendingCount();
 }
 

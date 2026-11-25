@@ -72,8 +72,8 @@ public:
     int completedCount() const;
 
     // Pure parser — exposed for tests. Returns the plan list at the
-    // tail of `path`. Stateless, GUI-thread-only (Qt I/O classes
-    // aren't reentrant on the same handle).
+    // tail of `path`. Stateless and safe to call concurrently: each
+    // call opens its own file handle.
     static QList<ClaudeTask> parseTranscript(const QString &path);
 
     // ANTS-5050 — parse only what has been appended since `cursor`, folding

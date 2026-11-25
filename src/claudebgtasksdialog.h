@@ -21,7 +21,7 @@ class ClaudeBgTaskTracker;
 //     stdout doesn't thrash the renderer.
 //   • Skip-identical-HTML guard via a per-dialog hash of the last page.
 //   • Capture vbar/hbar value before setHtml, restore after with a
-//     std::min clamp — preserves scroll position across live refreshes.
+//     qMin clamp — preserves scroll position across live refreshes.
 class ClaudeBgTasksDialog : public QDialog {
     Q_OBJECT
 

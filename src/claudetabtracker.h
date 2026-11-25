@@ -117,9 +117,9 @@ public:
     void forceRefreshForTest(pid_t shellPid, const QString &transcriptPath = {});
 
 signals:
-    // Emitted whenever a tracked shell's state changes (transcript-
-    // derived state, plan-mode latch, tool name, or awaitingInput).
-    // Callers look up shellState(pid) for the new value.
+    // Emitted whenever a tracked shell's state changes. maybeEmit names
+    // the fields that trigger it. Callers look up shellState(pid) for the
+    // new value.
     void shellStateChanged(pid_t shellPid);
 
 private slots:

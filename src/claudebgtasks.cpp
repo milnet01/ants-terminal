@@ -87,10 +87,9 @@ void ClaudeBgTaskTracker::setProcessStartMs(qint64 ms) {
 
 // 0.7.55 (2026-04-27 indie-review) — liveness sweep without reparse.
 // Walks m_tasks and flips `finished` when the output file is gone. Same
-// rule as parseTranscript's liveness pass, but skips the 16 MiB
-// transcript walk — the status-
-// bar 2 s timer calls this instead of rescan() so every tick costs
-// N stat() calls rather than a full transcript read.
+// rule as finalize's liveness pass (outputGone), but skips the transcript
+// walk — the status-bar 2 s timer calls this instead of rescan() so every
+// tick costs N stat() calls rather than a transcript read.
 //
 // Emits tasksChanged() only when at least one task's `finished` flag
 // flipped, mirroring rescan()'s no-op-no-emit behaviour so a settled

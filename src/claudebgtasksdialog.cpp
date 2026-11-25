@@ -24,18 +24,12 @@
 
 namespace {
 
-// Read up to `maxBytes` from the tail of `path` and return as UTF-8. We
-// scope the read because some background tasks (e.g. a long `make
-// -j$(nproc)`) can fill the .output file with megabytes of compiler
-// noise and rendering all of that into a QTextEdit costs more than the
-// user wants to pay every refresh.
 // ANTS-1144 — strip ANSI control sequences (CSI/SGR) from tail
 // output. Pre-fix code rendered raw bytes, so a build log full of
 // ncurses-style progress bars (`make -j$(nproc)` with colored
 // output, claude-code's status bar, etc.) showed literal `^[[2J`
 // and similar escape sequences in the dialog. The terminal proper
-// has VtParser/TerminalGrid for this; per CLAUDE.md rule 3
-// (reuse-before-rewriting) we ought to channel through that. But
+// has VtParser/TerminalGrid for this, but
 // running a full VT state machine for tail rendering is overkill —
 // a regex pass that drops the common CSI form (ESC `[` params
 // `@-~` final byte) covers ~99% of in-the-wild noise without
@@ -54,13 +48,13 @@ QString stripAnsi(const QString &input) {
     return s;
 }
 
-// ANTS-1169: validate `path` is inside the legitimate task-output tree
+// Validate `path` is inside the legitimate task-output tree
 // (`/tmp/claude-$UID/`) and points at a regular file before opening.
 // Without this, a hostile transcript event (LLM01-reachable) can set
 // `outputPath` to `~/.ssh/id_ed25519` or `/etc/shadow` (when readable
-// by uid) and have its contents rendered into the dialog. lstat
-// avoids the symlink trap; the canonicalize step closes traversal
-// (`..`) gaps.
+// by uid) and have its contents rendered into the dialog.
+// canonicalFilePath() is the defence: it resolves every symlink and
+// `..`. The lstat below only checks that the result is a regular file.
 //
 // ANTS-5092 — returns the canonical path it validated, and tailFile opens
 // THAT. Opening the original path let a symlink swapped in after the check
@@ -77,6 +71,11 @@ QString tailPathSafe(const QString &path) {
     return S_ISREG(st.st_mode) ? canonical : QString();
 }
 
+// Read up to `maxBytes` from the tail of `path` and return as UTF-8. We
+// scope the read because some background tasks (e.g. a long `make
+// -j$(nproc)`) can fill the .output file with megabytes of compiler
+// noise and rendering all of that into a QTextEdit costs more than the
+// user wants to pay every refresh.
 QString tailFile(const QString &path, qint64 maxBytes = 32 * 1024) {
     const QString safe = tailPathSafe(path);
     if (safe.isEmpty()) return {};
@@ -295,7 +294,7 @@ void ClaudeBgTasksDialog::rebuild() {
     html += QStringLiteral("</pre>");
 
     // 0.7.37 scroll-preservation pattern: skip identical renders, then
-    // capture vbar/hbar before setHtml, restore after with std::min
+    // capture vbar/hbar before setHtml, restore after with qMin
     // clamp. The hash is per-dialog (member, not static) so multiple
     // dialogs don't fight over the cache. ANTS-5203 — a hash, not a second
     // copy of the page beside the viewer's own document.
