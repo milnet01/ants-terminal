@@ -939,8 +939,9 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
             });
             // ANTS-2104 — run the dispatch on a worker thread, exactly like
             // audit_run (ANTS-2103). cmdIndieReviewDispatch -> dispatchLanes
-            // spins a local QNetworkAccessManager + QEventLoop (indiereview
-            // dispatcher.cpp:223-224); on the main thread that nested loop
+            // spins a local QNetworkAccessManager + QEventLoop (see
+            // dispatchLanes in indiereviewdispatcher.cpp); on the main
+            // thread that nested loop
             // reentrantly delivers MCP QLocalSocket read-notifications during
             // the multi-minute LLM sweep -> the same use-after-free SIGSEGV
             // class as audit_run. The nam/loop are locals, so they construct

@@ -87,7 +87,7 @@ void ClaudeIntegration::forgetShell(pid_t pid) {
 void ClaudeIntegration::setShellPid(pid_t pid) {
     // 0.6.22 — on tab switch, the caller hands us the new tab's shell PID.
     // Without this clear, the cached m_state / m_currentTool / context%
-    // from the previous tab persisted until the next poll tick (~1s
+    // from the previous tab persisted until the next poll tick (~2 s
     // later), causing the user-reported "Claude status indicator doesn't
     // work half the time" symptom — tab A's "Claude: thinking..." bled
     // into tab B. Reset state immediately when the PID changes so the UI
@@ -208,8 +208,8 @@ pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid, bool scanOrphans) {
     // QProcess launcher behaviour on some builds — it forks the child from
     // a transient internal thread that then dies — which left
     // ClaudeTranscriptRobustness inv7 red on CI when the union short-cut
-    // skipped the scan (ANTS-1867). So always fall through to the ppid
-    // scan below, which is the complete (if pricier) view. Real shells are
+    // skipped the scan (ANTS-1867). So fall through to the ppid
+    // scan below when scanOrphans is set; it is the complete view. Real shells are
     // single-threaded and long-lived, so production claude detection hits
     // the union fast path and never pays the scan.
     QDir taskDir(QString("/proc/%1/task").arg(shellPid));
@@ -396,8 +396,9 @@ void ClaudeIntegration::pollClaudeProcess() {
 
     // Backstop re-parse: event-driven path handles ~99% of updates, but a
     // file-replaced event can unbind the inotify watch in edge cases. Once
-    // every 10 poll cycles (~20s) we re-parse unconditionally — parse is
-    // cheap (~32KB read) and this also re-arms the watch via the
+    // every 10 poll cycles (~20s) we re-parse unconditionally — the read
+    // starts at 32 KiB and can widen to the record cap. This also re-arms the
+    // watch via the
     // addPath-if-missing check at the top of parseTranscriptForState.
     if (!m_transcriptPath.isEmpty() && ++m_transcriptBackstopTicks >= 10) {
         m_transcriptBackstopTicks = 0;
@@ -841,7 +842,7 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // Sub-agent (sidechain) events are interleaved in the same transcript but
     // belong to a child task, not the main session. A sidechain end_turn must
     // not flip the main session to Idle while the outer Task tool_use is still
-    // in flight. Mirror the filter already present in claudebgtasks.cpp.
+    // in flight. Mirror the filter in the shared walker, claudetranscriptwalker.h.
     const auto parseEvents = [](const QByteArray &buf) {
         QList<QJsonObject> out;
         for (const QByteArray &raw : buf.split('\n')) {

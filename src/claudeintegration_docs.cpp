@@ -649,6 +649,9 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                             "range REFUSES bad_args rather than clamping; a capped run "
                             "returns truncated:true so a partial run never reads as a "
                             "complete one.");
+                    // spec_conformance is not in isEtagSupportedTool: it does its
+                    // own "unchanged" short-circuit in cmdSpecConformance
+                    // (remotecontrol_docs.cpp), so this argument is honoured.
                     QJsonObject scEtag; scEtag["type"] = "string";
                         scEtag["description"] = QStringLiteral(
                             "Server-issued etag from a prior call; an unchanged document "

@@ -537,8 +537,9 @@ bool ClaudeIntegration::isIdempotentReadTool(const QString &toolName) {
 
 bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
     // ANTS-1499 — read tools that return JSON envelopes large enough
-    // for the etag short-circuit to be worth it. Order mirrors the
-    // priority list in the roadmap entry.
+    // for the etag short-circuit to be worth it. spec_conformance is not
+    // listed: cmdSpecConformance (remotecontrol_docs.cpp) does its own
+    // "unchanged" check.
     return toolName == QStringLiteral("project_layout")
         || toolName == QStringLiteral("roadmap_query")
         || toolName == QStringLiteral("changelog_query")   // ANTS-3533

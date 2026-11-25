@@ -498,7 +498,7 @@ public:
         return (it == m_rateLimitBuckets.cend()) ? 0 : it->tsMs.size();
     }
     // Override per-tier caps for the duration of a test. Reset to
-    // restore the 60/10 defaults.
+    // restore the kRateLimit*Cap defaults.
     static void setRateLimitCapsForTest(int cheap, int expensive);
     // ANTS-1629 — additive 3-arg overload covers the BriefAssembly tier.
     static void setRateLimitCapsForTest(
@@ -570,12 +570,6 @@ public:
         return m_sessionSavedBytesByProject;
     }
 
-    // ANTS-1294 — frame user-supplied MCP content as data. Wraps a
-    // tools/call response payload in <ants_mcp_data tool="..."> so
-    // a consuming model can syntactically distinguish "data the
-    // server returned" from "instructions from the user". Embedded
-    // </ants_mcp_data> close tags in the payload are replaced with
-    // a sentinel to neutralise breakout. See docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md.
     // ANTS-4457 — the two token_usage accounting rules, exposed as
     // statics so each is testable without driving a dispatch.
     // dispatchResultIsSuccess is a WHITELIST: a result added later
@@ -591,6 +585,12 @@ public:
     static QJsonObject toolCallResult(const QString &wrapped,
                                       const QString &refusalCode);
 
+    // ANTS-1294 — frame user-supplied MCP content as data. Wraps a
+    // tools/call response payload in <ants_mcp_data tool="..."> so
+    // a consuming model can syntactically distinguish "data the
+    // server returned" from "instructions from the user". Embedded
+    // </ants_mcp_data> close tags in the payload are replaced with
+    // a sentinel to neutralise breakout. See docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md.
     static QString wrapMcpData(const QString &toolName,
                                const QString &payload);
 

@@ -76,9 +76,9 @@ constexpr qsizetype kMaxSocketRequestBytes = qsizetype{256} * 1024;
 
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
     // ANTS-1356 — start the monotonic clock used by rateLimitCheck.
-    // QElapsedTimer::start() is idempotent; calling it on already-
-    // started clocks resets — which is fine for the singleton
-    // ClaudeIntegration that lives for the whole process lifetime.
+    // The clock is shared static state, and File -> New Window makes a
+    // second ClaudeIntegration. The isValid() guard stops that one from
+    // resetting the clock the first one started.
     if (!s_rateLimitClock.isValid()) {
         s_rateLimitClock.start();
     }
@@ -504,11 +504,12 @@ void ClaudeIntegration::registerToolProvider(
 // ANTS-2132 — the rc-factory overload. Same registration, plus the one bit
 // the dispatcher needs to decide which thread may run this handler.
 //
-// Eligibility is BOTH halves and neither alone. A handler built by an rc
-// factory forwards to a RemoteControl cmd*() and nothing else, so it touches
-// no widget of its own -- but a TabSpecific verb's cmd*() reads live terminal
+// Eligibility is BOTH halves and neither alone. The handler's own flag is
+// its author's declaration that its body touches no widget (it defaults to
+// true; rcDelegate forwards to a RemoteControl cmd*(), and a few handlers are
+// written by hand). But a TabSpecific verb's cmd*() reads live terminal
 // state through MainWindow (cmdLastSelection resolves a TerminalWidget and
-// reads selectedText()), so provenance alone is not enough.
+// reads selectedText()), so the declaration alone is not enough.
 // See docs/specs/ANTS-2132-async-mcp-dispatch.md § 2.4.
 void ClaudeIntegration::registerToolProvider(
     const QString &name,
@@ -1077,8 +1078,7 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
     // here, before the offload below, so it can suppress it: an
     // agent that asked for true bytes must not be handed a
     // head+pointer envelope instead. Honoured only for the
-    // isRawEligible read verbs (read_region/read_regions/
-    // workspace_search); see the wrap branch below.
+    // isRawEligible read verbs; see the wrap branch below.
     const bool rawRequested =
         mcp::isRawEligible(toolName) &&
         argsObj.value(QStringLiteral("raw")).toBool();
@@ -1563,7 +1563,7 @@ QJsonObject makeCompactProp() {
 }
 
 // ANTS-2218 — `raw` opt-in flag on the content-read verbs
-// (read_region / read_regions / workspace_search). When true
+// (the isRawEligible set). When true
 // the body is returned VERBATIM inside an unforgeable nonce
 // frame instead of the default scrub that neutralises literal
 // </ants_mcp_data> and `<!--`/`-->` markers — so an agent

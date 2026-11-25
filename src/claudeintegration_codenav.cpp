@@ -235,7 +235,7 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 // this over Bash/Read for code searches.
                 QJsonObject wsTool;
                 wsTool["name"] = "workspace_search";
-                // On the wire, kEagerDescription below replaces this text.
+                // On the wire, kEagerDescription (claudeintegration.cpp) replaces this text.
                 wsTool["description"] = QStringLiteral(
                     "Search the project for code matching a literal string "
                     "or regex — prefer over `Bash grep -r` (saves "
@@ -919,7 +919,7 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 // source file vs full Read.
                 QJsonObject foTool;
                 foTool["name"] = "file_outline";
-                // On the wire, kEagerDescription below replaces this text.
+                // On the wire, kEagerDescription (claudeintegration.cpp) replaces this text.
                 foTool["description"] = QStringLiteral(
                     "Return a structured outline of a file (header comment + "
                     "per-symbol {line, kind, name, signature}) instead of a full "
@@ -1475,7 +1475,7 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 // symbol-scoped under-read) instead of a full native Read.
                 QJsonObject rrTool;
                 rrTool["name"] = "read_region";
-                // On the wire, kEagerDescription below replaces this text.
+                // On the wire, kEagerDescription (claudeintegration.cpp) replaces this text.
                 rrTool["description"] = QStringLiteral(
                     "Return an exact slice of a project file instead of Read-ing "
                     "it: a line range (start_line/end_line), a named symbol's body "

@@ -285,21 +285,15 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "the basename-derived one). Must not start "
                         "with '/' or contain '..' (ANTS-1906).");
                     props["path"]       = pathProp;
-                    // ANTS-4468 — `mode` was HONOURED by the handler and never
-                    // DECLARED here, so the ANTS-2175 checker (which diffs the
-                    // call's args against inputSchema.properties) correctly
-                    // flagged it — and the envelope then asserted both that the
-                    // argument was applied and that it was discarded, with the
-                    // gate_drift payload proving the first. The reporter read
-                    // it as a branch-ordering bug; the cause is the missing
-                    // declaration, so the fix is to declare it rather than to
-                    // suppress the advisory. Suppressing would have cost the
-                    // signal its meaning, which is the harm they named: an
-                    // ignored_args that fires on honoured arguments trains
-                    // callers to disregard it, and then a genuine typo
-                    // (mode:"gate-drift") reports nothing. Declaring it also
-                    // makes both non-default modes discoverable from the
-                    // schema instead of only from the description prose.
+                    // ANTS-4468 — declare every argument the handler reads, or
+                    // the ANTS-2175 checker (which diffs the call's args against
+                    // inputSchema.properties) flags it in ignored_args. `mode`
+                    // was honoured but undeclared, so the envelope said both
+                    // that it was applied and that it was discarded. Suppressing
+                    // the advisory instead would train callers to disregard
+                    // ignored_args, and a genuine typo (mode:"gate-drift")
+                    // would then report nothing. Declaring it also makes both
+                    // non-default modes discoverable from the schema.
                     QJsonObject modeProp; modeProp["type"] = "string";
                     {
                         QJsonArray en;
@@ -340,6 +334,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     t["description"] = QStringLiteral(
                         "Edit a spec's structured surface without hand-editing "
                         "markdown. op:\"set_status\" rewrites **Status:**; "
+                        "op:\"append_status\" adds `status` at its end; "
                         "op:\"append_loop\" appends a loop-log row in the section's "
                         "existing shape (a table needs `cells`); op:\"append_inv\" "
                         "appends an INV-N bullet, never renumbering. Target via `id` "
@@ -1088,7 +1083,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "Reach for it before believing a passing test holds "
                         "an invariant; it is deferred, so nothing surfaces it "
                         "at session start.");
-                    // ANTS-4472 — the SessionStart prelude is at 1390 of its
+                    // ANTS-4472 — the SessionStart prelude is near its
                     // 1400-byte cap, so mutation_probe cannot be named there.
                     // It is named here instead — the contributor's own cheaper
                     // variant — because a session running tests is exactly the
@@ -1269,7 +1264,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                 {
                     QJsonObject t;
                     t["name"] = "find_definition";
-                    // On the wire, kEagerDescription below replaces this text.
+                    // On the wire, kEagerDescription (claudeintegration.cpp) replaces this text.
                     t["description"] = QStringLiteral(
                         "Find where a symbol is defined across the project, without a "
                         "full LSP: a regex-anchored scan over C++/Python/Lua/Shell/GLSL "
@@ -1859,7 +1854,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                 {
                     QJsonObject t;
                     t["name"] = "indie_review_dispatch";
-                    // The tools/list pass below appends a sentence to this description.
+                    // The tools/list pass (claudeintegration.cpp) appends a sentence to this description.
                     t["description"] = QStringLiteral(
                         "Server-side multi-agent independent code "
                         "review: dispatches N parallel HTTP POSTs to "
