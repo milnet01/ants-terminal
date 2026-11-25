@@ -44,13 +44,13 @@ struct VtAction {
     std::vector<bool> colonSep;   // true if param[i] was preceded by ':' (sub-parameter)
     std::string intermediate;     // Intermediate bytes; for CSI, also the private prefix (? > = <)
     std::string payload;          // The string body, for OscEnd, DcsEnd and ApcEnd
-    // True when the OSC/DCS/APC payload hit the 10 MiB accumulator cap and was
-    // silently truncated. Consumers that act on the payload byte-for-byte
+    // True when the OSC/DCS/APC payload hit the kMaxStringBytes cap
+    // (vtparser.cpp) and was silently truncated. Consumers that act on the payload byte-for-byte
     // (OSC 52 base64 clipboard, OSC 8 hyperlink URI) MUST refuse a truncated
     // payload rather than decode a corrupt prefix. ANTS-1663.
     bool truncated = false;
-    // True when a CSI's parameter list hit the 32-param DoS cap and one or
-    // more params were dropped. Parallels `truncated` for OSC/DCS/APC strings:
+    // True when a CSI's parameter list hit the kMaxParams cap (vtparser.cpp)
+    // and one or more params were dropped. Parallels `truncated` for OSC/DCS/APC strings:
     // a consumer that would otherwise apply a partial/garbage param chain (a
     // state the stream never specified) can detect + refuse it. ANTS-1827.
     bool paramsTruncated = false;
@@ -136,7 +136,7 @@ private:
                                     // overflowed its cap; surfaced on the End
                                     // action's `truncated` field. ANTS-1663.
     bool m_paramsTruncated = false; // set when the active CSI dropped a param
-                                    // at the 32-param cap; surfaced on the
+                                    // at the kMaxParams cap; surfaced on the
                                     // CsiDispatch `paramsTruncated`. ANTS-1827.
 
     // UTF-8 decoder state

@@ -17,8 +17,10 @@ VtStream::~VtStream() {
     // m_parser is a unique_ptr. Both destructors run on whichever thread
     // executes ~VtStream — which is the worker thread if the containing
     // QThread emitted finished() and we were deleteLater'd. This matches
-    // the existing Pty dtor's SIGHUP/SIGTERM/SIGKILL ladder, which has
-    // no thread affinity (it just closes an FD and waitpid's a child).
+    // the existing Pty dtor's SIGHUP/SIGTERM/SIGKILL ladder, which blocks
+    // for up to about 1.5 s. That wait is safe only here, on the worker:
+    // the GUI thread must never run ~Pty (see ptyhandler.cpp ~Pty), and the
+    // Pty's QSocketNotifier must be torn down on the thread that made it.
 }
 
 bool VtStream::start(const QString &shell, const QString &workDir, int rows, int cols) {
@@ -31,9 +33,10 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
         [this](const VtAction &a) { onParsedAction(a); });
     connect(m_pty, &Pty::dataReceived, this, &VtStream::onPtyData);
     connect(m_pty, &Pty::finished, this, &VtStream::onPtyFinished);
-    // ANTS-2119 — surface PTY write-loss (queue/kernel-buffer overflow) so it is
-    // not silent. Rare (only past the 4 MiB EAGAIN queue cap), hence a log
-    // warning rather than a UI banner.
+    // ANTS-2119 — surface PTY write-loss so it is not silent. Two causes emit
+    // it: the queue passing Pty::MAX_PENDING_WRITE_BYTES, and a fatal write
+    // or drain error on a dead master. Rare either way, hence a log warning
+    // rather than a UI banner.
     connect(m_pty, &Pty::writeLost, this, [this](qint64 bytes) {
         qWarning("VtStream: PTY dropped %lld byte(s) on write overflow",
                  static_cast<long long>(bytes));

@@ -355,8 +355,8 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         // workDir cross the sandbox boundary explicitly via --env=
         // and --directory=. Detection + argv string prep happens
         // pre-fork (ANTS-1046); the child only assembles pointers to
-        // those buffers and calls execvp — no std::string or
-        // std::vector allocation between forkpty and execvp.
+        // those buffers and calls execvpe — no std::string or
+        // std::vector allocation between forkpty and execvpe.
         // If flatpak-spawn is missing we _exit(127) the same way a
         // missing shell would, matching the direct-exec fallback's
         // failure shape. See packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml.
@@ -659,18 +659,10 @@ void Pty::onReadReady() {
                 exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
                 m_childPid = -1;
             }
-            // ANTS-1131 — when waitpid(WNOHANG) returns 0, the child
-            // closed the PTY but hasn't been reaped yet (very common:
-            // shell calls exec against a binary that segfaults during
-            // init). Pre-fix code unconditionally cleared m_childPid,
-            // defeating the destructor's SIGTERM/SIGKILL escalation
-            // and leaking the child as an init-adopted zombie. Now
-            // we leave m_childPid populated so destructor cleanup
-            // can escalate.
-            // ANTS-1657 — the ANTS-1175 childUnreapedAtEof() signal was
-            // emitted here but never connected to any consumer; removed as a
-            // zombie. finished(exitCode) is the only EOF signal callers rely
-            // on (exitCode == -1 when the child wasn't yet reaped at EOF).
+            // ANTS-1131 — keep m_childPid when waitpid(WNOHANG) returns 0: the
+            // child closed the PTY but is not reaped yet, and the destructor's
+            // SIGTERM/SIGKILL escalation needs the pid to reap it. So
+            // finished(-1) means "not reaped at EOF".
             emit finished(exitCode);
             break;
         } else {

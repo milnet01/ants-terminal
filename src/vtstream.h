@@ -293,8 +293,8 @@ private:
     // Back-pressure cap. A batch flushes once it reaches kFlushActions or
     // kFlushBytes, but onPtyData appends a whole Pty read before checking,
     // so one batch can hold kFlushBytes − 1 plus one read (Pty reads up to
-    // 16 KB). In-flight raw input is therefore about kMaxInFlight ×
-    // (kFlushBytes + one read), and onPtyFinished may send one batch past
+    // one read buffer, sized in ptyhandler.cpp). In-flight raw input is
+    // therefore about kMaxInFlight × (kFlushBytes + one read), and onPtyFinished may send one batch past
     // the cap. Any cap is correct: the tests lock correctness, not the
     // value, so raise it if profiling shows reads paused too often.
     static constexpr int kMaxInFlight = 8;
