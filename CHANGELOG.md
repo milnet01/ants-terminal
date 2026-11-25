@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The background-task and task-list trackers share one base for following a transcript, so a fix to that code lands in both at once** (ANTS-6228)
+
 - **A roadmap_log write takes about half the time on a large roadmap: it skips the hand-edit check and the delete guard's reparse when the publish stamp shows nothing changed since the last write** (ANTS-4681)
 
 - **An idle Ants MCP server lets go of the roadmap and changelog it last read.** (ANTS-5208)

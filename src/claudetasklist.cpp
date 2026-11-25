@@ -1,11 +1,9 @@
 #include "claudetasklist.h"
-#include "claudetranscriptwatch.h"
 #include "claudecontent.h"   // ANTS-2002 — content-as-array text extraction
 #include "claudetranscriptwalker.h"  // ANTS-1261 — shared JSONL walk + gating
 
 #include <algorithm>
 
-#include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -56,52 +54,16 @@ constexpr qint64 kStaleInProgressMs = 24LL * 3600LL * 1000LL;
 } // namespace
 
 ClaudeTaskListTracker::ClaudeTaskListTracker(QObject *parent)
-    : QObject(parent) {
-    // ANTS-5050 — the watcher fires per append; the debounce collapses a
-    // burst into one rescan instead of one full transcript walk each.
-    m_rescanDebounce.setSingleShot(true);
-    m_rescanDebounce.setInterval(kRescanDebounceMs);
-    connect(&m_rescanDebounce, &QTimer::timeout, this, &ClaudeTaskListTracker::rescan);
-    // ANTS-1285 — one shared watch per transcript; filter on our own path.
-    connect(&ClaudeTranscriptWatch::instance(), &ClaudeTranscriptWatch::changed,
-            this, [this](const QString &path) {
-                if (path == m_transcriptPath) m_rescanDebounce.start();
-            });
+    : ClaudeTranscriptTrackerOf(parent) {}
+
+QList<ClaudeTask> ClaudeTaskListTracker::parse(const QString &path,
+                                               ClaudeTranscript::Cursor &cursor,
+                                               ClaudeTaskAccum &acc) const {
+    return parseIncremental(path, cursor, acc);
 }
 
-ClaudeTaskListTracker::~ClaudeTaskListTracker() {
-    if (auto *watch = ClaudeTranscriptWatch::existing())
-        watch->release(m_transcriptPath);
-}
-
-void ClaudeTaskListTracker::setTranscriptPath(const QString &path) {
-    if (path == m_transcriptPath) return;
-    ClaudeTranscriptWatch::instance().release(m_transcriptPath);
-    m_transcriptPath = path;
-    // Reset the poll() change-signal shortcircuit — if the user rebinds
-    // the same project shortly after a clear (tab-switch round trip) and
-    // the file mtime/size hasn't ticked, poll() would otherwise skip the
-    // legitimate rescan.
-    m_lastRescanMtimeMs   = 0;
-    m_lastRescanSizeBytes = 0;
-    // ANTS-5050 INV-6 — the parse cursor and its accumulator belong to the
-    // OLD path. Resuming either against a different file would fold one
-    // session's events into another's list. INV-9 — take the state kept for
-    // the NEW path instead, so a tab-switch re-bind resumes rather than
-    // cold-walking; rescan()'s canResume still re-walks if the file changed.
-    m_cursor = {};
-    m_acc = {};
-    walkCache().restore(m_transcriptPath, m_cursor, m_acc);
-    ClaudeTranscriptWatch::instance().acquire(m_transcriptPath);
-    m_rescanDebounce.stop();  // ANTS-5050 — this rescan supersedes a pending one
-    rescan();
-}
-
-// ANTS-5050 INV-9 — one cache for every task-list tracker, so a sibling bound
-// to the same transcript resumes too.
-ClaudeTranscript::WalkCache<ClaudeTaskAccum> &ClaudeTaskListTracker::walkCache() {
-    static ClaudeTranscript::WalkCache<ClaudeTaskAccum> cache;
-    return cache;
+bool ClaudeTaskListTracker::sameRow(const ClaudeTask &a, const ClaudeTask &b) const {
+    return a.id == b.id && a.status == b.status && a.subject == b.subject;
 }
 
 int ClaudeTaskListTracker::unfinishedCount() const {
@@ -142,101 +104,6 @@ int ClaudeTaskListTracker::completedCount() const {
         if (t.status == QStringLiteral("completed")) ++n;
     }
     return n;
-}
-
-void ClaudeTaskListTracker::rescan() {
-    // ANTS-1458 phase 2 — sample the change-signal (mtime + size) BEFORE
-    // the parse, not after. parseTranscript() reads to the file's current
-    // EOF; if Claude appends during that read window (common in a
-    // TaskCreate burst — it writes every ~100 ms), recording the signal
-    // afterward would capture the post-append mtime/size while the parse
-    // missed those bytes. poll()'s equality short-circuit would then
-    // strand the new task until an unrelated later write advanced the
-    // signal again — the user-reported >2 s lag. Sampling the pre-read
-    // baseline means any write landing during/after the read leaves a
-    // strictly newer on-disk signal, so the next poll() re-parses (at
-    // worst one redundant rescan).
-    qint64 mtimeMs = 0, sizeBytes = 0;
-    bool haveSignal = false;
-    if (!m_transcriptPath.isEmpty()) {
-        const QFileInfo fi(m_transcriptPath);
-        if (fi.exists()) {
-            mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
-            sizeBytes = fi.size();
-            haveSignal = true;
-        }
-    }
-
-    // ANTS-5050 — parse only what was appended since the last rescan.
-    // Measured 2026-09-12: a full walk pair cost 257 ms on a 65 MiB
-    // transcript, on this thread, per debounced append. The cursor and the
-    // accumulator reset together whenever the cursor cannot be trusted
-    // (truncated, replaced, rewritten), which is the one branch that covers
-    // every such case — see ClaudeTranscript::canResume.
-    QList<ClaudeTask> next;
-    if (!m_transcriptPath.isEmpty()) {
-        if (!ClaudeTranscript::canResume(m_transcriptPath, m_cursor)) {
-            m_cursor = {};
-            m_acc = {};
-        }
-        next = parseIncremental(m_transcriptPath, m_cursor, m_acc);
-        walkCache().store(m_transcriptPath, m_cursor, m_acc);  // ANTS-5050 INV-9
-    }
-
-    // QFileSystemWatcher drops the path on atomic-rewrite; re-add if
-    // it disappeared between rescans. Same shape as
-    // ClaudeBgTaskTracker::rescan.
-    ClaudeTranscriptWatch::instance().ensure(m_transcriptPath);
-
-    // Compare shape: same length AND same (id, status) pairs in the
-    // same order. Skip emit if identical to avoid UI churn.
-    bool same = (next.size() == m_tasks.size());
-    if (same) {
-        for (int i = 0; i < next.size(); ++i) {
-            if (next[i].id != m_tasks[i].id
-                || next[i].status != m_tasks[i].status
-                || next[i].subject != m_tasks[i].subject) {
-                same = false;
-                break;
-            }
-        }
-    }
-    m_tasks = std::move(next);
-    if (!same) emit tasksChanged();
-
-    // Store the pre-read baseline so poll() can short-circuit when
-    // nothing has changed between ticks (ANTS-1458 phase 2 — both fields
-    // sampled above, before the parse).
-    if (haveSignal) {
-        m_lastRescanMtimeMs   = mtimeMs;
-        m_lastRescanSizeBytes = sizeBytes;
-    }
-}
-
-void ClaudeTaskListTracker::poll() {
-    if (m_transcriptPath.isEmpty()) return;
-    const QFileInfo fi(m_transcriptPath);
-    if (!fi.exists()) return;
-    // ANTS-2002 — parity with ClaudeBgTaskTracker::poll(): the watch may have
-    // been lost (file absent at bind time, atomic-rename on save, or inotify
-    // exhaustion). Re-add it and reparse so a dropped watch can't strand the
-    // task list on stale state until the next mtime tick happens to differ.
-    if (ClaudeTranscriptWatch::instance().ensure(m_transcriptPath)) {
-        rescan();
-        return;
-    }
-    // ANTS-1458 phase 2 — re-parse when EITHER signal moved. mtime alone
-    // misses a same-millisecond append (coarse-granularity filesystem, or
-    // a burst landing inside one mtime tick); size catches it.
-    const qint64 mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
-    const qint64 sizeBytes = fi.size();
-    if (mtimeMs == m_lastRescanMtimeMs && sizeBytes == m_lastRescanSizeBytes)
-        return;
-    rescan();
-}
-
-qint64 ClaudeTaskListTracker::lastRescanMtimeMs() const {
-    return m_lastRescanMtimeMs;
 }
 
 // Pure parser. Walks the transcript line by line. See header for

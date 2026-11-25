@@ -55,3 +55,8 @@ Phase 2 (the fix), 2026-06-17:
   artifact: the note is present at the bullet tail in `ROADMAP.md`.
   Loop stopped here per the "move on once findings are polish-only"
   directive.
+- **impl (2026-11-25, ANTS-6228)** — Not a review loop; no reviewer was dispatched. ANTS-6228 moved both
+  trackers' binding, rescan and poll() into the shared base
+  src/claudetranscripttracker.*, so the *Test:* clauses of INV-1, INV-4,
+  INV-5 and INV-6 now name that file. INV-4's body says "before the
+  parse" instead of naming parseTranscript(). No invariant added.

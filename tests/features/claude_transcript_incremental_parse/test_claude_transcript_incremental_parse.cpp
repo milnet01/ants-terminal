@@ -337,25 +337,42 @@ TEST(TranscriptIncremental, FullParseContractUnchanged) {
 
 // --- INV-6 — a path change resets the cursor --------------------------
 //
-// setTranscriptPath is where the reset lives; the tracker's cursor and
-// accumulator are private, so this checks the reset at its source.
+// setTranscriptPath is where the reset happens, through rebindWalkState; the
+// tracker's cursor and accumulator are not public, so this checks the reset
+// at its source (ANTS-6228 moved both into claudetranscripttracker.*).
+
+namespace {
+// The text from `sig` up to the first `close` after it; empty if either is missing.
+std::string bodyFrom(const std::string &src, const char *sig, const char *close) {
+    const std::size_t fn = src.find(sig);
+    if (fn == std::string::npos) return {};
+    const std::size_t end = src.find(close, fn);
+    if (end == std::string::npos) return {};
+    return src.substr(fn, end - fn);
+}
+}  // namespace
 
 TEST(TranscriptIncremental, PathChangeResetsCursor) {
-    const std::string src = ants_test::slurpFile(SRC_CLAUDETASKLIST_CPP_PATH);
-    ASSERT_FALSE(src.empty()) << "could not read claudetasklist.cpp";
+    const std::string cpp = ants_test::slurpFile(SRC_TRANSCRIPT_TRACKER_CPP_PATH);
+    const std::string h   = ants_test::slurpFile(SRC_TRANSCRIPT_TRACKER_H_PATH);
+    ASSERT_FALSE(cpp.empty()) << "could not read claudetranscripttracker.cpp";
+    ASSERT_FALSE(h.empty()) << "could not read claudetranscripttracker.h";
 
-    // The reset must sit in setTranscriptPath beside the existing
-    // m_lastRescan* resets, or a path change can resume against the old file.
-    const std::size_t fn = src.find("void ClaudeTaskListTracker::setTranscriptPath");
-    ASSERT_NE(fn, std::string::npos);
-    const std::size_t end = src.find("\n}", fn);
-    ASSERT_NE(end, std::string::npos);
-    const std::string body = src.substr(fn, end - fn);
+    // setTranscriptPath must rebind the walk state beside the m_lastRescan*
+    // resets, or a path change can resume against the old file.
+    const std::string setPath = bodyFrom(
+        cpp, "void ClaudeTranscriptTracker::setTranscriptPath", "\n}");
+    ASSERT_FALSE(setPath.empty());
+    EXPECT_NE(setPath.find("rebindWalkState()"), std::string::npos)
+        << "setTranscriptPath does not rebind the walk state";
 
-    EXPECT_NE(body.find("m_cursor"), std::string::npos)
-        << "setTranscriptPath does not reset the parse cursor";
-    EXPECT_NE(body.find("m_acc"), std::string::npos)
-        << "setTranscriptPath does not reset the parse accumulator";
+    const std::string rebind =
+        bodyFrom(h, "void rebindWalkState() override", "\n    }");
+    ASSERT_FALSE(rebind.empty());
+    EXPECT_NE(rebind.find("m_cursor = {}"), std::string::npos)
+        << "rebindWalkState does not reset the parse cursor";
+    EXPECT_NE(rebind.find("m_acc = {}"), std::string::npos)
+        << "rebindWalkState does not reset the parse accumulator";
 }
 
 // --- INV-6 — kept state is never used for another path ----------------

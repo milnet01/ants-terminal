@@ -113,8 +113,9 @@ mechanism behind the reported symptom.
   and side-effect-free. (Phase 2: the value is *sampled* before the
   parse and *stored* at the end of `rescan()`; the accessor and its
   return value are unchanged — only the sample point moved.)
-  *Test:* grep `m_lastRescanMtimeMs =` in `src/claudetasklist.cpp` —
-  two assignment sites: the `= 0` reset in `setTranscriptPath()` and
+  *Test:* grep `m_lastRescanMtimeMs =` in
+  `src/claudetranscripttracker.cpp`, the base both trackers share
+  (ANTS-6228) — two assignment sites: the `= 0` reset in `setTranscriptPath()` and
   the `= mtimeMs` store inside `rescan()`; accessor body is one line.
 - **INV-2** — `refreshTasksButton`'s debug log carries `mtime`,
   `rescan-mtime`, `mtime-delta-ms`, `poll-dur-us`, and `delta`
@@ -137,27 +138,28 @@ mechanism behind the reported symptom.
 Phase-2 invariants:
 
 - **INV-4** (pre-read sampling) — `rescan()` samples the change
-  signal (`fi.lastModified()` and `fi.size()`) *before* calling
-  `parseTranscript()`, and stores that pre-read sample into the
+  signal (`fi.lastModified()` and `fi.size()`) *before* the parse,
+  and stores that pre-read sample into the
   members (`m_lastRescanMtimeMs`, `m_lastRescanSizeBytes`) after the
   parse completes — the members are never re-sampled post-parse.
-  This is what closes the read-window race. *Test:* in `src/claudetasklist.cpp`
-  and `src/claudebgtasks.cpp`, the `fi.lastModified()` + `fi.size()`
-  sampling block appears before the `parseTranscript(` call inside
+  This is what closes the read-window race. *Test:* in
+  `src/claudetranscripttracker.cpp`, the `fi.lastModified()` +
+  `fi.size()` sampling block appears before the `refold()` call inside
   `rescan()`, and the `m_lastRescan*` store appears after it.
 - **INV-5** (dual-signal short-circuit) — `poll()` re-parses unless
   *both* mtime and size equal the stored baseline; the only
   short-circuit is `mtimeMs == m_lastRescanMtimeMs && sizeBytes ==
-  m_lastRescanSizeBytes`. *Test:* grep that conjunction in the
-  `poll()` body of both `src/claudetasklist.cpp` and
-  `src/claudebgtasks.cpp`.
+  m_lastRescanSizeBytes`, joined by the bg tracker's helper-transcript
+  check. *Test:* grep that conjunction in the `poll()` body of
+  `src/claudetranscripttracker.cpp`.
 - **INV-6** (symmetric fix) — both trackers carry the
   `m_lastRescanSizeBytes` field and apply INV-4 + INV-5
   identically; `setTranscriptPath()` resets both `m_lastRescan*`
-  fields to 0. *Test:* grep `m_lastRescanSizeBytes` per tracker —
-  four hits: the field decl (`.h`), the `= 0` reset in
-  `setTranscriptPath()`, the store in `rescan()`, and the `poll()`
-  compare (all three non-decl hits in `.cpp`). The pre-read *sample*
+  fields to 0. Since ANTS-6228 both inherit one copy of that code.
+  *Test:* grep `m_lastRescanSizeBytes` in
+  `src/claudetranscripttracker.*` — four hits: the field decl (`.h`),
+  the `= 0` reset in `setTranscriptPath()`, the store in `rescan()`,
+  and the `poll()` compare (all three non-decl hits in `.cpp`). The pre-read *sample*
   in `rescan()` writes a local `sizeBytes`, not the member, so it is
   not among the member-name hits.
 

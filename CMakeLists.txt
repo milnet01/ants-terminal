@@ -1014,6 +1014,8 @@ add_library(ants_claude_lib STATIC
     src/claudetasklistdialog.cpp
     # ANTS-1285 — the one transcript watch both trackers share.
     src/claudetranscriptwatch.cpp
+    # ANTS-6228 — the binding, watch and polling both trackers share.
+    src/claudetranscripttracker.cpp
     # ANTS-1897 — MCP discoverability via SessionStart hook installer.
     src/mcporientation.cpp
 )
@@ -3766,11 +3768,14 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_BGTASKS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasks.cpp"
         SRC_BGTASKS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasks.h"
+        SRC_TRANSCRIPT_TRACKER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudetranscripttracker.cpp"
+        SRC_TRANSCRIPT_TRACKER_H_PATH="${CMAKE_SOURCE_DIR}/src/claudetranscripttracker.h"
         SRC_BGDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h")
     set_property(SOURCE tests/features/claude_transcript_incremental_parse/test_claude_transcript_incremental_parse.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_CLAUDETASKLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudetasklist.cpp")
+        SRC_TRANSCRIPT_TRACKER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudetranscripttracker.cpp"
+        SRC_TRANSCRIPT_TRACKER_H_PATH="${CMAKE_SOURCE_DIR}/src/claudetranscripttracker.h")
     set_property(SOURCE tests/features/spec_field_extent/test_spec_field_extent.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3785 INV-6 — both consumers of the header-field extent rule are

@@ -77,6 +77,10 @@ TEST(ClaudeBgTasksButton, Main) {
 
     const std::string bgcpp = ants_test::slurpFile(SRC_BGTASKS_CPP_PATH);
     const std::string bgh   = ants_test::slurpFile(SRC_BGTASKS_H_PATH);
+    // ANTS-6228 — the binding, watch, rescan and poll live in the base both
+    // trackers share.
+    const std::string trcpp = ants_test::slurpFile(SRC_TRANSCRIPT_TRACKER_CPP_PATH);
+    const std::string trh   = ants_test::slurpFile(SRC_TRANSCRIPT_TRACKER_H_PATH);
     const std::string dlgcpp = ants_test::slurpFile(SRC_BGDIALOG_CPP_PATH);
     const std::string dlgh   = ants_test::slurpFile(SRC_BGDIALOG_H_PATH);
     const std::string mw     = ants_test::slurpMainWindow();
@@ -105,26 +109,31 @@ TEST(ClaudeBgTasksButton, Main) {
              "map a launch to its output path or completion event");
     }
 
-    // INV-3: tracker declares + emits tasksChanged.
-    if (bgh.find("void tasksChanged()") == std::string::npos) {
-        fail("INV-3: ClaudeBgTaskTracker must declare a "
+    // INV-3: tracker declares + emits tasksChanged, through the shared base.
+    if (bgh.find("public ClaudeTranscriptTrackerOf<") == std::string::npos) {
+        fail("INV-3: ClaudeBgTaskTracker must derive from "
+             "ClaudeTranscriptTrackerOf, which carries tasksChanged, "
+             "rescan and the transcript watch");
+    }
+    if (trh.find("void tasksChanged()") == std::string::npos) {
+        fail("INV-3: ClaudeTranscriptTracker must declare a "
              "`void tasksChanged()` signal — the button and dialog "
              "depend on it to live-update");
     }
-    if (bgcpp.find("emit tasksChanged()") == std::string::npos) {
-        fail("INV-3: ClaudeBgTaskTracker::rescan must "
+    if (trcpp.find("emit tasksChanged()") == std::string::npos) {
+        fail("INV-3: ClaudeTranscriptTracker::rescan must "
              "`emit tasksChanged()` when the task-list shape changes");
     }
 
     // INV-4: tracker watches its transcript through the shared hub
     // (ANTS-1285).
-    if (bgcpp.find("&ClaudeTranscriptWatch::changed") == std::string::npos) {
-        fail("INV-4: ClaudeBgTaskTracker must connect to "
+    if (trcpp.find("&ClaudeTranscriptWatch::changed") == std::string::npos) {
+        fail("INV-4: ClaudeTranscriptTracker must connect to "
              "ClaudeTranscriptWatch::changed — pure polling drops live "
              "tail events for in-flight transcript writes");
     }
-    if (bgcpp.find("ClaudeTranscriptWatch::instance().acquire(") == std::string::npos) {
-        fail("INV-4: ClaudeBgTaskTracker must subscribe its transcript "
+    if (trcpp.find("ClaudeTranscriptWatch::instance().acquire(") == std::string::npos) {
+        fail("INV-4: ClaudeTranscriptTracker must subscribe its transcript "
              "to ClaudeTranscriptWatch when the path is set");
     }
 
@@ -383,8 +392,8 @@ TEST(ClaudeBgTasksButton, Main) {
             R"(public\s+slots\s*:\s*[\s\S]*?void\s+rescan\s*\(\s*\))");
         std::regex publicSweep(
             R"(public\s+slots\s*:\s*[\s\S]*?void\s+sweepLiveness\s*\(\s*\))");
-        if (!std::regex_search(bgh, publicRescan)) {
-            fail("INV-12(b): ClaudeBgTaskTracker::rescan must be in "
+        if (!std::regex_search(trh, publicRescan)) {
+            fail("INV-12(b): ClaudeTranscriptTracker::rescan must be in "
                  "`public slots:` so the file watcher can connect to "
                  "transcript-changed events");
         }

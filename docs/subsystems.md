@@ -627,10 +627,12 @@ Listed only where behavior isn't obvious from the name.
   the call and releases it before returning — never the process-owned
   `Interactive` one, which `load()` refuses. `dry_run` previews the counts and
   rolls back, but does open (and may create) the store. Spec ANTS-3855.
-- `claudetasklist` / `claudebgtasks` — per-tab JSONL trackers;
-  one shared watch per transcript (`claudetranscriptwatch`, ANTS-1285) +
-  `poll()` mtime rescue for tmpfile+rename rewrites (which drop the
-  watch). `sweepLiveness()` is bg-only. Parser:
+- `claudetasklist` / `claudebgtasks` — per-tab JSONL trackers on one
+  base, `claudetranscripttracker` (ANTS-6228): path binding, one shared
+  watch per transcript (`claudetranscriptwatch`, ANTS-1285), debounced
+  rescan, and `poll()` mtime rescue for tmpfile+rename rewrites (which
+  drop the watch). Each tracker keeps only its fold. `sweepLiveness()`
+  is bg-only. Parser:
   `TodoWrite` (snapshot replace), `TaskCreate` + tool_result (add),
   `TaskUpdate` (status flip). Chip reads `done/total` (ANTS-1246). Both
   filter `isSidechain` + reset on `isCompactSummary`.

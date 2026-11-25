@@ -276,6 +276,8 @@
         "src/claudetasklistdialog.h",
         "src/claudetranscript.cpp",
         "src/claudetranscript.h",
+        "src/claudetranscripttracker.cpp",
+        "src/claudetranscripttracker.h",
         "src/claudetranscriptwalker.h",
         "src/claudetranscriptwatch.cpp",
         "src/claudetranscriptwatch.h"

@@ -109022,7 +109022,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L17-F4).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6228] **Give ClaudeBgTaskTracker and ClaudeTaskListTracker one shared transcript-binding and polling base.**
+- ✅ [ANTS-6228] **Give ClaudeBgTaskTracker and ClaudeTaskListTracker one shared transcript-binding and polling base.**
   From ANTS-6126; feeds ANTS-5796 (dup:8f1fb4e6ed21, dup:c753abf2e8ed).
   Shared: the debounced constructor, destructor, setTranscriptPath,
   rescan's before-read sample, cursor reset and walk-cache store, and
@@ -109036,6 +109036,10 @@ worked after these.
   new id dup:22a9fd4640b3. The copies have drifted further: the bg
   tracker's poll() also checks walkHelperTranscripts, its parse takes
   m_processStartMs, and its shape compare omits subject.
+  2026-11-25: src/claudetranscripttracker.* holds the binding, watch,
+  debounced rescan and poll(); ClaudeTranscriptTrackerOf<Task, Accum>
+  holds the cursor, accumulator, walk cache and task list. Each tracker
+  keeps parse(), sameRow() and (bg) otherSourcesMoved().
   **Layman:** The two trackers that read Claude's background tasks and its task list repeat the same file-following code, so each fix has to be made twice.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L17-F5).
