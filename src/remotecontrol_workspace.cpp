@@ -87,10 +87,12 @@ QJsonArray nearbyDirectories(const QString &root, const QString &lane) {
 // It classifies NOTHING, and that is not style. `workspace_search`'s
 // classification reads its PARSED matches, which only exist after the caller
 // has parsed the stdout returned here, so it cannot move into a process runner
-// even in principle. And the two verbs classify differently on purpose:
+// even in principle. And its three callers classify differently on purpose:
 // `workspace_search` treats three of its four failure branches as failures only
-// when no matches were parsed, while `cited_by` refuses on any failed run,
-// because a partial cell set is indistinguishable from a complete one.
+// when nothing was found, while `cited_by` refuses on any failed run, because a
+// partial cell set is indistinguishable from a complete one, and
+// `co_change_family` refuses a scanner that did not run but reports a hard kill
+// or output cap as `truncated`.
 struct RgRun {
     QByteArray stderrTail;        // capped at kWorkspaceSearchStderrCapBytes
     int  exitCode    = 0;
@@ -1486,25 +1488,16 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         out["dedup"]            = true;
         out["dedup_collapsed"]  = dedupCollapsed;
     }
-    // ANTS-2045 — a multi-word query is matched as ONE literal/regex
-    // pattern, not as AND-combined terms, so a natural-language query like
-    // "About modal RetroDB version" silently returns zero matches even when
-    // each word exists. When a whitespace-bearing query hits zero matches,
-    // surface an advisory hint (pure response-shaping; search semantics
-    // unchanged). Reproduced across four CC sessions.
-    // ANTS-4420 — ordered FIRST among the zero-match hints, and deliberately.
-    // An entity-bearing pattern is the most specific diagnosis available: when
-    // one also carries whitespace, the entity is the actual defect and the
-    // phrase advisory below would send the caller to fix the wrong thing. The
-    // chain still sets `hint` at most once.
-    //
-    // The machinery this uses already exists and already works — the same
-    // session that reported this filed a POSITIVE report that `regex_advisory`
-    // caught a short-bare-alternation trap unprompted, and cited it as
-    // precedent for exactly this case. Same channel, same trigger shape: a
-    // pattern that is probably not what the caller meant.
-    // ANTS-4753 — ordered ahead of every branch below, because when the walk
-    // never reached the path no diagnosis about the PATTERN can be right.
+    // Zero-match hints. The chain sets `hint` at most once; the first branch
+    // that applies wins, in this order:
+    //   1. ANTS-4753 hidden glob: the walk never reached the path, so no
+    //      diagnosis about the PATTERN can be right.
+    //   2. ANTS-4420 HTML entity: the most specific diagnosis; when the
+    //      pattern also has whitespace, the entity is the actual defect.
+    //   3. ANTS-2045 multi-word: a query is matched as ONE pattern, not as
+    //      AND-ed terms, so a natural-language phrase finds nothing.
+    //   4. ANTS-3466 regex metacharacters with regex:false.
+    // Pure response-shaping; search semantics are unchanged.
     if (matches.isEmpty() && hiddenGlobSkipped) {
         out["hidden_paths_skipped"] = true;
         out["hint"] = rcHiddenGlobHint();
@@ -1589,8 +1582,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // {file,line,headline} shape and re-cap so a scanning caller keeps every
     // file:line instead of losing the tail. `scanTruncated` snapshots the
     // pre-cap truncated (scan-cutoff meaning) so the helper can recompute an
-    // honest truncated. count_only / files_only returned earlier — they carry
-    // no matches[] and never reach here.
+    // honest truncated. count_only / files_only / matches_only returned earlier
+    // — they build no per-hit matches[] rows and never reach here.
     {
         const bool scanTruncated = out.value("truncated").toBool();  // pre-cap
         RemoteControl::downshiftMatches(out, headlineOnly, scanTruncated,
@@ -1944,7 +1937,7 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
                                   onLine);
 
         // INV-10 — ANY failed run refuses, and cells tallied from earlier
-        // anchors are discarded. This drops the `matches.isEmpty()` guard
+        // anchors are discarded. This drops the `nothingFound` guard
         // cmdWorkspaceSearch applies to three of its four branches: there, a
         // partial result with a swallowed error is a defensible trade; here it
         // is indistinguishable from a complete sweep, and every anchor whose
@@ -2177,8 +2170,8 @@ QString outlineFileEtag(const QJsonObject &fileObj) {
 
 // ANTS-1249: file_outline — structured file outline (header_doc +
 // symbols[]). Replaces a full Read of a 5 000-line file with a ~1 K
-// token orientation envelope. Path-escape guarded by canonical-path
-// startswith (mirrors ANTS-1248's lane check). The regex-scanner
+// token orientation envelope. Path-escape guarded by
+// PathValidation::validatePath. The regex-scanner
 // work itself lives in fileoutline.cpp — this body validates input,
 // resolves the path, and delegates.
 QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
@@ -3977,10 +3970,6 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
 // changelog_log resolution posture, NOT the focused-tab fallback).
 
 namespace rcdetail {
-
-// cmdSpecLog reuses isValidSpecId and resolveSpecRelForId (ANTS-3356) from
-// remotecontrol_state.cpp, declared in remotecontrol_internal.h, for id
-// routing parity with cmdSpecQuery.
 
 // ANTS-3376 — the caller's project leaf (the caller_cwd basename). Used to
 // (a) derive the conventional default path when `path` is omitted and

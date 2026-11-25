@@ -1862,10 +1862,11 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         // When no .ants/project.json exists AND the codebase_index came
         // back near-empty, surface the layout detector's suggestion so a
         // non-src/ project (e.g. DOOM's linuxdoom-1.10/) learns it can
-        // declare source_roots. Cheap gate: the detect() walk runs ONLY
-        // when file_count is below the low-water mark, so a healthy project
-        // never pays for it. Omitted entirely otherwise (ETag-stable for
-        // standard projects). Does NOT contribute to allOk.
+        // declare source_roots. Cheap gate: the detect() walk runs only
+        // when file_count is below the low-water mark or the layout is off the
+        // defaults (below), so a healthy project never pays for it. Omitted
+        // entirely otherwise (ETag-stable for standard projects). Does NOT
+        // contribute to allOk.
         constexpr int kSuggestLowWaterMark = 5;
         const int fileCount = ci.value(QStringLiteral("file_count")).toInt(-1);
         const bool unconfigured = !QFileInfo::exists(
