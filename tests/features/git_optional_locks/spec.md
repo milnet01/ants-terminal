@@ -21,8 +21,9 @@ then skips optional locks and still takes every lock a write needs.
 - **INV-3** — every read-only git runner that does not go through
   `GitWrap::run` uses `GitWrap::readOnlyEnvironment()` too:
   `MainWindow::refreshReviewButton`,
-  RemoteControl's shared `runGit`, and the three git runners in
-  `auditscope.cpp`. Checked by source scrape, comments stripped.
+  RemoteControl's shared `runGit`, and `execGit`, the one runner in
+  `auditscope.cpp` that its other git functions call. Checked by source
+  scrape, comments stripped.
 - **INV-4** — the Claude git-context hook script runs its `git status`
   with `GIT_OPTIONAL_LOCKS=0`. Checked by source scrape. The
   `claude_git_context_hook` behavioural test still runs the script.

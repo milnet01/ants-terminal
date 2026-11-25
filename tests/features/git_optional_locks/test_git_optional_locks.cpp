@@ -81,12 +81,20 @@ TEST(GitOptionalLocks, Inv3EveryOtherReadOnlyRunnerUsesIt) {
 
     const std::string scope = ants_test::slurpFile(SRC_AUDITSCOPE_CPP_PATH);
     ASSERT_FALSE(scope.empty());
+    const std::string execGit =
+        codeOf(scope, "bool execGit(const QString &root");
+    ASSERT_FALSE(execGit.empty());
+    EXPECT_TRUE(usesHelper(execGit)) << "auditscope.cpp's execGit";
+    // Its other git functions start no git of their own.
     for (const char *anchor : {"QString runGit(const QString &root",
                                "QString runGitRaw(const QString &root",
                                "bool runGitSucceeds(const QString &root"}) {
         const std::string code = codeOf(scope, anchor);
         ASSERT_FALSE(code.empty()) << anchor;
-        EXPECT_TRUE(usesHelper(code)) << "auditscope.cpp " << anchor;
+        EXPECT_NE(code.find("execGit("), std::string::npos)
+            << "auditscope.cpp " << anchor;
+        EXPECT_EQ(code.find("QProcess"), std::string::npos)
+            << "auditscope.cpp " << anchor;
     }
 }
 
