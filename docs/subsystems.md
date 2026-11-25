@@ -480,7 +480,8 @@ Listed only where behavior isn't obvious from the name.
   actuator's last-set tier when the transcript is stale, but ONLY to suppress
   re-firing the same tier; never overrides toward a user-picked tier).
   gate (enabled / focused-tab Idle / composer-empty / clamped-target
-  hysteresis / stability / dwell / per-project override cool-down →
+  hysteresis / stability / dwell / per-project override cool-down /
+  idle at end of session / downgrade only during active work →
   lowercase tier alias via `ModelRecommender::tierName`). In claude_lib
   (not core) so the `tierName` reuse doesn't invert the layer DAG.
   **The actuator is PARKED in code** (ANTS-2195,
@@ -517,10 +518,8 @@ Listed only where behavior isn't obvious from the name.
   sibling to `modelswitchledger`: records gate-evaluated-but-blocked
   auto-switch decisions to `~/.cache/ants-terminal/model-switch-nearmiss.jsonl`
   (256 KiB cap, drop-oldest, 0600, no pending-pinning) with the
-  7-token `blocked_by` taxonomy (`auto_switch_disabled`,
-  `focused_state_not_idle`, `composer_not_empty`,
-  `target_equals_current`, `ticks_target_stable_insufficient`,
-  `dwell_time_insufficient`, `override_cooldown_active`).
+  `blocked_by` taxonomy whose token list is in
+  `src/modelnearmissledger.cpp`.
   Emit-on-signature-change with a 5 s per-project floor (controller-
   side throttle on `ClaudeStatusBarController`). Aggregated by
   `model_switch_stats` — slim `near_misses` block in default mode,
