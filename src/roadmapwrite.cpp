@@ -88,7 +88,8 @@ QStringList fileIds(const QString &path) {
 
 // Named in the refusal. Capped because the divergence this guard was written
 // for is ~200 ids wide and a refusal is not a report: the count is the size of
-// the problem, the names are the entry point into it.
+// the problem, the names are the entry point into it. Both the divergence
+// guard's refusal and the Layman-gate refusal use this cap.
 constexpr int kNameCap = 25;
 
 // ANTS-4615 — the content of a line with its STYLING removed: lowercase
@@ -809,26 +810,9 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     reportOutcome(*dry);
     if (!dry->gateFailures.isEmpty()) {
         if (error && error->isEmpty()) {
-            // ANTS-4628 — the gate now names only what THIS write touched, so
-            // every id in gate_failures is one the caller is already editing
-            // and the remedy is always in reach. That was not true under
-            // whole-project scoping, where the message had to explain why the
-            // obvious per-item repair could not work (ANTS-4434): each single
-            // repair was refused by the offenders that remained and rolled
-            // back. The batch escape that message prescribed is no longer
-            // needed, and the message no longer prescribes it.
-            // ANTS-5267 — CAPPED. This joined every id into the prose with no
-            // limit, which was right while the gate judged only the items a
-            // write TOUCHED: the caller is editing them and naming them all is
-            // the remedy. A whole-project write broke that assumption —
-            // measured on Vestige, 460 ids, ~4 KB of prose then TRUNCATED
-            // MID-LIST by the transport with 1,947 characters cut. The caller
-            // got neither the full list nor a usable summary, and no marker
-            // saying which.
-            //
-            // The structured `gate_failures` array carries every id regardless,
-            // so the prose never needed to. Same treatment as ANTS-5256's
-            // `layman_missing`: cap, state the true total, announce the cut.
+            // The gate names only the items THIS write touched (ANTS-4628). The
+            // prose names at most kNameCap of them, states the true total and
+            // points at `gate_failures`, which carries every id (ANTS-5267).
             const QStringList namedGate = dry->gateFailures.mid(0, kNameCap);
             *error = QStringLiteral("the roadmap render refuses this write: %1 open "
                                     "item(s) it touches carry no Layman: line (%2%3). Give "

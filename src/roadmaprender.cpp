@@ -140,29 +140,6 @@ QString laymanRendered(const QString &stored) {
 }
 
 // One bullet in full § 3.5 form.
-//
-// ANTS-3808 § 2.3, amended by ANTS-4505 — each trailer key is emitted from its
-// column UNLESS the body already DECLARES that key line-initially, WHATEVER the
-// value. Presence, not value equality, and the reversal is a change in the
-// world rather than a change of mind. Value equality was one-directional: the
-// render appends its block at the END of the bullet and the parser takes the
-// last line-initial match, so once a column held a wrong value it wrote that
-// value to the tail, the next migration read it back, and a human correcting
-// the real trailer line in place was silently ignored, permanently. The file is
-// the authoring surface; an edit to it that can never take effect is a defect
-// however canonical the column is.
-//
-// What made presence unsafe has been closed since: `rlBodyShadows()` refuses
-// the only two ops that set a column independently of the body they ship with
-// (append / append_batch), ANTS-4504 masks inline code spans so a QUOTED key
-// declares nothing, and `anchored` keeps a mid-sentence mention from
-// suppressing at all. Stored bodies carry no indent (§ 2.1), so `anchored` is
-// exact for all five keys.
-//
-// INV-12 still holds as written on either rule: it asserts against the RENDERED
-// TEXT, and whichever branch the test takes, the required `Kind:` piece is in
-// the output exactly once. `offset >= 0` is what keeps that true — an ABSENT
-// key must never suppress, or the required line would vanish.
 QString bulletText(const RoadmapStore::ItemWrite &it) {
     // ANTS-5087 — the five decisions, made once, in the one place that owns
     // them. The reasoning for each rider is in trailerLines() below.
@@ -228,6 +205,28 @@ QStringList TrailerLines::keys() const {
     return out;
 }
 
+// ANTS-3808 § 2.3, amended by ANTS-4505 — each trailer key is emitted from its
+// column UNLESS the body already DECLARES that key line-initially, WHATEVER the
+// value. Presence, not value equality, and the reversal is a change in the
+// world rather than a change of mind. Value equality was one-directional: the
+// render appends its block at the END of the bullet and the parser takes the
+// last line-initial match, so once a column held a wrong value it wrote that
+// value to the tail, the next migration read it back, and a human correcting
+// the real trailer line in place was silently ignored, permanently. The file is
+// the authoring surface; an edit to it that can never take effect is a defect
+// however canonical the column is.
+//
+// What made presence unsafe has been closed since: `rlBodyShadows()` refuses
+// the only two ops that set a column independently of the body they ship with
+// (append / append_batch), ANTS-4504 masks inline code spans so a QUOTED key
+// declares nothing, and `anchored` keeps a mid-sentence mention from
+// suppressing at all. Stored bodies carry no indent (§ 2.1), so `anchored` is
+// exact for all five keys.
+//
+// INV-12 still holds as written on either rule: it asserts against the RENDERED
+// TEXT, and whichever branch the test takes, the required `Kind:` piece is in
+// the output exactly once. `offset >= 0` is what keeps that true — an ABSENT
+// key must never suppress, or the required line would vanish.
 TrailerLines trailerLines(const RoadmapStore::ItemWrite &it) {
     // One accessor call per bullet, reused across all five comparisons: calling
     // it per key would be five passes and up to thirty matches per bullet.

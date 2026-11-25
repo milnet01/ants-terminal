@@ -9,7 +9,7 @@
 // the same three formats, whose disagreements would be silent and would be
 // about the corpus itself.
 //
-// Qt6::Core only; lives in ants_core_lib so RoadmapDialog, the remotecontrol
+// Qt6::Core only; lives in ants_roadmapparse_lib so RoadmapDialog, the remotecontrol
 // handlers, the feature tests and the migration all share one implementation.
 // Mirrors the call ANTS-2126 already made in the other direction for the
 // pass-headings WRITER (src/passheadingwrite.{h,cpp}).
@@ -462,12 +462,12 @@ struct LinkLines {
 LinkLines extractLinkLines(const QString &body, bool keepFirstLine);
 // True when any line of `text` is a link declaration by that test.
 bool declaresLinkLine(const QString &text);
-// The four link types in the order the render writes them, and each one's
-// line key (`blocked-by` -> `Blocked-by`).
 // `s` without a trailing caret anchor (`^vest-0042`) and the whitespace
 // around it. The parser's one statement of the anchor grammar.
 QString stripTrailingCaretAnchor(QString s);
 
+// The four link types in the order the render writes them, and each one's
+// line key (`blocked-by` -> `Blocked-by`).
 const QStringList &authoredLinkTypes();
 QString linkKeyForType(const QString &type);
 
@@ -559,10 +559,9 @@ QString passId(int major, int minor, const QString &sub);
 //
 // nullopt when the text is not an ants-v1 bullet — no `- `/`* ` marker, or no
 // status emoji after it. The second case is load-bearing rather than defensive:
-// a `dropped` item renders with an EMPTY status marker (roadmap-format.md
-// § 3.11 makes a fifth glyph an anti-pattern), so it produces no record here,
-// exactly as it produces none in a document walk. ANTS-3793 § 2.1.2's `dropped`
-// exclusion is that behaviour, not a filter layered on top of it.
+// a bullet with no status marker produces no record here, exactly as it
+// produces none in a document walk. A `dropped` item renders as 🚫 (ANTS-4977)
+// and stripInlineEmoji accepts it, so it does produce a record.
 //
 // Three groups of fields are NOT set, because a bullet in isolation cannot
 // decide them and the caller can: `sectionHeading` / `sectionLevel` /

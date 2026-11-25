@@ -108,8 +108,8 @@ constexpr int kSystemicAttempts = 3;
 constexpr int kLockAttempts            = 100;
 constexpr int kInteractiveLockAttempts = 20;
 
-// Acquire ::flock(LOCK_EX|LOCK_NB) on `path`, polling 50 ms × 100
-// (5 s budget). Returns the open fd on success, -1 on timeout / open
+// Acquire ::flock(LOCK_EX|LOCK_NB) on `path`, polling 50 ms × `attempts`
+// (5 s at the default). Returns the open fd on success, -1 on timeout / open
 // failure. Caller MUST close + flock(LOCK_UN).
 //
 // On flock() systemic failure (errno ∈ {ENOLCK, EBADF, EINVAL,
@@ -223,7 +223,7 @@ bool stealStaleRenameLock(const QString &lockPath) {
 // ANTS-1490 — O_CREAT|O_EXCL rename-based locking fallback. Used when
 // flock() returns systemic errors on every retry (NFS, some FUSE
 // filesystems, etc.). Creates `.roadmap-counter.lock` exclusively; the
-// presence of the lock file is the lock. 5 s budget mirroring
+// presence of the lock file is the lock. Same `attempts` budget as
 // lockExclusive. Returns true on success; caller MUST call
 // releaseRenameLock to remove the file.
 bool acquireRenameLock(const QString &counterPath_,
@@ -609,7 +609,7 @@ namespace {
 //
 // ANTS-5087 — and on a MIGRATED project, to the store as well. Those files
 // are a rendered OUTPUT of the store and the render is lossy in membership
-// by design (roadmap-data-model.md § 7.5 excludes `internal` and `dropped`),
+// by design (roadmap-data-model.md § 7.5 excludes `internal`),
 // so an id can be held in the store and appear in no file this scan reads.
 // The allocator's own counter also remembers an id whose item was later
 // deleted, which no file records at all. Either way the text scan reports a

@@ -1,10 +1,8 @@
-// ANTS-3764 — see roadmapparse.h for why this lives in ants_core_lib.
-// The bodies below are moved verbatim from src/roadmapdialog.cpp. The only
-// edits are the ones the move itself forces: the record is no longer nested in
-// RoadmapDialog, idTokenPattern() and detectRoadmapFormat() leave the
-// anonymous namespace because the header declares them (ANTS-1784 shares the
-// first with roadmapdialog.cpp's CHANGELOG scanner), and everything is wrapped
-// in namespace RoadmapParse. No parsing behaviour changed.
+// ANTS-3764 — see roadmapparse.h for why this lives in ants_roadmapparse_lib.
+// The bodies below began as a move from src/roadmapdialog.cpp; later ANTS
+// changes have edited them since. idTokenPattern() and detectRoadmapFormat()
+// sit outside the anonymous namespace because the header declares them
+// (ANTS-1784 shares the first with roadmapdialog.cpp's CHANGELOG scanner).
 
 #include "roadmapparse.h"
 
@@ -30,13 +28,6 @@ using RoadmapIndex::headingLevel;
 using RoadmapIndex::uniqueSlug;
 
 namespace RoadmapParse {
-
-namespace {
-
-// ANTS-1428 — GFM-task-list adapter helpers. All operate on
-// already-extracted line content (post-`- ` prefix strip).
-
-}  // namespace
 
 // 64-bit FNV-1a hash of the normalised headline. See
 // docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md § Synthetic-ID fallback.
@@ -277,7 +268,7 @@ bool stripInlineEmoji(QString &head, QString &status) {
 // project's own precedent for a shared compiled pattern (rxCommitSha() in
 // remotecontrol.cpp) — construction stays lazy and ordered.
 //
-// Every comment below is the pattern's own, moved verbatim with it.
+// Each pattern's comment moved with it; later ANTS changes added more.
 
 // ANTS-4065 § 2.2 — UN-ANCHORED, exactly as rxLanes() was by ANTS-2058 and for
 // the same measured reason: 99 bullets in this project alone write the field
@@ -346,7 +337,7 @@ const QRegularExpression &rxKind() {
 // `Kind:` happened to sit first. Match `Lanes:` anywhere; a following
 // declaration on the same line ends the value (see the extraction site).
 // ANTS-3407 — deliberately NOT CaseInsensitive (unlike the anchored
-// Kind:/Layman:/Evidence: labels). Because this pattern is un-anchored,
+// Layman:/Evidence: labels). Because this pattern is un-anchored,
 // case-insensitivity would match a lowercase "lanes:" occurring mid-prose
 // (e.g. "split the review lanes: audit, tests.") and mis-extract it as
 // metadata. Canonical `Lanes:` is the only form the writer emits.
@@ -427,7 +418,7 @@ const QRegularExpression &rxLayman() {
 // Lanes:, the capture runs to end-of-line (NOT to the first period):
 // evidence paths routinely contain dots (`photos/IMG_2031.jpg`), so a
 // `[^\\.\\n]` stop would truncate at the extension.
-// ANTS-3407 — CaseInsensitiveOption for parity with rxLayman/rxKind, so a
+// ANTS-3407 — CaseInsensitiveOption for parity with rxLayman, so a
 // hand-edited `evidence:`/`EVIDENCE:` label is still recognised. The MCP
 // writer always emits capital `Evidence:`, so the round-trip is unchanged.
 const QRegularExpression &rxEvidence() {
@@ -2059,8 +2050,10 @@ const QSet<QString> &canonicalKinds() {
 }
 
 // roadmap-data-model.md § 7.4's normative migration mapping, applied rather
-// than restated. The two compound entries map to their FIRST term, per that
+// than restated. The two `perf / …` entries map to their FIRST term, per that
 // section: picking the second would silently reclassify performance work.
+// `process + tooling` maps to `chore`: `process` is not a kind, so the second
+// term decides.
 QString mappedKind(const QString &lower) {
     static const QHash<QString, QString> m = {
         {QStringLiteral("improve"),          QStringLiteral("enhancement")},
@@ -2564,9 +2557,8 @@ parseBulletLines(const QStringList &lines, const IdFormat &fmt) {
         } else {
             // Native path. The strip's FAILURE is the skip, and that is the
             // rule ANTS-3793 § 2.1.2 leans on from the other side: a head line
-            // carrying no status marker yields no record at all, which is what
-            // keeps a `dropped` store item — whose emoji is the empty string by
-            // design — out of the reader's results.
+            // carrying no status marker yields no record at all. A `dropped`
+            // item carries 🚫 (ANTS-4977), so it is read like any other.
             if (!stripInlineEmoji(head, status)) {
                 ++i;
                 continue;

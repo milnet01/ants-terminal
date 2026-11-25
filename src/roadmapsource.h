@@ -175,8 +175,8 @@ private:
 // It is a free function and not a wrapper member for one reason: INV-1's two
 // unmigrated-project cases assert exactly this decision, and a member of
 // RemoteControl or RoadmapDialog is not reachable from § 6's bundle. The
-// wrapper still OWNS the decision — it is the only caller — but the decision is
-// testable on its own.
+// wrapper still OWNS the decision, but the decision is testable on its
+// own.
 // ANTS-3822 § 2.3.2 — `historyCapBytes` is injectable, defaulted to production.
 //
 // Not a testing convenience: without it the history cap is reachable only BELOW
@@ -294,9 +294,10 @@ QStringList storeServedDialects();
 // invert that edge.
 //
 // It cannot change what this function returns, and carrying it is how INV-6
-// says so testably: every record here is derived from
+// says so testably: every ants-v1 record here is derived from
 // RoadmapRender::bulletText(), which emits ants-v1, so the GFM bold branch the
-// declaration governs never runs on the store path. A caller passes the same
+// declaration governs never runs on the store path. A pass-headings record
+// comes from parsePassHeadingBlock() and ignores `fmt` too. A caller passes the same
 // value it would pass to parseBullets() on the unmigrated path, so one call
 // site holds one declaration for both outcomes (INV-13).
 std::optional<QVector<BulletRecord>>

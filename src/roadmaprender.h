@@ -6,7 +6,8 @@
 // bold headline, Kind: and every optional field the item carries — so the
 // generated file is the file that exists today, written by the store instead of
 // by hand. The render is lossy in MEMBERSHIP only (§ 7.5 of
-// roadmap-data-model.md excludes `internal` and `dropped`), never in detail.
+// roadmap-data-model.md excludes `internal`; ANTS-4977 publishes `dropped`),
+// never in detail.
 //
 // Qt6::Core + Qt6::Sql only, in ants_roadmapstore_lib, because ANTS-3794 will
 // call it from a headless publish path.
