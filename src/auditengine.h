@@ -172,6 +172,13 @@ void capFindings(CheckResult &r, int cap);
 // silent-divergence vector ANTS-1123 indie-review C-cluster flagged.
 QString sourceForCheck(const QString &checkId);
 
+// The canonical absolute path of `maybeRelative` (absolute, or relative
+// to `projectPath`), or empty when it does not exist or resolves outside
+// the project. Symlinks and `..` are resolved before the check. The one
+// resolver for the engine and AuditDialog::resolveProjectPath.
+QString resolveProjectPath(const QString &maybeRelative,
+                           const QString &projectPath);
+
 // Compute a stable 24-hex-char (96-bit) dedup key for a finding.
 // Promoted to the public header so a future synthetic-finding site
 // (e.g. consolidateMypyStubHints) doesn't have to re-implement it.

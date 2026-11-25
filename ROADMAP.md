@@ -97706,7 +97706,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6586] **Fold the duplicated logic the 2026-11-06 reviews found in audit-engine.**
+- 🚧 [ANTS-6586] **Fold the duplicated logic the 2026-11-06 reviews found in audit-engine.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 318 `auditrunner.cpp:1007-1008` (Low)
   - row 605 `src/auditrunner.cpp:1614` (Medium)
@@ -97716,6 +97716,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 619 `src/auditengine.cpp:308` (High)
   - row 620 `src/auditcache.cpp:348` (Medium)
   - row 626 `src/auditengine.cpp:1337` (Medium)
+  2026-11-25: rows 617 and 619 done. Row 617: execGit() in auditscope.cpp
+  is the one runner; runGitRaw and runGitSucceeds now also refuse a
+  crashed git. Row 619: AuditEngine::resolveProjectPath, with the
+  project-boundary check, serves the engine and AuditDialog; the engine's
+  copy had no check (its one caller already refused outside paths,
+  ANTS-6463). The traversal test now calls the real resolver; removing
+  the check turns it red. Rows 318, 605, 606, 607, 620, 626 remain.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).

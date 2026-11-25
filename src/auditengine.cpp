@@ -313,24 +313,34 @@ QString resolveCompileCommands(const QString &projectRoot) {
 
 namespace {
 
-// Lifted from auditdialog.cpp: resolve `./relative.cpp` references
-// (and bare relative paths) to absolute paths under projectPath.
-QString resolveProjectPathLocal(const QString &maybeRelative,
-                                const QString &projectPath) {
-    if (maybeRelative.isEmpty()) return {};
-    QString path = maybeRelative;
-    if (path.startsWith(QStringLiteral("./"))) path.remove(0, 2);
-    QFileInfo fi(path);
-    if (fi.isAbsolute()) return fi.canonicalFilePath();
-    if (projectPath.isEmpty()) return {};
-    return QFileInfo(QDir(projectPath), path).canonicalFilePath();
-}
-
 }  // namespace (close anon for the public sourceForCheck/computeDedup)
 
 // File-scope helpers carried over from auditdialog.cpp. Now public
 // so the dialog can call them too — closes the silent-divergence
 // vector ANTS-1123 indie-review H1 flagged.
+QString resolveProjectPath(const QString &maybeRelative,
+                           const QString &projectPath) {
+    if (maybeRelative.isEmpty() || projectPath.isEmpty()) return {};
+    // Build the candidate absolute path without yet canonicalizing the
+    // relative join — QFileInfo::canonicalFilePath follows symlinks and
+    // resolves `..`, so we get a single-pass check of both traversal vectors.
+    const QString candidate = QFileInfo(maybeRelative).isAbsolute()
+        ? maybeRelative
+        : (projectPath + QStringLiteral("/") + maybeRelative);
+    QString canonCandidate = QFileInfo(candidate).canonicalFilePath();   // non-const: returned by move
+    if (canonCandidate.isEmpty()) return {};  // file doesn't exist
+    const QString canonProject = QFileInfo(projectPath).canonicalFilePath();
+    if (canonProject.isEmpty()) return {};
+    // Require a path-segment boundary after the project root so that
+    // sibling dirs sharing a prefix (e.g. /proj-foo vs /proj) don't escape.
+    const QString anchored = canonProject.endsWith('/')
+        ? canonProject
+        : (canonProject + QStringLiteral("/"));
+    if (!canonCandidate.startsWith(anchored) && canonCandidate != canonProject)
+        return {};
+    return canonCandidate;
+}
+
 QString sourceForCheck(const QString &checkId) {
     if (checkId.startsWith("cppcheck"))  return "cppcheck";
     if (checkId == "clang_tidy")         return "clang-tidy";
@@ -547,7 +557,7 @@ FilterResult applyFilter(const QString &raw,
                 auto cached = fileCache.constFind(relPath);
                 if (cached == fileCache.constEnd()) {
                     QStringList lines;  // stays empty when unreadable
-                    const QString abs = resolveProjectPathLocal(relPath, projectPath);
+                    const QString abs = resolveProjectPath(relPath, projectPath);
                     // ANTS-5085 — the 4 MiB cap the dialog's AuditLineCache
                     // uses (lineIsCode caps at 2 MiB); a context window
                     // needs a source file, not a generated blob.

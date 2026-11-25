@@ -446,25 +446,7 @@ void AuditDialog::addToolCheck(const QString &id, const QString &name,
 // ---------------------------------------------------------------------------
 
 QString AuditDialog::resolveProjectPath(const QString &maybeRelative) const {
-    if (maybeRelative.isEmpty() || m_projectPath.isEmpty()) return {};
-    // Build the candidate absolute path without yet canonicalizing the
-    // relative join — QFileInfo::canonicalFilePath follows symlinks and
-    // resolves `..`, so we get a single-pass check of both traversal vectors.
-    const QString candidate = QFileInfo(maybeRelative).isAbsolute()
-        ? maybeRelative
-        : (m_projectPath + QStringLiteral("/") + maybeRelative);
-    QString canonCandidate = QFileInfo(candidate).canonicalFilePath();   // non-const: returned by move
-    if (canonCandidate.isEmpty()) return {};  // file doesn't exist
-    const QString canonProject = QFileInfo(m_projectPath).canonicalFilePath();
-    if (canonProject.isEmpty()) return {};
-    // Require a path-segment boundary after the project root so that
-    // sibling dirs sharing a prefix (e.g. /proj-foo vs /proj) don't escape.
-    const QString anchored = canonProject.endsWith('/')
-        ? canonProject
-        : (canonProject + QStringLiteral("/"));
-    if (!canonCandidate.startsWith(anchored) && canonCandidate != canonProject)
-        return {};
-    return canonCandidate;
+    return AuditEngine::resolveProjectPath(maybeRelative, m_projectPath);
 }
 
 bool AuditDialog::lineIsCode(const QString &absPath, int line) {

@@ -114,14 +114,14 @@ The test:
    └── outside/
        └── sensitive.txt       (exfil target)
    ```
-2. Constructs an `AuditDialog` rooted at `project/`.
-3. Calls `resolveProjectPath()` with:
+2. Calls `AuditEngine::resolveProjectPath()`, the resolver
+   `AuditDialog::resolveProjectPath` wraps, rooted at `project/`, with:
    - `src/good.cpp` → expects a canonical path starting with
      the project root.
    - `../outside/sensitive.txt` → expects `QString()`.
    - `link/sensitive.txt` → expects `QString()`.
    - `nonexistent/file.txt` → expects `QString()`.
-4. Source-greps `src/auditdialog.cpp`:
+3. Source-greps the AuditDialog sources:
    - `resolveProjectPath(` must appear ≥5 times (once per call site).
    - `m_projectPath + "/" + f.file` must not appear at all.
 

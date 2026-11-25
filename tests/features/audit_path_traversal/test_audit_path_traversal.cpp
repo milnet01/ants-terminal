@@ -7,21 +7,13 @@
 // Invariant 5 — all known call sites use resolveProjectPath; the raw
 //               `m_projectPath + "/" + f.file` concat is gone.
 //
-// Design note: AuditDialog::resolveProjectPath is a private method on a
-// heavy QDialog subclass. Rather than linking the 5 000+ line
-// auditdialog.cpp into this test (which pulls in auditcheck,
-// featurecoverage, audithygiene, etc.), we test the *invariant shape*
-// behaviorally against a reference reimplementation of the same canonicalize-
-// and-anchor logic, then source-grep auditdialog.cpp to lock:
-//   (a) the production helper has the same shape
-//       (contains canonicalFilePath + the startsWith anchored check);
-//   (b) every known call site migrated to the helper (no raw concat).
-//
-// If either the reference test or the source-grep fails, the fix has
-// regressed — either the helper's contract weakened or a call site
-// sneaked back to the unsafe pattern.
+// The behavioural checks call the production resolver,
+// AuditEngine::resolveProjectPath, which AuditDialog::resolveProjectPath
+// wraps. The source checks lock that every AuditDialog call site goes
+// through the helper (no raw concat).
 
 #include "../../_support/expect.h"
+#include "auditengine.h"
 
 #include <QDir>
 #include <QFile>
@@ -42,27 +34,8 @@ namespace {
 
 
 
-// Reference reimplementation of AuditDialog::resolveProjectPath.
-// Kept byte-faithful to the production code so behavioral drift here
-// is easy to catch — the source-grep below enforces the production
-// version has the same structure (canonicalFilePath + anchored
-// startsWith).
-QString resolveProjectPathRef(const QString &projectPath,
-                              const QString &maybeRelative) {
-    if (maybeRelative.isEmpty() || projectPath.isEmpty()) return {};
-    const QString candidate = QFileInfo(maybeRelative).isAbsolute()
-        ? maybeRelative
-        : (projectPath + QStringLiteral("/") + maybeRelative);
-    QString canonCandidate = QFileInfo(candidate).canonicalFilePath();
-    if (canonCandidate.isEmpty()) return {};
-    const QString canonProject = QFileInfo(projectPath).canonicalFilePath();
-    if (canonProject.isEmpty()) return {};
-    const QString anchored = canonProject.endsWith('/')
-        ? canonProject
-        : (canonProject + QStringLiteral("/"));
-    if (!canonCandidate.startsWith(anchored) && canonCandidate != canonProject)
-        return {};
-    return canonCandidate;
+QString resolve(const QString &projectPath, const QString &maybeRelative) {
+    return AuditEngine::resolveProjectPath(maybeRelative, projectPath);
 }
 
 void runBehavioralChecks() {
@@ -124,7 +97,7 @@ void runBehavioralChecks() {
 
     // Invariant 3 — in-project path resolves to canonical absolute.
     const QString goodResolved =
-        resolveProjectPathRef(project, QStringLiteral("src/good.cpp"));
+        resolve(project, QStringLiteral("src/good.cpp"));
     expect(!goodResolved.isEmpty(),
            "I3/in-project-path-resolves");
     expect(QFileInfo(goodResolved).canonicalFilePath() == goodResolved,
@@ -138,34 +111,31 @@ void runBehavioralChecks() {
 
     // Invariant 1 — `../outside/sensitive.txt` via literal ..
     const QString escapeLiteral =
-        resolveProjectPathRef(project,
-                              QStringLiteral("../outside/sensitive.txt"));
+        resolve(project, QStringLiteral("../outside/sensitive.txt"));
     expect(escapeLiteral.isEmpty(),
            "I1/literal-dotdot-escape-rejected",
            QStringLiteral("expected empty, got '%1'").arg(escapeLiteral));
 
     // Invariant 2 — symlink target points outside the project.
     const QString escapeSymlink =
-        resolveProjectPathRef(project,
-                              QStringLiteral("link/sensitive.txt"));
+        resolve(project, QStringLiteral("link/sensitive.txt"));
     expect(escapeSymlink.isEmpty(),
            "I2/symlink-escape-rejected",
            QStringLiteral("expected empty, got '%1'").arg(escapeSymlink));
 
     // Invariant 4 — non-existent file returns empty.
     const QString ghost =
-        resolveProjectPathRef(project,
-                              QStringLiteral("nonexistent/file.txt"));
+        resolve(project, QStringLiteral("nonexistent/file.txt"));
     expect(ghost.isEmpty(),
            "I4/nonexistent-returns-empty");
 
     // Additional corner: the project root itself resolves back to itself.
-    const QString selfResolve = resolveProjectPathRef(project, QStringLiteral("."));
+    const QString selfResolve = resolve(project, QStringLiteral("."));
     expect(!selfResolve.isEmpty() && selfResolve == canonProject,
            "I3b/project-root-self-resolve");
 
     // Additional corner: empty maybeRelative returns empty.
-    const QString empty = resolveProjectPathRef(project, QString());
+    const QString empty = resolve(project, QString());
     expect(empty.isEmpty(),
            "I4b/empty-input-returns-empty");
 
@@ -222,17 +192,6 @@ void runSourceChecks() {
                QStringLiteral("m_projectPath + \"/\" + relPath")),
            "I5c/context-filter-raw-concat-removed");
 
-    // Invariant 5d — helper body has the canonicalize + anchored-prefix
-    // check. Drift here would weaken the traversal guard.
-    expect(src.contains(QStringLiteral("canonicalFilePath()")),
-           "I5d/helper-uses-canonicalFilePath");
-    expect(src.contains(QStringLiteral("anchored")) &&
-               src.contains(QStringLiteral("startsWith(anchored)")),
-           "I5d/helper-uses-anchored-startsWith",
-           QStringLiteral("helper must compute an anchored prefix "
-                          "(canonProject + '/') and check "
-                          "startsWith(anchored); otherwise sibling dirs "
-                          "sharing a name prefix could escape"));
 }
 
 TEST(AuditPathTraversal, BehavioralChecks) {

@@ -15,31 +15,9 @@ namespace {
 
 constexpr int kGitTimeoutMs = 1'500;
 
-// Like runGit but WITHOUT trimming — `git status --porcelain` leads each
-// line with a significant 2-column XY status, and a whole-output trim would
-// eat the first line's leading space and mis-parse that entry.
-QString runGitRaw(const QString &root, const QStringList &args,
-                  bool *ok = nullptr) {
-    if (ok) *ok = false;
-    QProcess p;
-    p.setWorkingDirectory(root);
-    p.setProcessChannelMode(QProcess::SeparateChannels);
-    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
-    HostExec::start(p, QStringLiteral("git"), args);
-    if (!p.waitForStarted(kGitTimeoutMs)) return {};
-    if (!p.waitForFinished(kGitTimeoutMs)) {
-        p.kill();
-        p.waitForFinished(500);
-        return {};
-    }
-    if (p.exitCode() != 0) return {};
-    if (ok) *ok = true;
-    return QString::fromUtf8(p.readAllStandardOutput());
-}
-
-// True iff git exits 0 (for predicate commands like `cat-file -e` that emit
-// no stdout). runGit can't be used — empty stdout is ambiguous with failure.
-bool runGitSucceeds(const QString &root, const QStringList &args) {
+// The one git runner here: start, wait, kill on timeout. True only for a
+// normal exit with code 0; `out`, when given, gets stdout untrimmed.
+bool execGit(const QString &root, const QStringList &args, QString *out) {
     QProcess p;
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
@@ -51,7 +29,26 @@ bool runGitSucceeds(const QString &root, const QStringList &args) {
         p.waitForFinished(500);
         return false;
     }
-    return p.exitCode() == 0;
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) return false;
+    if (out) *out = QString::fromUtf8(p.readAllStandardOutput());
+    return true;
+}
+
+// Like runGit but WITHOUT trimming — `git status --porcelain` leads each
+// line with a significant 2-column XY status, and a whole-output trim would
+// eat the first line's leading space and mis-parse that entry.
+QString runGitRaw(const QString &root, const QStringList &args,
+                  bool *ok = nullptr) {
+    QString out;
+    const bool good = execGit(root, args, &out);
+    if (ok) *ok = good;
+    return out;
+}
+
+// True iff git exits 0 (for predicate commands like `cat-file -e` that emit
+// no stdout). runGit can't be used — empty stdout is ambiguous with failure.
+bool runGitSucceeds(const QString &root, const QStringList &args) {
+    return execGit(root, args, nullptr);
 }
 
 const QStringList &cppExts() {
@@ -81,21 +78,10 @@ bool hasExt(const QString &path, const QStringList &exts) {
 }  // namespace
 
 QString runGit(const QString &root, const QStringList &args, bool *ok) {
-    if (ok) *ok = false;
-    QProcess p;
-    p.setWorkingDirectory(root);
-    p.setProcessChannelMode(QProcess::SeparateChannels);
-    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
-    HostExec::start(p, QStringLiteral("git"), args);
-    if (!p.waitForStarted(kGitTimeoutMs)) return {};
-    if (!p.waitForFinished(kGitTimeoutMs)) {
-        p.kill();
-        p.waitForFinished(500);
-        return {};
-    }
-    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) return {};
-    if (ok) *ok = true;
-    return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    QString out;
+    const bool good = execGit(root, args, &out);
+    if (ok) *ok = good;
+    return out.trimmed();
 }
 
 bool isFileScopedTool(const QString &tool) {
