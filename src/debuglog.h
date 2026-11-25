@@ -22,6 +22,8 @@
 // hot path is a single bit-test when the category is disabled.
 class DebugLog {
 public:
+    // A new category also needs a row in kCategoryTable (debuglog.cpp);
+    // without one it is missing from the menu and logs as "?".
     enum Category : quint32 {
         None       = 0,
         Paint      = 1u << 0,  // QPaintEvent / UpdateRequest / LayoutRequest

@@ -67,8 +67,8 @@ std::optional<ParsedBuild> loadBuild(const QString &canonProject);
 // mtime > recordedAtMs. Returns {stale_known, stale}. When
 // stale_known is false, the walk hit kStaleWalkCap before any
 // newer file was found — callers report `stale_walk_capped:true`
-// instead of `stale:false`. The probed set is per § 3.3.2 step 3
-// of the spec.
+// instead of `stale:false`. The probed set is per § 3.3 (`op=read`)
+// step 3 of the spec.
 struct StaleCheck {
     bool staleKnown = true;  // false ⇒ walk capped, stale unknown
     bool stale      = false;

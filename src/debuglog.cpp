@@ -14,9 +14,10 @@
 #include <sys/types.h>
 
 namespace {
-// ANTS-1170: cap on-disk debug log size. When a fresh open() finds an
-// existing log larger than this, it's renamed to debug.log.1 (replacing
-// any prior .1) before the new log is opened. One generation is enough
+// ANTS-1170: cap on-disk debug log size. When open() finds an existing
+// log larger than this, or a write leaves the open log larger than this
+// (ANTS-5110), it's renamed to debug.log.1 (replacing any prior .1) before
+// a new log is opened. One generation is enough
 // for typical "I just hit the bug, let me grab the log" workflows
 // without growing unboundedly across forgotten ANTS_DEBUG=all sessions.
 constexpr qint64 kMaxLogBytes = qint64(10) * 1024 * 1024;
