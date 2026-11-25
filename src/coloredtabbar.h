@@ -88,7 +88,7 @@ class ColoredTabBar : public QTabBar {
 public:
     explicit ColoredTabBar(QWidget *parent = nullptr);
 
-    // Set (or clear, when `color` is invalid) the colour strip on the
+    // Set (or clear, when `color` is invalid) the colour wash on the
     // tab at `index`. Safe to call with an out-of-range index (no-op).
     void setTabColor(int index, const QColor &color);
 
@@ -153,8 +153,7 @@ public:
     // QSS `QTabBar::close-button { image: ... }` rule, because Qt6's QSS
     // engine renders neither a `data:` URI (its loader is QPixmap(path),
     // which has no data-scheme support) NOR a setIcon() on Qt's private
-    // CloseButton — both verified to draw nothing (2026-06-11, see
-    // INVESTIGATION_tab_close_x.md). `normal` tints the resting glyph,
+    // CloseButton — both verified to draw nothing (ANTS-2098). `normal` tints the resting glyph,
     // `hover` the moused-over glyph (QIcon::Active mode), `hoverBg` the
     // round-rect that lights up behind it on hover (the will-click cue).
     // Re-tints every existing tab; tabs added later pick the colours up
@@ -187,11 +186,12 @@ private:
     QColor m_closeHoverBg;  // hover background (theme ansi-red), will-click cue
 };
 
-// Trivial QTabWidget subclass whose sole purpose is to install a
-// ColoredTabBar at construction time — QTabWidget::setTabBar() is
-// protected, so MainWindow can't pass the custom bar in directly. The
-// bar pointer is cached and exposed via coloredTabBar() so callers can
-// invoke setTabColor() without an extra dynamic_cast on every use.
+// Trivial QTabWidget subclass that installs a ColoredTabBar at
+// construction time — QTabWidget::setTabBar() is protected, so MainWindow
+// can't pass the custom bar in directly. The bar pointer is cached and
+// exposed via coloredTabBar() so callers can invoke setTabColor() without
+// an extra dynamic_cast on every use. It also emits tabsChanged() when a
+// tab is added or removed.
 class ColoredTabWidget : public QTabWidget {
     Q_OBJECT
 

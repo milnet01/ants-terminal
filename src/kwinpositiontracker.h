@@ -5,12 +5,10 @@
 #include <QWidget>
 #include <QtGlobal>
 
-// ANTS-1142 — kwinPresent() lifted from
-// KWinPositionTracker::setPosition's inline guard so
-// MainWindow::moveViaKWin and MainWindow::centerWindow (which
-// fire the same dbus-send + kwin-script chain) can gate behind
-// it instead of always running and orphaning /tmp scripts on
-// non-KDE compositors.
+// ANTS-1142 — kwinPresent() is the guard runKWinScript
+// (kwinpositiontracker.cpp) takes before it writes a script file or runs
+// the dbus-send + kwin-script chain, so non-KDE compositors never orphan
+// a script. Callers of runKWinScript need no check of their own.
 //
 // Detection mirrors Plasma's session manager: KDE_FULL_SESSION
 // or XDG_CURRENT_DESKTOP containing "KDE". XDG_SESSION_TYPE is

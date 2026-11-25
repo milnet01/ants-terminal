@@ -16,14 +16,7 @@ constexpr const char *kService     = "org.freedesktop.portal.Desktop";
 constexpr const char *kPath        = "/org/freedesktop/portal/desktop";
 constexpr const char *kIface       = "org.freedesktop.portal.GlobalShortcuts";
 constexpr const char *kReqIface    = "org.freedesktop.portal.Request";
-// 0.7.33: Session interface for the explicit Close call in the
-// destructor. The session handle returned by CreateSession lives
-// for the process lifetime of the D-Bus client unless we call
-// org.freedesktop.portal.Session.Close on its object path — without
-// the close, xdg-desktop-portal accumulates one orphan session per
-// Ants invocation that crashed or was killed (visible via
-// `busctl --user introspect org.freedesktop.portal.Desktop ...` on
-// the long-running portal service).
+// Session interface for the explicit Close call in the destructor.
 constexpr const char *kSessionIface = "org.freedesktop.portal.Session";
 }
 
@@ -91,16 +84,10 @@ GlobalShortcutsPortal::GlobalShortcutsPortal(QObject *parent)
 }
 
 GlobalShortcutsPortal::~GlobalShortcutsPortal() {
-    // 0.7.33: explicit Session.Close so xdg-desktop-portal releases
-    // the session handle when Ants exits. Without this, the portal
-    // service tracks one orphan session per Ants invocation that
-    // crashed / was SIGKILLed / closed before the process unwound;
-    // they're released only when xdg-desktop-portal itself restarts.
-    // Pre-fix this leak was bounded but cosmetic — sessions don't
-    // hold compositor state beyond the binds, which we tear down
-    // when the bus connection drops. Still: a tidy shutdown is the
-    // documented contract (xdg-desktop-portal-spec §
-    // org.freedesktop.portal.Session).
+    // Explicit Session.Close so xdg-desktop-portal releases the session
+    // handle on a clean exit (xdg-desktop-portal-spec §
+    // org.freedesktop.portal.Session). A crash or SIGKILL never reaches
+    // this destructor.
     if (m_sessionHandle.isEmpty()) return;
     QDBusMessage msg = QDBusMessage::createMethodCall(
         QString::fromLatin1(kService),
@@ -108,9 +95,7 @@ GlobalShortcutsPortal::~GlobalShortcutsPortal() {
         QString::fromLatin1(kSessionIface),
         QStringLiteral("Close"));
     // Fire-and-forget: we're in a destructor, can't wait for the
-    // reply. The portal processes Close asynchronously; if we exit
-    // before it completes, the kernel-level connection drop has the
-    // same effect.
+    // reply. The portal processes Close asynchronously.
     m_bus.asyncCall(msg);
 }
 

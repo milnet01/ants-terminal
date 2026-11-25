@@ -105,13 +105,13 @@ QColor ClaudeTabIndicator::contrastColor(Glyph g, const QColor &background) {
     // passes — black always clears a light background, so a solution
     // exists. State hue is unchanged, so "red = needs me" still holds.
     //
-    // Precondition (true for all 11 shipped themes): every theme's
-    // bgSecondary is either clearly light (lum > 0.8 — darkening the dot
-    // is the correct direction) or clearly dark (lum < 0.05 — the base
-    // already passes 3:1 and we early-returned above). No theme sits in
-    // the mid-luminance band where the dot would instead need lightening;
-    // a future mid-luminance theme would need this to search both
-    // directions.
+    // Precondition (true for every shipped theme): bgSecondary is either
+    // clearly light (lum > 0.8 — darkening the dot is the correct
+    // direction) or clearly dark (lum < 0.05 — the base already passes
+    // 3:1 and we early-returned above). No shipped theme sits in the
+    // mid-luminance band where the dot would instead need lightening. A
+    // user theme loaded from JSON sets bgSecondary freely and can; for it
+    // this would need to search both directions.
     const int h = qMax(0, base.hslHue());  // -1 (achromatic grey) -> 0
     const int s = base.hslSaturation();
     const int a = base.alpha();
@@ -181,8 +181,8 @@ void ColoredTabBar::setTabColor(int index, const QColor &color) {
     // An invalid QColor is Qt's idiom for "no colour" — store it so
     // tabData() round-trips correctly (and clears any prior value).
     setTabData(index, color.isValid() ? QVariant::fromValue(color) : QVariant());
-    // Bottom-strip area of the changed tab is the only dirty region;
-    // a conservative update() suffices — QTabBar coalesces these.
+    // The whole tab rect is dirty (the wash covers it); a conservative
+    // update() suffices — QTabBar coalesces these.
     update();
     emit tabColorChanged(index);
 }
@@ -367,11 +367,9 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
         const QRect r = tabRect(i);
         if (!event->region().intersects(r)) continue;
 
-        // 0.6.26 — replace the old 3px bottom strip with a full vertical
-        // gradient from transparent (top) to the chosen colour (bottom).
-        // User request: "please give it a light gradient top (transparent)
-        // to bottom (chosen colour) and it must still have the line
-        // underneath to show which tab is active."
+        // The wash is a full-height gradient from transparent (top) to the
+        // chosen colour (bottom), capped where the tab name ends (ANTS-4690,
+        // below). It must leave the active-tab line underneath alone.
         //
         // The app stylesheet (themedstylesheet.cpp, `QTabBar::tab`) gives every tab a
         // 2px transparent bottom border and the *selected* tab a 2px
@@ -385,10 +383,9 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
         // gradient reads as an intentional wash rather than a full fill;
         // it reaches 140/255 at the bottom.
         //
-        // ANTS-4690 — at alpha 140 the name measured about 2.5:1. So the
-        // wash is capped where the name ends, at the alpha that keeps the
-        // name readable in both its resting and its selected colour, and
-        // reaches full strength only in the band below the name.
+        // ANTS-4690 — the wash is capped where the name ends, at the alpha
+        // that keeps the name readable in both its resting and its selected
+        // colour, and reaches full strength only in the band below the name.
         constexpr int kActiveUnderlineReserve = 2;
         constexpr int kWashAlpha = 140;
         constexpr int kNameMargin = 2;  // px below the name the cap still holds
