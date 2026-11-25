@@ -109920,7 +109920,10 @@ worked after these.
   2026-11-22: failed again once in ctest --preset=default (-j4) on
   f8e6b7f1 plus the ANTS-5448..5463 edits, which touch no ledger code;
   green 3/3 run alone. Third sighting.
-
+  Seen again 2026-11-25 in the push gate's build-test step on
+  9b392099 (comment-only commits): append waited 2215 ms, rewrite
+  1089 ms, against the 1000 ms bound. Passed alone three times
+  (0.6-1.7 s) and on the gate's retry. Load-sensitive wall-clock bound.
   **Layman:** One timing test failed once while every test ran at the same time, then passed three times on its own.
   Kind: test.
   Source: ctest-run-2026-10-24.
