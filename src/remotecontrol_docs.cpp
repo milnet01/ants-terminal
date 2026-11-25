@@ -100,13 +100,6 @@ QString RemoteControl::docSetDigest(const QString &rootCanonical,
     return QString::fromUtf8(h.result().toHex().left(16));
 }
 
-// ANTS-3601 — doc_integrity: deterministic dead-anchor / broken-link / TOC
-// checks over a project-relative doc set. caller_cwd Required (the dispatcher
-// enforces caller_cwd_required before this runs). Optional `path` (a single
-// doc or a dir, default the docs_dir override else `docs/`) routes through
-// PathValidation; an optional `kinds` filter narrows findings + counts; the
-// ETag-304 short-circuit is applied centrally (isEtagSupportedTool). Findings
-// come from DocIntegrity::check (docintegrity.cpp). See docs/specs/ANTS-3601-deterministic-doc-integrity-check.md.
 // ANTS-5554 — a checker that scanned nothing because the path names nothing
 // must not answer ok:true: a push gate would read a typo as a clean run.
 static QJsonObject docPathNotFound(const QString &verb, const QString &rawPath) {
@@ -118,6 +111,13 @@ static QJsonObject docPathNotFound(const QString &verb, const QString &rawPath) 
     return o;
 }
 
+// ANTS-3601 — doc_integrity: deterministic dead-anchor / broken-link / TOC
+// checks over a project-relative doc set. caller_cwd Required (the dispatcher
+// enforces caller_cwd_required before this runs). Optional `path` (a single
+// doc or a dir, default the docs_dir override else `docs/`) routes through
+// PathValidation; an optional `kinds` filter narrows findings + counts; the
+// ETag-304 short-circuit is applied centrally (isEtagSupportedTool). Findings
+// come from DocIntegrity::check (docintegrity.cpp). See docs/specs/ANTS-3601-deterministic-doc-integrity-check.md.
 QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
     // ANTS-3719 — `~global` / `~claude-config` routes to ~/.claude, the same
     // sentinel workspace_search and file_outline already take (ANTS-1390).
@@ -1000,8 +1000,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
 
     // Read ONCE per run, not once per spec: it is the same file for every
     // document in the walk (spec § 4). Absent, or present with no marked block,
-    // means the check is skipped — which is this verb's shipping default, since
-    // no standard in this project carries the block yet.
+    // means the check is skipped.
     SpecLint::Options opts;
     QString sectionsSource;
     opts.requiredSections =

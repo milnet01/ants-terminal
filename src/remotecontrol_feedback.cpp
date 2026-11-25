@@ -341,9 +341,9 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                         continue;
                     idToStatus.insert(b.id, b.status);  // later wins (live row)
                     callerPrefixes.insert(fbIdPrefix(b.id));  // ANTS-3518
-                    // ANTS-3504 — capture the ship-date for ✅ ids (shared
-                    // extractor with compact_resolved) so a contributor can
-                    // compare it against their server_build.build_date.
+                    // ANTS-3504 — capture the ship-date for ✅ ids so a
+                    // contributor can compare it against their
+                    // server_build.build_date.
                     if (b.status == fbShippedMark()) {
                         const QString d =
                             FeedbackFile::shipDateFromRoadmapBody(b.body);
@@ -357,13 +357,8 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         // caller roadmap, prefix not among its own) against the sibling
         // project whose roadmap OWNS that prefix. Feedback files live at the
         // shared root; the owning roadmap (e.g. Ants Terminal for ANTS-*) is a
-        // sibling subdir. Cost-gated on a foreign id being present; RAM-bounded
-        // — at most ONE full roadmap parse per distinct foreign prefix,
-        // retaining only the mapped foreign ids, discarded after. No persistent
-        // cache (a rare triage-time path). The caller roadmap itself is skipped.
-        // ANTS-3802 — now a shared helper, so compact_resolved resolves ids the
-        // same way this verb does. The two disagreeing about which ROADMAP owns
-        // an id was the defect.
+        // sibling subdir. Cost and memory bounds: see
+        // rlResolveForeignFeedbackIds.
         QSet<QString> alreadyResolved;
         for (auto it = idToStatus.constBegin(); it != idToStatus.constEnd(); ++it)
             alreadyResolved.insert(it.key());
@@ -596,9 +591,6 @@ void RemoteControl::setForceFeedbackWriteFailForTest(bool on) {
     FeedbackStore::setForceExportFailForTest(on);
 }
 
-// The ids these ops write are the ones the Ants MCP maintainer assigns at
-// triage, from this project's roadmap, so only an ANTS id is accepted.
-// Another project's ids are only ever read (rlResolveForeignFeedbackIds).
 // assign_id's refusal, single and batch. target_ambiguous lists the colliding
 // lines; target_not_found (ANTS-4983) the closest headings, for the caller to
 // copy, since it was copying one when it missed.
@@ -632,6 +624,9 @@ static QJsonObject fbAssignRefusal(const FeedbackFile::AssignResult &ar,
     return e;
 }
 
+// The ids these ops write are the ones the Ants MCP maintainer assigns at
+// triage, from this project's roadmap, so only an ANTS id is accepted.
+// Another project's ids are only ever read (rlResolveForeignFeedbackIds).
 static bool fbIsAntsId(const QString &id) {
     static const QRegularExpression re(QStringLiteral("^ANTS-[0-9]+$"));
     return re.match(id).hasMatch();
@@ -1692,10 +1687,9 @@ QJsonObject runStatusOp(const ants::RootProvider *roots, const QJsonObject &req)
         if (xy == QStringLiteral("??")) {
             // ANTS-1522 — merge untracked paths into files[] with
             // `index:"?"` + `worktree:"?"` so callers iterating
-            // files[] hit `git status --porcelain` parity. Keep
-            // untracked[] populated in parallel as a derived field
-            // for one release with a DEPRECATED marker (removed in
-            // 0.7.93 — same horizon as session_memory's `cwd`).
+            // files[] hit `git status --porcelain` parity. untracked[]
+            // is still populated in parallel as a derived field, marked
+            // DEPRECATED in the tool description; no removal date.
             QJsonObject f;
             f["path"]     = path;
             f["index"]    = QStringLiteral("?");

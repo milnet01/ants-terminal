@@ -25,7 +25,7 @@ struct Analysis {
     int runs = 0;              // runs in the window
     QJsonArray workflows;      // names seen in the window, sorted
     QList<qint64> logJobs;     // jobs whose log a finding reads, most useful first
-    QJsonArray unread;         // [{file, job, field}]: a workflow or job no file matched
+    QJsonArray unread;         // [{file, job, field, workflow?}]: a workflow or job no file matched
     QJsonArray files;          // [{file, workflow}]: the workflow files the checks read
 };
 
