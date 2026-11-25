@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **CI caches its apt packages with `awalsh128/cache-apt-pkgs-action` v2.0.0** (ANTS-6932)
+
 - **Every reader of a process's `/proc` stat line now goes through one shared helper** (ANTS-6439)
 
 - **`roadmap_query`'s two fetch-by-id paths finish through one shared step, so a fix to how fetched items are shaped lands in both** (ANTS-6244)

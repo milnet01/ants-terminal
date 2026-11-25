@@ -112,7 +112,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Qt6 + build + packaging deps (cached)
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9  # v1.6.3
+        uses: awalsh128/cache-apt-pkgs-action@009d70260b0f2e115cfa77447f8bd04c8e797064  # v2.0.0
         with:
           packages: >-
             build-essential cmake ninja-build pkg-config ccache mold
@@ -316,7 +316,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Qt6 + build deps (cached)
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9  # v1.6.3
+        uses: awalsh128/cache-apt-pkgs-action@009d70260b0f2e115cfa77447f8bd04c8e797064  # v2.0.0
         with:
           packages: >-
             build-essential cmake ninja-build pkg-config ccache mold
@@ -494,7 +494,7 @@ jobs:
       # uncached apt step. tools/qt62-guard.sh reads this step's package list
       # to build its container, and parses this `packages: >-` form as well.
       - name: Install Qt6 + build deps (release baseline)
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9  # v1.6.3
+        uses: awalsh128/cache-apt-pkgs-action@009d70260b0f2e115cfa77447f8bd04c8e797064  # v2.0.0
         with:
           packages: >-
             ccache
@@ -583,7 +583,7 @@ jobs:
           persist-credentials: false
 
       - name: Install cppcheck (cached)
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9  # v1.6.3
+        uses: awalsh128/cache-apt-pkgs-action@009d70260b0f2e115cfa77447f8bd04c8e797064  # v2.0.0
         with:
           packages: cppcheck
           version: 1.0

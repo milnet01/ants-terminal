@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6931 -->
+<!-- ants-roadmap-id-high-water: ANTS=6932 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -104050,6 +104050,14 @@ a modern terminal" release.
   Kind: fix.
   Source: found-during-ANTS-5774-2026-10-19.
   Lanes: chrome.
+
+- ✅ [ANTS-6932] **CI caches its apt packages with cache-apt-pkgs-action v2.0.0.**
+  v2 is a node24 rewrite with unchanged inputs and outputs. All four
+  ci.yml steps move to the v2.0.0 commit 009d7026. Proof: the push's
+  CI run, and tools/check-dependency-pins.py exits 0 locally.
+  **Layman:** The scheduled release audit failed because a CI helper had a new major version; CI now uses it.
+  Kind: fix.
+  Source: peer-ants-projects-hub-website-2026-11-25 (release-audit run 45667170136).
 
 ### 🐛 Carried over from 0.7.x
 
