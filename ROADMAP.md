@@ -72917,8 +72917,10 @@ larger than a one-loop fix. Tiered: 🔒 security/data-loss · ⚡ hardening
   Follow-up to ANTS-1750 (per-plugin worker thread). ANTS-1750 stops a runaway plugin freezing the UI and neuters the plugin, but cannot reclaim resources from a deliberately-infinite pure-C call: the detached worker thread + its ≤10MB VM + one core's CPU leak until app exit (no thread-based design can safely kill mid-C-call). The only design that fully contains a malicious uninterruptible loop is running each plugin VM in a separate OS process the host can SIGKILL. Cost is large: marshal the entire ants.* API surface + all ~16 PluginEvent types across an IPC boundary (effectively a second IPC subsystem alongside remotecontrol/MCP), per-process RAM (Lua runtime + state, tens of MB each), crash-recovery + lifecycle. Own spec cycle + threading/IPC-model decision. Deferred deliberately: post-ANTS-1750 the residual harm is a bounded, session-scoped, non-escalating DoS (no fs/net/exec — sandbox already strips those), which does not justify a permanent IPC subsystem under the project's shortest-correct-implementation + RAM-discipline rules. Revisit if the plugin marketplace (0.8.0) ships third-party plugins where the trust assumption weakens.
   User decided 2026-11-05: keep parked until the plugin marketplace
   (ANTS-1074) ships third-party plugins. Not a step-5 blocker until then.
+  Triaged 2026-11-25: live, but parked behind ANTS-1074 by the user
+  (2026-11-05); kind changed to feature.
   **Layman:** A stronger sandbox where a misbehaving plugin runs in a separate program the terminal can force-quit instantly, instead of letting a runaway one tie up a CPU core until you close the app.
-  Kind: security.
+  Kind: feature.
   Source: in-session-2026-05-22 (ANTS-1750 follow-up).
   Lanes: Lua, PluginManager, Security.
 
@@ -75431,13 +75433,17 @@ clips input text), and the auto-switcher interrupting active work.
   Source: in-session-2026-06-04.
   Lanes: ci, packaging.
 
-- 💭 [ANTS-1979] **Auto-model switcher fires /model mid-task, interrupting an in-flight tool/command (observed 3× in one session while the user was away).**
+- 🚫 [ANTS-1979] **Auto-model switcher fires /model mid-task, interrupting an in-flight tool/command (observed 3× in one session while the user was away).**
   During the v0.7.94 release work the switcher injected /model repeatedly while a foreground Bash command was running, cancelling it. It must never actuate a switch while a foreground command or tool call is in flight — only at a genuine turn boundary. Distinct from ANTS-1959 (idle/end-of-work downgrade safety); this is mid-execution interruption.
   **Layman:** The model auto-switcher butted in while a command was running and cancelled it — it should wait until nothing is actively running.
   Kind: fix.
   Lanes: claude-integration.
   Source: in-session-2026-06-04.
   Parked (2026-06-05, with user). Root cause is structural: Ants can only switch a running CC session's model by injecting `/model <tier>\r` keystrokes into the PTY — there is NO clean control-plane API (confirmed via claude-code-guide: hooks see the model read-only, settings/env apply only at startup, the SDK is one-shot, remote-control/channels can't invoke slash commands; keystroke injection is the only path; prior-art requests anthropics/claude-code #24947, #53049). Every firing window therefore has a real downside — mid-tool injection cancels the command (this bug), and idle/between-turns firing risks the confirm/continuation nudging CC into unrequested billable work (user's core concern). The cost/upkeep (perpetual TUI-string chasing) outweighs the value for an Opus-home user. DECISION: stop investing in auto-injection; keep the read-only stats + manual model chip; wait for a proper Anthropic model-switch API/hook. A feature request is drafted (docs/notes/anthropic-model-switch-request.md) to raise with Anthropic. Un-park if/when that API ships.
+  Triaged 2026-11-25: superseded by ANTS-2195. kAutoSwitchActuatorParked
+  = true (modelautoswitch.h) returns before any /model is sent
+  (claudestatuswidgets.cpp refreshAutoModelSwitch), so nothing can
+  interrupt a running command.
 
 - ✅ [ANTS-1984] **Scroll-to-bottom floating chip ignored the terminal theme — hard-coded rgba colours; derive from the active palette instead.**
   terminalwidget.cpp built the #scrollToBottomBtn stylesheet from fixed rgba() literals (40,40,60 / 200,200,220 / hover white), so the chip stayed blue-grey regardless of the selected theme. New styleScrollToBottomButton(bg,fg,accent,border) helper builds it from theme colours (lifted surface, themed border, accent hover); called from the ctor (grid defaults) and re-called on every applyThemeColors(). Keeps the ANTS-1326 padding/size resets.
@@ -75866,6 +75872,8 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   one call). As in May, small verbs cross the line alone and the aggregate
   does not. Moved to considered: it is a trigger-gated idea, and changing
   the wrap tag is a contract every client parses.
+  Triaged 2026-11-25: its 10 % trigger has not fired (1.8 % on
+  2026-11-21); stays an idea.
 
 ---
 
@@ -76945,6 +76953,8 @@ own design + test cycles.
   unmeasured and races the helper's exit. Both cost more than the risk.
   Moved to considered because the roadmap has no closed-not-fixed status
   (ANTS-4977).
+  Triaged 2026-11-25: still live and still the accepted risk the user
+  chose on 2026-09-14; stays an idea.
 
 - ✅ [ANTS-1273] **`/tmp/ants-terminal-<uid>.sock` fallback TOCTOU (remotecontrol).**
   `src/remotecontrol.cpp:82`. The XDG-runtime-dir
@@ -77939,12 +77949,15 @@ Triage of the finbreak feedback delta (2026-07-14 session). Two POSITIVE
 datapoints (async-audit write-path + spec/cold-eyes/roadmap-hygiene at scale —
 no action). Four actionable items below.
 
-- 💭 [ANTS-3520] **Shared content-addressed read-cache across sibling review agents in the orchestration verbs (cold_eyes_* / indie_review_* / test_audit_*).**
+- 🚫 [ANTS-3520] **Shared content-addressed read-cache across sibling review agents in the orchestration verbs (cold_eyes_* / indie_review_* / test_audit_*).**
   In a multi-lane /cold-eyes (or /indie-review, /test-audit) loop, each of N cold lanes per pass re-reads the whole spec + the same ~15-20 cited code files independently; on the reporter's run each lane cost ~100-145k input tokens and 3 lanes x 8 loops re-read the same files ~24x. Cost scales lanes x loops x (spec + cited-code bytes) when those bytes are identical across lanes in a pass and near-stable across passes. Two shapes: (A) a 'code-basis pack' the orchestrator pre-extracts once and embeds verbatim in each lane brief (the *_brief builders already assemble per-lane context); (B) a run-scoped content-addressed cache in the MCP layer keyed on (path, file-hash) that dedupes reads across concurrent agents of one run. Win: pay for cited code once per run, not once per lane per loop. RAM: bounded by one run's cited-file set; evict at run end.
   **Layman:** When several review helpers check the same document at once, each one re-reads the same spec and code files from scratch — the biggest cost of a review. Read each file once per run and share it, to cut token spend a lot.
   Kind: perf.
   Source: finbreak-feedback-2026-07-14.
   Reassessed against the ANTS-3521 measurement (2026-07-16): parking as considered — the shared MCP read-cache as specified has no reachable win. The reads it would dedupe happen in the SUBAGENT's Read tool (the harness), which the MCP server cannot intercept, so an MCP-layer content-addressed cache is architecturally unable to touch them. The only MCP-controllable lever is what the brief INSTRUCTS to read: ANTS-3522 (cited regions) + ANTS-3526 (search giant cross-ref logs) already captured the dominant cold-eyes sink WITHOUT a cache. Remaining cross-lane/cross-loop read duplication has only two homes, neither this verb: (a) prompt-caching, which is harness-side — the /cold-eyes + /indie-review skills already keep a byte-stable cacheable prefix; (b) orchestrator pre-inlining, which bloats parent context and violates the paths-only design (INV-3/INV-5). Un-park only if a mechanism appears that lets the MCP layer serve a subagent's reads. The only actionable residue is brief-byte dedup (ANTS-3524).
+  Triaged 2026-11-25: the duplicated reads are the subagents' own Read
+  calls, which the server cannot cache. ANTS-3522 and ANTS-3526 took the
+  cost; ANTS-3524 carries what is left.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-17 triage
 
@@ -79919,6 +79932,9 @@ against current source before filing.
   one closes: teach rotate_minor, or a sibling op, to move a closed phase's
   sections to docs/roadmap/<designator>.md and re-slug them with
   RoadmapMigrate::parseArchiveName's prefix.
+  Triaged 2026-11-25: still live; parked until a phase closes
+  (2026-11-20). The work left is a code op, so its doc-fix kind is
+  stale.
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -85707,7 +85723,7 @@ it.
   Kind: doc.
   Source: in-session-2026-08-25 (noticed while shipping ANTS-4664).
 
-- 💭 [ANTS-4681] **Every roadmap_log write re-renders the whole project and rewrites a 4.5 MB file, on the GUI thread.**
+- 📋 [ANTS-4681] **A roadmap_log write renders only the sections it changed, not the whole project.**
   Measured today: roadmap_log ran 7 of 7 calls between 137 ms and 256 ms,
   the slowest repeatable verb on the surface. Every op — annotate, flip, a
   one-line append — renders all 2,315 items and writes three files, of
@@ -85746,6 +85762,11 @@ it.
   reports unchanged ones in files_unchanged instead of rewriting them.
   What remains is ~200 ms of render latency in a background process;
   an incremental render is a large change for that, so parked here.
+  Triaged 2026-11-25: the GUI-thread half is gone (roadmap_log runs in
+  ants-mcpd since ANTS-4932) and unchanged files are no longer rewritten
+  (files_unchanged). Still live: each write renders the whole project
+  (items_rendered 4550 on this session's flips). Headline amended to
+  match.
   **Layman:** Filing one roadmap note rewrites the entire roadmap file, which freezes the window for a fifth of a second every time.
   Kind: perf.
   Source: in-session-2026-08-25, found while diagnosing a user report of the terminal locking up.
@@ -90445,12 +90466,15 @@ project. Reported causes are claims until checked in source.
   Source: review-contract-2026-10-12 ANTS-5651 tail.
   Lanes: mcp.
 
-- 💭 [ANTS-6373] **file_outline sends each symbol's name again inside its signature.**
+- 📋 [ANTS-6373] **file_outline sends each symbol's name again inside its signature.**
   Measured 2026-11-04 over 246 default calls: the name appears inside
   the signature for 5150 of 5685 symbols; those name fields are 18% of
   reply bytes. Dropping them changes the reply shape that callers and
   filter= read, so it needs an opt-in or a contract decision first.
   encoding:"tabular" already removes repeated keys.
+  Triaged 2026-11-25: live. outlineOneFile still sends name and a
+  signature that repeats it. Dropping a field changes the reply shape,
+  so the fix needs an opt-in or a contract note.
   **Layman:** The file-layout tool writes most names twice; saying them once would make its replies about a sixth smaller.
   Kind: optimize.
   Source: in-session-2026-11-04 ANTS-5525 measurement.
@@ -92811,12 +92835,16 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md 2026-11-01.
   Lanes: mcp.
 
-- 💭 [ANTS-6344] **Vendored Python grammar cannot parse a multi-line replacement field in a triple-quoted f-string.**
+- 📋 [ANTS-6344] **Vendored Python grammar cannot parse a multi-line replacement field in a triple-quoted f-string.**
   Smallest failing form, shrunk from Pressless editor.py _page on 2026-11-01:
   f"""{a}\n<p x="/">{say("b")}</p>\n<p x="c">{\n say("d" if e else "f")}</p>\n<s>{g}</s>"""
   Python's ast accepts it. Cause in the grammar's scanner not looked into.
   Trace now names the file and marks possible calls, so this is the root
   cause only. Build on a second report, or with the next grammar bump.
+  Triaged 2026-11-25 at the user's request (investigate fix-type ideas;
+  valid ones to planned). Reproduced: the body's f-string, then a def
+  and a caller. trace reports parse_error and misses after_one's
+  definition and its caller; the same f-string on one line finds both.
   **Layman:** The code reader trips on one rare way of writing long text in Python, and anything after it in that file can be misread.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-11-01.
@@ -102063,6 +102091,11 @@ merit whether or not the rest is built.
   Parked as considered (user decision 2026-10-09). Reopen on a sighting
   with Claude Code in its inline style; take the § 3 capture in that
   style. The raw capture was not kept: it holds conversation text.
+  Triaged 2026-11-25: unclear, stays an idea. scrollUp
+  (terminalgrid.cpp) still pushes the top row to scrollback outside the
+  CSI 2J window, so the hypothesis holds, but the 2026-10-09 capture
+  used fullscreen mode. Settles it: a VT capture with Claude Code in its
+  inline style.
   Source: user-2026-05-08.
 
 ### 🐛 Crash on app exit — Pty thread races MainWindow destruction (user report 2026-05-08)
@@ -102617,22 +102650,32 @@ that extend an earlier perf-pass bundle name it.
   Source: memory-perf-pass-2026-09-14.
   Lanes: mcp.
 
-- 💭 [ANTS-5206] **Give the process-lifetime static caches an eviction rule.**
+- 🚫 [ANTS-5206] **Give the process-lifetime static caches an eviction rule.**
   Extends ANTS-5085. No eviction on: s_cache in src/falseposledger.cpp, cache in src/changelogquery.cpp, g in src/subsystemmap.cpp. Each grows by project root or pattern and is small per entry. Direction: a small LRU bound shared by all three.
+  Triaged 2026-11-25: no real growth. Each cache holds one entry per
+  project, ledger or id prefix (falseposledger.cpp, changelogquery.cpp,
+  subsystemmap.cpp); an eviction rule would cost more than it saves.
   **Layman:** A few small caches keep one entry per project forever.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.
   Lanes: audit, mcp.
 
-- 💭 [ANTS-5207] **Check what the parseBullets per-thread memo keeps alive on worker threads.**
+- 🚫 [ANTS-5207] **Check what the parseBullets per-thread memo keeps alive on worker threads.**
   Extends ANTS-5087. parseBullets keeps static thread_local s_lastInput and s_lastResult (ANTS-2119). On the GUI thread this is the intended memo. On any pool thread that parses a large archive, the last input and result stay alive for the thread's life. Unverified: which threads call it. Direction: confirm the callers, then clear the memo off the GUI thread.
+  Triaged 2026-11-25: fixed by ANTS-5087. releaseParseMemo()
+  (roadmapparse.cpp) is called after every worker dispatch
+  (remotecontrol_terminal.cpp).
   **Layman:** The roadmap parser remembers its last document on every thread that used it.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.
   Lanes: roadmap.
 
-- 💭 [ANTS-5208] **Release RemoteControl's roadmap and changelog parse caches when idle.**
+- 📋 [ANTS-5208] **Release RemoteControl's roadmap and changelog parse caches when idle.**
   Extends ANTS-5094. m_roadmapCacheBullets and m_changelogCache are single-slot caches refreshed on the next query past the TTL. Nothing frees them in between. m_roadmapSectionCache already evicts. Direction: drop the slots on a timer after expiry.
+  Triaged 2026-11-25: live. m_roadmapCacheBullets and m_changelogCache
+  are only replaced on a miss or a refusal
+  (remotecontrol_roadmap_query_verb.cpp, remotecontrol_changelog.cpp);
+  nothing frees them once the 100 ms TTL lapses.
   **Layman:** The last roadmap and changelog read stay in memory after the cache has expired.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.
@@ -102738,6 +102781,9 @@ protocol.
   User 2026-10-09: not seen since the single occurrence in May. Kept as
   considered with the four hypotheses above; reopen if it recurs, with a
   screenshot plus an ANTS_PTY_DUMP capture.
+  Triaged 2026-11-25: unclear, stays an idea. One sighting in May, none
+  since. Settles it: a recurrence with a screenshot and an ANTS_PTY_DUMP
+  capture.
   Source: user-2026-05-10.
 
 ---
@@ -103839,9 +103885,12 @@ a modern terminal" release.
   **Layman:** Decode images in the background so a large image no longer freezes the prompt while it loads.
   Kind: refactor.
 
-- 💭 [ANTS-1062] **BTree scrollback.**
+- 🚫 [ANTS-1062] **BTree scrollback.**
   O(log n) scroll-to-line instead of O(n)
   for jump-to-timestamp features.
+  Triaged 2026-11-25: premise false. Scrollback is a
+  std::deque<TermLine> with O(1) indexing (terminalgrid.h), and no
+  jump-to-timestamp feature exists to speed up.
   **Layman:** Change how scrollback is stored so jumping to a point in history stays fast even in very long histories.
   Kind: refactor.
 
@@ -105633,6 +105682,8 @@ here.)
   bullet indented four spaces; with the cap mutated from 3 to 4 the test
   fails (high water 9996, expected 150), so the cap is pinned in both
   directions. Reopen only if the false warning is ever seen live.
+  Triaged 2026-11-25: still live and latent; the 2026-10-21 decision to
+  reopen only on a live false warning stands.
   **Layman:** The check that spots a roadmap file running ahead of the database can still be fooled by an example id written as an indented sub-point inside an entry.
   Kind: fix.
   Source: in-session-2026-08-28, closing ANTS-4406/4410/4430.
@@ -114759,7 +114810,7 @@ contributors don't duplicate research.
   **Layman:** Keep your settings, plugins and saved connections in sync across your machines.
   Kind: implement.
 
-- 💭 [ANTS-1223] **Tasks-chip semantics during in-progress-only work (revisit ANTS-1221).**
+- 🚫 [ANTS-1223] **Tasks-chip semantics during in-progress-only work (revisit ANTS-1221).**
   User report 2026-05-10: in a Claude Code
   session whose task list contained `2 completed + 1 in_progress
   + 0 pending`, the Tasks chip stayed hidden because ANTS-1221
@@ -114793,6 +114844,10 @@ contributors don't duplicate research.
   back, with a different look so it doesn't pretend to be
   something *you* need to do.
   Kind: fix. Source: user-2026-05-10.
+  Triaged 2026-11-25: fixed by ANTS-1246. The chip hides only on total
+  <= 0 || done >= total (claudestatuswidgets.cpp), so it stays up
+  through in-progress-only work. A dimmed look would be a new
+  enhancement.
   Source: user-2026-05-10.
 
 - 📋 [ANTS-1735] **Automatic model selection — opt-in auto-switch (Shape B of ANTS-1226).**
@@ -114867,8 +114922,10 @@ contributors don't duplicate research.
   `ModelRecommender::score` (`modelrecommender.cpp`) returns a discrete `Tier` enum with no measure of *how confident* the recommendation is or *which signals drove it*. Two follow-on costs: (a) the decide gate can't skip a low-confidence switch — every recommendation is treated equally, contributing to noise in the regret signal; (b) the user can't see *why* the recommender picked what it picked (today the score_reason is one string like "mechanical" / "plan_keyword" / "commit_intent" — the first matching rule, not a ranked breakdown). Refactor `score()` to return `Recommendation{tier, confidence:0-100, top_signals:[{name, weight, contribution}]}`. Compute confidence as the margin between the chosen tier's aggregate score and the runner-up tier's aggregate score, normalised to 0-100. Wire `decide()` to skip switches with confidence < 60 (configurable; default chosen from a week of dry-run data per ANTS-1895). Wire the ANTS-1888 chip tooltip to show the top 3 signals with their contribution percentages — passive surface, no extra clicks. Invasive: changes the `score()` signature used by `claudestatuswidgets`, `modelautoswitch`, and the ANTS-1888 chip refresh path. Land after ANTS-1893/1894/1895 so the confidence threshold has dry-run data to calibrate against.
   Parked 2026-11-05 (user, session 217) with ANTS-1979: auto-injection
   of /model stays parked until Anthropic offers a model-switch API.
+  Triaged 2026-11-25: live, blocked by ANTS-1894 and ANTS-1895; new
+  behaviour, so kind changed to feature.
   **Layman:** The recommender currently says "use Haiku" with no measure of how sure it is. This change makes it say "use Haiku — I'm 78% sure, mostly because your last 5 turns are all small file edits" — letting Ants skip switches when it's only barely confident, and letting you see in the status-bar tooltip *why* it picked what it picked.
-  Kind: refactor.
+  Kind: feature.
   Source: in-session-2026-05-26 (ANTS-1891 brainstorm; recommender opacity).
   Lanes: modelrecommender, modelautoswitch, claudestatuswidgets.
   Blocked-by: ANTS-1894, ANTS-1895.
@@ -115342,16 +115399,21 @@ reports are asked for separately, each time.
   type secrets into the terminal — every keystroke lives only in
   enclave memory until it's shown on-screen. Heavy lift; benefit
   concentrated in a small user set.
+  Triaged 2026-11-25: a research idea, not a fix; kind changed to
+  research.
   **Layman:** Keep secrets you type inside a protected area of the processor, hidden from the rest of the system.
-  Kind: fix.
+  Kind: research.
 
 ### ⚡ Performance
 
-- 💭 [ANTS-1096] **GPU text rendering with ligatures.**
+- 🚫 [ANTS-1096] **GPU text rendering with ligatures.**
   Today GPU path can't
   render ligatures (HarfBuzz shaping is on the CPU path). Port the
   shaping step to a compute shader; keep the atlas path we already
   have.
+  Triaged 2026-11-25: obsolete. TerminalWidget is a plain QWidget since
+  0.7.4 and glrenderer.cpp is gone (ANTS-4264); the QPainter path
+  already shapes ligatures with QTextLayout.
   **Layman:** Make decorative font ligatures work on the faster graphics-card drawing path, not just the slower one.
   Kind: refactor.
 
