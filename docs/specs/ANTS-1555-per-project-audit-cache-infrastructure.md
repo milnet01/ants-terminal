@@ -216,9 +216,9 @@ New files:
 Wired into `auditrunner.cpp`:
 - `runAudit` calls `loadManifest(canonProject)` near the top (after
   PathValidation) and copies `manifest.last_run` into `r.priorRun`.
-- After the SARIF write succeeds, replace the legacy `allocSarifPath`
+- After the SARIF write succeeds, replace the legacy `allocFallbackPath`
   call with `cachePathFor(canonProject, iso, sha)` + the cache write.
-  Fall back to `allocSarifPath` if the cache write failed.
+  Fall back to `allocFallbackPath` if the cache write failed.
 - Final step: `recordRun(canonProject, r, req.scope, rawByTool)`
   which appends to history + reaps.
 

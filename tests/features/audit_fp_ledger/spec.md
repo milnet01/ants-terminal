@@ -57,6 +57,11 @@ stays hidden across edits.
 - **INV-8** (ANTS-5603) A later row for a fingerprint supersedes the earlier one
   in `loadEntries`, which keeps the first row's place. The file stays
   append-only, so the earlier reason survives on disk.
+- **INV-9** (ANTS-6586) The GUI's `parseFindings` and the headless runner read
+  a `file:line[:col]: message` line with one parser,
+  `AuditEngine::parseLocatedLine`. A false positive learned in the GUI on a
+  path containing a space, or on an indented line, suppresses the same
+  finding in the runner.
 
 ## Out of scope (v1)
 

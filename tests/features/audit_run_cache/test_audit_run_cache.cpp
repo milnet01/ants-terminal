@@ -88,8 +88,8 @@ TEST(AuditRunCache, AuditRunnerRoutesThroughAuditCache) {
     EXPECT_TRUE(contains(src, "AuditCache::gitInfo"))
         << "auditrunner.cpp must call gitInfo for the manifest sha/branch";
     // /tmp fallback must remain reachable for read-only roots.
-    EXPECT_TRUE(contains(src, "allocSarifPath()"))
-        << "auditrunner.cpp must retain the /tmp fallback via allocSarifPath";
+    EXPECT_TRUE(contains(src, "allocFallbackPath(QStringLiteral(\"sarif\"))"))
+        << "auditrunner.cpp must retain the /tmp fallback via allocFallbackPath";
 }
 
 TEST(AuditRunCache, MainWindowEnvelopeSurfacesCachePathAndPriorRun) {

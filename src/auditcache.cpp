@@ -24,6 +24,9 @@ namespace {
 
 constexpr int  kHistoryMax = 10;
 const char    *kManifestName = "index.json";
+// The manifest keys naming the files a run owns. A history entry carries
+// each, the keep-set guards each, and the reaper deletes each.
+constexpr const char *kArtefactKeys[] = {"sarif", "html", "findings_file"};
 
 QString cacheDirImpl(const QString &canonProject) {
     if (canonProject.isEmpty()) return {};
@@ -252,19 +255,11 @@ RecordedRun recordRun(const QString &canonProject,
             prev.lastRun.value(QStringLiteral("iso_timestamp"));
         entry[QStringLiteral("commit")] =
             prev.lastRun.value(QStringLiteral("commit"));
-        if (prev.lastRun.contains(QStringLiteral("sarif"))) {
-            entry[QStringLiteral("sarif")] =
-                prev.lastRun.value(QStringLiteral("sarif"));
-        }
-        if (prev.lastRun.contains(QStringLiteral("html"))) {
-            entry[QStringLiteral("html")] =
-                prev.lastRun.value(QStringLiteral("html"));
-        }
-        // ANTS-1870 — carry the findings sidecar basename so the reaper
-        // can delete it alongside the sarif/html when this run ages out.
-        if (prev.lastRun.contains(QStringLiteral("findings_file"))) {
-            entry[QStringLiteral("findings_file")] =
-                prev.lastRun.value(QStringLiteral("findings_file"));
+        // Carry each artefact's basename so the reaper can delete it when
+        // this run ages out.
+        for (const char *k : kArtefactKeys) {
+            const QString key = QLatin1String(k);
+            if (prev.lastRun.contains(key)) entry[key] = prev.lastRun.value(key);
         }
         history.append(entry);
     }
@@ -356,9 +351,8 @@ RecordedRun recordRun(const QString &canonProject,
     // that duplicates a basename).
     QSet<QString> keep;
     auto addKeep = [&keep](const QJsonObject &e) {
-        for (const QString &k : {QStringLiteral("sarif"), QStringLiteral("html"),
-                                 QStringLiteral("findings_file")}) {
-            const QString b = e.value(k).toString();
+        for (const char *k : kArtefactKeys) {
+            const QString b = e.value(QLatin1String(k)).toString();
             if (!b.isEmpty()) keep.insert(b);
         }
     };
@@ -367,10 +361,6 @@ RecordedRun recordRun(const QString &canonProject,
 
     for (const QJsonValue &v : reaped) {
         const QJsonObject e = v.toObject();
-        const QString sarif = e.value(QStringLiteral("sarif")).toString();
-        const QString html  = e.value(QStringLiteral("html")).toString();
-        const QString findingsFile =
-            e.value(QStringLiteral("findings_file")).toString();
         auto reapOne = [&](const QString &basename) {
             if (basename.isEmpty()) return;
             // ANTS-2119 M1 — a surviving entry still references this file.
@@ -395,9 +385,8 @@ RecordedRun recordRun(const QString &canonProject,
                            << canonAbs;
             }
         };
-        reapOne(sarif);
-        reapOne(html);
-        reapOne(findingsFile);  // ANTS-1870
+        for (const char *k : kArtefactKeys)
+            reapOne(e.value(QLatin1String(k)).toString());
     }
 
     out.ok = true;

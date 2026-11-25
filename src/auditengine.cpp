@@ -587,14 +587,18 @@ FilterResult applyFilter(const QString &raw,
     return { out.join('\n'), keptCount };
 }
 
+std::optional<LocatedLine> parseLocatedLine(const QString &line) {
+    static const QRegularExpression rx(
+        QStringLiteral(R"(^([^:]+):(\d+):(?:\d+:)?\s*(.*)$)"));
+    const QRegularExpressionMatch m = rx.match(line.trimmed());
+    if (!m.hasMatch()) return std::nullopt;
+    return LocatedLine{m.captured(1), m.captured(2).toInt(), m.captured(3)};
+}
+
 QList<Finding> parseFindings(const QString &body, const AuditCheck &check) {
     QList<Finding> out;
     if (body.isEmpty()) return out;
 
-    static const QRegularExpression reFileLineCol(
-        R"(^([^\s:]+):(\d+):(?:\d+:)?\s*(.*)$)");
-    static const QRegularExpression reFileLine(
-        R"(^([^\s:]+):(\d+):\s*(.*)$)");
     // ANTS-1123 indie-review M1: previously the second alternation
     // `[^\s:]+/[^\s:]+` matched any path-shaped token including bare
     // version refs (`cargo/1.75`, `python/3.11.4`), producing bogus
@@ -622,26 +626,16 @@ QList<Finding> parseFindings(const QString &body, const AuditCheck &check) {
         f.source    = source;
         f.message   = line;
 
-        // ANTS-1123 indie-review L1: short-circuit the regex chain.
-        // The previous form ran all three patterns up front; only one
-        // can match per line, so chaining the matches is a 2-3x cost
-        // saving on the common file:line:col path.
-        // ANTS-2003 — strip the file:line:col: prefix from the stored
-        // message (group 3 is the message body). The raw prefix bloated the
-        // SARIF message text and made the dedup title column-sensitive, so
-        // two findings at the same line differing only by column were kept
-        // as separate entries. Keying dedup on the clean message makes it
-        // line-grained (computeFingerprint already stripLocation()s, so the
-        // learned-FP ledger is unaffected). Lines that match no pattern keep
-        // the full line as their message.
-        if (auto m1 = reFileLineCol.match(line); m1.hasMatch()) {
-            f.file = m1.captured(1);
-            f.line = m1.captured(2).toInt();
-            f.message = m1.captured(3);
-        } else if (auto m2 = reFileLine.match(line); m2.hasMatch()) {
-            f.file = m2.captured(1);
-            f.line = m2.captured(2).toInt();
-            f.message = m2.captured(3);
+        // ANTS-2003 — store the message without its file:line:col: prefix.
+        // The raw prefix bloated the SARIF message text and made the dedup
+        // title column-sensitive, so two findings at the same line differing
+        // only by column were kept as separate entries (computeFingerprint
+        // already stripLocation()s, so the learned-FP ledger is unaffected).
+        // Lines that match no pattern keep the full line as their message.
+        if (const auto located = parseLocatedLine(line)) {
+            f.file = located->file;
+            f.line = located->line;
+            f.message = located->message;
         } else if (auto m3 = reJustFile.match(line); m3.hasMatch()) {
             f.file = m3.captured(1);
         }
@@ -922,6 +916,15 @@ void tallyLevel(AuditSummary &s, int ord) {
     else               ++s.countWarning;
 }
 
+// Spec § 3.1 step 4, shared by every summariser: tally the finding's level,
+// and pool it when the level reaches the floor.
+void tallyAndPool(AuditSummary &s, QList<AuditSummaryFinding> &pool,
+                  int floorOrd, AuditSummaryFinding asf) {
+    const int ord = levelOrdinal(asf.level);
+    tallyLevel(s, ord);
+    if (ord >= floorOrd) pool.append(std::move(asf));
+}
+
 }  // namespace
 
 std::optional<AuditSummary> summariseSarif(
@@ -1008,14 +1011,9 @@ std::optional<AuditSummary> summariseSarif(
             const QString level = res.value(QStringLiteral("level")).toString(
                 QStringLiteral("warning"));
 
-            const int ord = levelOrdinal(level);
-            tallyLevel(s, ord);
-
             const QJsonArray suppressions = res.value(
                 QStringLiteral("suppressions")).toArray();
             if (!suppressions.isEmpty()) ++s.countSuppressed;
-
-            if (ord < floorOrd) continue;
 
             AuditSummaryFinding asf;
             asf.level   = level;
@@ -1046,7 +1044,7 @@ std::optional<AuditSummary> summariseSarif(
             asf.severity = (it != ruleSeverity.constEnd())
                                ? it.value() : severityFromLevel(level);
 
-            pool.append(std::move(asf));
+            tallyAndPool(s, pool, floorOrd, std::move(asf));
         }
     }
 
@@ -1165,9 +1163,6 @@ std::optional<AuditSummary> summariseCppcheckXml(
             sevTier    = QStringLiteral("MINOR");
         }
 
-        const int ord = levelOrdinal(sarifLevel);
-        tallyLevel(s, ord);
-
         // First nested <location> only (cppcheck can emit several;
         // v1 mirrors SARIF's locations[0] convention).
         QString locFile;
@@ -1187,17 +1182,10 @@ std::optional<AuditSummary> summariseCppcheckXml(
             }
         }
 
-        if (ord < floorOrd) continue;
-
-        AuditSummaryFinding asf;
-        asf.level    = sarifLevel;
-        asf.severity = sevTier;
-        asf.ruleId   = id;
-        asf.message  = msg;
-        asf.file     = locFile;
-        asf.line     = locLine;
         // cppcheck XML has no confidence signal at v1; leave defaults.
-        pool.append(std::move(asf));
+        tallyAndPool(s, pool, floorOrd,
+                     {.level = sarifLevel, .severity = sevTier, .ruleId = id,
+                      .file = locFile, .line = locLine, .message = msg});
     }
 
     if (xml.hasError() || !sawResults) return std::nullopt;
@@ -1256,19 +1244,9 @@ std::optional<AuditSummary> summariseClangTidyText(
             (sev == QLatin1String("error") || sev == QLatin1String("warning"))
                 ? QStringLiteral("MAJOR") : QStringLiteral("INFO");
 
-        const int ord = levelOrdinal(sarifLevel);
-        tallyLevel(s, ord);
-
-        if (ord < floorOrd) continue;
-
-        AuditSummaryFinding asf;
-        asf.level    = sarifLevel;
-        asf.severity = sevTier;
-        asf.ruleId   = ruleId;
-        asf.message  = msg;
-        asf.file     = file;
-        asf.line     = lineNo;
-        pool.append(std::move(asf));
+        tallyAndPool(s, pool, floorOrd,
+                     {.level = sarifLevel, .severity = sevTier, .ruleId = ruleId,
+                      .file = file, .line = lineNo, .message = msg});
     }
 
     if (pool.isEmpty() && s.countError + s.countWarning + s.countNote == 0) {
@@ -1341,9 +1319,6 @@ std::optional<AuditSummary> summariseSemgrepJson(
             sevTier    = QStringLiteral("INFO");
         }
 
-        const int ord = levelOrdinal(sarifLevel);
-        tallyLevel(s, ord);
-
         // ANTS-2123 — SARIF parity. semgrep marks a `# nosemgrep`-ignored
         // finding with extra.is_ignored=true. summariseSarif tallies
         // suppressions[] into countSuppressed (ANTS-1254 INV-3) as a PARALLEL
@@ -1354,16 +1329,9 @@ std::optional<AuditSummary> summariseSemgrepJson(
         if (extra.value(QStringLiteral("is_ignored")).toBool())
             ++s.countSuppressed;
 
-        if (ord < floorOrd) continue;
-
-        AuditSummaryFinding asf;
-        asf.level    = sarifLevel;
-        asf.severity = sevTier;
-        asf.ruleId   = ruleId;
-        asf.message  = msg;
-        asf.file     = file;
-        asf.line     = lineNo;
-        pool.append(std::move(asf));
+        tallyAndPool(s, pool, floorOrd,
+                     {.level = sarifLevel, .severity = sevTier, .ruleId = ruleId,
+                      .file = file, .line = lineNo, .message = msg});
     }
 
     rankAndClamp(pool, topN);

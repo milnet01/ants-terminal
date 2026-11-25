@@ -671,8 +671,8 @@ QString sessionIdToken() {
     return sid;
 }
 
-int g_sarifSeq = 0;
-std::mutex g_sarifSeqMutex;
+int g_fallbackSeq = 0;
+std::mutex g_fallbackSeqMutex;
 
 // ── ANTS-3614 — reap orphaned fallback artifacts.
 // The PRIMARY artifacts land in `<root>/.audit_cache/` and are garbage-
@@ -703,44 +703,44 @@ void reapStaleFallbackArtifacts(const QString &dirPath) {
     }
 }
 
+// Where a fallback artifact goes, in order of preference: the XDG cache
+// (`~/.cache/Ants Terminal/audit/`, a 0700-eligible per-user directory),
+// then /tmp. allocFallbackPath and the reaper both read this list.
+QStringList fallbackArtifactDirs() {
+    QStringList dirs;
+    const QString cacheRoot =
+        QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (!cacheRoot.isEmpty()) dirs << cacheRoot + QLatin1String("/audit");
+    dirs << QStringLiteral("/tmp");
+    return dirs;
+}
+
 void reapFallbackArtifactsOnce() {
     static std::once_flag once;
     std::call_once(once, [] {
-        const QString cacheRoot =
-            QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-        if (!cacheRoot.isEmpty())
-            reapStaleFallbackArtifacts(cacheRoot + QLatin1String("/audit"));
-        reapStaleFallbackArtifacts(QStringLiteral("/tmp"));
+        for (const QString &dir : fallbackArtifactDirs())
+            reapStaleFallbackArtifacts(dir);
     });
 }
 
-// Fallback SARIF path when .audit_cache is read-only.
-// Prefer XDG cache (`~/.cache/Ants Terminal/audit/`) so fallbacks land
-// in a 0700-eligible per-user directory; /tmp only as a last resort and
-// with a random suffix (16 hex characters of a random UUID) to defeat the
-// predictable-filename pre-create attack that the older
-// `/tmp/audit-<pid>-<epoch>-<seq>` scheme allowed
-// (indie-review-2026-05-19 audit-pipeline H2).
-QString allocSarifPath() {
-    std::lock_guard<std::mutex> lk(g_sarifSeqMutex);
+// A fallback artifact path, `audit-<sid>-<seq>-<rand>.<ext>`, for when
+// .audit_cache is read-only. The random tail (16 hex characters of a random
+// UUID) defeats the predictable-filename pre-create attack that the older
+// `/tmp/audit-<pid>-<epoch>-<seq>` scheme allowed (indie-review-2026-05-19
+// audit-pipeline H2).
+QString allocFallbackPath(const QString &ext) {
+    std::lock_guard<std::mutex> lk(g_fallbackSeqMutex);
     reapFallbackArtifactsOnce();
-    const int seq = ++g_sarifSeq;
+    const int seq = ++g_fallbackSeq;
     const QString rand =
         QUuid::createUuid().toRfc4122().toHex().left(16);
-    // Try $XDG_CACHE_HOME/Ants Terminal/audit/<random>.sarif first.
-    const QString cacheRoot =
-        QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-    if (!cacheRoot.isEmpty()) {
-        const QString dir = cacheRoot + QLatin1String("/audit");
-        if (QDir().mkpath(dir)) {
-            return QStringLiteral("%1/audit-%2-%3-%4.sarif")
-                .arg(dir, sessionIdToken(), QString::number(seq), rand);
-        }
+    const QStringList dirs = fallbackArtifactDirs();
+    QString dir = dirs.last();
+    for (const QString &d : dirs) {
+        if (QDir().mkpath(d)) { dir = d; break; }
     }
-    // /tmp last-resort with a random suffix — still predictable-by-pid
-    // but the random tail breaks the symlink-squat window.
-    return QStringLiteral("/tmp/audit-%1-%2-%3.sarif")
-        .arg(sessionIdToken(), QString::number(seq), rand);
+    return QStringLiteral("%1/audit-%2-%3-%4.%5")
+        .arg(dir, sessionIdToken(), QString::number(seq), rand, ext);
 }
 
 // Finding count + sample extraction from raw tool output: JSON tools parse
@@ -885,6 +885,34 @@ ParsedOutput parseToolOutput(const QString &tool,
                                  = {}) {
     ParsedOutput out;
     if (raw.trimmed().isEmpty()) return out;
+    // The per-finding steps both branches below share. `checkId` keys the
+    // learned-FP ledger (ANTS-1820), the `.audit_allowlist.json` match
+    // (ANTS-3615) and the fingerprint (ANTS-1870): a JSON tool's own check
+    // id, or the tool name for a line-based tool, as the GUI's
+    // Finding::checkId does.
+    const auto suppressed = [&](const QString &checkId, const QString &fileStr,
+                                const QString &msg) {
+        if (!isLearnedFp(learnedFps, fileStr, checkId, msg)
+            && !AuditEngine::allowlisted(allowlist, checkId, fileStr, msg))
+            return false;
+        ++out.suppressedCount;
+        return true;
+    };
+    // Every finding goes into `findings` with its line-insensitive
+    // fingerprint, up to kSarifFindingsMax; only the first sampleCap become
+    // samples.
+    const auto record = [&](const QJsonObject &s, const QString &checkId,
+                            const QString &fileStr, const QString &msg) {
+        if (out.findings.size() < kSarifFindingsMax) {
+            QJsonObject f = s;
+            f["fp"] = ants::auditfp::computeFingerprint(fileStr, checkId, msg);
+            f["tool"] = tool;   // ANTS-6540 — computeDelta's toolsRanOk
+            out.findings.append(f);
+        } else {
+            out.findingsTruncated = true;
+        }
+        if (out.samples.size() < sampleCap) out.samples.append(s);
+    };
     // ANTS-3846 — before anything is parsed: a line-based tool that printed a
     // usage banner refused to run, so its stream is help text rather than
     // findings. Checked here so no finding is ever built from it. The JSON
@@ -961,19 +989,8 @@ ParsedOutput parseToolOutput(const QString &tool,
                     ++emptyEntries;
                     continue;
                 }
-                // ANTS-1820 — drop learned false positives before the sample
-                // is built; rawCount keeps the tool's raw total.
-                if (isLearnedFp(learnedFps, fileStr, ruleStr, msg)) {
-                    ++out.suppressedCount;
-                    continue;
-                }
-                // ANTS-3615 — same drop for a `.audit_allowlist.json` match.
-                // JSON tools key on their own check id, matching the GUI's
-                // Finding::checkId for these detectors.
-                if (AuditEngine::allowlisted(allowlist, ruleStr, fileStr, msg)) {
-                    ++out.suppressedCount;
-                    continue;
-                }
+                // rawCount keeps the tool's raw total, suppressions included.
+                if (suppressed(ruleStr, fileStr, msg)) continue;
                 QJsonObject s;
                 if (!fileStr.isEmpty()) s["file"] = fileStr;
                 if (e.contains(QStringLiteral("line_number")))
@@ -986,19 +1003,7 @@ ParsedOutput parseToolOutput(const QString &tool,
                 s["message"]  = internal::capMessage(msg);
                 s["rule"]     = ruleStr;
                 s["severity"] = e.value(QStringLiteral("severity")).toString();
-                // ANTS-1870 — full set with fp (line-insensitive identity),
-                // bounded at kSarifFindingsMax. JSON tools key the fingerprint
-                // on the tool's own check_id (ruleStr), matching § 2.2.
-                if (out.findings.size() < kSarifFindingsMax) {
-                    QJsonObject f = s;
-                    f["fp"] = ants::auditfp::computeFingerprint(
-                        fileStr, ruleStr, msg);
-                    f["tool"] = tool;   // ANTS-6540 — computeDelta's toolsRanOk
-                    out.findings.append(f);
-                } else {
-                    out.findingsTruncated = true;
-                }
-                if (out.samples.size() < sampleCap) out.samples.append(s);
+                record(s, ruleStr, fileStr, msg);
             }
             // ANTS-3590 — exclude the dropped placeholder entries from the raw
             // total so a clean scan reports 0, not 1.
@@ -1017,18 +1022,17 @@ ParsedOutput parseToolOutput(const QString &tool,
     }
     // Line-based fallback for plain-text tools.
     const QStringList lines = raw.split(QChar('\n'), Qt::SkipEmptyParts);
-    static const QRegularExpression rxFileLine(
-        QStringLiteral("^([^:]+):(\\d+)(?::\\d+)?:\\s*(.+)$"));
     // ANTS-1816 — count only location-shaped lines, not every non-empty line.
     // Tool banners, "N files scanned", and blank-separated context were being
     // counted as findings, inflating rawCount / noiseRatePct (the headline
     // numbers audit_run returns + persists) for plain-text tools.
     int located = 0;
     for (int i = 0; i < lines.size(); ++i) {
-        const QRegularExpressionMatch m = rxFileLine.match(lines.at(i));
-        if (!m.hasMatch()) continue;
-        const QString fileStr = m.captured(1);
-        const QString msg     = m.captured(3);
+        // ANTS-6586 — the GUI's parser, so both fingerprint a line alike.
+        const auto loc = AuditEngine::parseLocatedLine(lines.at(i));
+        if (!loc) continue;
+        const QString &fileStr = loc->file;
+        const QString &msg     = loc->message;
         // ANTS-3472 — mypy `note:` lines (the [annotation-unchecked] /
         // check-untyped-defs hints, and the "see here" context under an
         // error) are informational, never a standalone finding. A deps-less
@@ -1076,24 +1080,13 @@ ParsedOutput parseToolOutput(const QString &tool,
             }
         }
         ++located;  // rawCount keeps the raw total, learned FPs included
-        // ANTS-1820 — the line-based tools (cppcheck/clazy/clang-tidy/mypy)
-        // key the ledger by tool name, matching the GUI's Finding::checkId,
-        // so learned FPs recorded in the dialog suppress here too.
-        // (shellcheck is NOT one of them — isJsonFindingTool routes it down
-        // the JSON branch above, where the tool's own check_id is the key.)
-        if (isLearnedFp(learnedFps, fileStr, tool, msg)) {
-            ++out.suppressedCount;
-            continue;
-        }
-        // ANTS-3615 — same drop for a `.audit_allowlist.json` match. The
-        // line-based tools' check id IS the tool name (as above).
-        if (AuditEngine::allowlisted(allowlist, tool, fileStr, msg)) {
-            ++out.suppressedCount;
-            continue;
-        }
+        // The line-based tools (cppcheck/clazy/clang-tidy/mypy) key on the
+        // tool name. (shellcheck is NOT one of them — isJsonFindingTool
+        // routes it down the JSON branch above.)
+        if (suppressed(tool, fileStr, msg)) continue;
         QJsonObject s;
         s["file"]    = fileStr;
-        s["line"]    = m.captured(2).toInt();
+        s["line"]    = loc->line;
         s["message"] = internal::capMessage(msg);
         s["rule"]    = tool;
         // ANTS-3694 — the line-based tools put their severity in the message
@@ -1105,17 +1098,7 @@ ParsedOutput parseToolOutput(const QString &tool,
             const QString sev = internal::severityFromMessagePrefix(msg);
             s["severity"] = sev.isEmpty() ? QStringLiteral("UNKNOWN") : sev;
         }
-        // ANTS-1870 — full set with fp; line-based tools key the fingerprint
-        // on the tool name (matching the GUI's Finding::checkId), § 2.2.
-        if (out.findings.size() < kSarifFindingsMax) {
-            QJsonObject f = s;
-            f["fp"] = ants::auditfp::computeFingerprint(fileStr, tool, msg);
-            f["tool"] = tool;   // ANTS-6540 — computeDelta's toolsRanOk
-            out.findings.append(f);
-        } else {
-            out.findingsTruncated = true;
-        }
-        if (out.samples.size() < sampleCap) out.samples.append(s);
+        record(s, tool, fileStr, msg);
     }
     out.rawCount = located;
     return out;
@@ -1656,20 +1639,9 @@ QString capMessage(const QString &msg) {
 
 qint64 measureEnvelopeBytes(const QJsonArray &samples,
                             const QHash<QString, ToolResult> &byTool) {
-    // Quick measurement: serialise a representative envelope shell +
-    // samples to get a Compact byte count.
+    // The reply's own by_tool, plus the samples, as a Compact byte count.
     QJsonObject env;
-    QJsonObject byToolJ;
-    for (auto it = byTool.constBegin(); it != byTool.constEnd(); ++it) {
-        QJsonObject t;
-        t["status"]              = it->status;
-        t["elapsed_ms"]          = it->elapsedMs;
-        t["raw_count"]           = it->rawCount;
-        t["after_filter_count"]  = it->afterFilterCount;
-        t["samples"]             = it->samples;
-        byToolJ[it.key()]        = t;
-    }
-    env["by_tool"] = byToolJ;
+    env["by_tool"] = byToolObject(byTool);
     if (!samples.isEmpty()) env["top_findings"] = samples;
     return QJsonDocument(env).toJson(QJsonDocument::Compact).size();
 }
@@ -2399,7 +2371,7 @@ void writeArtifacts(const RunRequest &req, const QString &canonProject,
             // Fall back to legacy /tmp path so callers depending on
             // sarifPath still work even on read-only roots.
             cacheSarifAbs.clear();
-            const QString sp = allocSarifPath();
+            const QString sp = allocFallbackPath(QStringLiteral("sarif"));
             if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot,
                            fullFindingsByTool, recorded.carriedForwardForSarif,
                            &sarifDocTruncated)) {
@@ -2425,23 +2397,7 @@ void writeArtifacts(const RunRequest &req, const QString &canonProject,
             hp.chop(static_cast<int>(strlen(".sarif")));
             hp += QStringLiteral(".html");
         } else {
-            // No SARIF + no cache: emit HTML alongside a randomised path so
-            // an attacker can't pre-create a symlink at a known location.
-            // ANTS-3614 — this branch allocates a fallback without going
-            // through allocSarifPath(), so trigger the reaper here too.
-            reapFallbackArtifactsOnce();
-            const QString rand =
-                QUuid::createUuid().toRfc4122().toHex().left(16);
-            const QString cacheRoot = QStandardPaths::writableLocation(
-                QStandardPaths::CacheLocation);
-            if (!cacheRoot.isEmpty()
-             && QDir().mkpath(cacheRoot + QLatin1String("/audit"))) {
-                hp = QStringLiteral("%1/audit/audit-%2-%3.html")
-                    .arg(cacheRoot, sessionIdToken(), rand);
-            } else {
-                hp = QStringLiteral("/tmp/audit-%1-%2.html")
-                    .arg(sessionIdToken(), rand);
-            }
+            hp = allocFallbackPath(QStringLiteral("html"));
         }
         if (writeHtml(hp, r.byTool)) r.htmlPath = hp;
     }

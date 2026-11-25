@@ -18,6 +18,10 @@ QJsonArray toArray(const QStringList &list) {
     return out;
 }
 
+}  // namespace
+
+namespace internal {
+
 QJsonObject byToolObject(const QHash<QString, ToolResult> &byTool) {
     QJsonObject out;
     for (auto it = byTool.constBegin(); it != byTool.constEnd(); ++it) {
@@ -41,11 +45,11 @@ QJsonObject byToolObject(const QHash<QString, ToolResult> &byTool) {
     return out;
 }
 
-}  // namespace
+}  // namespace internal
 
 QJsonObject doneEnvelope(const RunResult &r) {
     QJsonObject env;
-    env["by_tool"] = byToolObject(r.byTool);
+    env["by_tool"] = internal::byToolObject(r.byTool);
     // ANTS-4371 — the top-level roll-up, so a caller reading only the summary
     // can tell a real sweep from an empty one without walking by_tool.
     // Deliberately NOT folded into `partial` / `incomplete_tools`: a narrowed

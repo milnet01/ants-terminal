@@ -452,7 +452,7 @@ not a pool — see INV-9). Implementation:
   fallback.** Primary path (ANTS-1555): `<root>/.audit_cache/audit-<iso>-
   <sha>.sarif` (`AuditCache::sarifPathFor`; `<iso>` = 1-second timestamp,
   `<sha>` = short commit) — set on both `sarifPath` and `cachePath`. When
-  the cache dir is unwritable, `allocSarifPath` falls back to
+  the cache dir is unwritable, `allocFallbackPath` falls back to
   `$XDG_CACHE_HOME/Ants Terminal/audit/…` then last-resort
   `/tmp/audit-<sid>-<seq>-<rand>.sarif` (`<sid>` = `PID-epoch`, a function-local static built on the FIRST fallback allocation (not at process start),
   `<seq>` = monotonic counter, `<rand>` = 16-hex UUID tail defeating the

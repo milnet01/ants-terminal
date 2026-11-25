@@ -258,9 +258,14 @@ QJsonObject doneEnvelope(const RunResult &r);
 // envelope-cap cascade (INV-13). Internal use only.
 namespace internal {
 
-// Envelope size measurement — implementer uses
-// QJsonDocument(env).toJson(Compact).size() inline. Helper here
-// for tests so they can replicate the cascade.
+// The reply's `by_tool` object (auditrunenvelope.cpp). doneEnvelope and
+// measureEnvelopeBytes both build it here, so the size the cap cascade
+// measures is the size the reply carries.
+QJsonObject byToolObject(const QHash<QString, ToolResult> &byTool);
+
+// The Compact byte size of `by_tool` plus `samples` as top_findings. The
+// envelope-cap cascade (INV-13) trims samples until it fits; public so the
+// tests can replicate the cascade.
 qint64 measureEnvelopeBytes(const QJsonArray &samples,
                             const QHash<QString, ToolResult> &byTool);
 

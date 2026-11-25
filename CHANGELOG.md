@@ -66,6 +66,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A false positive marked in the Project Audit dialog is also hidden by `audit_run` when its file path contains a space or the tool indents the line** (ANTS-6586)
+
 - **`trace` reads Python files whose f-strings hold a quoted string and later break a `{…}` field across lines** (ANTS-6344)
   The vendored Python grammar carries a local patch for this, which
   `tools/vendor-grammars.sh` re-applies on every refresh.

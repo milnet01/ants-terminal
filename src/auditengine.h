@@ -147,6 +147,17 @@ FilterResult applyFilter(const QString &raw,
 // Parse a filtered check output into Findings.
 QList<Finding> parseFindings(const QString &body, const AuditCheck &check);
 
+// A tool's `file:line[:col]: message` line, split. parseFindings and the
+// headless runner both read tool lines with it, so a false positive learned
+// in one fingerprints the same in the other (ANTS-6586). The line is trimmed
+// first; the path may contain spaces.
+struct LocatedLine {
+    QString file;
+    int     line = 0;
+    QString message;
+};
+std::optional<LocatedLine> parseLocatedLine(const QString &line);
+
 // ANTS-2118 — single source of truth for folding a tool's stdout + stderr
 // into the one `raw` string that applyFilter/parseFindings consume. stdout
 // is the findings stream; stderr is used alone when stdout is blank (cppcheck

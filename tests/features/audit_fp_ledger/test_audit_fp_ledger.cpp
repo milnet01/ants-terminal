@@ -167,3 +167,31 @@ TEST(AuditFpLedger, HeadlessRunnerEmptyLedgerNoSuppression) {
     EXPECT_EQ(counts.afterFilterCount, 2);
     EXPECT_EQ(counts.sampleCount, 2);
 }
+
+// INV-9 — the GUI and the runner read a tool line with one parser, so a false
+// positive learned in the GUI on a path with a space, or on an indented line,
+// suppresses in the runner too.
+TEST(AuditFpLedger, GuiAndRunnerParseToolLinesAlike) {
+    AuditCheck check;
+    check.id = QStringLiteral("cppcheck");
+    for (const QString &line :
+         {QStringLiteral("src/my file.cpp:12:3: warning: bogus thing"),
+          QStringLiteral("  src/foo.cpp:42: style: indented finding")}) {
+        const QList<Finding> gui = AuditEngine::parseFindings(line, check);
+        ASSERT_EQ(gui.size(), 1) << line.toStdString();
+        EXPECT_FALSE(gui.first().file.startsWith(QLatin1Char(' ')))
+            << line.toStdString();
+        EXPECT_TRUE(gui.first().file.endsWith(QLatin1String(".cpp")))
+            << "the GUI found no file in: " << line.toStdString();
+
+        QSet<QString> learned;
+        learned.insert(ants::auditfp::computeFingerprint(
+            gui.first().file, check.id, gui.first().message));
+        const auto counts = AuditRunner::internal::parseWithSuppression(
+            QStringLiteral("cppcheck"), line, 10, learned);
+        EXPECT_EQ(counts.rawCount, 1) << line.toStdString();
+        EXPECT_EQ(counts.afterFilterCount, 0)
+            << "the runner kept a finding the GUI marked: "
+            << line.toStdString();
+    }
+}
