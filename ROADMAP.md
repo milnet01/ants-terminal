@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6921 -->
+<!-- ants-roadmap-id-high-water: ANTS=6923 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -96690,7 +96690,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6548] **Correct the false or stale comments the 2026-11-06 reviews found in build-system.**
+- ✅ [ANTS-6548] **Correct the false or stale comments the 2026-11-06 reviews found in build-system.**
   12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1217 `CMakeLists.txt:1670` (Medium)
   - row 1218 `CMakeLists.txt:30` (Medium)
@@ -96704,6 +96704,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1230 `CMakeLists.txt:1598` (Low)
   - row 1232 `cmake/GenerateBuildInfoValues.cmake:23` (Low)
   - row 1233 `cmake/build_info_values.cpp.in:4` (Low)
+  Closed 2026-11-25. Fixed: 1217 (one copy of the timeout note,
+  pointing at tests/slow_test_timeouts.cmake; the other is a pointer),
+  1218 (build info and every stale core placement now name
+  ants_mcpcore_lib), 1219 (library map redrawn from the add_library
+  blocks, no count), 1224, 1225, 1226, 1227, 1228, 1229, 1230.
+  Already fixed earlier: 1232 and 1233 by ANTS-6157. Sweep also fixed
+  slow_test_timeouts.cmake's stale 10 s default. Filed ANTS-6922 (the
+  eleven-TU count in test and src comments) and ANTS-6923 (an override
+  equal to the default).
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -117659,6 +117668,30 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: check-doc + clang-tidy 2026-11-25 (seen during ANTS-6547).
   Lanes: audit-engine.
+
+- 📋 [ANTS-6922] **Comments in tests and src still say RemoteControl is eleven TUs.**
+  ANTS-6548 dropped the count from CMakeLists.txt; ANTS_RC_SOURCES_REL
+  is the list. The same figure (eleven / twelfth) remains in comments in
+  tests/features/mcp_workflow_state, roadmap_item_body, rc_tu_split
+  (test and spec.md), remote_control_ls, tests/_support/srcgrep.h and
+  src/remotecontrol_internal.h. Drop the count. docs/specs/ANTS-3833
+  states it as the design of its day; amend only where it reads as
+  current.
+  **Layman:** Notes in the code give an out-of-date count of the files one part is split into.
+  Kind: doc-fix.
+  Source: close-findings sweep 2026-11-25 (ANTS-6548).
+  Lanes: remote-control.
+
+- 📋 [ANTS-6923] **tests/slow_test_timeouts.cmake gives one test TIMEOUT 60, which is now the bundle default.**
+  mcp_audit_run.Ants3605InProcessLanesDispatchedHeadless was given 60 s
+  when the bundle default was 10 s; the default is now 60 s. Decide
+  whether it needs more headroom (it ran past 10 s under -j4 contention)
+  or whether the override and its drift guard
+  (mcp_audit_run.TimeoutOverrideNamesThisSuite) can go.
+  **Layman:** A test-timeout override no longer changes anything.
+  Kind: chore.
+  Source: close-findings sweep 2026-11-25 (ANTS-6548).
+  Lanes: build-system.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
