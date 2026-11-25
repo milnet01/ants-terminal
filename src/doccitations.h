@@ -46,8 +46,8 @@ struct Probe {
 // Every bound this layer sets, in one place. Fields rather than literals so a
 // fixture can drive a boundary from the outside — INV-40 needs a digit run
 // exactly one too long, INV-11 a target one byte over the cap, and neither is
-// expressible against a hard-coded number. The five request-driven fields are
-// marked; the rest guard the engine and have no request argument.
+// expressible against a hard-coded number. The request-driven fields are
+// marked `request arg`; the rest guard the engine and have no request argument.
 struct Options {
     // Basename → project-relative paths, built by the CALLER (ladder step 2).
     // Passing it in keeps the engine Qt6::Core-pure and unit-testable without a
@@ -97,10 +97,10 @@ struct Options {
     // reported "not found" for a phrase that was present and a reviewer nearly
     // "fixed" a passage that was already correct — the collateral-generating
     // move the review skill exists to prevent.
-    bool quotes        = false;
+    bool quotes        = false;      // request arg
     // Below this many characters a double-quoted span is ordinary prose, not a
     // quotation. Keeps the check off every quoted word in the corpus.
-    int  quoteMinChars = 30;
+    int  quoteMinChars = 30;         // request arg
     int  maxQuotes     = 200;
 
     // ANTS-5296 — opt-in PATH-TOKEN check. A bare backticked path such as
@@ -110,7 +110,7 @@ struct Options {
     // under the document's own directory: that is the containment qualifier,
     // and it keeps the check off another repository's paths, as
     // `foreign_path` does for citations.
-    bool paths         = false;
+    bool paths         = false;      // request arg
     int  maxPathTokens = 500;
 
     Probe *probe = nullptr;    // test-only, see above

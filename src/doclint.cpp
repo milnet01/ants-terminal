@@ -414,8 +414,9 @@ Result run(const QStringList &relDocs, const Options &opts) {
 
         const QString abs = QDir::cleanPath(rootDir.filePath(rel));
 
-        // maxDocBytes TRUNCATES in DocIntegrity; here it SKIPS, at every checker
-        // and the two adapters included. Truncating would hand the native
+        // maxDocBytes SKIPS an oversize document whole, here and in
+        // DocIntegrity (ANTS-5055), at every checker and the two adapters
+        // included. Truncating would hand the native
         // checkers a document cut off mid-sentence and report its findings as a
         // complete account of it — the silent partial coverage this envelope
         // exists to make visible.

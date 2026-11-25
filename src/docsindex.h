@@ -1,7 +1,8 @@
 // ANTS-2139 — docs_index MCP tool: a pre-computed, project-agnostic
 // documentation map. Pure helper (Qt6::Core-only, FS-reading, no widgets /
 // no subprocess — mirrors codebaseindex.h / findsources.h). Walks
-// <root>/*.md (non-recursive) + <root>/docs/**/*.md (recursive), scans each
+// <root>/*.md (non-recursive) + <root>/docs/**/*.md, or the project's
+// configured docs_dir (recursive), scans each
 // for its heading outline / first-H1 title / best-effort **Status:** /
 // outbound relative-.md links, caches the result to
 // ~/.cache/ants-terminal/docs-index/<hash>.json, and serves
@@ -101,8 +102,8 @@ struct StaleSet {
     }
 };
 
-// Cold build: walk <root>/*.md (non-recursive) then <root>/docs/**/*.md
-// (recursive), scan each, sort by path. Stops at maxIndexDocs OR when the
+// Cold build: walk <root>/*.md (non-recursive) then <root>/docs/**/*.md, or
+// the configured docs_dir (recursive), scan each, sort by path. Stops at maxIndexDocs OR when the
 // serialised index would exceed maxCacheBytes (whichever first), setting
 // docsTruncated. generatedAtMs passed in (no internal clock read).
 [[nodiscard]] Index build(const QString &rootCanonical, qint64 generatedAtMs,

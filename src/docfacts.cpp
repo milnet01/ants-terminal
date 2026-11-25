@@ -63,7 +63,8 @@ int leadingSpaces(const QString &s) {
 
 // ---- count_mismatch ---------------------------------------------------------
 
-// True when `claim` holds exactly one number and that number is a cardinal:
+// True when `masked` (the last-sentence tail of a code-masked line) holds
+// exactly one number and that number is a cardinal:
 // digits 2-99 or a word two-twelve. "one" and "1" are numbers but never a
 // claim ("The one step:" states no count worth checking) — they still count
 // toward the one-number rule, so "three problems and one other:" is a sum and
@@ -128,8 +129,10 @@ QString markerKind(const QRegularExpressionMatch &m) {
     return m.captured(1).isEmpty() ? QStringLiteral("ol") + m.captured(2) : m.captured(1);
 }
 
-// Top-level items of the list opening at `first`. A line indented deeper than
-// the first item is a nested item or a continuation and is not counted; a
+// Top-level items of the list opening at `first`. A line indented more than
+// one space deeper than the first item is a nested item or a continuation and
+// is not counted (a nested marker sits at least two columns in, so one extra
+// space is a sibling written loosely, and counts); a
 // line at its level that is not an item ends the list, and so does any line
 // LEFT of it — where the lead-in is itself an item, that line is the parent
 // list's next item, not one of this list's.

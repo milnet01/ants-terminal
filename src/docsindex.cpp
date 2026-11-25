@@ -221,7 +221,7 @@ DocEntry scanToEntry(const QString &rootCanonical, const QString &rel,
 }
 
 // Deterministic candidate list: <root>/*.md (sorted) then <root>/docs/**/*.md
-// (sorted), project-relative paths, .md only, no symlinks.
+// or the configured docs_dir (sorted), project-relative paths, .md only, no symlinks.
 // ANTS-5623 — both walks share one budget: `maxEntries` entries visited
 // (files and directories alike) and kMaxWalkDocs markdown files kept. A cut
 // walk sets *truncated; the caller turns it into docsTruncated.
