@@ -106,7 +106,8 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          # ANTS-4773 — no step in this workflow runs git, so the token has no
+          # ANTS-4773 — no step in this workflow needs git credentials (its
+          # one git call, `git ls-files`, only reads), so the token has no
           # reason to persist into .git/config where an artifact could carry it.
           persist-credentials: false
 
