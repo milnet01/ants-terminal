@@ -166,6 +166,19 @@ QString lineCountSuffix(const QString &baseDir, const QString &rel) {
     return QStringLiteral(" (%1 line%2)").arg(n).arg(n == 1 ? "" : "s");
 }
 
+// The untracked files a porcelain status lists (`?? <path>`), repo-relative.
+// A directory entry (`dir/`) is left out: it gets no New-files hunk, so no
+// jump target either.
+QStringList untrackedFiles(const QString &status) {
+    QStringList out;
+    for (const QString &line : status.split('\n')) {
+        if (!line.startsWith(QStringLiteral("?? "))) continue;
+        const QString rel = line.mid(3).trimmed();
+        if (!rel.isEmpty() && !rel.endsWith('/')) out << rel;
+    }
+    return out;
+}
+
 }  // namespace
 
 QDialog *show(QWidget *parent,
@@ -319,10 +332,9 @@ QDialog *show(QWidget *parent,
     const Theme &th = Themes::byName(themeName);
     viewer->setHtml(QStringLiteral(
         "<pre style='color: %1; background: %2;'>"
-        "<span style='color: %3;'>Loading git status, diff, and "
-        "unpushed commits for:</span>\n  %4\n\n"
-        "<span style='color: %3;'>(Running `git status`, `git diff "
-        "HEAD`, and `git log @{u}..HEAD` in the background…)</span>"
+        "<span style='color: %3;'>Loading git status, diff, branches "
+        "and unpushed commits for:</span>\n  %4\n\n"
+        "<span style='color: %3;'>(Running git in the background…)</span>"
         "</pre>")
         .arg(th.textPrimary.name(), th.bgPrimary.name(),
              th.textSecondary.name(), cwd.toHtmlEscaped()));
@@ -434,9 +446,8 @@ QDialog *show(QWidget *parent,
         // ANTS-5059 — skip the build when no probe's output changed. Not when
         // untracked files are listed: their content is read from disk below,
         // and an edit to one changes nothing a probe reports.
-        const bool listsUntracked =
-            state->status.startsWith(QStringLiteral("?? "))
-            || state->status.contains(QStringLiteral("\n?? "));
+        const QStringList untracked = untrackedFiles(state->status);
+        const bool listsUntracked = !untracked.isEmpty();
         const QString rawKey = state->status + QChar(0x1f) + state->diff
             + QChar(0x1f) + state->unpushed + QChar(0x1f) + state->branches
             + QChar(0x1f) + state->crossUnpushed;
@@ -465,19 +476,14 @@ QDialog *show(QWidget *parent,
             const QString p = diffHeaderPath(dl);
             if (!p.isEmpty()) anchoredPaths.insert(p);
         }
-        for (const QString &sl : state->status.split('\n')) {
-            if (sl.startsWith(QStringLiteral("?? "))) {
-                const QString rel = sl.mid(3).trimmed();
-                if (!rel.isEmpty() && !rel.endsWith('/'))
-                    anchoredPaths.insert(rel);
-            }
-        }
-        // Render `path` as a `#`-fragment link when it has a target,
+        for (const QString &rel : untracked) anchoredPaths.insert(rel);
+        // Render `shown` as a link to `path`'s target when it has one,
         // else as plain escaped text. color:inherit keeps it in the
         // section's colour; the underline signals it's clickable.
-        auto fileLink = [&anchoredPaths](const QString &path) -> QString {
+        auto fileLink = [&anchoredPaths](const QString &path,
+                                         const QString &shown) -> QString {
             const QString key = path.trimmed();
-            QString esc = path.toHtmlEscaped();   // non-const: `return esc` moves
+            QString esc = shown.toHtmlEscaped();   // non-const: `return esc` moves
             if (!anchoredPaths.contains(key)) return esc;
             return QStringLiteral("<a href='#%1'>%2</a>")
                 .arg(fileAnchorId(key), esc);
@@ -532,7 +538,7 @@ QDialog *show(QWidget *parent,
                     // NF marker; the path links to its New-files hunk.
                     html += QStringLiteral("<span style='color: %1;'>NF</span> ")
                                 .arg(lth.ansi[2].name())
-                         + fileLink(line.mid(3))
+                         + fileLink(line.mid(3), line.mid(3))
                          + countSuffix(line.mid(3)) + "\n";
                 } else if (line.size() > 3) {
                     // Porcelain short: 2 status chars + space + path. Keep the
@@ -543,13 +549,7 @@ QDialog *show(QWidget *parent,
                     const QString path = line.mid(3);
                     const int arrow = path.indexOf(QStringLiteral(" -> "));
                     const QString key = arrow >= 0 ? path.mid(arrow + 4) : path;
-                    html += code.toHtmlEscaped();
-                    if (anchoredPaths.contains(key.trimmed()))
-                        html += QStringLiteral("<a href='#%1'>%2</a>")
-                                    .arg(fileAnchorId(key.trimmed()),
-                                         path.toHtmlEscaped());
-                    else
-                        html += path.toHtmlEscaped();
+                    html += code.toHtmlEscaped() + fileLink(key, path);
                     // ANTS-3632 — size of the file as it stands now. Keyed on
                     // the NEW path so a rename reports the file that exists.
                     // A staged deletion ("D ") has no working-tree file, so
@@ -658,9 +658,7 @@ QDialog *show(QWidget *parent,
                         if (!key.isEmpty() && anchoredPaths.contains(key)) {
                             const int lead = pathPart.indexOf(key);
                             html += pathPart.left(lead).toHtmlEscaped()
-                                  + QStringLiteral("<a href='#%1'>%2</a>")
-                                        .arg(fileAnchorId(key),
-                                             key.toHtmlEscaped())
+                                  + fileLink(key, key)
                                   + pathPart.mid(lead + key.size())
                                         .toHtmlEscaped()
                                   + rendered.mid(bar).toHtmlEscaped() + "\n";
@@ -691,15 +689,7 @@ QDialog *show(QWidget *parent,
         // A binary file gets a one-line summary; one over 200 KB is cut at
         // 200 KB and its hunk header says so.
         {
-            QStringList newFiles;
-            for (const QString &sline : state->status.split('\n')) {
-                if (sline.startsWith("?? ")) {
-                    const QString rel = sline.mid(3).trimmed();
-                    if (!rel.isEmpty() && !rel.endsWith('/'))
-                        newFiles << rel;
-                }
-            }
-            if (!newFiles.isEmpty()) {
+            if (!untracked.isEmpty()) {
                 section(QStringLiteral("New files"));
                 // ANTS-6514 — the GUI thread reads and renders at most this
                 // many files and about this much of their content.
@@ -707,7 +697,7 @@ QDialog *show(QWidget *parent,
                 constexpr qint64 kMaxNewFileBytes = 1024LL * 1024;
                 int shown = 0;
                 qint64 shownBytes = 0;
-                for (const QString &rel : newFiles) {
+                for (const QString &rel : untracked) {
                     if (shown == kMaxNewFiles || shownBytes >= kMaxNewFileBytes) break;
                     ++shown;
                     // ANTS-1965 — jump target so the Status link for an
@@ -755,12 +745,12 @@ QDialog *show(QWidget *parent,
                         html += QStringLiteral("<span style='color: %1;'>+%2</span>\n")
                                     .arg(addColor, ln.toHtmlEscaped());
                 }
-                if (shown < newFiles.size())
+                if (shown < untracked.size())
                     html += QStringLiteral(
                         "<span style='color: %1;'>… %2 more new files not shown — run "
                         "git status in a terminal for the rest.</span>\n")
                         .arg(lth.ansi[3].name())
-                        .arg(newFiles.size() - shown);
+                        .arg(untracked.size() - shown);
             }
         }
 

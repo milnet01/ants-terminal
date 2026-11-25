@@ -1271,6 +1271,15 @@ void SettingsDialog::loadSettings() {
     }
 }
 
+// ANTS-1178 — a Highlights or Triggers row is saved only when its pattern
+// is empty, or valid and not the catastrophic-regex shape (`(.+)+`,
+// alternation under a quantifier, and so on).
+static bool isUsablePattern(const QString &pattern) {
+    if (pattern.isEmpty()) return true;
+    return QRegularExpression(pattern).isValid()
+        && !AuditEngine::isCatastrophicRegex(pattern);
+}
+
 void SettingsDialog::applySettings() {
     // General
     QString shell;
@@ -1391,11 +1400,7 @@ void SettingsDialog::applySettings() {
         QJsonObject obj;
         auto *item = m_highlightTable->item(row, 0);
         const QString pattern = item ? item->text() : QString();
-        if (!pattern.isEmpty()) {
-            const QRegularExpression re(pattern);
-            if (!re.isValid() || AuditEngine::isCatastrophicRegex(pattern))
-                continue;
-        }
+        if (!isUsablePattern(pattern)) continue;
         obj["pattern"] = pattern;
         auto *fgBtn = qobject_cast<QPushButton *>(m_highlightTable->cellWidget(row, 1));
         obj["fg"] = (fgBtn && fgBtn->text() != "Default") ? fgBtn->text() : "";
@@ -1407,17 +1412,13 @@ void SettingsDialog::applySettings() {
     }
     m_config->setHighlightRules(highlights);
 
-    // Triggers. Same regex-validity gate as Highlights above.
+    // Triggers. Same isUsablePattern gate as Highlights above.
     QJsonArray triggers;
     for (int row = 0; row < m_triggerTable->rowCount(); ++row) {
         QJsonObject obj;
         auto *item = m_triggerTable->item(row, 0);
         const QString pattern = item ? item->text() : QString();
-        if (!pattern.isEmpty()) {
-            const QRegularExpression re(pattern);
-            if (!re.isValid() || AuditEngine::isCatastrophicRegex(pattern))
-                continue;
-        }
+        if (!isUsablePattern(pattern)) continue;
         obj["pattern"] = pattern;
         auto *typeCombo = qobject_cast<QComboBox *>(m_triggerTable->cellWidget(row, 1));
         obj["action_type"] = typeCombo ? typeCombo->currentText() : "notify";

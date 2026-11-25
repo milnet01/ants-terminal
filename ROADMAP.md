@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6924 -->
+<!-- ants-roadmap-id-high-water: ANTS=6925 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97500,15 +97500,35 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: session-338-2026-11-25 (found in the shared scratch root).
   Lanes: hooks-packaging.
 
+- 📋 [ANTS-6925] **Review Changes links untracked files the New-files section does not show, so those links go nowhere.**
+  src/diffviewer.cpp: every untracked file joins anchoredPaths, so its
+  Status and diffstat entries become links. The New-files section emits
+  an anchor only for the files it renders: at most kMaxNewFiles, and it
+  stops once kMaxNewFileBytes is read (ANTS-6514). Past either cap the
+  link has no target, which breaks the "never dead links" comment.
+  Fix: decide the shown set before Status renders (render New files into
+  its own string first) and anchor only those.
+  **Layman:** In the Review Changes window, clicking some new-file names does nothing when there are many new files.
+  Kind: fix.
+  Source: session-338-2026-11-25 (found closing ANTS-6584).
+  Lanes: app-entry-dialogs.
+
 ### Duplicate folding (2026-11-06 review)
 
-- 📋 [ANTS-6584] **Fold the duplicated logic the 2026-11-06 reviews found in app-entry-dialogs.**
+- ✅ [ANTS-6584] **Fold the duplicated logic the 2026-11-06 reviews found in app-entry-dialogs.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1176 `src/diffviewer.cpp:474-480` (Medium)
   - row 1177 `src/diffviewer.cpp:531-534` (Low)
   - row 1182 `src/settingsdialog.cpp:1356` (Low)
   - row 1183 `src/diffviewer.cpp:319-322` (Low)
   - row 1189 `src/claudesetup.cpp:169-171` (Low)
+  Closed 2026-11-25. Row 1176: untrackedFiles() in diffviewer.cpp is now
+  the one copy of the untracked-file rule; anchoredPaths, listsUntracked
+  and New files read it. Row 1177: fileLink takes the shown text and
+  builds every Status and diffstat link. Row 1183: the loading text no
+  longer lists probes. Row 1182: isUsablePattern() gates Highlights and
+  Triggers. Row 1189: findBlock() in claudesetup.cpp matches the marker
+  pair for all three block helpers. Found next door: ANTS-6925.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).

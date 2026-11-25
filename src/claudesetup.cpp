@@ -183,14 +183,25 @@ bool writeBytes(const QString &path, const QByteArray &bytes) {
     return f.commit();
 }
 
+// Where the first `begin` marker starts and the first `end` after it starts;
+// found is false when either is missing. The one place the pair is matched.
+struct BlockRange { qsizetype b = -1, e = -1; bool found = false; };
+BlockRange findBlock(const QByteArray &text, const QByteArray &begin,
+                     const QByteArray &end) {
+    BlockRange r;
+    r.b = text.indexOf(begin);
+    r.e = r.b < 0 ? -1 : text.indexOf(end, r.b);
+    r.found = r.b >= 0 && r.e >= 0;
+    return r;
+}
+
 // The body between `begin` and `end`, or a null array when there is no pair.
 QByteArray blockBody(const QByteArray &text, const QByteArray &begin,
                      const QByteArray &end) {
-    const qsizetype b = text.indexOf(begin);
-    const qsizetype e = b < 0 ? -1 : text.indexOf(end, b);
-    if (b < 0 || e < 0) return {};
-    const qsizetype from = b + begin.size();
-    return text.mid(from, e - from);
+    const BlockRange r = findBlock(text, begin, end);
+    if (!r.found) return {};
+    const qsizetype from = r.b + begin.size();
+    return text.mid(from, r.e - from);
 }
 
 // Replaces the marked block in place, or appends it; every byte outside the
@@ -198,10 +209,9 @@ QByteArray blockBody(const QByteArray &text, const QByteArray &begin,
 QByteArray withBlock(const QByteArray &text, const QByteArray &begin,
                      const QByteArray &end, const QByteArray &body) {
     const QByteArray block = begin + '\n' + body + '\n' + end;
-    const qsizetype b = text.indexOf(begin);
-    const qsizetype e = b < 0 ? -1 : text.indexOf(end, b);
-    if (b >= 0 && e >= 0)
-        return text.left(b) + block + text.mid(e + end.size());
+    const BlockRange r = findBlock(text, begin, end);
+    if (r.found)
+        return text.left(r.b) + block + text.mid(r.e + end.size());
     QByteArray out = text;
     if (!out.isEmpty() && !out.endsWith('\n')) out += '\n';
     return out + block + '\n';
@@ -209,12 +219,11 @@ QByteArray withBlock(const QByteArray &text, const QByteArray &begin,
 
 QByteArray withoutBlock(const QByteArray &text, const QByteArray &begin,
                         const QByteArray &end) {
-    const qsizetype b = text.indexOf(begin);
-    const qsizetype e = b < 0 ? -1 : text.indexOf(end, b);
-    if (b < 0 || e < 0) return text;
-    qsizetype after = e + end.size();
+    const BlockRange r = findBlock(text, begin, end);
+    if (!r.found) return text;
+    qsizetype after = r.e + end.size();
     if (after < text.size() && text.at(after) == '\n') ++after;
-    return text.left(b) + text.mid(after);
+    return text.left(r.b) + text.mid(after);
 }
 
 constexpr char kMdBegin[] = "<!-- ants-terminal:begin -->";
