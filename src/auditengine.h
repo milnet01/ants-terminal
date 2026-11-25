@@ -136,18 +136,15 @@ struct FilterResult {
     int count = 0;
 };
 
-// Pure-function counterpart of `AuditDialog::applyFilter`. Takes
-// `projectPath` so the context-window file lookup (parsing
-// `./relative.cpp:LINE:` references in checker output) works without
-// member access. Behaviour byte-identical to the prior method —
-// ANTS-1119 INV-3 is locked by the audit_rule_fixtures regression
-// suite which exercises this path end-to-end.
+// Apply a check's OutputFilter to its raw output. Not pure: the
+// context-window filter reads the project files named by
+// `./relative.cpp:LINE:` references, under `projectPath`. The
+// audit_rule_fixtures suite exercises this path end-to-end.
 FilterResult applyFilter(const QString &raw,
                          const OutputFilter &f,
                          const QString &projectPath);
 
-// Pure-function counterpart of `AuditDialog::parseFindings`. Was
-// already static; signature is unchanged.
+// Parse a filtered check output into Findings.
 QList<Finding> parseFindings(const QString &body, const AuditCheck &check);
 
 // ANTS-2118 — single source of truth for folding a tool's stdout + stderr
@@ -164,8 +161,7 @@ QList<Finding> parseFindings(const QString &body, const AuditCheck &check);
 // now route through this helper for byte-identical input.
 QString mergeToolChannels(const QString &stdoutStr, const QString &stderrStr);
 
-// Pure-function counterpart of `AuditDialog::capFindings`. Was
-// already static; signature is unchanged.
+// Cap a check's findings at `cap`.
 void capFindings(CheckResult &r, int cap);
 
 // `sourceForCheck` — map a check-id to the canonical "source" tool
@@ -417,8 +413,9 @@ struct AuditSummary {
 };
 
 // ANTS-1254 — read SARIF at `sarifPath`, return compact summary.
-// Caller decides path discovery + caching. Pure parser: no Qt6::Widgets,
-// no I/O outside the read.
+// Caller decides path discovery + caching. No Qt6::Widgets. Besides the
+// read, it probes for the run's HTML report: the `.html` sibling, else
+// a listing of the SARIF's folder.
 //   `topN`       — server-clamped by caller (this fn trusts the input).
 //   `levelFloor` ∈ {"error","warning","note"} (caller-validated).
 // Returns nullopt on read or parse failure (caller distinguishes by
@@ -520,12 +517,19 @@ void applyCorroborationShiftAcross(QList<CheckResult> &results,
 //   `allocatedIds`   — pre-allocated `[ANTS-N]` IDs (size must equal
 //                      actionable.size()).
 //   `dateIso`        — YYYY-MM-DD for the heading + Source line.
+//   `idPrefix`       — the roadmap's id prefix; RoadmapFoldIn::renderId
+//                      joins it with each allocated number.
 // Output begins with `### 🔍 Audit fold-in (DATE)`; each finding maps
-// to one bullet `- 📋 [ANTS-N] **MESSAGE.** at FILE:LINE (rule).
-//   Kind: audit-fix.
-//   Source: audit-DATE.
-//   Lanes: <derived from finding.file>.`
-// Empty input -> empty string.
+// to one bullet:
+//   - 📋 [ID] **TITLE.**
+//     At `FILE:LINE` (rule `RULE`).
+//     Kind: audit-fix.
+//     Source: audit-DATE.
+//     Lanes: <derived from finding.file>.
+// TITLE is the message's first sentence, cut to 80 characters and
+// markdown-escaped. With no location the second line is `Rule `RULE`.`,
+// and with no rule either it is left out.
+// Empty input, or a size mismatch with allocatedIds -> empty string.
 QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
                                    const QList<int> &allocatedIds,
                                    const QString &dateIso,

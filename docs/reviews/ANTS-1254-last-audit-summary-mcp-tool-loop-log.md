@@ -11,6 +11,7 @@ Record for [`../specs/ANTS-1254-last-audit-summary-mcp-tool.md`](../specs/ANTS-1
 | 3 | 3 high (severity field source via rule lookup; severity casing UPPERCASE per `severityLabel`; `html_path` lex-max fallback for separate SARIF/HTML buttons) + 3 medium (INV-3 absent-level; runs[0..] passthrough; local-FS assumption). |
 | 4 | 1 high (step-1 verify tightened to `mainwindow.cpp` registry-call count ≥ 12) + 3 medium (INV-2 vs INV-6 reconciled; `m_auditSummary` grep restricted to mutable decls; html_path fallback bounded ±60 s). |
 | 5 | 2 high (§ 9 OoS row 3 contradicted § 3.1 step 3 — fixed; `Finding` struct lacked `level`/`severity` strings — split to new `AuditSummaryFinding` struct) + 3 medium (`severityLabel` is static — engine carries own copy; `severity_floor` case-sensitivity documented; "emit cached envelope" wording clarified) + 3 low (token math double-count; foreign-SARIF can't surface BLOCKER/MINOR; step-6 INV count adjusted to ≥ 5/10). |
+| impl-6547 (2026-11-25) — correction; no reviewer dispatched | § 3.1's summariseSarif comment said "no I/O outside the read", which its own step 8 (the htmlPath probe) contradicts. It now names that probe as the one other I/O. Found by ANTS-6547's sweep. |
 
 Stopped at loop 5 (the cold-eyes default cap). Loop-5 fixes
 addressed the last two implementer-blockers (struct gap + spec

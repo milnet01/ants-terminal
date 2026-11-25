@@ -165,10 +165,10 @@ collide, so the delta deliberately defines no struct of that name.)
 
 ```
 struct DeltaResult {
-    QJsonArray added;            // current findings whose fp ∉ priorOnChanged
-    QJsonArray removed;          // priorOnChanged findings whose fp ∉ current
-    QJsonArray carriedForward;   // (current ∩ priorOnChanged) ∪ priorOnUntouched
-    QJsonArray merged;           // current ∪ priorOnUntouched — whole-tree, for SARIF + sidecar
+    QJsonArray added;            // current ∖ prior
+    QJsonArray removed;          // priorOnChanged ∖ current
+    QJsonArray carriedForward;   // (current ∩ prior) ∪ (priorOnUntouched ∖ current)
+    QJsonArray merged;           // current ∪ (priorOnUntouched ∖ current) — whole-tree, for SARIF + sidecar
     int addedCount = 0, removedCount = 0, carriedForwardCount = 0;
 };
 DeltaResult computeDelta(const QJsonArray &current,        // this run, changed-set
@@ -185,18 +185,22 @@ severity, message, fp, tool}`); identity is the `fp` field (§ 2.2). Logic:
    A tool skipped under narrowing, or one that failed, re-checked nothing,
    so its findings are not counted as removed (ANTS-6540). A finding with
    no `tool`, from a sidecar written before ANTS-6540, is carried forward.
-2. `added` = `current` whose `fp` ∉ `priorOnChanged` fps.
+2. `added` = `current` whose `fp` ∉ `prior` fps — all of `prior`, because a
+   tool scanning a changed file also reports findings in the untouched
+   files it includes (ANTS-5085).
 3. `removed` = `priorOnChanged` whose `fp` ∉ `current` fps.
-4. `carriedForward` = (`current` ∩ `priorOnChanged` by fp) ∪
-   `priorOnUntouched` (every untouched-file finding — those files were not
-   re-scanned, so their prior findings are assumed still present).
-5. `merged` = `current` ∪ `priorOnUntouched` — the whole-tree set the
-   carry-forward SARIF (§ 2.5) and the recorded sidecar (§ 2.6) both write.
+4. `carriedForward` = (`current` ∩ `prior` by fp) ∪ (`priorOnUntouched`
+   whose `fp` ∉ `current` fps). Untouched files were not re-scanned, so
+   their prior findings are assumed still present.
+5. `merged` = `current` ∪ (`priorOnUntouched` whose `fp` ∉ `current` fps) —
+   the whole-tree set the carry-forward SARIF (§ 2.5) and the recorded
+   sidecar (§ 2.6) both write. A finding reported again in an untouched
+   file is written once.
    (`merged` deliberately has no `*Count` field: unlike `carried_forward`
    it is not an envelope surface, only the SARIF/sidecar payload, § 2.8.)
 
-Only `current` and `priorOnChanged` can produce added/removed — an
-untouched file contributes only to `carriedForward` / `merged`. The helper
+Only `priorOnChanged` can produce `removed`: an untouched file's prior
+findings are never counted as fixed. The helper
 is **total over degenerate inputs**: empty `current` (every
 `priorOnChanged` → `removed`); empty `prior` (every `current` → `added`);
 both empty (all arrays empty); an all-files-changed run (`priorOnUntouched`
@@ -328,12 +332,14 @@ OR over the run's per-tool `ParsedOutput.findingsTruncated`).
   `(file, checkId, message)` at two different lines returns an equal `fp`
   (asserted directly); consequently two finding objects differing only in
   `line` classify as carried-forward, not added+removed.
-- **INV-3** — `computeDelta` partitions correctly: `added` = current∖
-  priorOnChanged, `removed` = priorOnChanged∖current, `carried_forward` =
-  (current∩priorOnChanged) ∪ priorOnUntouched (all untouched-file prior
-  findings), and `merged` = current ∪ priorOnUntouched. *Test:* canned
+- **INV-3** — `computeDelta` partitions correctly: `added` = current∖prior,
+  `removed` = priorOnChanged∖current, `carried_forward` = (current∩prior) ∪
+  (priorOnUntouched∖current), and `merged` = current ∪
+  (priorOnUntouched∖current). *Test:* canned
   `QJsonArray` lists with one new, one fixed, one unchanged on a changed
-  file + two on an untouched file → counts 1/1/3; plus degenerate inputs
+  file + two on an untouched file → counts 1/1/3; a prior finding in an
+  untouched header reported again → not added, carried and merged once
+  (ANTS-5085); plus degenerate inputs
   (empty current → all removed; empty prior → all added; both empty → all
   arrays empty).
 - **INV-4** — The findings sidecar round-trips: `recordRun` writes

@@ -159,8 +159,8 @@ struct AuditSummary {
 
 namespace AuditEngine {
 // Reads the SARIF at `sarifPath` (must exist), returns the compact
-// summary. Caller decides path discovery + caching. Pure parser:
-// no Qt6::Widgets, no I/O outside the read.
+// summary. Caller decides path discovery + caching. No Qt6::Widgets;
+// no I/O beyond the read and step 8's htmlPath probe.
 //
 // `topN` is server-clamped by the caller (this fn trusts the input).
 // `levelFloor` ∈ {"error","warning","note"} (caller-validated).

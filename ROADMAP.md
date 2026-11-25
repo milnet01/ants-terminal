@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6919 -->
+<!-- ants-roadmap-id-high-water: ANTS=6921 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -96662,7 +96662,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6547] **Correct the false or stale comments the 2026-11-06 reviews found in audit-engine.**
+- ✅ [ANTS-6547] **Correct the false or stale comments the 2026-11-06 reviews found in audit-engine.**
   14 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 325 `auditdelta.cpp:52-53` (Low)
   - row 611 `src/auditrunner.cpp:1506` (Medium)
@@ -96678,6 +96678,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 631 `src/auditengine.h:133` (Low)
   - row 632 `src/auditengine.h:411` (Low)
   - row 636 `src/audithygiene.h:1` (Low)
+  Closed 2026-11-25. Fixed: 325 (ANTS-1870 § 2.4 steps 2, 4, 5,
+  the DeltaResult comments and INV-3 now match ANTS-5085; impl row in
+  its loop log), 611, 612, 613, 614, 616, 618, 622, 623, 624, 631, 632
+  (also the same false claim in the ANTS-1254 spec; row in its loop
+  log), 636. Already fixed earlier: 615 by ANTS-6198. Sweep also fixed
+  the runner's stale merged-set comment. Filed ANTS-6920 (stale line
+  citations in the ANTS-1254 spec) and ANTS-6921 (a clang-tidy move).
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -117633,6 +117640,25 @@ reports are asked for separately, each time.
   Kind: refactor.
   Source: clangd 2026-11-25 (seen during ANTS-6546).
   Lanes: audit-dialog.
+
+- 📋 [ANTS-6920] **The ANTS-1254 spec cites auditdialog.cpp lines past the end of the file.**
+  check-doc.py flags five citations in
+  docs/specs/ANTS-1254-last-audit-summary-mcp-tool.md of the form
+  auditdialog.cpp:<line>, each past the file's end. Name the symbol
+  each one meant (file:N:token, or the symbol alone), not a line.
+  **Layman:** A design document points at places in the code that no longer exist.
+  Kind: doc-fix.
+  Source: check-doc + clang-tidy 2026-11-25 (seen during ANTS-6547).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6921] **clang-tidy: the since-last-run delta object in auditrunner.cpp is copied where it could be moved.**
+  performance-use-std-move on the `delta` QJsonObject built in the
+  since-last-run branch of the runner's delta step. Seen in clangd
+  2026-11-25; check the warning still fires before changing it.
+  **Layman:** A small, needless copy in the audit runner.
+  Kind: perf.
+  Source: check-doc + clang-tidy 2026-11-25 (seen during ANTS-6547).
+  Lanes: audit-engine.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

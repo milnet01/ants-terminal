@@ -104,7 +104,8 @@ public:
                               int maxSamples = 5,
                               int minLength = 6) const;
 
-    // Force-flush to disk. Called automatically on destruction; exposed
+    // Save to disk if anything changed since the last save; a clean
+    // tracker writes nothing. Called automatically on destruction; exposed
     // for the tests + the AuditDialog "Rule Quality" view-open path.
     // ANTS-6480 — under the file's write lock, re-reads it and adds only
     // what this tracker recorded since its last save, so another tracker's

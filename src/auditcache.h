@@ -20,8 +20,9 @@ namespace AuditCache {
 // part of the recording flow.
 QString cacheDir(const QString &canonProject);
 
-// Compute the absolute SARIF path for a new run. `isoBasename` and
-// `gitShaShort` are the manifest fields (§ 2.1 of spec). Returns
+// Compute the absolute SARIF path for a new run. `isoBasename` must be
+// IsoNow::forFilename (no colons), not the manifest's timestamp;
+// `gitShaShort` is GitInfo::shortSha. Returns
 // `<cacheDir>/audit-<iso>-<sha>.sarif`. Caller checks for empty
 // project root before invoking.
 QString sarifPathFor(const QString &canonProject,
@@ -53,15 +54,14 @@ GitInfo gitInfo(const QString &canonProject);
 
 // Manifest schema (`.audit_cache/index.json`).
 //
-// `lastRun` and `history` mirror the JSON shape verbatim; loaders
+// `lastRun` mirrors the JSON shape verbatim; loaders
 // treat any unrecognised top-level `version` (≠ 1) as a fresh
 // manifest (returns an empty `Manifest`).
 struct Manifest {
     int          version = 1;
     QJsonObject  lastRun;     // empty when none
-    // history is stored as a JSON array on disk (newest-first).
-    // Returned here as a QJsonArray-shaped value inside the object
-    // for convenience (callers iterate via QJsonArray::at).
+    // There is no history member: read the run history, a JSON array
+    // (newest-first), from raw["history"].
     QJsonObject  raw;         // entire parsed top-level object
 };
 

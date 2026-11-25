@@ -1,5 +1,8 @@
-// Pure parsers that read project-local tool-calibration files and return
-// the list of suppression tokens to pass through to the scanner tool.
+// Audit helpers that need no dialog: two pure parsers that turn
+// project-local tool-calibration files into suppression tokens for the
+// scanner tool; framework detection, which reads project marker files,
+// and the semgrep packs it selects; and the lineHasCode comment/string
+// lexer.
 //
 // Split out from auditdialog.cpp so unit tests can exercise them without
 // linking QtWidgets / network / the full dialog machinery. The AuditDialog

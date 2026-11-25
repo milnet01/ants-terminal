@@ -44,7 +44,10 @@ struct Resolution {
     bool        noChanges = false;  // narrowed, but zero changed files
 };
 
-// Impure: the audit code's one git runner (cache, scope and SARIF provenance).
+// Impure: the audit code's public git runner (cache, scope and SARIF
+// provenance). auditscope.cpp has two private siblings, runGitRaw and
+// runGitSucceeds, that start git the same way; a change here belongs in
+// them too.
 // Runs `git <args>` in `root` with GIT_OPTIONAL_LOCKS=0 (ANTS-4999) and a
 // 1.5 s start and finish budget, and returns trimmed stdout. Returns {} on a
 // timeout, a crash or a non-zero exit. ANTS-5043 — `ok`, when given, tells a

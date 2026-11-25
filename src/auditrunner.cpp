@@ -19,8 +19,7 @@
 // materialises the FULL `findings[]` set (each with its fp), writeSarif
 // emits per-finding result entries from it (with a carry-forward run
 // under since-last-run), and the runner computes a precise added/removed/
-// carried-forward delta against the prior run's findings sidecar. The two
-// "v2 will parse the SARIF result entries" deferrals below are resolved.
+// carried-forward delta against the prior run's findings sidecar.
 //
 // Out of scope (logged as roadmap follow-up):
 //   * Cross-tool finding correlation (cppcheck + clazy reporting the same
@@ -35,8 +34,7 @@
 //     by design (ANTS-1820 / ANTS-1870 § 2.2).
 //
 // All of the v1 scope above honours the spec's INV anchors via
-// source-scrape; behavioural tests cover env scrub + cap timing +
-// pool isolation.
+// source-scrape; behavioural tests cover env scrub + cap timing.
 
 #include "auditrunner.h"
 
@@ -676,12 +674,6 @@ QString sessionIdToken() {
 int g_sarifSeq = 0;
 std::mutex g_sarifSeqMutex;
 
-// Fallback SARIF path when .audit_cache is read-only.
-// Prefer XDG cache (`~/.cache/Ants Terminal/audit/`) so fallbacks land
-// in a 0700-eligible per-user directory; /tmp only as a last resort and
-// with a 16-byte random suffix to defeat the predictable-filename
-// pre-create attack that the older `/tmp/audit-<pid>-<epoch>-<seq>`
-// scheme allowed (indie-review-2026-05-19 audit-pipeline H2).
 // ── ANTS-3614 — reap orphaned fallback artifacts.
 // The PRIMARY artifacts land in `<root>/.audit_cache/` and are garbage-
 // collected by AuditCache's manifest-driven reaper. The fallbacks written
@@ -722,6 +714,13 @@ void reapFallbackArtifactsOnce() {
     });
 }
 
+// Fallback SARIF path when .audit_cache is read-only.
+// Prefer XDG cache (`~/.cache/Ants Terminal/audit/`) so fallbacks land
+// in a 0700-eligible per-user directory; /tmp only as a last resort and
+// with a random suffix (16 hex characters of a random UUID) to defeat the
+// predictable-filename pre-create attack that the older
+// `/tmp/audit-<pid>-<epoch>-<seq>` scheme allowed
+// (indie-review-2026-05-19 audit-pipeline H2).
 QString allocSarifPath() {
     std::lock_guard<std::mutex> lk(g_sarifSeqMutex);
     reapFallbackArtifactsOnce();
@@ -1544,12 +1543,13 @@ bool isIncludePathAllowedImpl(const QString &includePath,
     return false;
 }
 
-// Validate every include-style path across every entry. Returns true
-// on success; on failure, `*offending` carries the first escape (form:
-// "{file: …, include: …, reason: …}") and the function short-circuits.
 constexpr qint64 kCompileCommandsMaxBytes = 32LL * 1024 * 1024;  // 32 MiB
 constexpr int    kCompileCommandsMaxEntries = 50000;
 
+// Validate every include-style path across every entry. Returns true
+// on success. On failure it stops at the first problem and `*errReason`
+// says what it was; for an escaping path that reads
+// "include path <path> (entry <file>): <reason>".
 bool validateCompileCommandsImpl(const QString &canonProject,
                                  QString *errReason) {
     // ANTS-3624 — probe through the SAME resolver that builds the tools'
@@ -2358,7 +2358,7 @@ void applyExcludePaths(const RunRequest &req,
 // The findings a run records on disk, as against the ones its reply shows.
 struct RecordedFindings {
     QJsonArray carriedForwardForSarif;  // priorOnUntouched, tagged in SARIF
-    // The whole-tree set the next sidecar holds: current ∪ priorOnUntouched
+    // The whole-tree set the next sidecar holds: AuditDelta's `merged`
     // under since-last-run, the current set under auto/full.
     QJsonArray mergedForRecord;
     bool       mergedTruncated = false;
@@ -2798,8 +2798,8 @@ RunResult runAudit(const RunRequest &req) {
                 const QByteArray out = outBuf.take(tool);
                 const QByteArray err = errBuf.take(tool);
                 // ANTS-2105 — cppcheck/clazy/clang-tidy write their findings to
-                // STDERR (only the JSON tools — ruff/bandit/semgrep/trivy/mypy/
-                // shellcheck — put results on STDOUT). ANTS-2118 — fold both
+                // STDERR (the JSON tools, isJsonFindingTool, put results on
+                // STDOUT). ANTS-2118 — fold both
                 // channels via the shared engine helper so this headless path
                 // and the GUI dialog (auditdialog.cpp) feed byte-identical input
                 // to parseFindings; the prior stdout-else-stderr form silently
