@@ -18,7 +18,7 @@ constexpr int kReadSliceMs = 200;   // ANTS-6512 — one wait between reads
 
 Result run(const QString &workingDir, const QStringList &argv,
            int maxStdoutBytes) {
-    // ANTS-1250-INV-12: 5 s wall-clock kill.
+    // ANTS-1250-INV-12: wall-clock kill at kHardKillMs.
     return runWithin(workingDir, argv, maxStdoutBytes, kHardKillMs, false);
 }
 
@@ -57,7 +57,7 @@ Result runWithin(const QString &workingDir, const QStringList &argv,
         keepHead(r.stderrTail, p.readAllStandardError(), kStderrCapBytes, nullptr);
     };
 
-    // ANTS-1250-INV-12: wall-clock kill, 200 ms grace then SIGKILL.
+    // ANTS-1250-INV-12: wall-clock kill, kKillGraceMs grace then SIGKILL.
     QElapsedTimer clock;
     clock.start();
     while (p.state() != QProcess::NotRunning) {

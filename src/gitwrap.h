@@ -1,8 +1,8 @@
 // ANTS-1250 — gitwrap: shell-less synchronous git invoker. Wraps
 // QProcess::start("git", argv) (the QStringList overload, never the
 // single-string form, never via shell-c interpolation) with a
-// two-tier wall-clock kill (5 s SIGTERM + 200 ms grace SIGKILL) and
-// a 4 KiB stderr cap.
+// two-tier wall-clock kill (SIGTERM at kHardKillMs, SIGKILL after
+// kKillGraceMs) and a stderr cap of kStderrCapBytes.
 //
 // The wrapper is intentionally dumb: it does not know about ops or
 // JSON. Callers build the argv and parse the output.

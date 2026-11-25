@@ -4,7 +4,7 @@
 // mutex-guarded. See docs/specs/ANTS-1251-subsystem-mcp-tool-consolidated-map.md.
 //
 // ANTS-1292 — the canonical module map moved out of CLAUDE.md into
-// docs/subsystems.md so the ~130-line lane catalogue is not reloaded
+// docs/subsystems.md so the lane catalogue is not reloaded
 // into every Claude session preamble. resolveSource() picks
 // docs/subsystems.md when present and falls back to CLAUDE.md for
 // projects that have not migrated. See docs/specs/ANTS-1292-split-claude-md-module-map.md.

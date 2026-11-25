@@ -31,6 +31,9 @@ bool hasFeedbackSuffix(const QString &path) {
     return QFileInfo(path).fileName().endsWith(QLatin1String(kFeedbackSuffix));
 }
 
+// The hint, when one applies, is chosen in a fixed order, first match wins:
+// `lane`, then an absolute path handed to a read verb, then a feedback file.
+// A new hint goes in its place in that order, not at the end.
 QJsonObject makeErr(const QString &toolName, const QString &paramName,
                     const QString &reason,
                     const QString &absPath = QString(),
@@ -38,8 +41,7 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
                     // `absPath` is the resolved form, so a relative `../`
                     // traversal reaches here looking absolute; the two cases
                     // get different answers and cannot be told apart
-                    // downstream. The existing ANTS-4421 contract test is what
-                    // caught this.
+                    // downstream.
                     bool callerWroteAbsolute = false) {
     QJsonObject o;
     o[QStringLiteral("ok")]    = false;
@@ -50,7 +52,7 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
     // selector, so `lane:".."` is a caller asking to search a wider tree
     // rather than attempting a traversal — and there is a sanctioned route
     // for that: point caller_cwd at the tree's own root and confine with
-    // `glob` (measured 2026-08-19, one match in 3.3 s over the shared root).
+    // `glob`.
     // The refusal stays correct; what was missing was naming the knob. The
     // description reads as session identity ("Your $PWD"), which is why a
     // session wanting another tree reaches for `lane` and concludes the file
@@ -71,7 +73,7 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
     // ANTS-4899 — an ABSOLUTE path to a file that exists, on a READ verb, is a
     // handover rather than a traversal: the user (or another session on this
     // machine) named a location, and there is a sanctioned route to it —
-    // caller_cwd at that file's own directory, verified 2026-09-06. Without
+    // caller_cwd at that file's own directory. Without
     // the route the fallback is `cat` on an unfamiliar file, which is what
     // outline and read_region exist to avoid, and it scales badly: a
     // handed-over report of a few thousand lines enters context whole.
@@ -112,10 +114,9 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
     // Every session on this machine carries a standing instruction to read
     // these files via Ants MCP, and the workflow is cross-project BY
     // CONSTRUCTION — the file never lives under the project it is about. The
-    // reporting session found the working form (caller_cwd at the file's own
-    // directory, plus a bare relative filename) by guessing; the envelope
-    // already knows the path it rejected, so it can just say so. Same shape
-    // as ANTS-4373's skipped_hint.
+    // envelope already knows the path it rejected, so it can name the working
+    // form (caller_cwd at the file's own directory, plus a bare relative
+    // filename). Same shape as ANTS-4373's skipped_hint.
     //
     // The asymmetry that made this surprising is real and worth the words:
     // feedback_log takes an absolute path happily, so the WRITE verb works
