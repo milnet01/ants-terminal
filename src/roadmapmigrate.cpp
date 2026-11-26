@@ -33,9 +33,10 @@ using RoadmapParse::BulletRecord;
 
 // § 2.2 refuses a file that is not valid UTF-8 rather than decoding it lossily:
 // substituting U+FFFD leaves the line carried, the byte count intact and
-// INV-11 green over content that had already been corrupted. Same idiom as
-// doccitations.cpp's decodeChecked() — the decoder's error flag is tested, not
-// trusted.
+// INV-11 green over content that had already been corrupted. The decoder's
+// error flag is tested, not trusted, as in doccitations.cpp's decodeChecked().
+// Unlike there, a NUL byte is accepted: it is valid UTF-8, and `not_utf8`
+// promises only that (docs/standards/mcp-error-codes.md).
 bool decodeUtf8(const QByteArray &bytes, QString *out) {
     QStringDecoder dec(QStringDecoder::Utf8, QStringDecoder::Flag::Stateless);
     QString s = dec(bytes);
