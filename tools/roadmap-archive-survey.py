@@ -34,6 +34,9 @@ from roadmap_paths import root_roadmap
 # the tightened form ANTS-3766 § 2.2 adopts, which is what the prose describes.
 ARCHIVE_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$")
 HEADING_RE = re.compile(r"^(#{2,3}) (.+)$")
+# CommonMark § 4.5: a backtick fence's info string holds no backtick, so
+# ```` ```python ```` is an inline code span, not a fence.
+FENCE_RE = re.compile(r"^(`{3,}(?!.*`)|~{3,})(.*)$")
 BULLET_RE = re.compile(r"^- [\U0001F4CB\U0001F6A7✅\U0001F4AD] ")
 
 
@@ -63,8 +66,20 @@ def read_lines(path: str) -> list[str]:
 
 
 def headings(path: str) -> list[tuple[int, str]]:
+    """A heading inside a fence is quoted text, not a section. The fence
+    rule is MarkdownScan::fenceOpenerChar's, without its indent limit."""
     res = []
+    fence = None   # (char, run length) of the open fence
     for line in read_lines(path):
+        m = FENCE_RE.match(line.strip())
+        if fence:
+            if (m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1]
+                    and not m.group(2).strip()):
+                fence = None
+            continue
+        if m:
+            fence = (m.group(1)[0], len(m.group(1)))
+            continue
         m = HEADING_RE.match(line)
         if m:
             res.append((len(m.group(1)), slugify(m.group(2).strip())))

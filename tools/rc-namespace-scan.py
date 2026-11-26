@@ -103,7 +103,10 @@ def namespace_blocks(src: str) -> list[tuple[int, int, str]]:
             i += 1
             continue
 
-        if c == "'":
+        # A ' between two alphanumerics is a C++14 digit separator (1'000),
+        # not a character literal.
+        if c == "'" and not (i > 0 and src[i - 1].isalnum()
+                             and i + 1 < n and src[i + 1].isalnum()):
             i += 1
             while i < n and src[i] != "'":
                 if src[i] == "\\":
