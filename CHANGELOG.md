@@ -88,6 +88,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`build_status` counts a compiler's `fatal error:` line as an error** (ANTS-6596)
+  A build that stopped on a missing header now reports that error,
+  as `recent_errors` already did.
+
 - **The status bar says "Claude read" or "Claude edited", whichever Claude did** (ANTS-6914)
   A file Claude only reads shows "Claude read: <file>". The first edit of
   a file it had already read now shows "Claude edited: <file>" too.

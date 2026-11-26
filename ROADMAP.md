@@ -97948,10 +97948,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: dev-shell-tools.
 
-- 📋 [ANTS-6596] **Fold the duplicated logic the 2026-11-06 reviews found in diagnostics-logging.**
+- ✅ [ANTS-6596] **Fold the duplicated logic the 2026-11-06 reviews found in diagnostics-logging.**
   2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 431 `buildcache.cpp:43` (High)
   - row 1190 `src/buildcache.cpp:157` (Medium)
+  Shipped dd6f9f5c. Row 431: fatal error parsed (INV-9). Row 1190:
+  src/privatejsoncache.h, writing through writeFileAtomicOwnerOnly.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
