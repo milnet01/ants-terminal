@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6943 -->
+<!-- ants-roadmap-id-high-water: ANTS=6948 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98036,7 +98036,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6601] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-content-verbs.**
+- ✅ [ANTS-6601] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-content-verbs.**
   17 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 929 `src/remotecontrol_docs.cpp:2290-2299` (High)
   - row 930 `src/remotecontrol_docs.cpp:345-369` (Medium)
@@ -98055,6 +98055,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 958 `src/remotecontrol_feedback.cpp:1601-1605` (Low)
   - row 959 `src/remotecontrol_feedback.cpp:205-215` (Low)
   - row 960 `src/githooksreport.cpp:218` (Low)
+  Shipped bef22175. 932 and 941 were already fixed. 931 → ANTS-6948 and
+  957 → ANTS-6947 (the copies differ in behaviour). Bugs seen while
+  folding: ANTS-6944, 6945, 6946.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -115266,6 +115269,51 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: doc-fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6598, check-doc.py lineref).
   Lanes: doc-engines.
+
+- 📋 [ANTS-6944] **doc_lint never sets opts.spec.siblingInvNumbers, so it may report invariant-number gaps that spec_lint suppresses.**
+  specLintProjectOptions (src/remotecontrol_docs.cpp) now builds the
+  shared spec options; only cmdSpecLint adds siblingInvNumbers
+  (ANTS-4110). Same drift ANTS-6315 patched once. Check on a project
+  that numbers invariants across specs, then add it in the helper.
+  **Layman:** Two checks of the same spec can disagree about missing invariant numbers.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6601).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6945] **get_text refuses not_found when no terminal is found, where recent_errors and last_selection refuse no_window.**
+  src/remotecontrol_terminal.cpp: the three verbs now share
+  requestTerminal but keep their own refusal codes. Pick one code per
+  docs/standards/mcp-error-codes.md and align the descriptions.
+  **Layman:** Three tools report the same missing terminal with different error codes.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6601).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6946] **changelog_log's add_subsection and add_batch entries scrub leaked tool XML but never report scrubbed_params.**
+  src/remotecontrol_changelog.cpp: op add and amend report it through
+  clSetScrubbed; add_subsection and add_batch drop it silently.
+  **Layman:** Some changelog writes quietly drop stray text without saying so.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6601).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6947] **session_message's unknown_project refusals from send preview and outbox lack the session_message: prefix.**
+  src/remotecontrol_session_message.cpp refuseUnknownProject; every
+  other refusal in the file carries the prefix (review row 957).
+  **Layman:** Two error messages are worded differently from the rest of the tool's.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6601).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6948] **doc_integrity follows symlinks that land inside the root; doc_citations' markdown walk drops every symlink. Pick one rule.**
+  docIntegrityEnumerate keeps in-root symlinks (ANTS-6449);
+  docCitationsMdScan passes QDir::NoSymLinks. Their caps differ too.
+  Review row 931 asked for one walk; folding needs the rule settled
+  first.
+  **Layman:** Two document checks treat linked files differently, so they can see different files.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6601).
+  Lanes: mcp-content-verbs.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

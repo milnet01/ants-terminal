@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The document, changelog, spec-log, git-state and terminal-text MCP verbs share one copy of their path checks, refusals and reply building.** (ANTS-6601)
+
 - **The branch chip's colour, the close-confirm dialogs and Undo Close Tab's folder quoting each come from one shared piece of code.** (ANTS-6600)
 
 - **`doc_lint` reports a miscounted list once, through `doc_integrity`'s `list_count`, and skips citations no edit here can clear** (ANTS-6598)
