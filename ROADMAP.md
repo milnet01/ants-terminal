@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6942 -->
+<!-- ants-roadmap-id-high-water: ANTS=6943 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97982,7 +97982,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: dialog-chrome-theme.
 
-- 📋 [ANTS-6598] **Fold the duplicated logic the 2026-11-06 reviews found in doc-engines.**
+- ✅ [ANTS-6598] **Fold the duplicated logic the 2026-11-06 reviews found in doc-engines.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 366 `doclint.cpp:567` (Medium)
   - row 367 `docfacts.cpp:136-150` (Medium)
@@ -97992,6 +97992,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 980 `src/doccitations.cpp:380` (Low)
   - row 981 `src/doccitations.cpp:1550` (Low)
   - row 1425 `src/doclint.cpp:671` (Info)
+  All 8 rows closed 2026-11-26. 366 ba24c35b (+ddd1c946 fixtures); 367
+  d524b0ab (doc_facts' count_mismatch removed, list_count kept; INV-22
+  withdrawn); 963 85039bba + e01fba49; 1425 e01fba49; 964 8535be7b (the
+  cache read/write half was already in IndexCache); 965 4260d3cf; 980
+  0e93d3de (comment: a NUL is valid UTF-8, which is all not_utf8
+  promises); 981 37c1d32b (the sort half was done by 3e9283fa).
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -115244,6 +115250,16 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: fix.
   Source: push-gate-log-2026-11-26.
   Lanes: mcp, claude-session-widgets.
+
+- 📋 [ANTS-6943] **The doc_lint spec cites src/claudeintegration.cpp:11218, a line past the end of that file.**
+  docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md § 2.5 area:
+  check-doc.py reports the cited file has far fewer lines. Find what the
+  citation meant (likely moved to claudeintegration_*.cpp in a split) and
+  cite the symbol instead of a line.
+  **Layman:** One reference in the doc_lint design document points at a line that no longer exists.
+  Kind: doc-fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6598, check-doc.py lineref).
+  Lanes: doc-engines.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
