@@ -415,24 +415,21 @@ else
             echo "          built by something else (tools/asan-nightly.sh?)."
             echo "          CI's nightly build-asan run still covers this push."
         else
-            # If the caller's timeout kills us anyway, mark the tree so the
-            # NEXT run refuses to trust an incremental build over a killed
-            # ninja. The same marker trap is in tools/asan-nightly.sh and
-            # tools/qt62-guard.sh, which background the build and also trap
-            # HUP; this copy runs it in the foreground (ANTS-6050).
-            trap 'touch "$asan_marker"
-                  echo >&2
-                  echo "pre-push: interrupted during the sanitizer build — $asan_dir" >&2
-                  echo "          marked untrusted; the next run will say how to heal it." >&2
-                  exit 143' TERM INT
-            if ! ANTS_PUSH_GATE=1 python3 "$runner" run build-asan; then
+            # If the caller's timeout kills us anyway, the marker stays, so
+            # the NEXT run refuses to trust an incremental build over a
+            # killed ninja (ANTS-6050, ANTS-6595).
+            # Beside this script, not under $repo_root: the tests run it
+            # against a scratch repo that lacks this library.
+            # shellcheck source=tools/build-marker-lib.sh
+            . "$(dirname "${BASH_SOURCE[0]}")/build-marker-lib.sh"
+            if ! marked_build "$asan_marker" pre-push \
+                    env ANTS_PUSH_GATE=1 python3 "$runner" run build-asan; then
                 echo >&2
                 echo "pre-push: ci.yml's build-asan job FAILED locally — push blocked." >&2
                 echo "          This is the class that reached CI as run 30587366963." >&2
                 echo "          ('git push --no-verify' to override.)" >&2
                 exit 1
             fi
-            trap - TERM INT
             # Only a clean tree is recorded: the commit names what passed.
             if tree_is_clean; then
                 { git rev-parse HEAD; date '+%Y-%m-%d %H:%M'; asan_binaries_state; } \

@@ -79,17 +79,10 @@ if [[ -f "$asan_marker" ]]; then
     clean=(--clean-first)
 fi
 
-# Started in the background and waited on: bash runs a trap only after a
-# foreground command returns (the same reason as tools/qt62-guard.sh).
-# tools/local-ci.sh writes the same marker from a foreground build (ANTS-6050).
-trap 'touch "$asan_marker"
-      echo "asan-nightly: interrupted — $asan_dir marked untrusted." >&2
-      exit 143' TERM INT HUP
-cmake --build "$asan_dir" "${clean[@]}" &
-if ! wait $!; then
+# shellcheck source=tools/build-marker-lib.sh
+. "$repo_root/tools/build-marker-lib.sh"
+if ! marked_build "$asan_marker" asan-nightly cmake --build "$asan_dir" "${clean[@]}"; then
     echo "asan-nightly: the build failed; the push gate will report it." >&2
     exit 1
 fi
-trap - TERM INT HUP
-rm -f "$asan_marker"
 echo "asan-nightly: $asan_dir is warm."
