@@ -41,7 +41,9 @@ for arg in "$@"; do
 done
 
 if [[ -z "$version" ]]; then
-    version=$(grep -oE 'VERSION[[:space:]]+[0-9]+\.[0-9]+\.[0-9]+' "$repo/CMakeLists.txt" | head -n1 | awk '{print $2}')
+    # project()'s VERSION, as packaging/release.sh's base_version() reads it.
+    version=$(grep -oE 'project\s*\([^)]*VERSION\s+[0-9]+\.[0-9]+\.[0-9]+' "$repo/CMakeLists.txt" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 fi
 if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "error: invalid version '$version'" >&2

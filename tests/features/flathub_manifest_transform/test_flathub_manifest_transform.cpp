@@ -225,3 +225,22 @@ static int runMain() {
 TEST(FlathubManifestTransform, Main) {
     ASSERT_EQ(0, runMain());
 }
+
+// ANTS-6599 row 1272 — the version is project()'s, not the first three-part
+// VERSION in the file. A copy of the script runs in a tree whose first line is
+// `cmake_minimum_required(VERSION 3.20.0)`.
+TEST(FlathubManifestTransform, Ants6599VersionComesFromProject) {
+    const std::string script = TRANSFORMER_PATH;
+    const std::string dir = script.substr(0, script.rfind('/'));
+    // One `bash -c`, because runCapture puts `timeout` in front of the command.
+    const std::string body =
+        "d=$(mktemp -d) && mkdir -p \"$d/packaging\" && cp -r \"$1\" \"$d/packaging/\" && "
+        "printf \"cmake_minimum_required(VERSION 3.20.0)\\nproject(x VERSION 1.2.3)\\n\" "
+        "> \"$d/CMakeLists.txt\" && bash \"$d/packaging/flatpak/$2\" | grep -o \"tag: v[0-9.]*\"; "
+        "rm -rf \"$d\"";
+    const std::string cmd = "bash -c '" + body + "' _ '" + dir + "' '"
+                          + script.substr(script.rfind('/') + 1) + "'";
+    std::string out;
+    runCapture(cmd, out);
+    EXPECT_EQ("tag: v1.2.3\n", out);
+}
