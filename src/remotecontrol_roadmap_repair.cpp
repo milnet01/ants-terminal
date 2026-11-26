@@ -156,18 +156,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     const bool clearPlaceholder =
         req.value(QStringLiteral("clear_placeholder_source")).toBool();
 
-    const auto rpErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env[QStringLiteral("ok")]    = false;
-        env[QStringLiteral("code")]  = code;
-        env[QStringLiteral("error")] = message;
-        return QJsonDocument(env);
-    };
-
     QString err;
     const auto items = store.readItems(projectId, &err);
     if (!items)
-        return rpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
 
     // Decide every write before opening a transaction, so `dry_run` reports the
     // real run's counts rather than a second estimate of them (INV-5).
@@ -295,7 +287,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     hist.changedAt = rlHistoryStamp();
     if (!dryRun && (!plan.isEmpty() || !bodyPlan.isEmpty() || !clearPlan.isEmpty())) {
         if (!store.begin(&err))
-            return rpErr(QStringLiteral("store_failed"), err);
+            return rlErr(QStringLiteral("store_failed"), err);
         for (const RlRepairWrite &wr : plan) {
             // `asserted`, not `store-generated`: the recovered text is the
             // author's own adjacent prose and the guard only ever extends an
@@ -307,7 +299,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
             if (!store.setItemField(wr.pk, wr.field, wr.value,
                                     QStringLiteral("asserted"), &err)) {
                 store.rollback(nullptr);
-                return rpErr(QStringLiteral("store_failed"), err);
+                return rlErr(QStringLiteral("store_failed"), err);
             }
             hist.record(wr.pk, wr.field, wr.before, wr.value);
         }
@@ -318,7 +310,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
             if (!store.setItemField(bw.pk, QStringLiteral("body"), bw.after,
                                     QStringLiteral("asserted"), &err)) {
                 store.rollback(nullptr);
-                return rpErr(QStringLiteral("store_failed"), err);
+                return rlErr(QStringLiteral("store_failed"), err);
             }
             hist.record(bw.pk, QStringLiteral("body"), bw.before, bw.after);
         }
@@ -331,17 +323,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
             if (!store.setItemField(pk, QStringLiteral("source"), QStringLiteral(""),
                                     QStringLiteral("store-generated"), &err)) {
                 store.rollback(nullptr);
-                return rpErr(QStringLiteral("store_failed"), err);
+                return rlErr(QStringLiteral("store_failed"), err);
             }
             hist.record(pk, QStringLiteral("source"), QStringLiteral("planned"), QString());
         }
         if (!rlFlushHistory(store, hist, &err)) {
             store.rollback(nullptr);
-            return rpErr(QStringLiteral("store_failed"), err);
+            return rlErr(QStringLiteral("store_failed"), err);
         }
         if (!store.commit(&err)) {
             store.rollback(nullptr);
-            return rpErr(QStringLiteral("store_failed"), err);
+            return rlErr(QStringLiteral("store_failed"), err);
         }
     }
 

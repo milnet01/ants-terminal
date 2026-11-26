@@ -44,7 +44,7 @@ bool rlVersionLess(const QString &a, const QString &b) {
 }
 
 // ANTS-1878 § 2.3a's ordering key: a patch stream `x` sorts after every
-// numbered patch of its minor. The same lambda create_section uses.
+// numbered patch of its minor. create_section uses it via rlReleasePlacement.
 RlVerKey rlPlacementKey(const QString &v) {
     const QStringList p = v.split(QLatin1Char('.'));
     const qint64 patch = p.value(2) == QLatin1String("x")
@@ -392,13 +392,27 @@ RlChangelogEvidence rlReadChangelog(const QString &root, const RlCiter &citer) {
 
 }  // namespace
 
+RlReleasePlace rcdetail::rlReleasePlacement(const QStringList &versions,
+                                           const QString &want) {
+    RlReleasePlace r;
+    const RlVerKey w = rlPlacementKey(want);
+    RlVerKey lowerKey{}, higherKey{};
+    for (int k = 0; k < versions.size(); ++k) {
+        if (versions.at(k).isEmpty()) continue;
+        const RlVerKey key = rlPlacementKey(versions.at(k));
+        if (key < w) {
+            if (r.lower < 0 || lowerKey < key) { r.lower = k; lowerKey = key; }
+        } else if (r.higher < 0 || key < higherKey) {
+            r.higher = k; higherKey = key;
+        }
+    }
+    return r;
+}
+
 QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req) {
     const auto pbErr = [](const QString &code, const QString &message,
                           const QString &hint = QString()) {
-        QJsonObject env;
-        env[QStringLiteral("ok")]    = false;
-        env[QStringLiteral("code")]  = code;
-        env[QStringLiteral("error")] = message;
+        QJsonObject env = rlErr(code, message).object();
         if (!hint.isEmpty()) env[QStringLiteral("hint")] = hint;
         return QJsonDocument(env);
     };
@@ -756,30 +770,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
                                "nothing was written").arg(title, slug));
         slugs.insert(slug);
 
-        const RlVerKey want = rlPlacementKey(v);
         QVector<int> h2;   // positions in `layout`
-        for (int p = 0; p < layout.size(); ++p)
-            if (entryLive2(layout.at(p))) h2 << p;
-        int lowerLayoutPos = -1, higherH2Index = -1;
-        RlVerKey lowerKey{}, higherKey{};
-        int lastH2 = -1;
-        for (int k = 0; k < h2.size(); ++k) {
-            lastH2 = h2.at(k);
-            const QString hv = RoadmapIndex::versionOfTitle(entryTitle(layout.at(h2.at(k))));
-            if (hv.isEmpty()) continue;
-            const RlVerKey key = rlPlacementKey(hv);
-            if (key < want) {
-                if (lowerLayoutPos < 0 || lowerKey < key) { lowerLayoutPos = h2.at(k); lowerKey = key; }
-            } else if (higherH2Index < 0 || key < higherKey) {
-                higherH2Index = k; higherKey = key;
-            }
+        QStringList h2Versions;
+        for (int p = 0; p < layout.size(); ++p) {
+            if (!entryLive2(layout.at(p))) continue;
+            h2 << p;
+            h2Versions << RoadmapIndex::versionOfTitle(entryTitle(layout.at(p)));
         }
+        const RlReleasePlace place = rlReleasePlacement(h2Versions, v);
         Created c{v, title, slug, QString(), QString()};
         int afterPos = -1, beforePos = -1;
-        if (lowerLayoutPos >= 0)        afterPos  = lowerLayoutPos;
-        else if (higherH2Index > 0)     afterPos  = h2.at(higherH2Index - 1);
-        else if (higherH2Index == 0)    beforePos = h2.first();
-        else if (lastH2 >= 0)           afterPos  = lastH2;   // no version-led section: the end
+        if (place.lower >= 0)           afterPos  = h2.at(place.lower);
+        else if (place.higher > 0)      afterPos  = h2.at(place.higher - 1);
+        else if (place.higher == 0)     beforePos = h2.first();
+        else if (!h2.isEmpty())         afterPos  = h2.last();   // no version-led section: the end
         int insertAt = int(layout.size());
         if (beforePos >= 0) {
             insertAt   = beforePos;

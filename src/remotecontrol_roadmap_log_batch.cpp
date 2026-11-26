@@ -168,14 +168,6 @@ QJsonDocument rlBadCase(const QString &what, const QString &given,
 // a note inserted below a target only shifts already-applied (lower)
 // targets, leaving every not-yet-applied target's captured line valid.
 QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
-
     // ANTS-4470 — annotate_batch shares this handler, exactly as op:"annotate"
     // shares cmdRoadmapLogFlip: it is this path with the status write omitted.
     // The parameter shape needed no invention — flip_batch's locators[] has
@@ -1057,51 +1049,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     // 8. write once.
     const QString updated = lines.join(QChar('\n'));
 
-    // ANTS-2136 — dry_run preview: every locator has resolved or landed in
-    // `skipped`, the surgery is computed in-memory; return the would-be
-    // flipped/skipped sets + bytes WITHOUT writing ROADMAP.md or bumping
-    // .roadmap-counter. `would_flip_count` parallels append_batch's
-    // would_apply_count.
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
-        QList<int> previewOrder = claimedFirstLines.values();
-        std::sort(previewOrder.begin(), previewOrder.end());
-        QJsonArray previewFlipped;
-        for (const int fl : previewOrder)
-            if (resultByFirstLine.contains(fl))
-                previewFlipped.append(resultByFirstLine.value(fl));
-        QJsonObject out;
-        out["ok"]               = true;
-        out["op"]               = opName;
-        out["dry_run"]          = true;
-        out["format"]           = isGfm ? QStringLiteral("gfm")
-                                         : QStringLiteral("ants-v1");
-        out["file"]             = QStringLiteral("ROADMAP.md");
-        if (!annotateMode && !targetEmoji.isEmpty())   // ANTS-4470, ANTS-5358
-            out["to_status"] = targetEmoji;
-        out["write_path"]       = QStringLiteral("patch");   // ANTS-4464
-        out["flipped"]          = previewFlipped;
-        out["would_flip_count"] = previewFlipped.size();
-        out["skipped"]          = skipped;
-        out["skipped_count"]    = skipped.size();
-        out["bytes"]            = static_cast<qint64>(updated.toUtf8().size());
-        if (newCounter >= 0 && newCounter != counterStart)
-            out["counter"] = newCounter;
-        return QJsonDocument(out);
-    }
-
-    // 9. counter once, only if an anchor was injected — BEFORE ROADMAP.md
-    // (ANTS-5094), so a failure refuses with the file untouched.
-    if (newCounter >= 0 && newCounter != counterStart &&
-        !rlWriteCounter(counterPath, newCounter))
-        return rlErr(QStringLiteral("counter_write_failed"),
-            QStringLiteral("roadmap_log: atomic write of .roadmap-counter "
-                           "failed"));
-
-    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
-    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
-        return rlErr(QStringLiteral("roadmap_write_failed"), err);
-
-    // 10. envelope — `flipped` in firstLine-ascending order.
+    // 9. envelope — `flipped` in firstLine-ascending order. Built once for
+    // the dry run and the write; each adds its own keys below.
     QList<int> orderedFirstLines = claimedFirstLines.values();
     std::sort(orderedFirstLines.begin(), orderedFirstLines.end());
     QJsonArray flipped;
@@ -1131,12 +1080,37 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         out["to_status"] = targetEmoji;
     out["write_path"]    = QStringLiteral("patch");      // ANTS-4464
     out["flipped"]       = flipped;
-    out["flipped_count"] = flipped.size();
     out["skipped"]       = skipped;
     out["skipped_count"] = skipped.size();
-    rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(updated.toUtf8().size()));
     if (newCounter >= 0 && newCounter != counterStart)
         out["counter"] = newCounter;
+
+    // ANTS-2136 — dry_run preview: every locator has resolved or landed in
+    // `skipped`, the surgery is computed in-memory; return the would-be
+    // flipped/skipped sets + bytes WITHOUT writing ROADMAP.md or bumping
+    // .roadmap-counter. `would_flip_count` parallels append_batch's
+    // would_apply_count.
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        out["dry_run"]          = true;
+        out["would_flip_count"] = flipped.size();
+        out["bytes"]            = static_cast<qint64>(updated.toUtf8().size());
+        return QJsonDocument(out);
+    }
+
+    // 10. counter once, only if an anchor was injected — BEFORE ROADMAP.md
+    // (ANTS-5094), so a failure refuses with the file untouched.
+    if (newCounter >= 0 && newCounter != counterStart &&
+        !rlWriteCounter(counterPath, newCounter))
+        return rlErr(QStringLiteral("counter_write_failed"),
+            QStringLiteral("roadmap_log: atomic write of .roadmap-counter "
+                           "failed"));
+
+    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
+
+    out["flipped_count"] = flipped.size();
+    rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(updated.toUtf8().size()));
     if (echoHeadline) out["post_bullets"] = postBullets;
     return QJsonDocument(out);
 }
@@ -1236,14 +1210,6 @@ int RemoteControl::createSectionSkipCount(const QVector<int> &levelsAfter,
 }
 
 QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
-
     // 1. Required fields.
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
@@ -1327,37 +1293,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     QString beforeSection;
     if (afterSection.isEmpty()) {
         if (level == 2 && !titleVersion.isEmpty()) {
-            // Versions compare major, minor, patch as numbers; a patch
-            // stream `x` sorts after every numbered patch of its minor.
-            const auto key = [](const QString &v) {
-                const QStringList p = v.split(QLatin1Char('.'));
-                const qint64 patch = p.value(2) == QLatin1String("x")
-                    ? std::numeric_limits<int>::max() : p.value(2).toLongLong();
-                return std::make_tuple(p.value(0).toLongLong(),
-                                       p.value(1).toLongLong(), patch);
-            };
-            const auto want = key(titleVersion);
             QVector<const RoadmapIndex::Section *> h2;
-            for (const auto &s : index)
-                if (s.level == 2) h2.append(&s);
-            const RoadmapIndex::Section *lower = nullptr;
-            int higherAt = -1;
-            for (int i = 0; i < h2.size(); ++i) {
-                const QString v = RoadmapIndex::versionOfTitle(h2.at(i)->headingText);
-                if (v.isEmpty()) continue;
-                if (key(v) < want) {
-                    if (!lower || key(RoadmapIndex::versionOfTitle(lower->headingText)) < key(v))
-                        lower = h2.at(i);
-                } else if (higherAt < 0 || key(v) < key(RoadmapIndex::versionOfTitle(
-                                                   h2.at(higherAt)->headingText))) {
-                    higherAt = i;
-                }
+            QStringList h2Versions;
+            for (const auto &s : index) {
+                if (s.level != 2) continue;
+                h2.append(&s);
+                h2Versions << RoadmapIndex::versionOfTitle(s.headingText);
             }
-            if (lower)
-                afterSection = lower->slug;
-            else if (higherAt > 0)
-                afterSection = h2.at(higherAt - 1)->slug;
-            else if (higherAt == 0)
+            const RlReleasePlace place = rlReleasePlacement(h2Versions, titleVersion);
+            if (place.lower >= 0)
+                afterSection = h2.at(place.lower)->slug;
+            else if (place.higher > 0)
+                afterSection = h2.at(place.higher - 1)->slug;
+            else if (place.higher == 0)
                 beforeSection = h2.first()->slug;
             placedByVersion = !afterSection.isEmpty() || !beforeSection.isEmpty();
         }
@@ -1646,49 +1594,36 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
         lines.insert(insertAt, toInsert.at(i));
     const QString updated = lines.join(QChar('\n'));
 
-    // ANTS-2136 — dry_run preview: the heading + intro block are rendered
-    // and the insertion point resolved; return the would-be slug, 1-based
-    // heading line and inserted-byte count WITHOUT writing ROADMAP.md.
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
-        qint64 previewBytes = 0;
-        for (const QString &ln : toInsert)
-            previewBytes += ln.toUtf8().size() + 1;   // + '\n'
-        QJsonObject out;
-        out["ok"]      = true;
-        out["op"]      = QStringLiteral("create_section");
-        out["dry_run"] = true;
-        out["slug"]    = newSlug;
-        out["file"]    = QStringLiteral("ROADMAP.md");
-        out["line"]    = insertAt + 1;                // 1-based heading line
-        out["bytes"]   = previewBytes;
-        if (placedByVersion) {                    // ANTS-5315 § 2.3a
-            if (beforeSection.isEmpty()) out["after_section"]  = afterSection;
-            else                         out["before_section"] = beforeSection;
-            out["placed_by_version"] = true;
-        }
-        return QJsonDocument(out);
-    }
-
-    // 7. Atomic write.
-    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
-        return rlErr(QStringLiteral("roadmap_write_failed"), err);
-
-    // 8. Success envelope.
+    // 7. The envelope, built once for the dry run and the write.
     qint64 bytesInserted = 0;
     for (const QString &ln : toInsert)
         bytesInserted += ln.toUtf8().size() + 1;   // + '\n'
-
     QJsonObject out;
-    out["ok"]            = true;
-    out["slug"]          = newSlug;
-    out["file"]          = QStringLiteral("ROADMAP.md");
-    out["line"]          = insertAt + 1;          // 1-based heading line
-    out["bytes_written"] = bytesInserted;
+    out["ok"]   = true;
+    out["slug"] = newSlug;
+    out["file"] = QStringLiteral("ROADMAP.md");
+    out["line"] = insertAt + 1;                   // 1-based heading line
     if (placedByVersion) {                        // ANTS-5315 § 2.3a
         if (beforeSection.isEmpty()) out["after_section"]  = afterSection;
         else                         out["before_section"] = beforeSection;
         out["placed_by_version"] = true;
     }
+
+    // ANTS-2136 — dry_run preview: the heading + intro block are rendered
+    // and the insertion point resolved; return the would-be slug, 1-based
+    // heading line and inserted-byte count WITHOUT writing ROADMAP.md.
+    // Only the preview carries `op`.
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        out["op"]      = QStringLiteral("create_section");
+        out["dry_run"] = true;
+        out["bytes"]   = bytesInserted;
+        return QJsonDocument(out);
+    }
+
+    // 8. Atomic write.
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
+    out["bytes_written"] = bytesInserted;
     return QJsonDocument(out);
 }
 
@@ -1707,14 +1642,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRowForTest(
 // touch; single read + single atomic QSaveFile commit. See
 // tests/features/roadmap_log_bundle_row/spec.md.
 QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
-
     // Escape one cell for safe placement inside a GFM table: a literal
     // `|` would otherwise open a new column, and a raw newline is illegal
     // in a table cell. Backslash-escape pipes; fold newlines to <br>.
@@ -2124,26 +2051,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     // is a poor one to miss, because a mismatched column count is refused
     // while a wrongly-sorted or wrongly-escaped cell is not — a mangled table
     // is exactly the outcome you would want to see before it lands.
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
-        QJsonObject out;
-        out["ok"]            = true;
-        out["op"]            = QStringLiteral("bundle_row");
-        out["dry_run"]       = true;
-        out["file"]          = QStringLiteral("ROADMAP.md");
-        out["section"]       = section;
-        out["row_index"]     = rowIndex;
-        out["columns"]       = createdTable ? header.size() : columns;
-        out["created_table"] = createdTable;
-        out["row"]           = rowText;
-        out["bytes"]         = static_cast<int>(rowText.toUtf8().size() + 1);
-        return QJsonDocument(out);
-    }
-
-    // 7. Atomic write.
-    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
-        return rlErr(QStringLiteral("roadmap_write_failed"), err);
-
-    // 8. Success envelope.
+    //
+    // The envelope is built once for both; only the preview carries `op`.
     QJsonObject out;
     out["ok"]            = true;
     out["file"]          = QStringLiteral("ROADMAP.md");
@@ -2151,7 +2060,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     out["row_index"]     = rowIndex;
     out["columns"]       = createdTable ? header.size() : columns;
     out["created_table"] = createdTable;
-    out["bytes_written"] = static_cast<int>(rowText.toUtf8().size() + 1);
+    const int rowBytes   = static_cast<int>(rowText.toUtf8().size() + 1);
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        out["op"]      = QStringLiteral("bundle_row");
+        out["dry_run"] = true;
+        out["row"]     = rowText;
+        out["bytes"]   = rowBytes;
+        return QJsonDocument(out);
+    }
+
+    // 7. Atomic write.
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
+    out["bytes_written"] = rowBytes;
     return QJsonDocument(out);
 }
 
@@ -2214,10 +2135,6 @@ namespace {
 
 using Accepted = AppendBatchPlan::Accepted;
 using SecSlot  = AppendBatchPlan::SecSlot;
-
-// Defined further down; the same {ok, code, error} envelope as
-// cmdRoadmapLogAppendBatch's rlErr.
-QJsonDocument rcSectionOpErr(const QString &code, const QString &message);
 
 // ANTS-4580 — `{{id:N}}` in a bullet's headline, body or layman is the id
 // bullet N of this call was given (N counts the `bullets` array from 0).
@@ -2357,7 +2274,7 @@ QJsonDocument rlAppendBatchToStore(AppendBatchPlan &p) {
             return bs.isEmpty() || bs == p.section;
         }));
     if (p.hasBefore && beforeCount == 0)
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: no bullet lands in section \"%1\", "
                            "where `before_id` is filed; nothing was written")
                 .arg(p.section));
@@ -2555,14 +2472,6 @@ QJsonDocument rlAppendBatchToStore(AppendBatchPlan &p) {
 // Recurses once at most: the ANTS-6274 branch refills an empty section.
 // NOLINTNEXTLINE(misc-no-recursion)
 QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
-
     // 1. Top-level required fields.
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
@@ -3298,12 +3207,12 @@ QJsonDocument RemoteControl::appendBatchToFile(AppendBatchPlan &p) {
     // 9. Atomic write — counter first, then ROADMAP (parity with append,
     // ANTS-5094). ANTS-2078 — stable_prefix wrote no counter to bump.
     if (!p.useStablePrefix && !rlWriteCounter(p.counterPath, p.nextId - 1))
-        return rcSectionOpErr(QStringLiteral("counter_write_failed"),
+        return rlErr(QStringLiteral("counter_write_failed"),
             QStringLiteral("roadmap_log: atomic write of "
                            ".roadmap-counter failed"));
 
     if (const QString err = rlAtomicWrite(p.roadmapPath, updated); !err.isEmpty())
-        return rcSectionOpErr(QStringLiteral("roadmap_write_failed"), err);
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
 
     // 10. Success envelope.
     QJsonArray ids;
@@ -3347,18 +3256,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogRetitleSectionForTest(
 
 namespace {
 
-QJsonDocument rcSectionOpErr(const QString &code, const QString &message) {
-    QJsonObject env;
-    env[QStringLiteral("ok")]    = false;
-    env[QStringLiteral("code")]  = code;
-    env[QStringLiteral("error")] = message;
-    return QJsonDocument(env);
-}
-
 // The section_not_found refusal, with ranked slug candidates.
 QJsonDocument rcSectionNotFound(RoadmapStore &store, qint64 projectId,
                                 const QString &slug) {
-    QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_found"),
+    QJsonObject env = rlErr(QStringLiteral("section_not_found"),
         QStringLiteral("roadmap_log: section \"%1\" is not in the store")
             .arg(slug)).object();
     if (const auto sections = store.listSectionsOrdered(projectId)) {
@@ -3381,49 +3282,33 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
                                       QJsonDocument *refusal) const {
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
     if (callerRaw.isEmpty()) {
-        *refusal = rcSectionOpErr(QStringLiteral("missing_field"),
+        *refusal = rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: caller_cwd is required"));
         return std::nullopt;
     }
-    const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
-    if (callerCanonical.isEmpty()) {
-        *refusal = rcSectionOpErr(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not canonicalise "
-                           "to an existing directory").arg(callerRaw));
-        return std::nullopt;
-    }
+    const RlRoadmapFile located = rlLocateRoadmap(callerRaw);
+    const QString &callerCanonical = located.callerCanonical;
+    const QString &found = located.roadmapPath;
     // ANTS-4602 — assigned as soon as each is known, NOT on the success path
     // alone. Callers that remap this function's refusals name the project in
     // rlNotStoreServedRefusal, which uses `root.isEmpty() ? roadmapPath : root`;
     // assigning at the end left both empty on every refusal, so the one
     // envelope a caller has to act on named neither the project nor the file,
     // and that ternary had nothing to fall back to.
-    *projectRoot = callerCanonical;
-
-    const QString found = findRoadmapUnder(callerCanonical);
-    if (found.isEmpty()) {
-        *refusal = rcSectionOpErr(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
-                .arg(callerCanonical));
+    if (!callerCanonical.isEmpty()) *projectRoot = callerCanonical;
+    if (!found.isEmpty()) {
+        *roadmapPath = found;
+        // ANTS-4884 — upgrade the root now that the roadmap has resolved:
+        // `found` was matched under the project root, and the render's
+        // containment check and the store's project key both need that rather
+        // than the caller's cwd.
+        *projectRoot = rcProjectRootFor(callerCanonical);
+    }
+    if (!located.ok()) {
+        *refusal = rlErr(located.code, located.error);
         return std::nullopt;
     }
-
-    *roadmapPath = found;
-    // ANTS-4884 — upgrade the root now that the roadmap has resolved: `found`
-    // was matched under the project root, and the render's containment check
-    // and the store's project key both need that rather than the caller's cwd.
-    // The early assignment above stays as ANTS-4602 requires, because it is
-    // what the refusal messages above this line interpolate.
-    *projectRoot = rcProjectRootFor(callerCanonical);
-
-    QFile rf(found);
-    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        *refusal = rcSectionOpErr(QStringLiteral("roadmap_read_failed"),
-            QStringLiteral("roadmap_log: could not read \"%1\"").arg(found));
-        return std::nullopt;
-    }
-    const QString markdown = QString::fromUtf8(rf.readAll());
-    rf.close();
+    const QString &markdown = located.markdown;
 
     RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
     QString seamErr;
@@ -3440,7 +3325,7 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
         // Not migrated. Rotation stays /bump's snip-and-create there, and
         // retitling a heading is a hand edit — growing a markdown writer for
         // either would be a second writer for one file (ANTS-3809 INV-2).
-        *refusal = rcSectionOpErr(QStringLiteral("op_unsupported"),
+        *refusal = rlErr(QStringLiteral("op_unsupported"),
             QStringLiteral("roadmap_log: \"%1\" is not store-migrated — this op "
                            "has no markdown path").arg(found));
         return std::nullopt;
@@ -3498,14 +3383,14 @@ QJsonDocument rcMoveSectionsToArchive(
     if (!moveIds.isEmpty()) {
         const auto itemsOpt = store.readItems(projectId, &err);
         if (!itemsOpt)
-            return rcSectionOpErr(QStringLiteral("store_failed"), err);
+            return rlErr(QStringLiteral("store_failed"), err);
         QStringList openIds;
         for (const auto &it : *itemsOpt)
             if (moveIds.contains(it.sectionId) && RoadmapRender::isOpen(it.status))
                 openIds << it.id;
         if (!openIds.isEmpty()) {
             openIds.sort();
-            return rcSectionOpErr(move.notClosedCode,
+            return rlErr(move.notClosedCode,
                 QStringLiteral("roadmap_log: %1 still holds open items: %2")
                     .arg(move.notClosedWhat, openIds.join(QStringLiteral(", "))));
         }
@@ -3520,7 +3405,7 @@ QJsonDocument rcMoveSectionsToArchive(
         if (!it.value().sourcePath && !moveIds.contains(it.key()))
             ++liveRemaining;
     if (!moveIds.isEmpty() && liveRemaining == 0)
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: %1 would leave the live "
                            "roadmap with no sections, and the render never "
                            "rewrites a file that has none").arg(move.what));
@@ -3552,7 +3437,7 @@ QJsonDocument rcMoveSectionsToArchive(
                 move.slugPrefix + RoadmapIndex::uniqueSlug(seen, row.title);
             if (!moveIds.contains(row.sectionId)) {
                 if (slug != row.slug)
-                    return rcSectionOpErr(QStringLiteral("bad_args"),
+                    return rlErr(QStringLiteral("bad_args"),
                         QStringLiteral("roadmap_log: %1 would re-slug \"%2\", "
                                        "already in %3, to \"%4\"")
                             .arg(move.what, row.slug, archiveRel, slug));
@@ -3569,7 +3454,7 @@ QJsonDocument rcMoveSectionsToArchive(
     for (auto it = newSlugOf.cbegin(); it != newSlugOf.cend(); ++it) {
         const qint64 holder = idBySlug.value(it.value(), 0);
         if (holder != 0 && !moveIds.contains(holder))
-            return rcSectionOpErr(QStringLiteral("bad_args"),
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: %1 would give a moved "
                                "section the slug \"%2\", which section \"%2\" "
                                "already holds").arg(move.what, it.value()));
@@ -3593,7 +3478,7 @@ QJsonDocument rcMoveSectionsToArchive(
         }
         if (!clashes.isEmpty()) {
             clashes.sort();
-            return rcSectionOpErr(QStringLiteral("bad_args"),
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: %1 frees a slug base a "
                                "remaining live section was disambiguated out of: "
                                "%2").arg(move.what, clashes.join(QStringLiteral(", "))));
@@ -3641,7 +3526,7 @@ QJsonDocument rcMoveSectionsToArchive(
 // RoadmapWrite::commitAndRender() do the rest.
 QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
     if (!req.contains(QStringLiteral("minor")))
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: rotate_minor requires `minor`"));
 
     // § 3.9's FILENAME rule, and the single place it is stated: the derived
@@ -3654,7 +3539,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
     const QString minorArg = req.value(QStringLiteral("minor")).toString();
     const auto minorMatch = kMinorRx.match(minorArg);
     if (!minorMatch.hasMatch())
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `minor` must be <MAJOR>.<MINOR> with no "
                            "leading zeros and no patch component (got \"%1\")")
                 .arg(minorArg));
@@ -3680,7 +3565,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
     QString err;
     const auto allOpt = store.listSections(projectId, &err);
     if (!allOpt)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
     const QVector<RoadmapStore::SectionRow> &all = *allOpt;
 
     // The id arrives on the row (ANTS-3817) — it is the handle
@@ -3726,7 +3611,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
             frontier.append(it.key());
     }
     if (frontier.isEmpty())
-        return rcSectionOpErr(QStringLiteral("section_not_found"),
+        return rlErr(QStringLiteral("section_not_found"),
             QStringLiteral("roadmap_log: no top-level section's title names "
                            "minor %1").arg(minorArg));
 
@@ -3759,7 +3644,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdRoadmapLogArchiveSection(const QJsonObject &req) {
     const QString slug = req.value(QStringLiteral("section")).toString();
     if (slug.isEmpty())
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: archive_section requires `section`"));
     const QString archiveRel = QStringLiteral("docs/roadmap/")
         + QLatin1String(RoadmapMigrate::kUnversionedArchive);
@@ -3775,7 +3660,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogArchiveSection(const QJsonObject &req)
     QString err;
     const auto allOpt = store.listSections(projectId, &err);
     if (!allOpt)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
     QHash<QString, qint64> idBySlug;
     QHash<qint64, RoadmapStore::SectionRow> rowById;
     QHash<qint64, QVector<qint64>> childrenOf;
@@ -3792,18 +3677,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogArchiveSection(const QJsonObject &req)
     const RoadmapStore::SectionRow &row = *rowIt;
 
     if (row.level != 2)
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" is not a ## section; a "
                            "sub-section moves with its parent").arg(slug));
     if (row.sourcePath && *row.sourcePath != archiveRel)
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" is already archived in %2")
                 .arg(slug, *row.sourcePath));
     // § 3.9 scope: a version, a phase or a fold-in keeps its own rule.
     static const QRegularExpression ownRule(QStringLiteral(
         "(?<![\\w.])v?\\d+\\.\\d+(?![\\w])|\\A(?:P|FP|DS)\\d+\\b"));
     if (ownRule.match(row.title).hasMatch())
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" names a version, phase or "
                            "fold-in block; rotate_minor or § 3.9's rule for "
                            "it applies").arg(row.title));
@@ -3837,20 +3722,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogArchiveSection(const QJsonObject &req)
 // re-import derives.
 QJsonDocument RemoteControl::cmdRoadmapLogRetitleSection(const QJsonObject &req) {
     if (!req.contains(QStringLiteral("section")))
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: retitle_section requires `section`"));
     if (!req.contains(QStringLiteral("title")))
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: retitle_section requires `title`"));
     const QString sectionSlug = req.value(QStringLiteral("section")).toString();
     const QString title       = req.value(QStringLiteral("title")).toString();
 
     if (title.trimmed().isEmpty())
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `title` must not be empty or "
                            "whitespace-only"));
     if (title.contains(QChar('\n')))
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `title` is one heading line and must "
                            "not contain a newline"));
     // Emptiness is tested on the SLUG, not only on the title:
@@ -3861,7 +3746,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRetitleSection(const QJsonObject &req)
     // empty base is returned WITHOUT being inserted into `seen`.
     const QString newSlug = RoadmapIndex::slugifyHeading(title);
     if (newSlug.isEmpty())
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `title` \"%1\" has no letters or digits, "
                            "so it slugifies to the empty string and the section "
                            "would be unaddressable").arg(title));
@@ -3878,22 +3763,22 @@ QJsonDocument RemoteControl::cmdRoadmapLogRetitleSection(const QJsonObject &req)
     QString err;
     const auto sectionId = store.findSection(projectId, sectionSlug, &err);
     if (!sectionId)
-        return rcSectionOpErr(QStringLiteral("section_not_found"),
+        return rlErr(QStringLiteral("section_not_found"),
             QStringLiteral("roadmap_log: section \"%1\" is not in the store")
                 .arg(sectionSlug));
     const auto row = store.readSection(*sectionId, &err);
     if (!row)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
 
     const auto allOpt = store.listSections(projectId, &err);
     if (!allOpt)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
 
     if (newSlug != sectionSlug) {
         // Forward — the new heading slugifies onto a slug another section holds.
         for (const auto &s : *allOpt) {
             if (s.slug == newSlug)
-                return rcSectionOpErr(QStringLiteral("bad_args"),
+                return rlErr(QStringLiteral("bad_args"),
                     QStringLiteral("roadmap_log: \"%1\" slugifies to \"%2\", which "
                                    "section \"%2\" already holds — a collision is "
                                    "refused, never auto-suffixed")
@@ -3911,7 +3796,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRetitleSection(const QJsonObject &req)
                 if (s.slug == sectionSlug) continue;
                 const QString base = RoadmapIndex::slugifyHeading(s.title);
                 if (s.slug != base && base == sectionSlug)
-                    return rcSectionOpErr(QStringLiteral("bad_args"),
+                    return rlErr(QStringLiteral("bad_args"),
                         QStringLiteral("roadmap_log: \"%1\" is the un-suffixed head "
                                        "of a family section \"%2\" was "
                                        "disambiguated out of — retitling it frees "
@@ -3984,19 +3869,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
     const QString slug =
         preamble ? QStringLiteral("") : req.value(QStringLiteral("section")).toString().trimmed();
     if (!preamble && slug.isEmpty())
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: %1 requires `section`. The "
                            "roadmap's title and preamble are op:\"set_preamble\".")
                 .arg(opName));
     if (!req.contains(QStringLiteral("new_text")))
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: %1 requires `new_text` (an empty string "
                            "%2)").arg(opName, amend
                                ? QStringLiteral("deletes the matched text")
                                : QStringLiteral("removes the intro")));
     const QString oldText = req.value(QStringLiteral("old_text")).toString();
     if (amend && oldText.isEmpty())
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: %1 requires `old_text`, the "
                            "exact text to replace inside the stored intro")
                 .arg(opName));
@@ -4029,7 +3914,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
                 continue;
             if (oneTitle && kTitle.match(ln).hasMatch() && ++titles == 1)
                 continue;
-            return rcSectionOpErr(QStringLiteral("bad_intro"),
+            return rlErr(QStringLiteral("bad_intro"),
                 QStringLiteral("roadmap_log: line \"%1\" is a Markdown heading, "
                                "which the next import reads as a new section. %2")
                     .arg(ln, oneTitle
@@ -4066,17 +3951,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
     QString err;
     const auto sectionId = store.findSection(projectId, slug, &err);
     if (!sectionId && !err.isEmpty())
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
     // Every registered project has a live root row (checked 2026-09-19): the
     // render always writes the format marker into it, so a re-import finds it.
     if (!sectionId && preamble)
-        return rcSectionOpErr(QStringLiteral("section_not_found"),
+        return rlErr(QStringLiteral("section_not_found"),
             QStringLiteral("roadmap_log: this project's store holds no root "
                            "section, so it has no preamble to replace"));
     if (!sectionId) return rcSectionNotFound(store, projectId, slug);
     const auto row = store.readSection(*sectionId, &err);
     if (!row)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
     const QString previous = row->intro;
     // ANTS-5608 — each file's root section (level 0) holds that file's title.
     const bool oneTitle = preamble || row->level == 0;
@@ -4088,7 +3973,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
     if (amend) {
         const int hits = int(previous.count(oldText));
         if (hits != 1)
-            return rcSectionOpErr(hits == 0 ? QStringLiteral("intro_match_not_found")
+            return rlErr(hits == 0 ? QStringLiteral("intro_match_not_found")
                                             : QStringLiteral("intro_match_ambiguous"),
                 QStringLiteral("roadmap_log: `old_text` occurs %1 times in %2; "
                                "it must occur exactly once")
@@ -4175,26 +4060,26 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetLegend(const QJsonObject &req) {
 
     const QJsonValue legendArg = req.value(QStringLiteral("legend"));
     if (!legendArg.isObject() || legendArg.toObject().isEmpty())
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: set_legend requires `legend`, an object "
                            "mapping a status (%1) to its wording")
                 .arg(kStatuses.join(QStringLiteral(", "))));
     const QJsonObject changes = legendArg.toObject();
     for (auto it = changes.begin(); it != changes.end(); ++it) {
         if (!kStatuses.contains(it.key()))
-            return rcSectionOpErr(QStringLiteral("bad_args"),
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: set_legend: unknown status \"%1\"; "
                                "expected one of %2")
                     .arg(it.key(), kStatuses.join(QStringLiteral(", "))));
         if (!it.value().isString())
-            return rcSectionOpErr(QStringLiteral("bad_args"),
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: set_legend: the wording for \"%1\" "
                                "must be a string").arg(it.key()));
         const QString w = it.value().toString().trimmed();
         if (w.isEmpty()) continue;   // removes the entry
         if (w.contains(QChar('\n')) || w.size() >= 160 ||
             !legendLine.match(w).hasMatch())
-            return rcSectionOpErr(QStringLiteral("bad_args"),
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: set_legend: the wording for \"%1\" "
                                "must be one line under 160 characters opening "
                                "with Done, In progress, Planned, Considered or "
@@ -4213,14 +4098,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetLegend(const QJsonObject &req) {
     QString err;
     const auto project = store.readProject(projectId, &err);
     if (!project)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
     QJsonObject previous;
     if (!project->legendText.isEmpty()) {
         QJsonParseError perr{};
         const QJsonDocument doc =
             QJsonDocument::fromJson(project->legendText.toUtf8(), &perr);
         if (perr.error != QJsonParseError::NoError || !doc.isObject())
-            return rcSectionOpErr(QStringLiteral("store_failed"),
+            return rlErr(QStringLiteral("store_failed"),
                 QStringLiteral("roadmap_log: the stored legend is not a JSON "
                                "object, so set_legend cannot merge into it"));
         previous = doc.object();
@@ -4253,17 +4138,22 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetLegend(const QJsonObject &req) {
 
 namespace {
 
+// The index just past the run, from `from`, of sections in `file` deeper than
+// `level`.
+int rcPastDeeper(const QVector<RoadmapStore::SectionRow> &rows, int from,
+                 const std::optional<QString> &file, int level) {
+    while (from < rows.size() && rows.at(from).sourcePath == file
+           && rows.at(from).level > level)
+        ++from;
+    return from;
+}
+
 // ANTS-4958 — a section's subtree in document order: the section itself and
 // every following section of the same file deeper than it. Nesting is
 // inferred from (level, position), so that is exactly what the render would
 // nest under it.
 int rcSubtreeEnd(const QVector<RoadmapStore::SectionRow> &ordered, int at) {
-    int end = at + 1;
-    while (end < ordered.size()
-           && ordered.at(end).sourcePath == ordered.at(at).sourcePath
-           && ordered.at(end).level > ordered.at(at).level)
-        ++end;
-    return end;
+    return rcPastDeeper(ordered, at + 1, ordered.at(at).sourcePath, ordered.at(at).level);
 }
 
 int rcIndexOfSlug(const QVector<RoadmapStore::SectionRow> &ordered, const QString &slug) {
@@ -4282,7 +4172,7 @@ int rcIndexOfSlug(const QVector<RoadmapStore::SectionRow> &ordered, const QStrin
 QJsonDocument RemoteControl::cmdRoadmapLogDeleteSection(const QJsonObject &req) {
     const QString slug = req.value(QStringLiteral("section")).toString().trimmed();
     if (slug.isEmpty())
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: delete_section requires `section`"));
 
     QString root, roadmapPath;
@@ -4295,19 +4185,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogDeleteSection(const QJsonObject &req) 
     QString err;
     const auto ordered = store.listSectionsOrdered(projectId, &err);
     if (!ordered)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
     const int at = rcIndexOfSlug(*ordered, slug);
     if (at < 0)
         return rcSectionNotFound(store, projectId, slug);
     const RoadmapStore::SectionRow row = ordered->at(at);
     if (rcSubtreeEnd(*ordered, at) > at + 1)
-        return rcSectionOpErr(QStringLiteral("section_has_subsections"),
+        return rlErr(QStringLiteral("section_has_subsections"),
             QStringLiteral("roadmap_log: section \"%1\" has subsections; delete or "
                            "move them first").arg(slug));
 
     const auto elements = store.listElements(row.sectionId, &err);
     if (!elements)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
     QStringList items;
     QJsonArray removed;
     for (const RoadmapStore::ElementRow &e : *elements) {
@@ -4321,7 +4211,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogDeleteSection(const QJsonObject &req) 
         removed.append(o);
     }
     if (!items.isEmpty()) {
-        QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_empty"),
+        QJsonObject env = rlErr(QStringLiteral("section_not_empty"),
             QStringLiteral("roadmap_log: section \"%1\" still files %2 item(s); move "
                            "them with op:\"amend_field\" field:\"section\" first")
                 .arg(slug).arg(items.size())).object();
@@ -4360,10 +4250,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
     const QString after  = req.value(QStringLiteral("after_section")).toString().trimmed();
     const QString before = req.value(QStringLiteral("before_section")).toString().trimmed();
     if (slug.isEmpty())
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: move_section requires `section`"));
     if (after.isEmpty() == before.isEmpty())
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: move_section takes exactly one of "
                            "`after_section` or `before_section`"));
     const QString anchor = after.isEmpty() ? before : after;
@@ -4378,7 +4268,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
     QString err;
     const auto orderedOpt = store.listSectionsOrdered(projectId, &err);
     if (!orderedOpt)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
     const QVector<RoadmapStore::SectionRow> &ordered = *orderedOpt;
     const int at = rcIndexOfSlug(ordered, slug);
     if (at < 0)
@@ -4388,16 +4278,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
         return rcSectionNotFound(store, projectId, anchor);
     const int blockEnd = rcSubtreeEnd(ordered, at);
     if (anchorAt >= at && anchorAt < blockEnd)
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" is inside the section being moved")
                 .arg(anchor));
     const RoadmapStore::SectionRow &moved = ordered.at(at);
     if (ordered.at(anchorAt).sourcePath != moved.sourcePath)
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" is in another roadmap file; "
                            "move_section keeps a section in its own file").arg(anchor));
     if (!before.isEmpty() && ordered.at(anchorAt).level > moved.level)
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" is deeper than \"%2\", so putting "
                            "\"%2\" before it would make it and its later siblings "
                            "subsections of \"%2\"").arg(before, slug));
@@ -4407,13 +4297,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
     for (int i = 0; i < ordered.size(); ++i)
         if (i < at || i >= blockEnd) rest.append(ordered.at(i));
     int insertAt = rcIndexOfSlug(rest, anchor);
-    if (!after.isEmpty()) {
-        ++insertAt;
-        while (insertAt < rest.size()
-               && rest.at(insertAt).sourcePath == moved.sourcePath
-               && rest.at(insertAt).level > moved.level)
-            ++insertAt;
-    }
+    if (!after.isEmpty())
+        insertAt = rcPastDeeper(rest, insertAt + 1, moved.sourcePath, moved.level);
     QVector<RoadmapStore::SectionRow> next = rest.mid(0, insertAt);
     for (int i = at; i < blockEnd; ++i) next.append(ordered.at(i));
     next += rest.mid(insertAt);
@@ -4475,12 +4360,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
     const QString opName = unlink ? QStringLiteral("unlink") : QStringLiteral("link");
     for (const char *key : {"id", "type", "targets"})
         if (!req.contains(QLatin1String(key)))
-            return rcSectionOpErr(QStringLiteral("missing_field"),
+            return rlErr(QStringLiteral("missing_field"),
                 QStringLiteral("roadmap_log: %1 requires `%2`").arg(opName, QLatin1String(key)));
     const QString id   = req.value(QStringLiteral("id")).toString();
     const QString type = req.value(QStringLiteral("type")).toString();
     if (!RoadmapLinks::isAuthored(type))
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `type` must be splits-from, blocked-by, "
                            "duplicate-of or supersedes; relates-to and specified-by "
                            "come from the body's Dependencies: and Spec: lines"));
@@ -4489,16 +4374,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
     for (const auto &v : rawTargets) {
         const QString t = v.toString().trimmed();
         if (t.isEmpty())
-            return rcSectionOpErr(QStringLiteral("bad_args"),
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: every `targets` entry must be a non-empty id"));
         if (t.compare(id, Qt::CaseInsensitive) == 0)
-            return rcSectionOpErr(QStringLiteral("bad_args"),
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: %1 cannot link to itself").arg(id));
         if (!targets.contains(t, Qt::CaseInsensitive))
             targets << t;
     }
     if (targets.isEmpty())
-        return rcSectionOpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `targets` must be a non-empty array of ids"));
 
     QString root, roadmapPath;
@@ -4512,7 +4397,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
     QString err;
     const auto srcPk = store.findItem(projectId, id, &err);
     if (!srcPk)
-        return rcSectionOpErr(err.isEmpty() ? QStringLiteral("bullet_not_found")
+        return rlErr(err.isEmpty() ? QStringLiteral("bullet_not_found")
                                             : QStringLiteral("store_failed"),
             err.isEmpty() ? QStringLiteral("roadmap_log: %1 is not in the store").arg(id) : err);
 
@@ -4523,10 +4408,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
     for (const QString &t : std::as_const(targets)) {
         const auto dst = store.resolveLinkTarget(projectId, t, &err);
         if (!dst && !err.isEmpty())
-            return rcSectionOpErr(QStringLiteral("link_target_not_found"),
+            return rlErr(QStringLiteral("link_target_not_found"),
                 QStringLiteral("roadmap_log: %1").arg(err));
         if (!dst || (!dst->itemPk && dst->projectId == projectId)) {
-            QJsonObject env = rcSectionOpErr(QStringLiteral("link_target_not_found"),
+            QJsonObject env = rlErr(QStringLiteral("link_target_not_found"),
                 QStringLiteral("roadmap_log: %1 is not filed in this project, and its "
                                "prefix names no other registered project").arg(t)).object();
             env[QStringLiteral("target")] = t;
@@ -4534,7 +4419,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
         }
         const auto exists = store.hasRelation(type, *srcPk, *dst, &err);
         if (!exists)
-            return rcSectionOpErr(QStringLiteral("store_failed"), err);
+            return rlErr(QStringLiteral("store_failed"), err);
         if (*exists != unlink) {   // link of a present edge, unlink of an absent one
             unchanged << t;
             continue;
@@ -4543,7 +4428,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
             if (!edges) {
                 edges = store.edgesOfType(type, &err);
                 if (!edges)
-                    return rcSectionOpErr(QStringLiteral("store_failed"), err);
+                    return rlErr(QStringLiteral("store_failed"), err);
             }
             const QVector<qint64> cycle = RoadmapLinks::cycleThrough(*edges, *srcPk, *dst->itemPk);
             if (!cycle.isEmpty()) {
@@ -4552,7 +4437,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
                     const auto row = store.readItem(pk, &err);
                     ids.append(row ? row->id : QString::number(pk));
                 }
-                QJsonObject env = rcSectionOpErr(QStringLiteral("link_cycle"),
+                QJsonObject env = rlErr(QStringLiteral("link_cycle"),
                     QStringLiteral("roadmap_log: %1 %2 %3 would close a %2 cycle")
                         .arg(id, type, t)).object();
                 env[QStringLiteral("cycle")] = ids;
@@ -4761,22 +4646,22 @@ QJsonDocument RemoteControl::cmdRoadmapLogElement(const QJsonObject &req) {
         ? QStringLiteral("")
         : req.value(QStringLiteral("section")).toString().trimmed();
     if (!preamble && slug.isEmpty())
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: %1 requires `section`, or preamble:true "
                            "for the elements under the roadmap's preamble").arg(op));
     if (promote && preamble)
-        return rcSectionOpErr(QStringLiteral("bad_op_combo"),
+        return rlErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("roadmap_log: promote_element files an item, and items "
                            "belong in a section; name one with `section`"));
     const bool hasPos = req.value(QStringLiteral("element_position")).isDouble();
     const int position = req.value(QStringLiteral("element_position")).toInt(-1);
     if (!listing && (!hasPos || position < 0))
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: %1 requires `element_position`, a non-negative "
                            "integer from op:\"list_elements\"").arg(op));
     if (op == QStringLiteral("amend_element") &&
         !req.value(QStringLiteral("new_text")).isString())
-        return rcSectionOpErr(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: amend_element requires `new_text`"));
 
     QString root, roadmapPath;
@@ -4790,11 +4675,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogElement(const QJsonObject &req) {
     QString err;
     const auto sectionId = store.findSection(projectId, slug, &err);
     if (!sectionId && !err.isEmpty())
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
     if (!sectionId) return rcSectionNotFound(store, projectId, slug);
     const auto elems = store.listElements(*sectionId, &err);
     if (!elems)
-        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
 
     if (listing) {
         QJsonArray out;
@@ -4837,7 +4722,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogElement(const QJsonObject &req) {
     for (const RoadmapStore::ElementRow &e : *elems)
         if (e.position == position) found = &e;
     if (!found)
-        return rcSectionOpErr(QStringLiteral("element_not_found"),
+        return rlErr(QStringLiteral("element_not_found"),
             QStringLiteral("roadmap_log: section \"%1\" holds no element at position "
                            "%2; op:\"list_elements\" gives the positions")
                 .arg(slug).arg(position));
@@ -4846,7 +4731,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogElement(const QJsonObject &req) {
     const bool allowed = narration ||
         (op == QStringLiteral("delete_element") && kind == QLatin1String("table"));
     if (!allowed)
-        return rcSectionOpErr(QStringLiteral("element_kind_refused"),
+        return rlErr(QStringLiteral("element_kind_refused"),
             QStringLiteral("roadmap_log: %1 does not take a%2 %3 element%4")
                 .arg(op, kind == QLatin1String("item") ? QStringLiteral("n")
                                                        : QString(), kind,
@@ -4889,12 +4774,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogElement(const QJsonObject &req) {
         const QVector<bool> fenced = MarkdownScan::fenceMask(lines);
         for (int i = 0; i < lines.size(); ++i)
             if (!fenced.value(i) && kHeading.match(lines.at(i)).hasMatch())
-                return rcSectionOpErr(QStringLiteral("bad_element_text"),
+                return rlErr(QStringLiteral("bad_element_text"),
                     QStringLiteral("roadmap_log: line \"%1\" is a Markdown heading, "
                                    "which the next import reads as a new section")
                         .arg(lines.at(i)));
         if (newText.trimmed().isEmpty())
-            return rcSectionOpErr(QStringLiteral("bad_element_text"),
+            return rlErr(QStringLiteral("bad_element_text"),
                 QStringLiteral("roadmap_log: amend_element's `new_text` is empty; "
                                "op:\"delete_element\" removes an element"));
     }

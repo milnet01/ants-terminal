@@ -196,44 +196,19 @@ namespace {
 // commitAndRender's touchedBullets cap.
 constexpr int kMaxEchoedIds = 200;
 
-// The section ops' refusal envelope. A local copy rather than an export of
-// remotecontrol_roadmap_log_batch.cpp's `rcSectionOpErr`: it is file-local
-// there, and widening a TU's internal linkage to share five lines would couple
-// two TUs that are otherwise independent.
-QJsonDocument refuseWith(const QString &code, const QString &message) {
-    QJsonObject env;
-    env[QStringLiteral("ok")]    = false;
-    env[QStringLiteral("code")]  = code;
-    env[QStringLiteral("error")] = message;
-    return QJsonDocument(env);
-}
-
 }  // namespace
 
 QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
     if (callerRaw.isEmpty())
-        return refuseWith(QStringLiteral("missing_field"),
+        return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: caller_cwd is required"));
-    const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
-    if (callerCanonical.isEmpty())
-        return refuseWith(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not canonicalise "
-                           "to an existing directory").arg(callerRaw));
-
-    const QString roadmapPath = findRoadmapUnder(callerCanonical);
-    if (roadmapPath.isEmpty())
-        return refuseWith(QStringLiteral("no_roadmap"),
-            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
-                .arg(callerCanonical));
-    const QString root = rcProjectRootFor(callerCanonical);
-
-    QFile rf(roadmapPath);
-    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text))
-        return refuseWith(QStringLiteral("roadmap_read_failed"),
-            QStringLiteral("roadmap_log: could not read \"%1\"").arg(roadmapPath));
-    const QString markdown = QString::fromUtf8(rf.readAll());
-    rf.close();
+    const RlRoadmapFile located = rlLocateRoadmap(callerRaw);
+    if (!located.ok())
+        return rlErr(located.code, located.error);
+    const QString &roadmapPath = located.roadmapPath;
+    const QString root = rcProjectRootFor(located.callerCanonical);
+    const QString &markdown = located.markdown;
 
     // § 4.4 — the accepted set, split by what detectRoadmapFormat() returns. It
     // answers exactly one of three, and its no-signal default is ants-v1.
@@ -253,7 +228,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         // the branch § 4.4 assigns to migratedProject()'s
         // ReadError::SourceUnrecognised; the code is that refusal's, so a
         // caller sees one answer for one condition however it arrived.
-        return refuseWith(QStringLiteral("unrecognised_format"),
+        return rlErr(QStringLiteral("unrecognised_format"),
             QStringLiteral("roadmap_log: \"%1\" carries no roadmap dialect signal "
                            "— no task-list bullets, no status emoji and no Pass "
                            "headings. There is nothing to convert and nothing "
@@ -265,7 +240,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     if (detected != QLatin1String("ants-v1")
         && detected != QLatin1String("github-task-list") && !passHeadings) {
         // A dialect the detector may name later; no current input reaches it.
-        return refuseWith(QStringLiteral("dialect_out_of_scope"),
+        return rlErr(QStringLiteral("dialect_out_of_scope"),
             QStringLiteral("roadmap_log: convert takes a github-task-list, "
                            "pass-headings or ants-v1 roadmap; \"%1\" reads as %2. "
                            "Converting that dialect is out of scope and nothing "
@@ -287,7 +262,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
                                               : m_roadmapHistoryCap,
                       RoadmapStore::Access::Bulk);
     if (!bulk.open(&storeErr))
-        return refuseWith(QStringLiteral("store_failed"),
+        return rlErr(QStringLiteral("store_failed"),
             storeErr.isEmpty() ? QStringLiteral("the roadmap store is unavailable")
                                : storeErr);
     RoadmapStore *store = &bulk;
@@ -297,7 +272,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     // ANTS-5095 — a failed lookup is not an absent row: told "run
     // roadmap_migrate", the caller re-migrates a project the store holds.
     if (!row && !storeErr.isEmpty())
-        return refuseWith(QStringLiteral("store_failed"),
+        return rlErr(QStringLiteral("store_failed"),
             QStringLiteral("roadmap_log: convert could not read the store's "
                            "project row: %1. Nothing was written.").arg(storeErr));
     if (!row) {
@@ -305,7 +280,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         // is a separate operation with its own guards, and running one as a side
         // effect of a format change would register a project nobody asked to
         // register.
-        return refuseWith(QStringLiteral("project_not_registered"),
+        return rlErr(QStringLiteral("project_not_registered"),
             QStringLiteral("roadmap_log: convert rewrites a project the store "
                            "already holds — the store has no row for \"%1\". Run "
                            "roadmap_migrate first; nothing was written.")
@@ -328,7 +303,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         if (const auto items = store->readItems(projectId, &storeErr))
             for (const auto &it : *items) ids.append(it.id);
         else
-            return refuseWith(QStringLiteral("store_failed"),
+            return rlErr(QStringLiteral("store_failed"),
                 QStringLiteral("roadmap_log: convert could not read the "
                                "project's items: %1. Nothing was written.")
                     .arg(storeErr));
@@ -340,7 +315,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
             if (!id.isEmpty() && !RoadmapMigrate::isGrammaticalId(id, fmt))
                 unmatched.append(id);
         if (!missing.isEmpty() || !unmatched.isEmpty()) {
-            QJsonObject e = refuseWith(QStringLiteral("id_format_required"),
+            QJsonObject e = rlErr(QStringLiteral("id_format_required"),
                 QStringLiteral("roadmap_log: converting a pass-headings roadmap "
                                "needs the project's own id_format, with a "
                                "`prefix` for new ids and a `pattern` every "
@@ -371,7 +346,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         req.value(QStringLiteral("planned_filter")).toString(QStringLiteral("all"));
     if (plannedFilter != QLatin1String("all")
         && plannedFilter != QLatin1String("needs_decision"))
-        return refuseWith(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: planned_filter must be \"all\" or "
                            "\"needs_decision\"; got \"%1\"").arg(plannedFilter));
 
@@ -499,7 +474,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
                     QJsonArray::fromStringList(pid.match.candidateIds);
                 rows.append(o);
             }
-            QJsonObject e = refuseWith(QStringLiteral("ambiguous_rematch"),
+            QJsonObject e = rlErr(QStringLiteral("ambiguous_rematch"),
                 QStringLiteral("roadmap_log: %1 bullet(s) in \"%2\" share their "
                                "section and headline with several stored items, "
                                "and would be paired with them by order. The "
@@ -517,7 +492,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         }
         if (rr == RoadmapWrite::Result::Ok && !acceptLoss
             && rehearsal.externalTextLines > 0) {
-            QJsonObject e = refuseWith(QStringLiteral("text_lost"),
+            QJsonObject e = rlErr(QStringLiteral("text_lost"),
                 QStringLiteral("roadmap_log: converting \"%1\" would drop %2 "
                                "line(s) of text the file holds; "
                                "`discarded_text` names them. Nothing was "
@@ -560,7 +535,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         if (!snap.fallback.isEmpty())
             backupFields[QStringLiteral("backup_fallback")] = snap.fallback;
         if (!snap.ok) {
-            QJsonObject e = refuseWith(QStringLiteral("backup_failed"),
+            QJsonObject e = rlErr(QStringLiteral("backup_failed"),
                 QStringLiteral("roadmap_log: the pre-convert snapshot to %1 "
                                "failed: %2. Nothing was converted. Pass a "
                                "writable `backup_to`.").arg(snap.path, snap.error))
@@ -587,7 +562,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         QJsonArray ids;
         for (const QString &fold : std::as_const(orphanedIdFolds))
             ids.append(idByFold.value(fold, fold));
-        QJsonObject e = refuseWith(QStringLiteral("orphans_present"),
+        QJsonObject e = rlErr(QStringLiteral("orphans_present"),
             QStringLiteral("roadmap_log: the store holds %1 item(s) for this "
                            "project that \"%2\" no longer carries. A "
                            "github-task-list convert publishes every store row, "

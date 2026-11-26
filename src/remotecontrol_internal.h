@@ -37,6 +37,7 @@
 
 #include "coldeyesengine.h"
 #include "indiereviewengine.h"
+#include "mcprefusal.h"
 #include "pathvalidation.h"
 #include "roadmapparse.h"
 #include "rootprovider.h"
@@ -554,6 +555,16 @@ struct RlRoadmapFile {
     bool ok() const { return code.isEmpty(); }
 };
 RlRoadmapFile rlLocateRoadmap(const QString &callerRaw);
+// ANTS-1878 § 2.3a — where a new release `want` goes among the level-2
+// sections whose versions are `versions` (empty: not version-led). `lower` is
+// the highest below it, `higher` the lowest at or above it, -1 for none. With
+// neither, place_by_release appends at the end and create_section refuses.
+struct RlReleasePlace { int lower = -1; int higher = -1; };
+RlReleasePlace rlReleasePlacement(const QStringList &versions, const QString &want);
+// The {ok:false, code, error} refusal as a reply document.
+inline QJsonDocument rlErr(const QString &code, const QString &message) {
+    return QJsonDocument(mcp::refusal(code, message));
+}
 // ANTS-4884 — resolves a path to the project root the store keys on, so a
 // caller in a subdirectory is not read as an unmigrated project of its own.
 QString rcProjectRootFor(const QString &path);

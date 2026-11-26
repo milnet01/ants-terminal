@@ -377,21 +377,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
     const qint64 projectId = target->projectId;
     const bool dryRun      = req.value(QStringLiteral("dry_run")).toBool();
 
-    const auto blErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env[QStringLiteral("ok")]    = false;
-        env[QStringLiteral("code")]  = code;
-        env[QStringLiteral("error")] = message;
-        return QJsonDocument(env);
-    };
-
     // § 2.3 — `not_a_git_repo` when the project root has no history to walk.
     // `rev-parse --git-dir` and not a `.git` stat: a worktree and a submodule
     // both carry a `.git` FILE, and a subdirectory of a repo carries neither.
     const GitWrap::Result probe =
         GitWrap::run(root, {QStringLiteral("rev-parse"), QStringLiteral("--git-dir")});
     if (!probe.started || probe.exitCode != 0) {
-        return blErr(QStringLiteral("not_a_git_repo"),
+        return rlErr(QStringLiteral("not_a_git_repo"),
             QStringLiteral("roadmap_log: \"%1\" has no git history to walk — "
                            "backfill_dates derives every date from commits")
                 .arg(root));
@@ -399,7 +391,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
 
     const QStringList pathspecs = rlRoadmapPathspecs(store, projectId, root, roadmapPath);
     if (pathspecs.isEmpty()) {
-        return blErr(QStringLiteral("no_roadmap"),
+        return rlErr(QStringLiteral("no_roadmap"),
             QStringLiteral("roadmap_log: no roadmap path under \"%1\" resolves "
                            "root-relative, so there is nothing to walk").arg(root));
     }
@@ -425,7 +417,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
     const RlBackfillWalk walk =
         rlWalkGitForDates(root, pathspecs, 50000, passHeadings);
     if (walk.failed) {
-        return blErr(QStringLiteral("git_failed"),
+        return rlErr(QStringLiteral("git_failed"),
             QStringLiteral("roadmap_log: backfill_dates could not walk the "
                            "history — %1").arg(walk.error));
     }
@@ -434,7 +426,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
     QString err;
     const auto targets = store.itemsForDateBackfill(projectId, &err);
     if (!targets)
-        return blErr(QStringLiteral("store_failed"), err);
+        return rlErr(QStringLiteral("store_failed"), err);
 
     // Decide every write before opening a transaction, so `dry_run` reports the
     // real run's counts rather than a second estimate of them.
@@ -477,7 +469,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
 
     if (!dryRun && !plan.isEmpty()) {
         if (!store.begin(&err))
-            return blErr(QStringLiteral("store_failed"), err);
+            return rlErr(QStringLiteral("store_failed"), err);
         for (const Write &wr : plan) {
             // `store-generated` (roadmap-data-model.md § 7.7): no author
             // supplied these, and § 2.2's forward stamps say the same.
@@ -485,18 +477,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
                 !store.setItemField(wr.pk, QStringLiteral("created"), wr.created,
                                     QStringLiteral("store-generated"), &err)) {
                 store.rollback(nullptr);
-                return blErr(QStringLiteral("store_failed"), err);
+                return rlErr(QStringLiteral("store_failed"), err);
             }
             if (!wr.shipped.isEmpty() &&
                 !store.setItemField(wr.pk, QStringLiteral("shipped"), wr.shipped,
                                     QStringLiteral("store-generated"), &err)) {
                 store.rollback(nullptr);
-                return blErr(QStringLiteral("store_failed"), err);
+                return rlErr(QStringLiteral("store_failed"), err);
             }
         }
         if (!store.commit(&err)) {
             store.rollback(nullptr);
-            return blErr(QStringLiteral("store_failed"), err);
+            return rlErr(QStringLiteral("store_failed"), err);
         }
     }
 
