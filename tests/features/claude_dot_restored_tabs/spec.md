@@ -28,13 +28,14 @@ handler passes `setShellPid` a PID of 0 and the poll stops. The status
 label survived through the tracker, but the context gauge stayed hidden
 until a tab switch.
 
-Fix: after `startShell` succeeds in `restoreSessions`, call
+Fix: after `startShell` succeeds in `wakeRestoredTab`, call
 `trackTerminalShell(terminal)`, the call every other new shell makes.
 
 ## What the C++ test pins
 
-Source-grep on `MainWindow::restoreSessions` body via the
-`slurpFunctionBody` helper (`srcgrep.h`):
+Source-grep on the `MainWindow::wakeRestoredTab` body, which starts each
+restored tab's shell (ANTS-5225), via the `slurpFunctionBody` helper
+(`srcgrep.h`):
 
 - **WI-1** body calls `trackTerminalShell(` after `startShell(`, which
   sets the shell PID, and `MainWindow::trackTerminalShell` calls

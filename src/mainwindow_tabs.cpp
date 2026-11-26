@@ -853,7 +853,9 @@ void MainWindow::performTabClose(int index) {
     TerminalWidget *term = activeTerminalInTab(w);
     if (term) {
         ClosedTabInfo info;
-        info.cwd = term->shellCwd();
+        // ANTS-5225 — a sleeping tab has no shell to ask.
+        const auto sleeping = m_sleepingTabs.constFind(term);
+        info.cwd = sleeping != m_sleepingTabs.cend() ? sleeping->cwd : term->shellCwd();
         info.title = m_tabWidget->tabText(index);
         m_closedTabs.prepend(info);
         if (m_closedTabs.size() > 10) m_closedTabs.removeLast();
@@ -887,6 +889,7 @@ void MainWindow::performTabClose(int index) {
 
     m_tabSessionIds.remove(w);
     m_tabTitlePins.remove(w);  // free pin alongside session id
+    m_sleepingTabs.remove(term);
     m_tabFullTitles.remove(w);
     m_tabWidget->removeTab(index);
     w->deleteLater();
@@ -1038,6 +1041,8 @@ void MainWindow::onTabChanged(int index) {
     // allowlist button — funnels through a single refresh point so
     // nothing bleeds from the previous tab. See
     // refreshStatusBarForActiveTab() for the lifecycle contract.
+    // ANTS-5225 — first, so everything below sees the tab's running shell.
+    wakeRestoredTab(terminalAtTab(index));
     auto *t = focusedTerminal();
     if (t) {
         t->setFocus();
@@ -1186,6 +1191,9 @@ int MainWindow::currentTabIndexForRemote() const {
 
 bool MainWindow::setTabTitleForRemote(int index, const QString &title) {
     if (index < 0 || index >= m_tabWidget->count()) return false;
+    // ANTS-5225 — a sleeping tab writes no session file, so its new pin
+    // would be lost at the next restart.
+    wakeRestoredTab(terminalAtTab(index));
     QWidget *w = m_tabWidget->widget(index);
     if (title.isEmpty()) {
         // Clear the pin and refresh immediately. Two cases:

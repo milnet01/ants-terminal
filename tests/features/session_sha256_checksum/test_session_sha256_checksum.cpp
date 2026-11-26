@@ -107,10 +107,13 @@ static int runMain() {
                  "compressed payload.");
     }
 
-    // INV-2 — restore peeks magic and verifies the hash.
-    const std::string resBody = extractFnBody(cpp, "SessionManager::restore");
+    // INV-2 — restore peeks magic and verifies the hash, in unpack(), the
+    // decoder restore() and peek() share (ANTS-5225).
+    if (extractFnBody(cpp, "SessionManager::restore").find("unpack(") == std::string::npos)
+        fail("precondition: SessionManager::restore no longer calls unpack().");
+    const std::string resBody = extractFnBody(cpp, "SessionManager::unpack");
     if (resBody.empty()) {
-        fail("precondition: SessionManager::restore body not located.");
+        fail("precondition: SessionManager::unpack body not located.");
     } else {
         if (resBody.find("ENVELOPE_MAGIC") == std::string::npos)
             fail("INV-2: restore body does not reference ENVELOPE_MAGIC. "

@@ -214,6 +214,10 @@ public:
     // subsequent commands (`get-text`, `select-window`, etc.) will
     // share this accessor.
     TerminalWidget *terminalAtTab(int index) const;
+    // ANTS-5225 — terminalAtTab, after waking the tab if it is a restored
+    // tab still asleep. Every RemoteControl site that resolves an explicit
+    // `tab` index uses this, so a command never reaches a tab with no shell.
+    TerminalWidget *wakeTerminalAtTab(int index);
 
     // ANTS-1401 — total open-tab count for the central
     // `resolveCallerCwdRoot` helper (free function defined in
@@ -304,6 +308,9 @@ private:
     // shutdown and a missed one costs the user's scrollback.
     void saveAllSessions(bool force = false);
     void restoreSessions();
+    // ANTS-5225 — loads a sleeping restored tab's history and starts its
+    // shell; a no-op for any other tab.
+    void wakeRestoredTab(TerminalWidget *t);
     // ANTS-1159 — cheap tab-order-only save, called on every tab
     // create / close / reorder so the tab list survives a crash
     // even when the periodic timer hasn't ticked yet. Subset of
@@ -717,6 +724,11 @@ private:
     // until rc_protocol clears it (empty `title` → remove from map).
     // Cleaned up alongside `m_tabSessionIds` at tab destruction.
     QHash<QWidget *, QString> m_tabTitlePins;
+
+    // ANTS-5225 — restored tabs whose history is not loaded and whose shell
+    // has not started. An entry leaves at wake or at tab close.
+    struct SleepingTab { QString tabId; QString cwd; };
+    QHash<TerminalWidget *, SleepingTab> m_sleepingTabs;
 
     // ANTS-5645 — each tab's whole title, as setTabLabel last wrote it.
     // A tab with no entry shows its tab text. Freed at tab close.

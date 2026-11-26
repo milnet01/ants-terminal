@@ -211,14 +211,25 @@ QByteArray SessionManager::seal(const QByteArray &compressed) {
     return envelope;
 }
 
-bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
-                             QString *cwd, QString *pinnedTitle) {
-    // Clear optional out-params up front so callers reading them after
-    // a V1/V2 file don't see stale bytes. The version-gated read blocks
-    // below populate them only when the on-disk format has the field.
-    if (cwd) *cwd = QString();
-    if (pinnedTitle) *pinnedTitle = QString();
+namespace {
+// Bounds-check deserialized dimensions to prevent memory exhaustion.
+// ANTS-1658 — raised from (500,1000) to (2000,4000): 4K/8K ultrawide
+// setups already exceed 1000 cols at small font sizes, and the old cap
+// silently dropped the entire session on a monitor change.
+constexpr int kMaxRestoreRows = 2000;
+constexpr int kMaxRestoreCols = 4000;
+// Per-record caps on the rest of the stream. A line may be wider than
+// the grid it was saved from, so its cap stays at or above the column cap.
+constexpr int kMaxRestoreLineCells = 10000;
+static_assert(kMaxRestoreLineCells >= kMaxRestoreCols);
+// Equals the top of Config::scrollbackLines(); raise the two together, or
+// restore refuses a tab saved with the larger setting.
+constexpr int kMaxRestoreScrollbackLines = 1000000;
+constexpr int kMaxRestoreCombiningCells = 10000;  // per line
+constexpr int kMaxRestoreCombiningMarks = 8;      // per cell
+}  // namespace
 
+bool SessionManager::unpack(const QByteArray &input, QByteArray *raw) {
     // Reject excessively large input (100MB limit)
     if (input.size() > MAX_RESTORE_FILE_BYTES) return false;
 
@@ -293,45 +304,64 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
         quint64(compressed.size()) * 1032ull + 64ull * 1024ull;
     if (quint64(claimedUncompressed) > ratioBound) return false;
 
-    QByteArray raw = qUncompress(compressed);
-    if (raw.isEmpty()) return false;
+    *raw = qUncompress(compressed);
+    if (raw->isEmpty()) return false;
     // Guard against decompression bombs (zlib can expand ~1000:1).
     // The pre-flight above bounds `claimedUncompressed`, but a payload
     // can still under-claim and over-deliver; keep this defensive cap.
-    if (raw.size() > qsizetype(MAX_UNCOMPRESSED)) return false;
+    return raw->size() <= qsizetype(MAX_UNCOMPRESSED);
+}
+
+bool SessionManager::readHeader(QDataStream &in, StreamHeader *h) {
+    uint32_t magic;
+    in >> magic >> h->version;
+    if (magic != MAGIC || h->version > VERSION) return false;
+
+    in >> h->rows >> h->cols >> h->curRow >> h->curCol;
+    if (in.status() != QDataStream::Ok) return false;
+
+    // qWarning so the rejection is diagnosable instead of a silent empty
+    // restore.
+    if (h->rows <= 0 || h->rows > kMaxRestoreRows || h->cols <= 0 || h->cols > kMaxRestoreCols) {
+        qWarning("sessionmanager: refusing restore with out-of-range dimensions %dx%d (max %dx%d)",
+                 h->rows, h->cols, kMaxRestoreRows, kMaxRestoreCols);
+        return false;
+    }
+    return true;
+}
+
+bool SessionManager::readTrailer(QDataStream &in, uint32_t version, SessionPeek *out) {
+    in >> out->title;
+
+    // V2: Read working directory if present
+    if (version >= 2 && !in.atEnd())
+        in >> out->cwd;
+
+    // V3: Read pinned tab title if present. Older V2 files end after
+    // cwd; atEnd() gates so the stream-status check below doesn't flip
+    // to ReadPastEnd and fail the restore for pre-V3 files.
+    if (version >= 3 && !in.atEnd())
+        in >> out->pinnedTitle;
+
+    return in.status() == QDataStream::Ok;
+}
+
+bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
+                             QString *cwd, QString *pinnedTitle) {
+    // Clear optional out-params up front so callers reading them after
+    // a V1/V2 file don't see stale bytes. readTrailer leaves a field empty
+    // when the on-disk format lacks it.
+    if (cwd) *cwd = QString();
+    if (pinnedTitle) *pinnedTitle = QString();
+
+    QByteArray raw;
+    if (!unpack(input, &raw)) return false;
 
     QDataStream in(&raw, QIODevice::ReadOnly);
     in.setVersion(QDataStream::Qt_6_0);
-
-    uint32_t magic, version;
-    in >> magic >> version;
-    if (magic != MAGIC || version > VERSION) return false;
-
-    int32_t rows, cols, curRow, curCol;
-    in >> rows >> cols >> curRow >> curCol;
-    if (in.status() != QDataStream::Ok) return false;
-
-    // Bounds-check deserialized dimensions to prevent memory exhaustion.
-    // ANTS-1658 — raised from (500,1000) to (2000,4000): 4K/8K ultrawide
-    // setups already exceed 1000 cols at small font sizes, and the old cap
-    // silently dropped the entire session on a monitor change. qWarning so the
-    // rejection is diagnosable instead of a silent empty restore.
-    constexpr int kMaxRestoreRows = 2000;
-    constexpr int kMaxRestoreCols = 4000;
-    // Per-record caps on the rest of the stream. A line may be wider than
-    // the grid it was saved from, so its cap stays at or above the column cap.
-    constexpr int kMaxRestoreLineCells = 10000;
-    static_assert(kMaxRestoreLineCells >= kMaxRestoreCols);
-    // Equals the top of Config::scrollbackLines(); raise the two together, or
-    // restore refuses a tab saved with the larger setting.
-    constexpr int kMaxRestoreScrollbackLines = 1000000;
-    constexpr int kMaxRestoreCombiningCells = 10000;  // per line
-    constexpr int kMaxRestoreCombiningMarks = 8;      // per cell
-    if (rows <= 0 || rows > kMaxRestoreRows || cols <= 0 || cols > kMaxRestoreCols) {
-        qWarning("sessionmanager: refusing restore with out-of-range dimensions %dx%d (max %dx%d)",
-                 rows, cols, kMaxRestoreRows, kMaxRestoreCols);
-        return false;
-    }
+    StreamHeader h;
+    if (!readHeader(in, &h)) return false;
+    const int rows = h.rows, cols = h.cols;
 
     // ANTS-5031 — parse everything into locals first; the grid is touched
     // only once the whole stream has been read. Resizing up front left a
@@ -433,22 +463,8 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
         if (row < rows) screen.push_back(std::move(line));
     }
 
-    QString title;
-    in >> title;
-
-    // V2: Read working directory if present
-    QString savedCwd;
-    if (version >= 2 && !in.atEnd())
-        in >> savedCwd;
-
-    // V3: Read pinned tab title if present. Older V2 files end after
-    // cwd; atEnd() gates so the stream-status check below doesn't flip
-    // to ReadPastEnd and fail the restore for pre-V3 files.
-    QString savedPinned;
-    if (version >= 3 && !in.atEnd())
-        in >> savedPinned;
-
-    if (in.status() != QDataStream::Ok) return false;
+    SessionPeek tail;
+    if (!readTrailer(in, h.version, &tail)) return false;
 
     // Commit: the whole stream parsed.
     grid->resize(rows, cols);
@@ -460,15 +476,62 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
             dst.cells[col] = screen[row].cells[col];
         dst.combining = std::move(screen[row].combining);
     }
-    grid->setCursorPosition(std::clamp(curRow, 0, rows - 1),
-                            std::clamp(curCol, 0, cols - 1));
-    if (!title.isEmpty())
-        grid->setTitle(title);
-    if (cwd && !savedCwd.isEmpty())
-        *cwd = std::move(savedCwd);
+    grid->setCursorPosition(std::clamp(h.curRow, 0, rows - 1),
+                            std::clamp(h.curCol, 0, cols - 1));
+    if (!tail.title.isEmpty())
+        grid->setTitle(tail.title);
+    if (cwd)
+        *cwd = std::move(tail.cwd);
     if (pinnedTitle)
-        *pinnedTitle = std::move(savedPinned);
+        *pinnedTitle = std::move(tail.pinnedTitle);
     return true;
+}
+
+bool SessionManager::peek(const QByteArray &data, SessionPeek *out) {
+    *out = SessionPeek();
+    QByteArray raw;
+    if (!unpack(data, &raw)) return false;
+
+    QDataStream in(&raw, QIODevice::ReadOnly);
+    in.setVersion(QDataStream::Qt_6_0);
+    StreamHeader h;
+    if (!readHeader(in, &h)) return false;
+
+    // restore()'s readLine and readCombining, with the same caps, skipping
+    // the bytes they would decode. A skip cut short is a truncated stream.
+    auto skip = [&in](int bytes) { return in.skipRawData(bytes) == bytes; };
+    auto skipLine = [&](bool hasWrapped) -> bool {
+        int32_t cellCount;
+        bool wrapped;
+        in >> cellCount;
+        if (hasWrapped) in >> wrapped;
+        if (in.status() != QDataStream::Ok || cellCount < 0 || cellCount > kMaxRestoreLineCells) return false;
+        if (!skip(int(kCellBytes) * cellCount)) return false;
+        int32_t combCount;
+        in >> combCount;
+        if (in.status() != QDataStream::Ok || combCount < 0 || combCount > kMaxRestoreCombiningCells) return false;
+        for (int j = 0; j < combCount; ++j) {
+            int32_t col, cpCount;
+            in >> col >> cpCount;
+            if (in.status() != QDataStream::Ok || cpCount < 0 || cpCount > kMaxRestoreCombiningMarks) return false;
+            if (!skip(int(sizeof(uint32_t)) * cpCount)) return false;
+        }
+        return true;
+    };
+
+    int32_t sbSize;
+    in >> sbSize;
+    if (in.status() != QDataStream::Ok || sbSize < 0 || sbSize > kMaxRestoreScrollbackLines) return false;
+    for (int i = 0; i < sbSize; ++i)
+        if (!skipLine(/*hasWrapped=*/true)) return false;
+
+    int32_t screenRows;
+    in >> screenRows;
+    if (in.status() != QDataStream::Ok || screenRows < 0 || screenRows > kMaxRestoreRows) return false;
+    for (int row = 0; row < screenRows; ++row)
+        if (!skipLine(/*hasWrapped=*/false)) return false;
+
+    return readTrailer(in, h.version, out);
 }
 
 namespace {
@@ -577,6 +640,16 @@ bool SessionManager::loadSession(const QString &tabId, TerminalGrid *grid,
     return ok;
 }
 
+bool SessionManager::peekSession(const QString &tabId, SessionPeek *out) {
+    *out = SessionPeek();
+    const QString path = sessionPath(tabId);
+    if (path.isEmpty()) return false;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return false;
+    return file.size() <= MAX_RESTORE_FILE_BYTES  // before reading
+           && peek(file.readAll(), out);
+}
+
 void SessionManager::removeSession(const QString &tabId) {
     // ANTS-5131 — a save still in flight would put the file back.
     waitForPendingSaves();
@@ -675,9 +748,17 @@ void SessionManager::cleanupOldSessions(int maxAgeDays) {
     QFileInfoList files =
         dir.entryInfoList({"session_*.dat", "session_*.dat.corrupt-*"}, QDir::Files);
     QDateTime cutoff = QDateTime::currentDateTime().addDays(-maxAgeDays);
+    // ANTS-5225 — a tab that sleeps until opened keeps its file's old mtime,
+    // so a file tab_order.txt names is kept whatever its age.
+    const QStringList listed = loadTabOrder();
+    const QSet<QString> keep(listed.cbegin(), listed.cend());
     for (const QFileInfo &fi : files) {
-        if (fi.lastModified() < cutoff)
-            QFile::remove(fi.absoluteFilePath());
+        if (fi.lastModified() >= cutoff) continue;
+        const QString name = fi.fileName();  // session_<id>.dat
+        if (name.endsWith(QLatin1String(".dat"))
+            && keep.contains(name.mid(8, name.size() - 12)))
+            continue;
+        QFile::remove(fi.absoluteFilePath());
     }
     // ANTS-1141 — sweep orphan .tmp files older than 1 day.
     // saveSession, saveSessionAsync and saveTabOrder write to <name>.<pid>.tmp and

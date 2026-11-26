@@ -3,7 +3,11 @@
 #include <QString>
 #include <QByteArray>
 
+class QDataStream;
 class TerminalGrid;
+
+// ANTS-5225 — the three fields a saved tab needs before its history loads.
+struct SessionPeek { QString title; QString cwd; QString pinnedTitle; };
 
 // Serializes and deserializes terminal session state (scrollback + screen)
 class SessionManager {
@@ -38,6 +42,10 @@ public:
     static bool restore(TerminalGrid *grid, const QByteArray &data,
                         QString *cwd = nullptr,
                         QString *pinnedTitle = nullptr);
+    // ANTS-5225 — the title, cwd and pin restore() would return, read
+    // without building lines or touching a grid. Accepts exactly the input
+    // restore() accepts.
+    static bool peek(const QByteArray &data, SessionPeek *out);
 
     // Session file management
     static QString sessionDir();
@@ -61,6 +69,9 @@ public:
     static bool loadSession(const QString &tabId, TerminalGrid *grid,
                             QString *cwd = nullptr,
                             QString *pinnedTitle = nullptr);
+    // ANTS-5225 — peek() on tabId's file. A refused file stays where it is;
+    // the loadSession that later wakes the tab moves it aside.
+    static bool peekSession(const QString &tabId, SessionPeek *out);
     static void removeSession(const QString &tabId);
     static QStringList savedSessions();
 
@@ -70,7 +81,8 @@ public:
     // ANTS-5654 — whether tab_order.txt exists, whatever it names.
     static bool hasTabOrder();
 
-    // Cleanup old sessions (older than maxAgeDays)
+    // Removes session files older than maxAgeDays, except one whose id
+    // tab_order.txt names (ANTS-5225: a sleeping tab's file keeps its age).
     static void cleanupOldSessions(int maxAgeDays = 30);
 
     // ANTS-5131 — writes `data` to `tmpPath`, fsyncs, renames it over
@@ -93,6 +105,15 @@ private:
                                const QString &pinnedTitle, qint64 maxRawBytes);
     // ANTS-5131 — wraps a compressed payload in the V4 envelope.
     static QByteArray seal(const QByteArray &compressed);
+
+    // ANTS-5225 — restore()'s and peek()'s shared decoder, up to the line
+    // records. unpack: the size cap, envelope, SHA-256, length guards and
+    // qUncompress. readHeader: magic, version and dimensions. readTrailer:
+    // title, cwd (V2+) and pin (V3+), then the stream's final status.
+    struct StreamHeader { uint32_t version; int32_t rows, cols, curRow, curCol; };
+    static bool unpack(const QByteArray &input, QByteArray *raw);
+    static bool readHeader(QDataStream &in, StreamHeader *h);
+    static bool readTrailer(QDataStream &in, uint32_t version, SessionPeek *out);
 
     static constexpr uint32_t MAGIC = 0x414E5453; // "ANTS"
     // V2 added `cwd` after the window title.

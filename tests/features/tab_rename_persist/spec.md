@@ -67,9 +67,9 @@ silently re-introduces the bug.
 
 ### Invariant 5 — MainWindow restore applies the pin to `m_tabTitlePins`
 
-`src/mainwindow.cpp` `restoreSessions` must call
-`SessionManager::loadSession(..., &savedPinnedTitle)` and assign
-`m_tabTitlePins[terminal] = savedPinnedTitle` when the saved pin
+`restoreSessions` must read the pin with
+`SessionManager::peekSession(tabId, &saved)` (ANTS-5225) and assign
+`m_tabTitlePins[terminal] = saved.pinnedTitle` when the saved pin
 is non-empty. Without populating the pin map, the next `titleChanged`
 fire would still relabel the tab despite setTabText showing the
 right string initially.

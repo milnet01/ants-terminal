@@ -40,6 +40,9 @@ void MainWindow::saveAllSessions(bool force) {
             activeIndex = tabOrder.size();
 
         tabOrder.append(tabId);
+        // ANTS-5225 — a sleeping tab's file is its only copy of its
+        // history; its empty grid must not overwrite it.
+        if (m_sleepingTabs.contains(t)) continue;
         // Thread the manual rename pin (if any) so the user's
         // right-click "Rename Tab…" label survives restart. Key is
         // the outer tab widget (may be a QSplitter for split tabs —
@@ -180,15 +183,15 @@ void MainWindow::restoreSessions() {
     // Close the default empty tab that was created at startup
     bool hadDefaultTab = (m_tabWidget->count() == 1);
 
-    // Collect terminals and their start directories for deferred shell startup
-    struct RestoredTab {
-        // Guarded: a tab can close (rc close-tab, the tab's x) before the
-        // deferred start below runs, and the widget is then deleted.
-        QPointer<TerminalWidget> terminal;
-        QString startDir;
-        QString tabId;
-    };
-    QList<RestoredTab> restoredTabs;
+    // ANTS-5225 — startup reads only each tab's title, cwd and pin. Its
+    // history loads and its shell starts when the tab is first needed
+    // (wakeRestoredTab). A tab whose peek is refused is woken below anyway,
+    // so its loadSession moves the file aside as before.
+    QList<TerminalWidget *> restoredTabs;
+    // Guarded: a tab can close (rc close-tab, the tab's x) before the
+    // deferred wake below runs, and the widget is then deleted.
+    QList<QPointer<TerminalWidget>> wakeNow;
+    QHash<TerminalWidget *, SleepingTab> sleeping;
 
     for (const QString &tabId : sessions) {
         auto *terminal = addShellTab(tabId);
@@ -196,42 +199,27 @@ void MainWindow::restoreSessions() {
         // after addTab (tab has an index) and after m_tabSessionIds is
         // populated (so applyPersistedTabColor can resolve the UUID).
         applyPersistedTabColor(terminal);
+        restoredTabs.append(terminal);
 
-        // Restore scrollback, screen, working directory, and pinned
-        // tab title (V3 session files). Pin takes precedence over the
-        // shell-derived window title — the whole point of the manual
-        // rename is that it sticks until the user un-renames.
-        QString savedCwd;
-        QString savedPinnedTitle;
-        SessionManager::loadSession(tabId, terminal->grid(), &savedCwd,
-                                    &savedPinnedTitle);
+        SessionPeek saved;
+        if (!SessionManager::peekSession(tabId, &saved))
+            wakeNow.append(terminal);
+        sleeping.insert(terminal, {tabId, saved.cwd});
 
+        // The pin takes precedence over the shell-derived window title —
+        // the whole point of the manual rename is that it sticks until the
+        // user un-renames.
         const int newTabIdx = m_tabWidget->count() - 1;
-        if (!savedPinnedTitle.isEmpty()) {
+        if (!saved.pinnedTitle.isEmpty()) {
             // Re-pin via m_tabTitlePins[terminal] so the titleChanged
             // signal handler and the 2 s updateTabTitles tick both
             // honor it. Written directly rather than through
-            // setTabTitleForRemote, which would pin the same widget (the
-            // tab at this index is still `terminal` at restore time;
-            // splits are never persisted) at the cost of one more lookup.
-            m_tabTitlePins[terminal] = savedPinnedTitle;
-            setTabLabel(newTabIdx, savedPinnedTitle);
-        } else {
-            // No pin → fall back to the shell-derived window title.
-            const QString savedTitle = terminal->grid()->windowTitle();
-            if (!savedTitle.isEmpty())
-                setTabLabel(newTabIdx, savedTitle);
+            // setTabTitleForRemote, which would wake the tab.
+            m_tabTitlePins[terminal] = saved.pinnedTitle;
+            setTabLabel(newTabIdx, saved.pinnedTitle);
+        } else if (!saved.title.isEmpty()) {
+            setTabLabel(newTabIdx, saved.title);
         }
-
-        // Clear screen buffer so new shell starts with a clean display
-        // (scrollback history is preserved from the restore above)
-        terminal->grid()->clearScreenContent();
-
-        QString startDir;
-        if (!savedCwd.isEmpty() && QDir(savedCwd).exists())
-            startDir = savedCwd;
-
-        restoredTabs.append({terminal, startDir, tabId});
     }
 
     // Remove the default empty tab if we restored sessions
@@ -241,21 +229,22 @@ void MainWindow::restoreSessions() {
         m_tabWidget->removeTab(0);
         defaultTab->deleteLater();
     }
+    // Only now: the removal above makes the first restored tab current
+    // before its geometry is final, and that must not wake it.
+    m_sleepingTabs.insert(sleeping);
 
     updateTabBarVisibility();
     // ANTS-4272 — after the default tab's removal, so the index is final.
-    for (const RestoredTab &rt : restoredTabs)
-        firePluginTabEvent(true, m_tabWidget->indexOf(rt.terminal), false);
+    for (TerminalWidget *t : restoredTabs)
+        firePluginTabEvent(true, m_tabWidget->indexOf(t), false);
 
     // Defer tab activation and shell startup until after the event loop has
     // processed layout — widgets need their final geometry so that the grid
     // size computed by startShell matches the actual widget size. Without this,
-    // non-active tabs get a size mismatch that triggers SIGWINCH, causing bash
+    // a tab gets a size mismatch that triggers SIGWINCH, causing bash
     // to redraw its prompt (the "double prompt" bug).
     int idx = std::clamp(activeIndex, 0, m_tabWidget->count() - 1);
-    QTimer::singleShot(0, this, [this, restoredTabs, idx]() {
-        m_tabWidget->setCurrentIndex(idx);
-
+    QTimer::singleShot(0, this, [this, wakeNow, idx]() {
         // Drain the event queue so QTabWidget's layout (including
         // QStackedWidget's propagation to all pages) and the main
         // window's show-event sequence have completed before we
@@ -275,27 +264,50 @@ void MainWindow::restoreSessions() {
         QApplication::processEvents();
         QApplication::processEvents();
 
-        for (const auto &tab : restoredTabs) {
-            if (!tab.terminal) continue;
-            tab.terminal->forceRecalcSize();
-            if (!tab.terminal->startShell(tab.startDir, m_config.shellCommand()))
-                continue;
-            tab.terminal->update();
-            // The tab's .dat stays: the next save overwrites it. Deleting it
-            // here left no copy until that save, up to 30 s away, and a
-            // reboot in that window lost every tab (2026-10-12).
-            // ANTS-1375 — without this the per-tab Claude dots stay dark
-            // on every tab carried across a restart.
-            trackTerminalShell(tab.terminal);
-        }
-
-        // ANTS-5733 — setCurrentIndex ran before any shell started, so the
-        // tab-switch handler gave ClaudeIntegration PID 0 and its poll
-        // stopped. Wire the focused tab now that its shell has a PID.
-        if (auto *t = focusedTerminal()) {
-            if (m_claudeIntegration && t->shellPid() > 0)
-                m_claudeIntegration->setShellPid(t->shellPid());
+        // onTabChanged wakes the tab it switches to; setCurrentIndex emits
+        // nothing when idx is already current, so wake it here too.
+        m_tabWidget->setCurrentIndex(idx);
+        wakeRestoredTab(terminalAtTab(idx));
+        for (TerminalWidget *t : wakeNow)
+            wakeRestoredTab(t);
+        if (auto *t = focusedTerminal())
             t->setFocus();
-        }
     });
+}
+
+TerminalWidget *MainWindow::wakeTerminalAtTab(int index) {
+    wakeRestoredTab(terminalAtTab(index));
+    return terminalAtTab(index);
+}
+
+void MainWindow::wakeRestoredTab(TerminalWidget *t) {
+    if (!m_sleepingTabs.contains(t)) return;
+    // Taken first, so a re-entrant call is a no-op.
+    const SleepingTab tab = m_sleepingTabs.take(t);
+
+    // A refused file is moved aside and the tab carries on empty.
+    SessionManager::loadSession(tab.tabId, t->grid());
+    // Clear screen buffer so new shell starts with a clean display
+    // (scrollback history is preserved from the restore above)
+    t->grid()->clearScreenContent();
+    t->forceRecalcSize();
+
+    QString startDir;
+    if (!tab.cwd.isEmpty() && QDir(tab.cwd).exists())
+        startDir = tab.cwd;
+    if (!t->startShell(startDir, m_config.shellCommand()))
+        return;
+    t->update();
+    // The tab's .dat stays: the next save overwrites it. Deleting it
+    // here left no copy until that save, up to 30 s away, and a
+    // reboot in that window lost every tab (2026-10-12).
+    // ANTS-1375 — without this the per-tab Claude dots stay dark
+    // on every tab carried across a restart.
+    trackTerminalShell(t);
+
+    // ANTS-5733 — a tab already current gets no tab switch after its shell
+    // starts, so nothing else gives ClaudeIntegration this PID; without it
+    // the poll stays stopped.
+    if (t == focusedTerminal() && m_claudeIntegration && t->shellPid() > 0)
+        m_claudeIntegration->setShellPid(t->shellPid());
 }

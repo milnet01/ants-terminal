@@ -5,7 +5,7 @@
 // I3: V2 stream (no pinnedTitle) loads, leaves out-param empty.
 // I4: mainwindow.cpp saveAllSessions loop passes m_tabTitlePins.value(w)
 //     as the 4th arg of SessionManager::saveSession.
-// I5: mainwindow.cpp restoreSessions calls loadSession(..., &savedPinnedTitle)
+// I5: mainwindow.cpp restoreSessions reads the pin with peekSession (ANTS-5225)
 //     and populates m_tabTitlePins[terminal] from savedPinnedTitle.
 //
 // Exit 0 = all invariants hold. Non-zero = regression.
@@ -155,16 +155,15 @@ void checkI4I5() {
 
     // I5: restore path reads pinnedTitle and writes it back into the map.
     expect(src.contains(QStringLiteral(
-               "SessionManager::loadSession(tabId, terminal->grid(), &savedCwd,"))
-           && src.contains(QStringLiteral("&savedPinnedTitle")),
-           "I5/loadSession-reads-pinnedTitle",
+               "SessionManager::peekSession(tabId, &saved)")),
+           "I5/peekSession-reads-pinnedTitle",
            QStringLiteral("mainwindow.cpp restoreSessions no longer "
-                          "asks loadSession for the pinnedTitle out-"
-                          "param — pin survives on disk but never reloaded"));
+                          "peeks the saved session — pin survives on "
+                          "disk but never reloaded"));
     expect(src.contains(QStringLiteral(
-               "m_tabTitlePins[terminal] = savedPinnedTitle")),
+               "m_tabTitlePins[terminal] = saved.pinnedTitle")),
            "I5/pin-map-populated-from-restore",
-           QStringLiteral("m_tabTitlePins[terminal] = savedPinnedTitle "
+           QStringLiteral("m_tabTitlePins[terminal] = saved.pinnedTitle "
                           "missing from restoreSessions — without it, "
                           "next titleChanged re-labels the tab"));
 }

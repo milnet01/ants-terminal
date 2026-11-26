@@ -33,8 +33,9 @@ false-positives on legitimate session files (real sessions are
 ## Invariants
 
 **INV-1 — `restore` pre-validates the length prefix.** Source-grep
-against `src/sessionmanager.cpp`: the `SessionManager::restore` body
-MUST contain a manual big-endian uint32 reconstruction from the first
+against `src/sessionmanager.cpp`: `SessionManager::restore` calls
+`unpack`, the decoder it shares with `peek` (ANTS-5225), and the
+`SessionManager::unpack` body MUST contain a manual big-endian uint32 reconstruction from the first
 4 bytes of `compressed` AND a `return false` on the threshold. We
 look for either `<< 24` shift-and-or pattern over `compressed.constData()`
 or an equivalent reconstruction.
@@ -45,7 +46,7 @@ the literal 500 MB). Source-grep checks the header declares
 `MAX_UNCOMPRESSED` and the cpp references it at the pre-flight site.
 
 **INV-3 — Pre-flight runs BEFORE `qUncompress`.** Source-grep: in the
-`restore` body, the `claimedUncompressed`-style reconstruction MUST
+`unpack` body, the `claimedUncompressed`-style reconstruction MUST
 appear textually before the first `qUncompress(` call. Reordering
 risks inverting the protection.
 

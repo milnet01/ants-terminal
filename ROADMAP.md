@@ -71830,7 +71830,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-14.
   Lanes: terminalgrid.
 
-- 📋 [ANTS-5225] **restoreSessions unpacks every saved tab's history at startup, not when the tab is first shown.**
+- ✅ [ANTS-5225] **restoreSessions unpacks every saved tab's history at startup, not when the tab is first shown.**
   MainWindow::restoreSessions calls SessionManager::loadSession for
   every saved tab before the window shows.
   Parked by the user (2026-09-17). Measured that day in
@@ -71853,6 +71853,9 @@ extends an existing item, that item carries it instead.
   session file format does not change. Measured: reading title, cwd and
   pin costs about 35 ms of the 403 ms restore, so no format change is
   needed. No review owed (no format or contract change).
+  Built from docs/specs/ANTS-5225-lazy-tab-restore.md.
+  bench_session_save reports session.peek_ms: 59 ms against 466 ms for a
+  full restore of a 50000-line tab (busy machine, 2026-11-26).
   **Layman:** Ants reads every saved tab's history when it starts, even tabs you never open.
   Kind: perf.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a), split from ANTS-5079.

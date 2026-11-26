@@ -52,8 +52,8 @@ refactor that drops the parameter back to empty re-opens the bug.
 
 `MainWindow::openShellTab` (the one place `newTab` and
 `newTabForRemote` start a shell),
-`MainWindow::splitCurrentPane`, and the `restoredTabs` loop in
-`MainWindow::restoreSessions` (or equivalent session-restore path)
+`MainWindow::splitCurrentPane`, and `MainWindow::wakeRestoredTab`, which
+starts a restored tab's shell (ANTS-5225),
 all pass `m_config.shellCommand()` as the `shell` argument. The
 consumer callsites are identified by source-grep for
 `startShell(…m_config.shellCommand())`.

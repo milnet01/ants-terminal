@@ -2371,6 +2371,8 @@ if(ANTS_TESTS)
                 tests/features/scrollback_export_streaming/test_scrollback_export_streaming.cpp
                 # ANTS-5031 — a refused session never costs the good file.
                 tests/features/session_restore_refusal/test_session_restore_refusal.cpp
+                # ANTS-5225 — a saved tab loads its history when first needed.
+                tests/features/lazy_tab_restore/test_lazy_tab_restore.cpp
                 # ANTS-5106 — per-process session temp files; checked tab-order write.
                 tests/features/session_save_guards/test_session_save_guards.cpp
                 # ANTS-5131 — a changed tab's save compresses and writes on a worker.
@@ -2408,6 +2410,8 @@ if(ANTS_TESTS)
     # set_property(APPEND) rather than set_source_files_properties(PROPERTIES):
     # that signature takes name/value PAIRS, so a source needing two defines
     # fails to configure outright.
+    set_property(SOURCE tests/features/lazy_tab_restore/test_lazy_tab_restore.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS "${_ants_rc_sources_def}")
     set_property(SOURCE tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_THEMEDSTYLESHEET_H_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.h")

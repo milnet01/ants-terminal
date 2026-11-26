@@ -207,8 +207,8 @@ int main(int argc, char **argv) {
     SessionManager::waitForPendingSaves();
     asyncCallerMs /= iterations;
 
-    // ANTS-5225 — what startup pays per saved tab: restoreSessions restores
-    // every tab before the window shows. A fresh grid each pass, since a
+    // ANTS-5225 — what waking a saved tab pays, and what startup paid per
+    // tab before tabs slept until opened. A fresh grid each pass, since a
     // restore pushes its scrollback onto the grid it is given.
     double restoreMs = 0;
     for (int i = 0; i < iterations; ++i) {
@@ -224,6 +224,21 @@ int main(int argc, char **argv) {
     }
     restoreMs /= iterations;
 
+    // ANTS-5225 — what startup pays per saved tab now: the title, cwd and
+    // pin, read without building the history.
+    double peekMs = 0;
+    for (int i = 0; i < iterations; ++i) {
+        SessionPeek peeked;
+        t.start();
+        const bool ok = SessionManager::peek(blob, &peeked);
+        peekMs += double(t.nsecsElapsed()) / 1e6;
+        if (!ok) {
+            std::fprintf(stderr, "bench_session_save: peek refused the blob\n");
+            return 1;
+        }
+    }
+    peekMs /= iterations;
+
     std::printf("phase,ms,bytes\n");
     std::printf("serialize,%.4f,%lld\n", serializeMs, (long long)blobBytes);
     std::printf("  grid_walk_stream,%.4f,%lld\n", streamMs, (long long)raw.size());
@@ -233,6 +248,7 @@ int main(int argc, char **argv) {
     std::printf("write_fsync_rename,%.4f,%lld\n", writeMs, (long long)fileBytes);
     std::printf("save_async_caller,%.4f,0\n", asyncCallerMs);
     std::printf("restore,%.4f,%lld\n", restoreMs, (long long)blob.size());
+    std::printf("peek,%.4f,%lld\n", peekMs, (long long)blob.size());
     std::printf("scrollback_lines,%d,0\n", filled);
 
     AntsPerf::reportLowerBetter("session.serialize_ms", serializeMs, "ms");
@@ -245,5 +261,6 @@ int main(int argc, char **argv) {
     AntsPerf::reportLowerBetter("session.save_total_ms", saveMs, "ms");
     AntsPerf::reportLowerBetter("session.write_ms", writeMs, "ms");
     AntsPerf::reportLowerBetter("session.restore_ms", restoreMs, "ms");
+    AntsPerf::reportLowerBetter("session.peek_ms", peekMs, "ms");
     return 0;
 }

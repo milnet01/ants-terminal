@@ -229,10 +229,14 @@ TEST(CrashSafeSessionPersist, Inv10_restoreRemovesNoSessionFile) {
 
     const std::string body = extractBody(cp, "void MainWindow::restoreSessions");
     expect(!body.empty(), "ANTS-1159-INV-10: restoreSessions body extracted");
-    expect(contains(body, "SessionManager::loadSession"),
-           "ANTS-1159-INV-10: the extracted body is the restore loop");
+    // ANTS-5225 — a restored tab's history loads in wakeRestoredTab.
+    const std::string wake = extractBody(cp, "void MainWindow::wakeRestoredTab");
+    expect(contains(wake, "SessionManager::loadSession"),
+           "ANTS-1159-INV-10: the extracted wake body is the restore path");
     expect(!contains(body, "removeSession"),
            "ANTS-1159-INV-10: restoreSessions deletes a saved tab before it is re-saved");
+    expect(!contains(wake, "removeSession"),
+           "ANTS-1159-INV-10: wakeRestoredTab deletes a saved tab before it is re-saved");
     EXPECT_EQ(0, expect_failures()) << "Inv10_restoreRemovesNoSessionFile failed";
 }
 

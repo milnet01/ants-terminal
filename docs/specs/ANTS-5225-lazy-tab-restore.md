@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # ANTS-5225 — Restore a saved tab's history when the tab is first needed
 
-**Status:** spec draft (2026-11-26).
+**Status:** implemented (2026-11-26).
 **Kind:** perf.
 **Source:** ROADMAP ANTS-5225 (code-quality-review-2026-09-11 perf pass,
 lane mainwindow-a; picked up by the user 2026-11-26).
@@ -61,13 +61,15 @@ Both made by the user on 2026-11-26, choosing the recommended option.
 ```cpp
 // sessionmanager.h
 struct SessionPeek { QString title; QString cwd; QString pinnedTitle; };
-// Reads tabId's file as loadSession would, but builds no lines and
-// touches no grid. Returns false on any file restore() would refuse;
-// does not move the file aside (the wake's loadSession does that).
+// What restore() would return for title, cwd and pin, read without
+// building lines or touching a grid. False on any input restore() refuses.
+static bool peek(const QByteArray &data, SessionPeek *out);
+// peek() on tabId's file, read as loadSession reads it. Does not move a
+// refused file aside (the wake's loadSession does that).
 static bool peekSession(const QString &tabId, SessionPeek *out);
 ```
 
-`restore()` and `peekSession` share one decoder for everything before the
+`restore()` and `peek` share one decoder for everything before the
 line records: the size cap, the envelope and its SHA-256 check, the
 uncompressed-length guards, `qUncompress`, magic, version and dimensions.
 The peek then walks each line record with the same per-record caps
@@ -87,8 +89,13 @@ its default-tab removal. Per saved tab it calls `addShellTab`,
   (`QHash<TerminalWidget *, SleepingTab>`, holding the tab id and saved
   cwd). Set the label from the pin (also written to `m_tabTitlePins`), or
   else from the saved title.
-- **Peek refuses:** the tab is not asleep; the deferred block wakes it
-  like the active tab, and `loadSession` moves the file aside as today.
+- **Peek refuses:** the tab is recorded with an empty cwd and the
+  deferred block wakes it like the active tab, so `loadSession` moves the
+  file aside as today.
+
+Tabs enter `m_sleepingTabs` only after the default tab is removed. That
+removal makes the first restored tab current before its geometry is
+final, and it must not wake it.
 
 The deferred block still drains events, then calls `setCurrentIndex(idx)`.
 It then wakes the tab at `idx` explicitly, since `setCurrentIndex` emits
@@ -107,8 +114,9 @@ TerminalWidget *wakeTerminalAtTab(int index);
 `wakeRestoredTab` removes `t` from `m_sleepingTabs` first, so a re-entrant
 call is a no-op. It then runs today's per-tab order:
 
-1. `loadSession(tabId, grid, &cwd, &pin)`. A refusal moves the file aside
-   (`session_restore_refusal`) and the tab carries on empty.
+1. `loadSession(tabId, grid)`. A refusal moves the file aside
+   (`session_restore_refusal`) and the tab carries on empty. The cwd and
+   pin are the peeked ones (INV-1 makes them equal).
 2. `clearScreenContent()`.
 3. `forceRecalcSize()`.
 4. `startShell(startDir, m_config.shellCommand())`, where `startDir` is
@@ -292,9 +300,11 @@ no test checks a clause its own spec no longer states:
   from `peekSession` at startup.
 - `tests/features/shell_command_wiring/spec.md` Invariant 3: the restore
   `startShell` call is in `wakeRestoredTab`.
+- `tests/features/session_qcompress_length_guard/spec.md` INV-1 and INV-3,
+  and `tests/features/session_sha256_checksum/spec.md` INV-2: the guards
+  they read move from `restore()`'s body to the shared decoder's.
 
-Also: `docs/subsystems.md` and `.indie-review/partition.json` for the new
-test directory; a CHANGELOG entry under `[Unreleased]`.
+Also: a CHANGELOG entry under `[Unreleased]`.
 
 ## 12. Cold-eyes loop log
 

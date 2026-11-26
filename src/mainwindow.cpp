@@ -2595,7 +2595,8 @@ void MainWindow::updateTabTitles() {
         // Same guard as the titleChanged signal handler.
         if (m_tabTitlePins.contains(w)) continue;
         auto *t = activeTerminalInTab(w);
-        if (!t) continue;
+        // ANTS-5225 — a sleeping tab keeps its saved title until it wakes.
+        if (!t || m_sleepingTabs.contains(t)) continue;
 
         QString label;
         if (format == "cwd") {

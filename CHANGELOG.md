@@ -25,6 +25,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **A restarted window opens without loading every saved tab's history first** (ANTS-5225)
+  Each saved tab shows its name at once, but loads its history and starts
+  its shell only when you first open it, rename it, or a command names it.
+  A tab with 50,000 lines of history now costs startup roughly a tenth of
+  what it did (35 ms against 403 ms, measured 2026-11-26).
+
 - **The code-search tools agree on which files are what** (ANTS-6592)
   `find_sources` now scans `.c`, `.hh` and `.hxx` files, and a source
   file whose own name starts with `build` or a dot. `trace` reads a

@@ -71,9 +71,13 @@ static int runMain() {
         ++failures;
     };
 
-    const std::string resBody = extractFnBody(cpp, "SessionManager::restore");
+    // ANTS-5225 — the guards live in unpack(), which restore() and peek()
+    // share; restore() must still go through it.
+    if (extractFnBody(cpp, "SessionManager::restore").find("unpack(") == std::string::npos)
+        fail("precondition: SessionManager::restore no longer calls unpack().");
+    const std::string resBody = extractFnBody(cpp, "SessionManager::unpack");
     if (resBody.empty()) {
-        fail("precondition: SessionManager::restore body not located.");
+        fail("precondition: SessionManager::unpack body not located.");
         std::fprintf(stderr,
             "\n%d invariant(s) failed — see "
             "tests/features/session_qcompress_length_guard/spec.md\n",

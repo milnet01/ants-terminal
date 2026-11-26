@@ -22,13 +22,13 @@ namespace {
 void testWiring() {
     const std::string mwc = ants_test::slurpMainWindow();
     const std::string body =
-        ants_test::slurpFunctionBody(mwc, "MainWindow::restoreSessions");
+        ants_test::slurpFunctionBody(mwc, "void MainWindow::wakeRestoredTab(");
     expect(!body.empty(),
-           "anchor: MainWindow::restoreSessions body slurped");
+           "anchor: MainWindow::wakeRestoredTab body slurped");
     if (body.empty()) return;
 
-    // WI-1 — restoreSessions calls trackTerminalShell on each restored
-    // tab, after its shell starts.
+    // WI-1 — wakeRestoredTab (ANTS-5225: where restoreSessions hands each
+    // restored tab) calls trackTerminalShell after the tab's shell starts.
     // Without this, ClaudeTabTracker::m_shells is missing the
     // restored shell PIDs and shellState() returns NotRunning →
     // no per-tab Claude dot.
@@ -36,7 +36,7 @@ void testWiring() {
     const size_t tracked = body.find("trackTerminalShell(");
     expect(tracked != std::string::npos && started != std::string::npos
                && tracked > started,
-           "WI-1 restoreSessions calls trackTerminalShell after startShell");
+           "WI-1 wakeRestoredTab calls trackTerminalShell after startShell");
     // trackTerminalShell is what reaches the tab tracker.
     expect(ants_test::slurpFunctionBody(mwc, "void MainWindow::trackTerminalShell(")
                    .find("m_claudeTabTracker->trackShell(") != std::string::npos,
@@ -44,7 +44,7 @@ void testWiring() {
 
     // WI-2 — the body still starts shells.
     expect(body.find("startShell(") != std::string::npos,
-           "WI-2 restoreSessions still calls startShell");
+           "WI-2 wakeRestoredTab still calls startShell");
 
     // WI-3 (ANTS-5733) — once the shells run, the focused tab's shell
     // PID reaches ClaudeIntegration. The tab is made current before its
@@ -55,7 +55,7 @@ void testWiring() {
     const size_t wire = body.find("setShellPid(");
     expect(wire != std::string::npos && start != std::string::npos
                && wire > start,
-           "WI-3 restoreSessions calls setShellPid after startShell");
+           "WI-3 wakeRestoredTab calls setShellPid after startShell");
 }
 
 int runMain() {

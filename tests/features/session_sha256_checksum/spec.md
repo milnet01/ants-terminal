@@ -49,7 +49,9 @@ envelope moved into `seal` for ANTS-5131, which shares it with the
 worker-thread save.
 
 **INV-2 — `restore` peeks the envelope magic and verifies the hash.**
-Source-grep: the body of `SessionManager::restore` MUST reference
+Source-grep: `SessionManager::restore` calls `unpack`, the decoder it
+shares with `peek` (ANTS-5225), and the body of `SessionManager::unpack`
+MUST reference
 `ENVELOPE_MAGIC`, MUST include a SHA-256 hash recomputation
 (`QCryptographicHash::hash(...QCryptographicHash::Sha256)`), and MUST
 contain a comparison that returns false on mismatch.
