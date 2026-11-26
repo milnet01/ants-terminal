@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log and roadmap_query share one body write, one file write, one cache fill and one reply per op.** (ANTS-6604)
+
 - **roadmap_log's batch, section, release and repair ops share one refusal builder, one roadmap lookup and one reply per op.** (ANTS-6603)
 
 - **The document, changelog, spec-log and git-state MCP verbs share one copy of their path checks, refusals and reply building.** (ANTS-6601)

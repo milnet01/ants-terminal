@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6951 -->
+<!-- ants-roadmap-id-high-water: ANTS=6954 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98096,7 +98096,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6604] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-roadmap-query-log.**
+- ✅ [ANTS-6604] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-roadmap-query-log.**
   17 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 815 `src/remotecontrol_roadmap_log.cpp:2795` (High)
   - row 823 `src/remotecontrol_roadmap_log.cpp:1239` (Medium)
@@ -98115,6 +98115,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 858 `src/remotecontrol_roadmap_query.cpp:1853` (Low)
   - row 860 `src/remotecontrol_roadmap_query_verb.cpp:3066` (Low)
   - row 1388 `src/remotecontrol_roadmap_query_verb.cpp:3253-3309` (Info)
+  Shipped: 10 rows folded; 846, 1388 and 823's rankers already fixed.
+  845 and 858 kept on purpose (refusal order, message order). 826 →
+  ANTS-6954; 823's locate → ANTS-6953; 824's dry-run drift → ANTS-6952.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -115352,6 +115355,34 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6603).
   Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6952] **roadmap_log flip's dry run omits note_scrubbed_params and post_bullets, and its GFM reply has no format key; the store path sets all three.**
+  src/remotecontrol_roadmap_log.cpp cmdRoadmapLogFlip. ANTS-6604 kept
+  the drift (review row 824) so the fold changed nothing. Decide whether
+  the preview should match the write, then pin it.
+  **Layman:** A preview of a roadmap status change can show less than the real change reports.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6604).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6953] **roadmap_log flip's two ants-v1 locate copies differ on an empty headline, so a line_range-only locator can match differently.**
+  src/remotecontrol_roadmap_log.cpp: the main branch hashes an empty
+  headline; the GFM-miss fallback requires !locHeadline.isEmpty().
+  Settle the rule, then fold them (review row 823's second half).
+  **Layman:** Two ways of finding a roadmap item can disagree on the same request.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6604).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6954] **roadmap_log's batch ops echo an unknown section slug raw, where single append cleans it with ceSanitiseEcho and ranks candidates.**
+  Review row 826. Single append sanitises the echoed slug, returns
+  candidates and sections_total and has its own bad_case; the batch
+  copies echo the raw slug through rlBadCase. Align the batch refusals
+  with append's, then fold the two.
+  **Layman:** A wrong section name typed into a batch roadmap edit is repeated back without the cleaning the single edit applies.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6604).
+  Lanes: mcp-roadmap-query-log, mcp-roadmap-batch.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
