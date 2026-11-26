@@ -303,8 +303,9 @@ export.
 
 %check
 # Twins: debian/rules override_dh_auto_test and archlinux/PKGBUILD check() run
-# this same suite. They carry settings this recipe has and they lack, so a
-# test-environment fix made here belongs in both.
+# this same suite with the same QT_QPA_PLATFORM, LC_ALL and -LE perf; a
+# test-environment fix made here belongs in both. The openSUSE-only skip below
+# is not a twin setting.
 # The ctest suite minus the perf lane (ANTS-4720, below), which includes Qt
 # widget tests — not only the shell-based audit-rule fixtures. CMakeLists.txt wires QT_QPA_PLATFORM=offscreen
 # for the opt-in `e2e` label only, so a build VM with no

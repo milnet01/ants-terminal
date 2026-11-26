@@ -66,10 +66,12 @@ build() {
 }
 
 check() {
-  # The full ctest suite, Qt widget tests included. Twin of %check in
-  # packaging/opensuse/ants-terminal.spec, which carries test settings this
-  # recipe lacks; a test-environment fix made there belongs here too.
-  ctest --test-dir build --output-on-failure
+  # The ctest suite minus the perf lane, Qt widget tests included. Twin of
+  # %check in packaging/opensuse/ants-terminal.spec, which says why each
+  # setting is needed; keep the three recipes' settings the same.
+  export QT_QPA_PLATFORM=offscreen
+  export LC_ALL=C.UTF-8
+  ctest --test-dir build --output-on-failure -LE perf
 }
 
 package() {
