@@ -4545,11 +4545,7 @@ constexpr int kWorkspaceSearchGlobBytesCap   =  256; // ANTS-1248-INV-9
 constexpr int kDefaultMaxMatchBytes         =  512;  // ANTS-3548
 
 QJsonObject wsErr(const char *code, const QString &message) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = message;
-    o["code"]  = QString::fromLatin1(code);
-    return o;
+    return mcp::refusal(QString::fromLatin1(code), message);
 }
 
 }  // namespace rcdetail

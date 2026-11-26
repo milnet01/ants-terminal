@@ -221,8 +221,7 @@ static QString findClaudeMdForRoot(const QString &startDir) {
     return {};
 }
 
-static QJsonObject lanesAsJson(const QVector<SubsystemMap::Lane> &lanes) {
-    QJsonObject root;
+static QJsonArray lanesAsJson(const QVector<SubsystemMap::Lane> &lanes) {
     QJsonArray arr;
     for (const auto &l : lanes) {
         QJsonObject o;
@@ -230,8 +229,7 @@ static QJsonObject lanesAsJson(const QVector<SubsystemMap::Lane> &lanes) {
         o["summary"] = l.summary;
         arr.append(o);
     }
-    root["lanes"] = arr;
-    return root;
+    return arr;
 }
 
 static QJsonArray laneNamesArray(const QVector<SubsystemMap::Lane> &lanes) {
@@ -323,7 +321,7 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
         // the caller sees the filter applied; a needle matching nothing
         // yields an empty lanes[] (not an error — op:map lists, it doesn't
         // validate a lane the way files / recent_changes do).
-        QJsonArray lanesJson = lanesAsJson(lanes).value("lanes").toArray();
+        QJsonArray lanesJson = lanesAsJson(lanes);
         const QString nameFilter = req.value("name").toString().trimmed();
         if (!nameFilter.isEmpty()) {
             QJsonArray filtered;
@@ -516,6 +514,15 @@ struct ScopeClassification {
 };
 }  // namespace
 
+// ANTS-1576 / ANTS-1625 — the report-name suffixes that mark a narrow run,
+// shared by classifyAuditScope and pickForeignReport. Case-sensitive: the
+// picker passes a lower-cased name, the classifier the name as it is.
+static bool hasNarrowReportSuffix(const QString &name) {
+    return name.contains(QStringLiteral("-postfix")) ||
+           name.contains(QStringLiteral("-single"))  ||
+           name.contains(QStringLiteral("-narrow"));
+}
+
 static ScopeClassification classifyAuditScope(
     const AuditEngine::AuditSummary &s,
     const QString &reportPath) {
@@ -530,10 +537,7 @@ static ScopeClassification classifyAuditScope(
     const int distinct = seen.size();
 
     const QString base = QFileInfo(reportPath).baseName();
-    const bool narrowHint =
-        base.contains(QStringLiteral("-postfix")) ||
-        base.contains(QStringLiteral("-single"))  ||
-        base.contains(QStringLiteral("-narrow"));
+    const bool narrowHint = hasNarrowReportSuffix(base);
 
     ScopeClassification c;
     c.distinctFiles = preview;
@@ -587,15 +591,11 @@ static ForeignPick pickForeignReport(const QDir &cacheDir, const QString &glob) 
         c.name    = n;
         c.mtimeMs = fi.lastModified().toMSecsSinceEpoch();
         c.size    = fi.size();
-        const QString lower = n.toLower();
-        // Narrow-suffix set mirrors ANTS-1576's classifyAuditScope
-        // verbatim — keep the two surfaces consistent so a caller
-        // seeing `pick_basis == "broadest_in_recency_window"` and
+        // classifyAuditScope's suffix list, so a caller seeing
+        // `pick_basis == "broadest_in_recency_window"` and
         // `scope == "narrow"` reads as the picker preferred broader
         // already and the chosen file still looks narrow.
-        c.narrow = lower.contains(QStringLiteral("-postfix"))
-                || lower.contains(QStringLiteral("-single"))
-                || lower.contains(QStringLiteral("-narrow"));
+        c.narrow = hasNarrowReportSuffix(n.toLower());
         cands.append(c);
         if (c.mtimeMs > newestMs) newestMs = c.mtimeMs;
     }

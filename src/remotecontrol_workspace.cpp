@@ -240,14 +240,24 @@ bool rcGlobNamesHiddenPath(const QString &glob) {
     return false;
 }
 
-// The one advisory text, shared by every return path that can emit a zero, so
-// the four cannot answer the same silence differently.
-QString rcHiddenGlobHint() {
-    return QStringLiteral(
+// The one advisory, stamped by every return path that can emit a zero, so the
+// four cannot answer the same silence differently. Each path tests its own zero.
+void rcStampHiddenGlobSkipped(QJsonObject &out) {
+    out["hidden_paths_skipped"] = true;
+    out["hint"] = QStringLiteral(
         "\"glob\" names a hidden path (a segment starting with \".\") and "
         "include_hidden is false, so ripgrep pruned it during the walk — this "
         "zero says nothing about whether the pattern is present. Re-run with "
         "include_hidden:true.");
+}
+
+// ANTS-3405 — the rg --json line handlers' parse budget. The clock is read on
+// every 2048th event only, so the check costs next to nothing; true once
+// `clock` has run past `budgetMs`.
+constexpr int kParseBudgetCheckMask = 0x7FF;
+bool rcParseBudgetSpent(int &eventCount, const QElapsedTimer &clock,
+                        qint64 budgetMs) {
+    return (++eventCount & kParseBudgetCheckMask) == 0 && clock.hasExpired(budgetMs);
 }
 
 // ANTS-5323 — say WHY a reply is partial. `truncated` alone left a scan cut
@@ -263,8 +273,8 @@ void rcStampTruncatedReason(QJsonObject &out, const QString &reason,
             "the scan stopped at the %1 s wall budget, so the results are "
             "partial and may miss whole folders. Repeat the search, since the "
             "first pass warms the disk cache (ANTS-6270: 10 s, then 30 ms); or "
-            "raise timeout_sec (max 30), or narrow with lane= / glob=")
-                .arg(budgetSec);
+            "raise timeout_sec (max %2), or narrow with lane= / glob=")
+                .arg(budgetSec).arg(kWorkspaceSearchMaxBudgetMs / 1000);
     } else if (reason == QLatin1String("output_cap")) {
         out["hint"] = QStringLiteral(
             "the match stream passed the output ceiling, so the results are "
@@ -366,7 +376,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     if (!glob.isEmpty()) {
         if (glob.toUtf8().size() > kWorkspaceSearchGlobBytesCap) {
             return QJsonDocument(wsErr("bad_glob",
-                QStringLiteral("workspace-search: \"glob\" exceeds 256 bytes")));
+                QStringLiteral("workspace-search: \"glob\" exceeds %1 bytes")
+                    .arg(kWorkspaceSearchGlobBytesCap)));
         }
         if (glob.contains(QStringLiteral(".."))) {
             return QJsonDocument(wsErr("bad_glob",
@@ -421,7 +432,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             }
             if (g.toUtf8().size() > kWorkspaceSearchGlobBytesCap) {
                 return QJsonDocument(wsErr("bad_glob",
-                    QStringLiteral("workspace-search: \"exclude_glob\" entry exceeds 256 bytes")));
+                    QStringLiteral("workspace-search: \"exclude_glob\" entry exceeds %1 bytes")
+                        .arg(kWorkspaceSearchGlobBytesCap)));
             }
             if (g.contains(QStringLiteral(".."))) {
                 return QJsonDocument(wsErr("bad_glob",
@@ -808,7 +820,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // itself stays bounded by its own wall budget.
     const auto onLine = [&](const QByteArray &line) {
         if (parseBudgetExceeded || line.isEmpty()) return;
-        if ((++scanCounter & 0x7FF) == 0 && wall.hasExpired(totalBudgetMs)) {
+        if (rcParseBudgetSpent(scanCounter, wall, totalBudgetMs)) {
             parseBudgetExceeded = true;
             return;
         }
@@ -1143,7 +1155,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         o["timeout_sec"] = budgetSec;
         o["hint"] = QStringLiteral(
             "try a narrower lane= or glob= filter, raise timeout_sec "
-            "(max 30), or fall back to `Bash rg` for one-off queries");
+            "(max %1), or fall back to `Bash rg` for one-off queries")
+                .arg(kWorkspaceSearchMaxBudgetMs / 1000);
         o["timeout_fallback_skipped"] = fallbackSkipped;   // ANTS-6245
         return QJsonDocument(o);
     }
@@ -1158,7 +1171,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         o["hint"] = QStringLiteral(
             "the query matched too much to parse in time — narrow with a "
             "lane= / glob= filter or a more specific pattern, exclude large "
-            "data blobs, raise timeout_sec (max 30), or fall back to `Bash rg`");
+            "data blobs, raise timeout_sec (max %1), or fall back to `Bash rg`")
+                .arg(kWorkspaceSearchMaxBudgetMs / 1000);
         return QJsonDocument(o);
     }
     // ANTS-1248-INV-4: post-cap detection — truncated iff we either
@@ -1271,8 +1285,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         out["truncated"] = (distinctOrder.size() > emitCount) ||
                            hardKilled || parseBudgetExceeded;
         if (distinctOrder.isEmpty() && hiddenGlobSkipped) {
-            out["hidden_paths_skipped"] = true;
-            out["hint"] = rcHiddenGlobHint();
+            rcStampHiddenGlobSkipped(out);
         }
         if (!scanCutReason.isEmpty())
             rcStampTruncatedReason(out, scanCutReason, budgetSec);
@@ -1291,8 +1304,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         out["truncated"]   = (hardKilled || parseBudgetExceeded);
         out["count_only"]  = true;
         if (seenMatchEvents == 0 && hiddenGlobSkipped) {
-            out["hidden_paths_skipped"] = true;
-            out["hint"] = rcHiddenGlobHint();
+            rcStampHiddenGlobSkipped(out);
         }
         if (!scanCutReason.isEmpty())
             rcStampTruncatedReason(out, scanCutReason, budgetSec);
@@ -1326,8 +1338,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         out["truncated"]   = (hardKilled || parseBudgetExceeded);
         out["files_only"]  = true;
         if (filesWithMatches == 0 && hiddenGlobSkipped) {
-            out["hidden_paths_skipped"] = true;
-            out["hint"] = rcHiddenGlobHint();
+            rcStampHiddenGlobSkipped(out);
         }
         if (!scanCutReason.isEmpty())
             rcStampTruncatedReason(out, scanCutReason, budgetSec);
@@ -1499,8 +1510,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     //   4. ANTS-3466 regex metacharacters with regex:false.
     // Pure response-shaping; search semantics are unchanged.
     if (matches.isEmpty() && hiddenGlobSkipped) {
-        out["hidden_paths_skipped"] = true;
-        out["hint"] = rcHiddenGlobHint();
+        rcStampHiddenGlobSkipped(out);
     }
     else if (matches.isEmpty() && rcContainsHtmlEntity(pattern)) {
         out["hint"] = QStringLiteral(
@@ -1894,7 +1904,7 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
         bool parseBudgetBlown = false;
         const auto onLine = [&](const QByteArray &line) {
             if (parseBudgetBlown || line.isEmpty()) return;
-            if ((++scanCounter & 0x7FF) == 0 && wall.hasExpired(totalBudgetMs)) {
+            if (rcParseBudgetSpent(scanCounter, wall, totalBudgetMs)) {
                 parseBudgetBlown = true;
                 return;
             }
@@ -1960,7 +1970,8 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
                     .arg(budgetSec).arg(anchor));
             o["timeout_sec"] = budgetSec;
             o["hint"] = QStringLiteral(
-                "narrow `scope`, send fewer anchors, or raise timeout_sec (max 30)");
+                "narrow `scope`, send fewer anchors, or raise timeout_sec (max %1)")
+                    .arg(kWorkspaceSearchMaxBudgetMs / 1000);
             return QJsonDocument(o);
         }
         // ANTS-5052 — a run stopped at the output ceiling is partial, and a
@@ -1988,7 +1999,8 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
                                "the %1 s wall budget").arg(budgetSec));
             o["timeout_sec"] = budgetSec;
             o["hint"] = QStringLiteral(
-                "narrow `scope`, send fewer anchors, or raise timeout_sec (max 30)");
+                "narrow `scope`, send fewer anchors, or raise timeout_sec (max %1)")
+                    .arg(kWorkspaceSearchMaxBudgetMs / 1000);
             return QJsonDocument(o);
         }
     }
@@ -2053,11 +2065,8 @@ QJsonObject outlineOneFile(const QString &rawPath,
                            int maxHeadingLevel = 0,
                            const QString &filter = QString()) {
     if (rawPath.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: empty path entry");
-        o["code"]  = QStringLiteral("bad_path");
-        return o;
+        return mcp::refusal(QStringLiteral("bad_path"),
+            QStringLiteral("file_outline: empty path entry"));
     }
     // ANTS-1249-INV-1 / ANTS-1295: anchor through the central
     // PathValidation chokepoint; not_found is distinct from the
@@ -2067,22 +2076,16 @@ QJsonObject outlineOneFile(const QString &rawPath,
         QStringLiteral("file_outline"), QStringLiteral("path"));
     if (check.bad) return check.err;
     if (check.resolved.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: \"%1\" does not exist")
-                         .arg(rawPath);
-        o["code"]  = QStringLiteral("not_found");
-        return o;
+        return mcp::refusal(QStringLiteral("not_found"),
+            QStringLiteral("file_outline: \"%1\" does not exist")
+                .arg(rawPath));
     }
     // As read_log (ANTS-5110): opening a FIFO or device blocks the worker
     // until a writer appears.
     if (!QFileInfo(check.resolved).isFile()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: \"%1\" is not a regular file")
-                         .arg(rawPath);
-        o["code"]  = QStringLiteral("bad_path");
-        return o;
+        return mcp::refusal(QStringLiteral("bad_path"),
+            QStringLiteral("file_outline: \"%1\" is not a regular file")
+                .arg(rawPath));
     }
     // ANTS-3839 — when a name filter is in play the engine must see the WHOLE
     // file. `maxSymbols` is enforced during collection, so asking for the
@@ -2192,11 +2195,8 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         !sentinelRoot.isEmpty() ? sentinelRoot
                                 : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: no focused project");
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral("file_outline: no focused project"));
     }
 
     // ANTS-1249: mode + flags, parsed once (uniform across a multi-path
@@ -2234,13 +2234,10 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         // MCP worker; the array had no count cap.
         constexpr qsizetype kMaxOutlinePaths = 100;
         if (paths.size() > kMaxOutlinePaths) {
-            QJsonObject o;
-            o[QStringLiteral("ok")]    = false;
-            o[QStringLiteral("code")]  = QStringLiteral("bad_args");
-            o[QStringLiteral("error")] = QStringLiteral(
-                "file_outline: `paths` holds %1 entries; the limit is %2 per call")
-                    .arg(paths.size()).arg(kMaxOutlinePaths);
-            return QJsonDocument(o);
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral(
+                    "file_outline: `paths` holds %1 entries; the limit is %2 per call")
+                        .arg(paths.size()).arg(kMaxOutlinePaths));
         }
         const QJsonObject priorEtags =
             req.value(QStringLiteral("etags")).toObject();
@@ -2295,11 +2292,8 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     if (rawPath.isEmpty())
         rawPath = req.value(QStringLiteral("file_path")).toString();
     if (rawPath.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: missing or empty \"path\" (alias: \"file_path\", \"paths\")");
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral("file_outline: missing or empty \"path\" (alias: \"file_path\", \"paths\")"));
     }
     // ANTS-1249-INV-10: reachability gate is upstream (UDS SO_PEERCRED).
     return QJsonDocument(outlineOneFile(rawPath, rootCanonical, mode,
@@ -2329,29 +2323,21 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
 // shell string would make it an arbitrary-command surface reachable from a
 // tool call. Everything a test selector needs is expressible as argv.
 QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
-    auto mpErr = [](const QString &code, const QString &message) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("code")]  = code;
-        o[QStringLiteral("error")] = message;
-        return QJsonDocument(o);
-    };
-
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty())
-        return mpErr(QStringLiteral("bad_path"),
+        return rlErr(QStringLiteral("bad_path"),
                      QStringLiteral("mutation_probe: no focused project"));
 
     const QString rawPath = req.value(QStringLiteral("path")).toString();
     if (rawPath.isEmpty())
-        return mpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
                      QStringLiteral("mutation_probe: `path` is required"));
     const auto check = PathValidation::validatePath(
         rawPath, rootCanonical, QStringLiteral("mutation_probe"),
         QStringLiteral("path"));
     if (check.bad) return QJsonDocument(check.err);
     if (check.resolved.isEmpty())
-        return mpErr(QStringLiteral("not_found"),
+        return rlErr(QStringLiteral("not_found"),
                      QStringLiteral("mutation_probe: \"%1\" does not exist")
                          .arg(rawPath));
 
@@ -2360,7 +2346,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
              req.value(QStringLiteral("test_command")).toArray())
         argv.append(v.toString());
     if (argv.isEmpty())
-        return mpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("mutation_probe: `test_command` is required and is "
                            "an ARGV ARRAY, not a shell string — e.g. "
                            "[\"pytest\", \"-k\", \"test_supervisor\"]. A shell "
@@ -2376,7 +2362,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                  req.value(QStringLiteral("build_command")).toArray())
             buildArgv.append(v.toString());
         if (buildArgv.isEmpty())
-            return mpErr(QStringLiteral("bad_args"),
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("mutation_probe: `build_command` is an ARGV "
                                "ARRAY with at least one element, not a shell "
                                "string — e.g. [\"cmake\", \"--build\", "
@@ -2390,7 +2376,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     const QJsonValue exitCodeArg =
         req.value(QStringLiteral("allow_exit_code_baseline"));
     if (!exitCodeArg.isUndefined() && !exitCodeArg.isBool())
-        return mpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("mutation_probe: `allow_exit_code_baseline` must "
                            "be true or false."));
     const bool allowExitCodeBaseline = exitCodeArg.toBool(false);
@@ -2402,8 +2388,8 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     std::optional<QProcessEnvironment> procEnv;
     if (const QJsonValue envArg = req.value(QStringLiteral("env"));
         !envArg.isUndefined()) {
-        const auto badEnv = [&mpErr] {
-            return mpErr(QStringLiteral("bad_args"),
+        const auto badEnv = [] {
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("mutation_probe: `env` is an object of string "
                                "values, e.g. {\"ARCHIVE\": \"/path\"}; a key "
                                "may not be empty or hold '='."));
@@ -2421,18 +2407,18 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     }
     if (allowExitCodeBaseline
         && !req.value(QStringLiteral("require_green_baseline")).toBool(false))
-        return mpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("mutation_probe: `allow_exit_code_baseline` only "
                            "changes what `require_green_baseline` accepts; "
                            "set that too, or drop both."));
 
     const QJsonArray muts = req.value(QStringLiteral("mutations")).toArray();
     if (muts.isEmpty())
-        return mpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("mutation_probe: `mutations` must hold at least "
                            "one {label, old, new}"));
     if (muts.size() > 50)
-        return mpErr(QStringLiteral("bad_args"),
+        return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("mutation_probe: %1 mutations exceeds the 50 cap — "
                            "each one is a full test run").arg(muts.size()));
 
@@ -2455,14 +2441,14 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         const QString field = QStringLiteral("mutations[%1].path").arg(i);
         const QJsonValue pv = mo.value(QStringLiteral("path"));
         if (!pv.isString() || pv.toString().isEmpty())
-            return mpErr(QStringLiteral("bad_args"),
+            return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("mutation_probe: `%1` must be a non-empty string; "
                                "omit it to use the top-level `path`").arg(field));
         const auto mc = PathValidation::validatePath(
             pv.toString(), rootCanonical, QStringLiteral("mutation_probe"), field);
         if (mc.bad) return QJsonDocument(mc.err);
         if (mc.resolved.isEmpty())
-            return mpErr(QStringLiteral("not_found"),
+            return rlErr(QStringLiteral("not_found"),
                 QStringLiteral("mutation_probe: `%1` \"%2\" does not exist")
                     .arg(field, pv.toString()));
         qsizetype t = 0;
@@ -2518,7 +2504,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     for (Target &t : targets) {
         QFile bf(t.resolved);
         if (!bf.open(QIODevice::ReadOnly))
-            return mpErr(QStringLiteral("read_failed"),
+            return rlErr(QStringLiteral("read_failed"),
                          QStringLiteral("mutation_probe: could not read \"%1\"")
                              .arg(t.rawPath));
         t.baselineBytes = bf.readAll();
@@ -2607,16 +2593,14 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     if (!buildArgv.isEmpty()) {
         const RunOut build = runCommand(buildArgv);
         if (!build.started)
-            return mpErr(QStringLiteral("command_not_found"),
+            return rlErr(QStringLiteral("command_not_found"),
                 QStringLiteral("mutation_probe: could not start \"%1\"")
                     .arg(buildArgv.first()));
         if (!buildSucceeded(build)) {
-            QJsonObject o2;
-            o2[QStringLiteral("ok")]    = false;
-            o2[QStringLiteral("code")]  = QStringLiteral("baseline_build_failed");
-            o2[QStringLiteral("error")] = QStringLiteral(
-                "mutation_probe: build_command failed on the unmutated source, "
-                "so no mutation was applied. Fix the build first.");
+            QJsonObject o2 = mcp::refusal(QStringLiteral("baseline_build_failed"),
+                QStringLiteral(
+                    "mutation_probe: build_command failed on the unmutated source, "
+                    "so no mutation was applied. Fix the build first."));
             o2[QStringLiteral("baseline_exit_code")] = build.exitCode;
             o2[QStringLiteral("baseline_timed_out")] = build.timedOut;
             o2[QStringLiteral("build_output_tail")]  = build.output.right(2048);
@@ -2631,7 +2615,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         const RunOut base = runCommand(argv);
         slowestRunMs = qMax(slowestRunMs, base.ms);
         if (!base.started)
-            return mpErr(QStringLiteral("command_not_found"),
+            return rlErr(QStringLiteral("command_not_found"),
                 QStringLiteral("mutation_probe: could not start \"%1\"")
                     .arg(argv.first()));
         const auto bc = MutationProbe::parseCounts(base.output);
@@ -2641,29 +2625,25 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         // no-tests-collected exits), so the refusal names the call, not the
         // suite.
         if (verdict == MutationProbe::BaselineVerdict::DidNotRun) {
-            QJsonObject o2;
-            o2[QStringLiteral("ok")]    = false;
-            o2[QStringLiteral("code")]  = QStringLiteral("baseline_did_not_run");
-            o2[QStringLiteral("error")] = QStringLiteral(
-                "mutation_probe: the baseline command ran no tests: it exited %1 "
-                "with no pass/fail counts, which pytest uses for a usage error "
-                "(4) or when it collected nothing (5). Check the paths and the "
-                "filter in test_command; the suite itself was never measured.")
-                    .arg(base.exitCode);
+            QJsonObject o2 = mcp::refusal(QStringLiteral("baseline_did_not_run"),
+                QStringLiteral(
+                    "mutation_probe: the baseline command ran no tests: it exited %1 "
+                    "with no pass/fail counts, which pytest uses for a usage error "
+                    "(4) or when it collected nothing (5). Check the paths and the "
+                    "filter in test_command; the suite itself was never measured.")
+                        .arg(base.exitCode));
             o2[QStringLiteral("baseline_command")]   = argv.join(QLatin1Char(' '));
             o2[QStringLiteral("baseline_exit_code")] = base.exitCode;
             o2[QStringLiteral("test_command")] = QJsonArray::fromStringList(argv);
             return QJsonDocument(o2);
         }
         if (verdict == MutationProbe::BaselineVerdict::NotGreen) {
-            QJsonObject o2;
-            o2[QStringLiteral("ok")]    = false;
-            o2[QStringLiteral("code")]  = QStringLiteral("baseline_not_green");
-            o2[QStringLiteral("error")] = QStringLiteral(
-                "mutation_probe: the baseline run is not green, so every "
-                "mutation result would be meaningless — a mutant \"dying\" "
-                "proves nothing when the suite was already failing. Fix the "
-                "suite first, or drop require_green_baseline to probe anyway.");
+            QJsonObject o2 = mcp::refusal(QStringLiteral("baseline_not_green"),
+                QStringLiteral(
+                    "mutation_probe: the baseline run is not green, so every "
+                    "mutation result would be meaningless — a mutant \"dying\" "
+                    "proves nothing when the suite was already failing. Fix the "
+                    "suite first, or drop require_green_baseline to probe anyway."));
             o2[QStringLiteral("baseline_exit_code")] = base.exitCode;
             o2[QStringLiteral("baseline_timed_out")] = base.timedOut;
             o2[QStringLiteral("baseline_passed")]    = bc.passed;
@@ -2697,10 +2677,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         if (verdict != MutationProbe::BaselineVerdict::Green && !exitCodeOnly) {
             const bool unreadable =
                 verdict == MutationProbe::BaselineVerdict::Unreadable;
-            QJsonObject o2;
-            o2[QStringLiteral("ok")]    = false;
-            o2[QStringLiteral("code")]  = QStringLiteral("baseline_unreadable");
-            o2[QStringLiteral("error")] =
+            QJsonObject o2 = mcp::refusal(QStringLiteral("baseline_unreadable"),
                 (unreadable
                      ? QStringLiteral(
                            "mutation_probe: the baseline exited 0 but its "
@@ -2728,7 +2705,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                            "nothing cannot be green, and every mutant would "
                            "then report `survived` for the wrong reason. "
                            "Check the filter in baseline_command, or the build, or drop "
-                           "require_green_baseline to probe anyway."));
+                           "require_green_baseline to probe anyway.")));
             o2[QStringLiteral("baseline_exit_code")] = base.exitCode;
             o2[QStringLiteral("baseline_timed_out")] = base.timedOut;
             o2[QStringLiteral("baseline_passed")]    = bc.passed;
@@ -3070,34 +3047,25 @@ QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
             !sentinelRoot.isEmpty() ? sentinelRoot
                                     : resolveRootCanonical(m_roots, req);
         if (rootCanonical.isEmpty()) {
-            QJsonObject o;
-            o["ok"]    = false;
-            o["error"] = QStringLiteral("read_log: no focused project");
-            o["code"]  = QStringLiteral("bad_path");
-            return QJsonDocument(o);
+            return rlErr(QStringLiteral("bad_path"),
+                QStringLiteral("read_log: no focused project"));
         }
         const auto check = PathValidation::validatePath(
             rawPath, rootCanonical,
             QStringLiteral("read_log"), QStringLiteral("path"));
         if (check.bad) return QJsonDocument(check.err);
         if (check.resolved.isEmpty()) {
-            QJsonObject o;
-            o["ok"]    = false;
-            o["error"] = QStringLiteral("read_log: \"%1\" does not exist")
-                             .arg(rawPath);
-            o["code"]  = QStringLiteral("not_found");
-            return QJsonDocument(o);
+            return rlErr(QStringLiteral("not_found"),
+                QStringLiteral("read_log: \"%1\" does not exist")
+                    .arg(rawPath));
         }
         resolved = check.resolved;
     }
     // ANTS-5110 — a FIFO or device path blocked the single MCP worker on
     // open until a writer appeared.
     if (QFileInfo::exists(resolved) && !QFileInfo(resolved).isFile()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("read_log: \"%1\" is not a regular file").arg(rawPath);
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral("read_log: \"%1\" is not a regular file").arg(rawPath));
     }
 
     ReadLog::Options opts;
@@ -3131,11 +3099,8 @@ QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
     const QString rawPath = req.value(QStringLiteral("path")).toString();
     if (rawPath.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("read_region: \"path\" is required");
-        o["code"]  = QStringLiteral("bad_args");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("read_region: \"path\" is required"));
     }
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
@@ -3143,31 +3108,22 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
         !sentinelRoot.isEmpty() ? sentinelRoot
                                 : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("read_region: no focused project");
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral("read_region: no focused project"));
     }
     const auto check = PathValidation::validatePath(
         rawPath, rootCanonical,
         QStringLiteral("read_region"), QStringLiteral("path"));
     if (check.bad) return QJsonDocument(check.err);
     if (check.resolved.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("read_region: \"%1\" does not exist").arg(rawPath);
-        o["code"]  = QStringLiteral("not_found");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("not_found"),
+            QStringLiteral("read_region: \"%1\" does not exist").arg(rawPath));
     }
     // As read_log (ANTS-5110): opening a FIFO or device blocks the worker
     // until a writer appears.
     if (!QFileInfo(check.resolved).isFile()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("read_region: \"%1\" is not a regular file").arg(rawPath);
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral("read_region: \"%1\" is not a regular file").arg(rawPath));
     }
 
     ReadRegion::Options opts;
@@ -3204,11 +3160,8 @@ QJsonDocument RemoteControl::cmdReadRegions(const QJsonObject &req) {
         !sentinelRoot.isEmpty() ? sentinelRoot
                                 : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("read_regions: no focused project");
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral("read_regions: no focused project"));
     }
     // ANTS-3500 — accept `requests`/`paths`/`regions` as aliases for the
     // `items` batch key (natural first-guesses for the array of slice
@@ -3241,13 +3194,11 @@ QJsonDocument RemoteControl::cmdReadRegions(const QJsonObject &req) {
             suppliedKeys << QString::fromLatin1(k);
     }
     if (suppliedKeys.size() > 1) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral(
-            "read_regions: %1 are aliases for the same batch key and were "
-            "sent together; pass exactly one")
-            .arg(suppliedKeys.join(QStringLiteral(" and ")));
-        o["code"]     = QStringLiteral("bad_op_combo");
+        QJsonObject o = mcp::refusal(QStringLiteral("bad_op_combo"),
+            QStringLiteral(
+                "read_regions: %1 are aliases for the same batch key and were "
+                "sent together; pass exactly one")
+                .arg(suppliedKeys.join(QStringLiteral(" and "))));
         o["supplied"] = QJsonArray::fromStringList(suppliedKeys);
         return QJsonDocument(o);
     }
@@ -3274,12 +3225,8 @@ QJsonDocument RemoteControl::cmdReadSpill(const QJsonObject &req) {
     const QString handle = req.value(QStringLiteral("handle")).toString();
     static const QRegularExpression handleRe(QStringLiteral("^[0-9a-f]{64}$"));
     if (!handleRe.match(handle).hasMatch()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral(
-            "read_spill: \"handle\" must be a 64-char lowercase sha256");
-        o["code"]  = QStringLiteral("bad_args");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_args"), QStringLiteral(
+            "read_spill: \"handle\" must be a 64-char lowercase sha256"));
     }
     // ANTS-3545 — row mode: a numeric row_offset/row_count routes to
     // readSpillRows (row-paged), which owns the negative-arg / not_found /
@@ -3303,9 +3250,7 @@ QJsonDocument RemoteControl::cmdReadSpill(const QJsonObject &req) {
         const qint64 rowCount  = rcV.isDouble() ? asI64(rcV) : 0;
         const mcp::SpillRows r = mcp::readSpillRows(handle, rowOffset, rowCount);
         if (!r.ok) {
-            QJsonObject o;
-            o["ok"]   = false;
-            o["code"] = r.code;
+            QJsonObject o = mcp::refusal(r.code, QString());   // each branch sets `error`
             if (r.code == QStringLiteral("not_found")) {
                 o["error"] = QStringLiteral(
                     "read_spill: handle not found (never spilled, or evicted — "
@@ -3361,23 +3306,17 @@ QJsonDocument RemoteControl::cmdReadSpill(const QJsonObject &req) {
     const qint64 offset   = offV.isDouble() ? asI64(offV) : 0;
     const qint64 maxBytes = mbV.isDouble()  ? asI64(mbV)  : 0;
     if (offset < 0 || (mbV.isDouble() && maxBytes < 0)) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("read_spill: \"offset\"/\"max_bytes\" must be >= 0");
-        o["code"]  = QStringLiteral("bad_args");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("read_spill: \"offset\"/\"max_bytes\" must be >= 0"));
     }
 
     const mcp::SpillSlice s = mcp::readSpill(handle, offset, maxBytes);
     if (!s.ok) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = (s.code == QStringLiteral("not_found"))
-            ? QStringLiteral("read_spill: handle not found (never spilled, or "
-                             "evicted — re-issue the original call)")
-            : QStringLiteral("read_spill: %1").arg(s.code);
-        o["code"]  = s.code;
-        return QJsonDocument(o);
+        return rlErr(s.code,
+            (s.code == QStringLiteral("not_found"))
+                ? QStringLiteral("read_spill: handle not found (never spilled, or "
+                                 "evicted — re-issue the original call)")
+                : QStringLiteral("read_spill: %1").arg(s.code));
     }
     QJsonObject o;
     o["ok"]          = true;
@@ -3396,11 +3335,8 @@ QJsonDocument RemoteControl::cmdReadSpill(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     const QJsonValue editsV = req.value(QStringLiteral("edits"));
     if (!editsV.isArray() || editsV.toArray().isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("apply_edits: \"edits\" must be a non-empty array");
-        o["code"]  = QStringLiteral("bad_args");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("apply_edits: \"edits\" must be a non-empty array"));
     }
     const QJsonArray edits = editsV.toArray();
     // ANTS-5414 — cap the batch, as file_outline caps `paths`.
@@ -3437,11 +3373,8 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         !sentinelRoot.isEmpty() ? sentinelRoot
                                 : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("apply_edits: no focused project");
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral("apply_edits: no focused project"));
     }
 
     // Pass 1 — validate args + paths (fail-closed on escape) before writing.
@@ -3458,11 +3391,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     QVector<E> es;
     es.reserve(edits.size());
     auto argErr = [](const QString &msg) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = msg;
-        o["code"]  = QStringLiteral("bad_args");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_args"), msg);
     };
     for (int i = 0; i < edits.size(); ++i) {
         const QJsonObject e = edits.at(i).toObject();
@@ -3587,18 +3516,22 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     int editsApplied = 0, editsSkipped = 0, filesWritten = 0;
     QVector<int> perEdit(edits.size(), -1);   // ANTS-4838 — each edit's count
     QJsonArray wrappedIdx;   // ANTS-4723 — edit indices matched by the wrapped rule
-    auto addSkip = [&](int index, const QString &path, const QString &reason) {
+    // The fields every skipped[] row carries; addSkip, addSkipNearMiss and the
+    // count_mismatch row add theirs to it.
+    auto skipRow = [](int index, const QString &path, const QString &reason) {
         QJsonObject s; s["index"] = index; s["path"] = path; s["reason"] = reason;
-        skipped.append(s); ++editsSkipped;
+        return s;
+    };
+    auto addSkip = [&](int index, const QString &path, const QString &reason) {
+        skipped.append(skipRow(index, path, reason)); ++editsSkipped;
     };
     // ANTS-4418 — addSkip plus the optional near-miss annotation. A separate
-    // lambda rather than a widened addSkip: the other four call sites
-    // (not_found for an absent file, too_large, open failure, commit failure)
-    // have no EditOutcome to carry and must stay byte-identical.
+    // lambda rather than a widened addSkip: addSkip's other call sites have no
+    // EditOutcome to carry and must stay byte-identical.
     auto addSkipNearMiss = [&](int index, const QString &path,
                                const QString &reason,
                                const ApplyEdits::EditOutcome &oc) {
-        QJsonObject s; s["index"] = index; s["path"] = path; s["reason"] = reason;
+        QJsonObject s = skipRow(index, path, reason);
         if (oc.nearMissLine > 0) {
             QJsonObject cand;
             cand["line"] = oc.nearMissLine;
@@ -3826,9 +3759,8 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
             // `working`, so a mismatch leaves the file as earlier edits left it.
             if (oc.applied && es[k].expectCount >= 0
                 && oc.replacements != es[k].expectCount) {
-                QJsonObject s;
-                s["index"] = es[k].index; s["path"] = rawPath;
-                s["reason"] = QStringLiteral("count_mismatch");
+                QJsonObject s = skipRow(es[k].index, rawPath,
+                                        QStringLiteral("count_mismatch"));
                 s["match_count"] = oc.replacements;
                 s["expect_count"] = es[k].expectCount;
                 skipped.append(s); ++editsSkipped;
@@ -3881,14 +3813,12 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
             int wouldApply = 0;
             for (const PendingWrite &w : std::as_const(pending))
                 wouldApply += w.appliedIdx.size();
-            QJsonObject o;
-            o["ok"]    = false;
-            o["code"]  = QStringLiteral("all_or_nothing_refused");
-            o["error"] = QStringLiteral(
-                "apply_edits: %1 of %2 edits would be skipped, so all_or_nothing "
-                "wrote no file. skipped[] names each miss and its candidates; "
-                "fix them and re-send the whole batch.")
-                    .arg(editsSkipped).arg(edits.size());
+            QJsonObject o = mcp::refusal(QStringLiteral("all_or_nothing_refused"),
+                QStringLiteral(
+                    "apply_edits: %1 of %2 edits would be skipped, so all_or_nothing "
+                    "wrote no file. skipped[] names each miss and its candidates; "
+                    "fix them and re-send the whole batch.")
+                        .arg(editsSkipped).arg(edits.size()));
             o["skipped"]           = skipped;
             o["edits_total"]       = edits.size();
             o["edits_skipped"]     = editsSkipped;
@@ -4503,11 +4433,8 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
         !sentinelRoot.isEmpty() ? sentinelRoot
                                 : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("codebase_index: no focused project");
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral("codebase_index: no focused project"));
     }
 
     CodebaseIndex::QueryParams params;
@@ -4646,17 +4573,17 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     // assembler as rg writes it, so neither the stream nor every candidate
     // site is held.
     CoChangeFamily::Assembler assembler(stems, opts);
-    // ANTS-5096 — cited_by's parse budget: equal to the scan's, checked every
-    // 2048 events. Past it the rest of the stream is not parsed and the answer
-    // is reported partial, as a hard kill is.
+    // ANTS-5096 — a parse budget of twice the default scan budget, on its own
+    // clock started here. Past it the rest of the stream is not parsed and the
+    // answer is reported partial, as a hard kill is.
     QElapsedTimer parseClock;
     parseClock.start();
     int parsedEvents = 0;
     bool parseOverBudget = false;
     const auto onLine = [&](const QByteArray &evBytes) {
         if (evBytes.isEmpty() || parseOverBudget) return;
-        if (++parsedEvents % 2048 == 0 &&
-            parseClock.elapsed() > 2LL * kWorkspaceSearchHardKillMs) {
+        if (rcParseBudgetSpent(parsedEvents, parseClock,
+                               2LL * kWorkspaceSearchHardKillMs)) {
             parseOverBudget = true;
             return;
         }
@@ -4804,22 +4731,16 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("error")] = QStringLiteral(
-            "build_target_for: no focused project");
-        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral(
+                "build_target_for: no focused project"));
     }
 
     const QString pathRaw = req.value(QStringLiteral("path")).toString();
     if (pathRaw.isEmpty()) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("error")] = QStringLiteral(
-            "build_target_for: `path` is required");
-        o[QStringLiteral("code")]  = QStringLiteral("missing_field");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral(
+                "build_target_for: `path` is required"));
     }
     const auto pathCheck = PathValidation::validatePath(
         pathRaw, rootCanonical, QStringLiteral("build_target_for"),
@@ -4848,12 +4769,9 @@ QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
     QFile cf(cmakeCheck.resolved.isEmpty() ? root.filePath(cmakeRel)
                                            : cmakeCheck.resolved);
     if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("error")] = QStringLiteral(
-            "build_target_for: cannot read %1").arg(cmakeRel);
-        o[QStringLiteral("code")]  = QStringLiteral("not_found");
-        return QJsonDocument(o);
+        return rlErr(QStringLiteral("not_found"),
+            QStringLiteral(
+                "build_target_for: cannot read %1").arg(cmakeRel));
     }
     const QList<BuildTargets::Target> all =
         BuildTargets::parse(QString::fromUtf8(cf.readAll()));
@@ -4970,11 +4888,9 @@ QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
     if (topic.isEmpty())
         topic = req.value(QStringLiteral("symbol")).toString().trimmed();
     if (topic.isEmpty()) {
-        out[QStringLiteral("ok")]    = false;
-        out[QStringLiteral("error")] = QStringLiteral(
-            "find_sources: missing or empty \"topic\" (alias: \"symbol\")");
-        out[QStringLiteral("code")]  = QStringLiteral("bad_args");
-        return QJsonDocument(out);
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral(
+                "find_sources: missing or empty \"topic\" (alias: \"symbol\")"));
     }
 
     // Project root from caller_cwd (Required contract — dispatcher
@@ -4985,11 +4901,9 @@ QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
         req.value(QStringLiteral("caller_cwd")).toString();
     const QString root = QFileInfo(callerCwd).canonicalFilePath();
     if (root.isEmpty() || !QFileInfo(root).isDir()) {
-        out[QStringLiteral("ok")]    = false;
-        out[QStringLiteral("error")] = QStringLiteral(
-            "find_sources: caller_cwd does not canonicalise to a directory");
-        out[QStringLiteral("code")]  = QStringLiteral("bad_path");
-        return QJsonDocument(out);
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral(
+                "find_sources: caller_cwd does not canonicalise to a directory"));
     }
 
     FindSources::Options opts;

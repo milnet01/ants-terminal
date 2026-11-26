@@ -938,23 +938,20 @@ TEST(Ants1625, PickBasisWiredInHandler) {
 TEST(Ants1625, NarrowSuffixLiteralsConsistent) {
     expect_reset();
     // INV-8 — narrow-suffix set mirrors ANTS-1576's classifyAuditScope:
-    // both helpers in remotecontrol.cpp must agree on `-postfix`,
-    // `-single`, `-narrow`. Source-grep tripwire prevents drift.
+    // both helpers agree on `-postfix`, `-single`, `-narrow` because both
+    // ask hasNarrowReportSuffix, which holds the one list (ANTS-6605).
     const std::string rcc = ants_test::slurpRemoteControl();
-    auto countOf = [&](const char *needle) {
-        size_t n = 0, pos = 0;
-        while ((pos = rcc.find(needle, pos)) != std::string::npos) {
-            ++n; pos += 1;
-        }
-        return n;
-    };
-    expect(countOf("\"-postfix\"") >= 2, "INV-8",
-           "-postfix literal must appear in both classifyAuditScope and "
-           "pickForeignReport");
-    expect(countOf("\"-single\"") >= 2, "INV-8",
-           "-single literal must appear in both helpers");
-    expect(countOf("\"-narrow\"") >= 2, "INV-8",
-           "-narrow literal must appear in both helpers");
+    const std::string list = ants_test::slurpFunctionBody(
+        rcc, "static bool hasNarrowReportSuffix(");
+    for (const char *suffix : {"\"-postfix\"", "\"-single\"", "\"-narrow\""})
+        expect(list.find(suffix) != std::string::npos, "INV-8",
+               (std::string("hasNarrowReportSuffix must list ") + suffix).c_str());
+    for (const char *sig : {"static ScopeClassification classifyAuditScope(",
+                            "static ForeignPick pickForeignReport("}) {
+        const std::string body = ants_test::slurpFunctionBody(rcc, sig);
+        expect(body.find("hasNarrowReportSuffix(") != std::string::npos, "INV-8",
+               (std::string(sig) + " must ask hasNarrowReportSuffix").c_str());
+    }
     EXPECT_EQ(0, expect_failures());
 }
 
