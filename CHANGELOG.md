@@ -98,6 +98,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Bash and fish complete a folder for `--import-roadmap`'s project root, and the Debian and Arch recipes test as the openSUSE one does** (ANTS-6599)
+  The Debian and Arch test steps now run without a display, in a UTF-8
+  locale, and skip the timing-sensitive perf tests. The Flathub manifest
+  generator reads the version from `project()`.
+
 - **`ants-mcpd` shuts down cleanly after a call** (ANTS-6939)
   It stops its worker threads before releasing what they use, so a
   call that has just answered can no longer touch freed memory as the

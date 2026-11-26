@@ -98003,7 +98003,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: doc-engines.
 
-- 📋 [ANTS-6599] **Fold the duplicated logic the 2026-11-06 reviews found in hooks-packaging.**
+- ✅ [ANTS-6599] **Fold the duplicated logic the 2026-11-06 reviews found in hooks-packaging.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1272 `packaging/flatpak/make-flathub-manifest.sh:44` (Medium)
   - row 1274 `hooks/ants-inbox-notice.sh:41` (Medium)
@@ -98012,6 +98012,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-19, ANTS-6156 (f9cbcfb7) fixed row 1274: the inbox hook
   uses ants_validate_session_id, with a red test. The packaging rows
   remain.
+  All rows closed 2026-11-26. 1272 37431adb (anchored project() VERSION;
+  all four readers now agree); 1274 by ANTS-6156 f9cbcfb7; 1275 300c1ba0
+  (settings ported; the Debian and Arch recipes are built by no target
+  here, so they ran nowhere); 1293 be4ee347.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
