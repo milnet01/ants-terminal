@@ -195,12 +195,16 @@ int main(int argc, char **argv) {
         config.claudeMcpProjectQueryTimeoutMs(),
         config.claudeMcpProjectQueryResultCapBytes()};
 
+    // ANTS-6939 — rc before pipeline, so it is destroyed after it: pipeline's
+    // workers run verb jobs and the idle hook that call into rc, and
+    // ~ClaudeIntegration joins them. rc's destructor never calls pipeline.
+    ants::ServerCwdRootProvider roots;
+    RemoteControl rc(nullptr, nullptr, &roots);
+
     ClaudeIntegration pipeline;
     pipeline.setMcpEnabled(config.claudeMcpEnabled());
     pipeline.setServerName(QStringLiteral("ants-mcpd"));
 
-    ants::ServerCwdRootProvider roots;
-    RemoteControl rc(nullptr, nullptr, &roots);
     // ANTS-1337 — verify_changes is served here, so it needs the trust gate
     // the terminal wires too. Without a client, VerifyEngine honours a repo's
     // .ants/verify.json unconditionally. There is no window to prompt from,
