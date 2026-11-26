@@ -25,6 +25,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **workspace_search, cited_by, co_change_family and the state verbs share one parse-budget check, one refusal builder and one suffix list.** (ANTS-6605)
+
+- **The roadmap transport reads bold ids, em-dash headlines and bullet bodies through one parser each.** (ANTS-6606)
+
 - **roadmap_log and roadmap_query share one body write, one file write, one cache fill and one reply per op.** (ANTS-6604)
 
 - **roadmap_log's batch, section, release and repair ops share one refusal builder, one roadmap lookup and one reply per op.** (ANTS-6603)

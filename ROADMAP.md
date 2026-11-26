@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6954 -->
+<!-- ants-roadmap-id-high-water: ANTS=6958 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98123,7 +98123,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6605] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-state-workspace.**
+- ✅ [ANTS-6605] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-state-workspace.**
   11 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 884 `src/remotecontrol_workspace.cpp:699` (Medium)
   - row 897 `src/remotecontrol_workspace.cpp:252` (Low)
@@ -98136,12 +98136,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 905 `src/remotecontrol_state.cpp:3804-3807` (Low)
   - row 906 `src/remotecontrol_state.cpp:3152-3156` (Low)
   - row 907 `src/remotecontrol_state.cpp:333` (Low)
+  Shipped: 884, 897, 898 (part), 899, 900, 902, 907 folded; 904, 905,
+  906 already fixed. 903 → ANTS-6955; 902's case drift → ANTS-6956;
+  884's budget → ANTS-6957; 898's rest → ANTS-6958.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6606] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-transport.**
+- ✅ [ANTS-6606] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-transport.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 792 `src/remotecontrol.cpp:712` (High)
   - row 795 `src/remotecontrol.cpp:1891` (Medium)
@@ -98151,6 +98154,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   ANTS-6649 row 157. rlLeafDirPrefix, both roadmap_log flip paths and
   the migration loader now call RoadmapParse::leafIdPrefix(), which
   returns ROOT where the loader used to return an empty prefix.
+  Shipped: 795, 796 folded; 792, 1378 were already fixed on 2026-11-10.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -115383,6 +115387,43 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6604).
   Lanes: mcp-roadmap-query-log, mcp-roadmap-batch.
+
+- 📋 [ANTS-6955] **invariant_check skips README.md by exact case; task_priors skips it case-insensitively.**
+  src/remotecontrol_state.cpp, invariant_check's scanOneDir. The comment
+  says it treats README as task_priors does, so the case-insensitive
+  rule looks intended. Align, then fold (review row 903).
+  **Layman:** Two tools disagree on whether readme.md counts as a README.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6605).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6956] **last_audit_summary's report picker matches the narrow suffixes ignoring case; the scope classifier matches them by case.**
+  src/remotecontrol_state.cpp: pickForeignReport passes n.toLower() to
+  hasNarrowReportSuffix, classifyAuditScope passes base as it is (review
+  row 902). Pick one rule.
+  **Layman:** A report named -NARROW can be treated as narrow by one step and broad by the next.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6605).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6957] **co_change_family's parse budget is a fixed 10 s on a clock started just before rg, so a raised timeout_sec does not raise it.**
+  src/remotecontrol_workspace.cpp cmdCoChangeFamily uses
+  2 * kWorkspaceSearchHardKillMs on parseClock; workspace_search and
+  cited_by use the caller's budget on the verb's own clock (review row
+  884).
+  **Layman:** Giving one search tool more time does not give it more time to read its results.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6605).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6958] **workspace_search's hidden-folder hint tests for zero results differently at each of its four sites.**
+  src/remotecontrol_workspace.cpp, the rcStampHiddenGlobSkipped callers.
+  Decide whether a page offset past the end counts as zero results;
+  then the stamp can move into echoEffectiveArgs (review row 898).
+  **Layman:** A hint about skipped hidden folders appears on some empty searches and not others.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6605).
+  Lanes: mcp-state-workspace.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
