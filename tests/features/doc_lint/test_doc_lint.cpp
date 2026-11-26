@@ -168,6 +168,34 @@ TEST(DocLint, Inv3OkCitationIsNeverAFinding) {
     EXPECT_EQ(1, countKind(r, kCitations, QStringLiteral("missing_file"))) << render(r);
 }
 
+// INV-3 — a citation no edit here can clear is never a finding: one into another
+// repository (`foreign_path`) or one on a loop-log row. doc_citations'
+// only:"stale" drops both through the same DocCitations::neverClearable; the
+// `missing_file` row keeps the test from passing on an adapter that drops all.
+TEST(DocLint, Inv3UnclearableCitationIsNeverAFinding) {
+    Fixture fx;
+    fx.write(QStringLiteral("src/a.cpp"), "a\nb\nc\n");
+    const QString doc = QStringLiteral("docs/d.md");
+    fx.write(doc,
+             "# D\n"
+             "\n"
+             "quoted from elsewhere `tests/api/test_fp09_fixes.py:362`\n"
+             "\n"
+             "| Loop | Date | Outcome |\n"
+             "|---|---|---|\n"
+             "| 2 | 2026-07-26 | src/a.cpp:99 |\n"
+             "\n"
+             "gone `src/gone.cpp:1`\n");
+
+    DocLint::Options o = baseOpts(fx);
+    o.checks = {kCitations};
+    o.citations.basenameIndex.insert(QStringLiteral("a.cpp"), {QStringLiteral("src/a.cpp")});
+    const DocLint::Result r = DocLint::run({doc}, o);
+
+    EXPECT_EQ(1, countVerb(r, kCitations)) << render(r);
+    EXPECT_EQ(1, countKind(r, kCitations, QStringLiteral("missing_file"))) << render(r);
+}
+
 // INV-4 — unparsed[] entries never become findings, and are not lost either.
 // Both halves: without the first the verb re-imports the drowning problem
 // ANTS-3659 was written to fix, and without the second an adapter that discards
@@ -322,6 +350,8 @@ TEST(DocLint, Inv10CheckerFailureIsContained) {
     QByteArray longDoc = "# Bad\n\ncite `src/absent.cpp:1` here\n[dead](nowhere.md)\n";
     for (int i = 0; i < 40; ++i) longDoc += "filler line\n";
     fx.write(bad, longDoc);
+    // A real src/ makes each cited file ours and missing, not foreign_path.
+    fx.write(QStringLiteral("src/present.cpp"), "x\n");
     fx.write(ok1, "# One\n\ncite `src/gone1.cpp:1` here\n");
     fx.write(ok2, "# Two\n\ncite `src/gone2.cpp:1` here\n");
 
@@ -439,6 +469,8 @@ TEST(DocLint, Inv20CitationFilesUnderItsDocument) {
     const QString doc = QStringLiteral("docs/a.md");
     const QString target = QStringLiteral("src/gone.cpp");
     fx.write(doc, "# A\n\nline two\n\nsee `src/gone.cpp:400` for the rest\n");
+    // A real src/ makes the cited file ours and missing, not foreign_path.
+    fx.write(QStringLiteral("src/present.cpp"), "x\n");
 
     DocLint::Options o = baseOpts(fx);
     o.checks = {kCitations};

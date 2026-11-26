@@ -1469,6 +1469,11 @@ static void dcPathTokenPass(QJsonObject &out, const QString &rootCanonical,
     if (dropped) out.insert(QStringLiteral("path_tokens_truncated"), true);
 }
 
+bool neverClearable(const QJsonObject &citation) {
+    return citation.value(QStringLiteral("status")).toString() == QLatin1String("foreign_path")
+        || citation.value(QStringLiteral("loop_log_row")).toBool();
+}
+
 QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                   const Options &opts) {
     QStringList lines;
@@ -1899,23 +1904,15 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         // ANTS-3654 widens `stale` from "did not resolve" to "did not resolve, OR
         // resolved and no longer says what the doc claims". An ok citation with
         // no anchor was never judged, so it is not stale — it is unchecked.
-        // ANTS-4085 — `foreign_path` is NOT stale. It is a citation into
-        // another repository (a quotation), so there is nothing in this
-        // project that could go stale and nothing here that can be fixed:
-        // leaving it in the stale set makes a frequently-linted document
-        // permanently non-empty, and a checker whose output is never empty
-        // stops being read. It is still emitted under `only:"all"`, and still
-        // counted, because a caller may want to know a document cites
-        // elsewhere.
-        // ANTS-4918 — nor is a citation on a loop-log row, whatever its status:
-        // the row is never edited, so the finding could never be cleared.
-        const QString st = e.value(QStringLiteral("status")).toString();
+        // A citation no edit here can clear is never stale: a checker whose
+        // output is never empty stops being read. It is still emitted under
+        // `only:"all"`, and still counted, because a caller may want to know a
+        // document cites elsewhere.
         const bool stale =
-            ((st != QLatin1String("ok")
-              && st != QLatin1String("foreign_path"))
+            (e.value(QStringLiteral("status")).toString() != QLatin1String("ok")
              || (e.contains(QStringLiteral("anchor_found"))
                  && !e.value(QStringLiteral("anchor_found")).toBool()))
-            && !e.value(QStringLiteral("loop_log_row")).toBool();
+            && !neverClearable(e);
         if (opts.only == Only::All || stale) filtered.append(e);
     }
 

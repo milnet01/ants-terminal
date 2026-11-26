@@ -237,4 +237,10 @@ struct ScanResult {
 [[nodiscard]] QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                   const Options &opts = {});
 
+// One citation entry from check() that no edit to this project can clear: a
+// `foreign_path` citation into another repository (ANTS-4085), or any citation
+// on a loop-log row, which is never edited (ANTS-4918). Neither is stale, and
+// neither is a doc_lint finding.
+[[nodiscard]] bool neverClearable(const QJsonObject &citation);
+
 }  // namespace DocCitations

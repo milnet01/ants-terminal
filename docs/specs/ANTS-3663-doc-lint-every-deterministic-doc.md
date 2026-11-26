@@ -857,6 +857,10 @@ A run with no staged documents returns `ok:true` with an empty
   anchor-missing-but-`ok` one, and a `missing_file` one → exactly one finding.
   The middle row is the one that fails against an adapter treating the advisory
   flag as a status.
+  Nor is a citation no edit to this project can clear — a `foreign_path` one,
+  or any on a loop-log row — the two `only:"stale"` also drops
+  (`DocCitations::neverClearable`). *Test:* one of each beside a
+  `missing_file` one → exactly one finding (ANTS-6598).
 - **INV-4** — `unparsed[]` entries never become findings, and are not lost
   either. *Test:* a doc whose only citation-shaped token is `6.2:1` → zero
   findings, **and** `check_stats["doc_citations"]["unparsed_total"] == 1`. Both
@@ -1274,7 +1278,7 @@ directory.
 |---|---|---|
 | INV-1 | `DocLint.Inv1SharedReadForNativeCheckers` | 1 |
 | INV-2 | `DocLintVerb.Inv2CheckFilterAndUnknownName` | 1 |
-| INV-3 | `DocLint.Inv3OkCitationIsNeverAFinding` | 1 |
+| INV-3 | `DocLint.Inv3OkCitationIsNeverAFinding`, `DocLint.Inv3UnclearableCitationIsNeverAFinding` | 1 |
 | INV-4 | `DocLint.Inv4UnparsedIsNeverAFinding` | 1 |
 | INV-5 | `DocLintFix.Inv5OnlyAutoFixableAndTheTwoCounts` | 2 |
 | INV-6 | `DocLintFix.Inv6ReportOnlyByDefault` | 2 |
@@ -1321,6 +1325,7 @@ confirming the fixture still fails:
 | Row | Mutation that must redden it |
 |---|---|
 | INV-3 | promote `anchor_found:false` to a finding |
+| INV-3 (unclearable half) | adapt a `foreign_path` or loop-log-row citation into a finding |
 | INV-4 | adapt `unparsed[]` entries into findings |
 | INV-5 (restraint half) | gate the fixer on `kind == "toc_gap"` instead of on `autoFixable` |
 | INV-6 | make the write path ignore the `fix` flag |

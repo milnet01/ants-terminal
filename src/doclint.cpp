@@ -593,7 +593,8 @@ Result run(const QStringList &relDocs, const Options &opts) {
                 // An ok citation is never a finding, INCLUDING one whose
                 // anchor_found is false: that flag is advisory — it says a
                 // needle moved, not that the citation is wrong.
-                if (status.isEmpty() || status == QStringLiteral("ok")) continue;
+                if (status.isEmpty() || status == QStringLiteral("ok")
+                    || DocCitations::neverClearable(e)) continue;
                 add(status, e.value(QStringLiteral("doc_line")).toInt(),
                     citationMessage(e, status));
             }

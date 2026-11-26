@@ -26,6 +26,7 @@ make these rows pass or fail for reasons unrelated to `doc_lint`.
 |---|---|---|
 | `Inv1SharedReadForNativeCheckers` | INV-1 | One open per document serves all three native checkers. Every document sits under `specs_dir` so `spec_lint` is eligible for each; otherwise the counterfactual changes and the number stops discriminating. |
 | `Inv3OkCitationIsNeverAFinding` | INV-3 | An `ok` citation is never a finding, including one whose anchor moved. |
+| `Inv3UnclearableCitationIsNeverAFinding` | INV-3 | A `foreign_path` citation and one on a loop-log row are never findings; a `missing_file` beside them still is. |
 | `Inv4UnparsedIsNeverAFinding` | INV-4 | `unparsed[]` entries never become findings, and are not lost either. |
 | `Inv7TotalDocumentOrder` | INV-7 | Two runs agree key for key, the tied pair is in ascending `emissionIndex`, and every adjacent pair is ordered by the stated keys. |
 | `Inv9WholeDocumentAlarmsSurvive` | INV-9 | The two unterminated-region alarms become findings carrying the opener's line; `examples_suppressed` becomes a statistic and never a finding. |
@@ -62,6 +63,7 @@ therefore re-proven by deleting the rule under test.
 | Mutation | Turned red |
 |---|---|
 | Promote an `ok` citation with `anchor_found:false` to a finding | `Inv3OkCitationIsNeverAFinding` |
+| Drop `DocCitations::neverClearable` from the adapter's skip test | `Inv3UnclearableCitationIsNeverAFinding` |
 | Adapt `unparsed[]` entries into findings | `Inv4UnparsedIsNeverAFinding` |
 | Emit `examples_suppressed` as a finding | `Inv9WholeDocumentAlarmsSurvive` |
 | Route the citation-set incompleteness to `check_stats` instead of `check_errors[]` | `Inv9IncompletenessRoutesToCheckErrors`, `Inv10CheckerFailureIsContained` |
