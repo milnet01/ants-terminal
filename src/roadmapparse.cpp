@@ -2,7 +2,8 @@
 // The bodies below began as a move from src/roadmapdialog.cpp; later ANTS
 // changes have edited them since. idTokenPattern() and detectRoadmapFormat()
 // sit outside the anonymous namespace because the header declares them
-// (ANTS-1784 shares the first with roadmapdialog.cpp's CHANGELOG scanner).
+// (ANTS-1784 shares the first with roadmapdialog.cpp's CHANGELOG scanner), as
+// do extractBoldId() and splitOnEmDash(), which the roadmap_log write path calls.
 
 #include "roadmapparse.h"
 
@@ -97,6 +98,8 @@ QString base36Lower(quint64 v, int n = 10) {
     return out;
 }
 
+}  // namespace
+
 // ANTS-1438 — widened to match multi-token bold prefixes
 // (`**FW W5 (cont.)**`, `**Audit/FW X2**`, `**Terrain System**`)
 // in addition to the original single-token ants shape (`**Sh4.**`,
@@ -122,6 +125,7 @@ bool extractBoldId(const QString &lineHead, QString *id) {
     return true;
 }
 
+namespace {
 
 // ANTS-1811 — truncate to maxChars + "…" without splitting a UTF-16 surrogate
 // pair. A headline whose maxChars boundary lands on the high half of an emoji
@@ -185,6 +189,8 @@ static int headLineEnd(const QString &body) {
     return nl < 0 ? int(body.size()) : nl;
 }
 
+}  // namespace
+
 // ANTS-1438 — split `head` on the first em-dash separator (` — `,
 // preferred; ` -- ` accepted as the fallback for projects that
 // haven't typographic-em-dashed). Returns the trimmed
@@ -210,6 +216,8 @@ QString splitOnEmDash(const QString &head) {
     if (idx < 0) return QString();
     return head.mid(idx + sepLen).trimmed();
 }
+
+namespace {
 
 // The caret-anchor grammar (`^vest-0042` at line end, with the whitespace
 // around it), stated once. Group 1 is the anchor body.

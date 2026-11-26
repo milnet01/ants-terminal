@@ -286,6 +286,12 @@ QString idPrefixPattern(QLatin1String tail = QLatin1String("*"));
 quint64 fnv1a64(const QString &normalised);
 QString normaliseHeadline(const QString &raw);
 
+// The bold span leading `lineHead`, its one trailing `.` chopped and trimmed
+// (`**Sh4.**` gives "Sh4"); false when there is none.
+bool extractBoldId(const QString &lineHead, QString *id);
+// The trimmed text after `head`'s first ` — ` (or ` -- `); empty when neither.
+QString splitOnEmDash(const QString &head);
+
 // ANTS-5087 — the fold the roadmap store's id_fold column holds: SQLite's
 // lower(), which on ASCII changes only A-Z. QString::toLower() also folds
 // non-ASCII letters, so a key built with it misses the row the column holds.

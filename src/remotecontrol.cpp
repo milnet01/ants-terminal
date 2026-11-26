@@ -1580,12 +1580,25 @@ void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after) {
     out[QStringLiteral("file_bytes")]    = after;
 }
 
+// Where the body starting at `from` ends: the first non-blank line that starts
+// in column 0 (the next bullet / heading / `---`), or EOF. Blank lines inside
+// the body are spanned, so a multi-paragraph body or a blank-line-separated
+// nested list stays one body.
+static int rcBodyEnd(const QStringList &lines, int from) {
+    int end = from;
+    while (end < lines.size()) {
+        const QString &ln = lines.at(end);
+        if (!ln.isEmpty() && !ln.at(0).isSpace()) break;
+        ++end;
+    }
+    return end;
+}
+
 // ANTS-1717/1793 — append `note` as indented continuation line(s) at
 // the end of the body of the bullet whose headline sits at
 // `headlineLine`. Format-agnostic: the body of both ants-v1 and
-// GFM-task-list bullets is the run of indented continuation lines that
-// follows the headline, terminated by a blank line, a column-0 line
-// (next bullet / heading), or EOF. The note inherits the bullet's
+// GFM-task-list bullets is the indented continuation run rcBodyEnd()
+// bounds. The note inherits the bullet's
 // existing continuation indent when it has one, else a 2-space hang
 // (matching op:"append"'s body treatment). Blank lines inside a
 // multi-line note stay blank (no trailing-space lint). Returns the
@@ -1599,27 +1612,18 @@ void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after) {
 int appendBodyNote(QStringList &lines, int headlineLine,
                    const QString &note, bool *alreadyPresent) {
     if (alreadyPresent) *alreadyPresent = false;
-    int insertAt = headlineLine + 1;
+    // ANTS-3696 — the note goes after the WHOLE body, not its first
+    // paragraph, so the `Kind:`/`Source:` trailer never sits below it.
+    int insertAt = rcBodyEnd(lines, headlineLine + 1);
+    // The indent of the first non-blank body line, if it has one.
     QString indent = QStringLiteral("  ");
-    bool sawBody = false;
-    // ANTS-3696 — the body is the bullet's WHOLE indented continuation run,
-    // blank lines included; it ends at the next column-0 line (next bullet /
-    // heading / `---`) or EOF. Breaking on the first blank line instead put
-    // the note after the body's FIRST paragraph, so a multi-paragraph bullet
-    // read as resolved and then went on arguing for itself, with the
-    // `Kind:`/`Source:` trailer stranded below the resolution. This is the
-    // span amendBodyExact() has walked since ANTS-3467 — the two now agree
-    // on where a bullet's body ends.
-    while (insertAt < lines.size()) {
-        const QString &ln = lines.at(insertAt);
-        if (!ln.isEmpty() && !ln.at(0).isSpace()) break;
-        if (!sawBody && !ln.trimmed().isEmpty()) {
-            int w = 0;
-            while (w < ln.size() && ln.at(w) == QLatin1Char(' ')) ++w;
-            if (w > 0) indent = ln.left(w);
-            sawBody = true;
-        }
-        ++insertAt;
+    for (int i = headlineLine + 1; i < insertAt; ++i) {
+        const QString &ln = lines.at(i);
+        if (ln.trimmed().isEmpty()) continue;
+        int w = 0;
+        while (w < ln.size() && ln.at(w) == QLatin1Char(' ')) ++w;
+        if (w > 0) indent = ln.left(w);
+        break;
     }
     // Back up over the blank line(s) separating this bullet from the next, so
     // the note lands against the last real body line rather than adrift in
@@ -1673,9 +1677,8 @@ int appendBodyNote(QStringList &lines, int headlineLine,
 
 // ANTS-3406 — replace the substring `oldText` with `newText` inside the
 // continuation body of the bullet whose headline sits at `headlineLine`.
-// The body span is the same contiguous indented run appendBodyNote()
-// targets (blank line / column-0 line / EOF terminated), so a match can
-// never leak into a sibling bullet or touch the headline. Requires
+// The body span is the run rcBodyEnd() bounds, as for appendBodyNote(), so a
+// match can never leak into a sibling bullet or touch the headline. Requires
 // exactly one occurrence across the span: returns the total count found;
 // only on a unique match (count == 1) is the replacement applied in place,
 // *matchedLine set to the 0-based line the match STARTS on, and *wrapped
@@ -1690,23 +1693,9 @@ int amendBodyExact(QStringList &lines, int headlineLine,
                    const QString &oldText, const QString &newText,
                    int *matchedLine, bool *wrapped) {
     if (wrapped) *wrapped = false;
-    // ANTS-3467 — the body block is the headline line's full indented
-    // continuation: every following line up to (not including) the next
-    // non-indented, non-empty line (the next top-level bullet / heading /
-    // `---`, all of which start at column 0). Blank lines INSIDE the block
-    // are spanned, not treated as terminators. Previously the walk also
-    // broke on the first blank line, which truncated the block before a
-    // blank-line-separated nested sub-list (a common ROADMAP "Scope:"
-    // shape) — so old_text on a nested sub-bullet refused
-    // body_match_not_found though it was present. Blank lines hold no
-    // oldText, so spanning them is safe; the non-indented break still
-    // protects sibling bullets.
-    int spanEnd = headlineLine + 1;
-    while (spanEnd < lines.size()) {
-        const QString &ln = lines.at(spanEnd);
-        if (!ln.isEmpty() && !ln.at(0).isSpace()) break;
-        ++spanEnd;
-    }
+    // ANTS-3467 — spanning blank lines reaches a blank-line-separated nested
+    // sub-list; blank lines hold no oldText, so that is safe.
+    const int spanEnd = rcBodyEnd(lines, headlineLine + 1);
     const int spanStart = headlineLine + 1;
     if (spanEnd <= spanStart) return 0;
 
@@ -1948,23 +1937,6 @@ QJsonArray rcComputePossibleDuplicates(
     return out;
 }
 
-static bool rcExtractBoldId(const QString &lineHead, QString *id) {
-    // ANTS-1937 — match RoadmapParse::extractBoldId's looser pattern
-    // to support composite IDs like "Ts20-DE1, Ts20-DE2". Captures any text
-    // up to 80 chars, then trims trailing period + whitespace (matching the
-    // read-path post-processing in roadmapparse.cpp).
-    static const QRegularExpression rx(QStringLiteral(
-        "^\\*\\*(.{1,80}?)\\*\\*"));
-    const auto m = rx.match(lineHead);
-    if (!m.hasMatch()) return false;
-    QString captured = m.captured(1);
-    if (captured.endsWith(QLatin1Char('.'))) captured.chop(1);
-    captured = captured.trimmed();
-    if (captured.isEmpty()) return false;
-    if (id) *id = std::move(captured);
-    return true;
-}
-
 static QString rcExtractCaretAnchor(const QString &line) {
     static const QRegularExpression rx(QStringLiteral(
         "\\^([a-z0-9_-]+)\\s*$"));
@@ -1981,18 +1953,12 @@ static QString rcExtractCaretAnchor(const QString &line) {
 // post-em-dash prose when a `**ID** — text` split exists, else the bold
 // span / plain head, in both cases with the `**` emphasis and any trailing
 // caret anchor removed. A caller copies THAT token, so the flip headline
-// locator must derive the same form. Mirrors roadmapparse.cpp's splitOnEmDash +
-// stripTrailingCaretAnchor.
+// locator must derive the same form, with the reader's splitOnEmDash +
+// stripTrailingCaretAnchor. `rawHead` is a walker's trimmed head, so a
+// separator always has text after it.
 QString rcGfmCanonicalHeadline(const QString &rawHead) {
-    QString s = rawHead;
-    static const QString kEmDash = QString::fromUtf8(" \xE2\x80\x94 ");  // " — "
-    int idx = s.indexOf(kEmDash);
-    int sepLen = kEmDash.size();
-    if (idx < 0) {
-        idx = s.indexOf(QStringLiteral(" -- "));
-        sepLen = 4;
-    }
-    if (idx >= 0) s = s.mid(idx + sepLen);  // post-em-dash prose
+    const QString tail = RoadmapParse::splitOnEmDash(rawHead);
+    QString s = tail.isEmpty() ? rawHead : tail;  // post-em-dash prose
     s.remove(QStringLiteral("**"));          // de-markup
     return RoadmapParse::stripTrailingCaretAnchor(s).trimmed();
 }
@@ -2081,11 +2047,8 @@ static void rcScopeFencesToBullets(const QStringList &lines, QVector<Bullet> &bu
     // — it starts with "- ", so it can never be the fence opener.
     QVector<bool> inBody(lines.size(), false);
     for (const Bullet &b : bullets) {
-        for (int i = b.firstLine + 1; i < lines.size(); ++i) {
-            const QString &ln = lines.at(i);
-            if (!ln.isEmpty() && !ln.at(0).isSpace()) break;
-            inBody[i] = true;
-        }
+        const int end = rcBodyEnd(lines, b.firstLine + 1);
+        for (int i = b.firstLine + 1; i < end; ++i) inBody[i] = true;
     }
     for (Bullet &b : bullets) {
         if (!b.insideFenced || b.fenceOpenLine < 0) continue;
@@ -2146,11 +2109,11 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
             if (tryStrip(st.glyph)) break;
 
         QString boldId;
-        if (rcExtractBoldId(head, &boldId)) {
+        if (RoadmapParse::extractBoldId(head, &boldId)) {
             b.boldId = boldId;
             // ANTS-3771 — the same resolution fillBulletRecord() performs, on
-            // the same input (rcExtractBoldId mirrors extractBoldId, trailing
-            // `.` chopped and trimmed). Capture group 1 when the pattern has
+            // the same input (extractBoldId's output, trailing `.` chopped and
+            // trimmed). Capture group 1 when the pattern has
             // one, else the whole match; an empty resolution is no match, so
             // an id is never emptied (§ 5).
             if (haveDecl) {
@@ -2325,7 +2288,7 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
         // locating these bullets by `headline` keeps working.
         if (b.id.isEmpty()) {
             QString boldCand;
-            if (rcExtractBoldId(head, &boldCand)) {
+            if (RoadmapParse::extractBoldId(head, &boldCand)) {
                 static const QRegularExpression rxIdShaped(
                     QStringLiteral("^[A-Za-z][A-Za-z0-9_.-]*$"));
                 if (rxIdShaped.match(boldCand).hasMatch()) b.id = boldCand;
