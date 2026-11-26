@@ -8,6 +8,7 @@
 
 #include "focusedtest.h"
 #include "markdownscan.h"
+#include "utf8cut.h"
 #include "pathvalidation.h"
 #include "projectsettings.h"
 #include "specparse.h"
@@ -156,11 +157,7 @@ struct LineIndex {
         const int s = starts.at(line - 1);
         const int e = line < starts.size() ? starts.at(line) - 1 : int(text.size());
         QByteArray t = text.mid(s, e - s).trimmed();
-        if (t.size() > kTextMax) {
-            t.truncate(kTextMax);
-            while (!t.isEmpty() && (uchar(t.back()) & 0xC0) == 0x80) t.chop(1);
-            if (!t.isEmpty() && (uchar(t.back()) & 0x80)) t.chop(1);
-        }
+        if (t.size() > kTextMax) t = Utf8Cut::prefix(t, kTextMax);
         return QString::fromUtf8(t);
     }
 };

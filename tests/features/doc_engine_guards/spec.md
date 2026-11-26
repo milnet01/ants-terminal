@@ -7,9 +7,9 @@
 `MarkdownScan::fenceMask`, the rule the checks that report TOC gaps use; no
 private fence scanner remains in the file.
 
-**INV-2 — docs_index checks its cache write.** The cache write in
-`src/docsindex.cpp` checks the write and `QSaveFile::commit()` and reports a
-failure.
+**INV-2 — docs_index checks its cache write.** `src/docsindex.cpp` writes
+its cache through `IndexCache::write` (`src/indexcache.h`), which checks the
+write and `QSaveFile::commit()` and reports a failure.
 
 ## Rationale
 

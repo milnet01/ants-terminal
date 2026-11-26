@@ -42,10 +42,14 @@ struct Result {
 Result collect(const QString &rootCanonical, const QJsonArray &paths,
                const Options &opts, const QString &verb);
 
+// The walking verbs' shared arguments: `paths`, `include_tests` and
+// `include_generated`, read from `args` and handed to collect().
+Result collectFromArgs(const QString &rootCanonical, const QJsonObject &args,
+                       const QString &verb);
+
 // ANTS-4120 — the generated-file predicate, by file name: Qt's moc_/ui_/qrc_
 // outputs, shader byte arrays, protobuf, flex/bison and `*_generated.<ext>`.
-// Moved here from indiereviewengine.cpp; auditdialog and findsources still
-// keep their own copies.
+// The one copy of the list; every caller uses it.
 bool isGeneratedSource(const QString &fileName);
 
 // True for a test file: a path component named tests, test, __tests__ or

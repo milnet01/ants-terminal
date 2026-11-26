@@ -2,8 +2,8 @@
 // no subprocess (mirrors codebaseindex.cpp). See docs/specs/ANTS-2139-docs-index-mcp-tool-project.md.
 
 #include "docsindex.h"
+#include "indexcache.h"
 
-#include "sessionmemoryengine.h"
 #include "projectsettings.h"   // ANTS-2160 — docs_dir override
 #include "markdownscan.h"      // ANTS-3604 — shared fence-aware scanner
 #include "specparse.h"         // ANTS-3786 — shared header-field extent rule
@@ -16,9 +16,7 @@
 #include <QJsonDocument>
 #include <QMap>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <QSet>
-#include <QStandardPaths>
 #include <algorithm>
 
 namespace DocsIndex {
@@ -647,10 +645,7 @@ Index fromJson(const QJsonObject &obj) {
 }
 
 QString cachePathFor(const QString &rootCanonical) {
-    const QString base = QStandardPaths::writableLocation(
-        QStandardPaths::GenericCacheLocation);
-    return base + QStringLiteral("/ants-terminal/docs-index/")
-         + SessionMemoryEngine::cwdHash(rootCanonical) + QStringLiteral(".json");
+    return IndexCache::pathFor(QStringLiteral("docs-index"), rootCanonical);
 }
 
 QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
@@ -667,19 +662,11 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
     // version mismatch / root mismatch — INV-14).
     bool haveValid = false;
     Index prev;
-    {
-        QFile f(cachePath);
-        if (f.open(QIODevice::ReadOnly)) {
-            QJsonParseError pe{};
-            const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
-            if (pe.error == QJsonParseError::NoError && doc.isObject()) {
-                Index loaded = fromJson(doc.object());
-                if (loaded.version == kIndexVersion
-                    && loaded.rootCanonical == rootCanonical) {
-                    prev = std::move(loaded);
-                    haveValid = true;
-                }
-            }
+    if (const QJsonObject cached = IndexCache::read(cachePath); !cached.isEmpty()) {
+        Index loaded = fromJson(cached);
+        if (loaded.version == kIndexVersion && loaded.rootCanonical == rootCanonical) {
+            prev = std::move(loaded);
+            haveValid = true;
         }
     }
 
@@ -704,17 +691,7 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
         needWrite = true;
     }
 
-    if (needWrite) {
-        QDir().mkpath(QFileInfo(cachePath).absolutePath());
-        QSaveFile sf(cachePath);
-        // ANTS-5099 — a failed write or commit was ignored, so the next call
-        // saw no cache and rebuilt with nothing said about why.
-        const QByteArray body = QJsonDocument(toJson(idx)).toJson(QJsonDocument::Compact);
-        if (!sf.open(QIODevice::WriteOnly) || sf.write(body) != body.size()
-            || !sf.commit())
-            qWarning("docs_index: cache write to %s failed: %s",
-                     qUtf8Printable(cachePath), qUtf8Printable(sf.errorString()));
-    }
+    if (needWrite) IndexCache::write(cachePath, toJson(idx), "docs_index");
 
     return query(idx, params, refreshed, cachePath, opts);
 }

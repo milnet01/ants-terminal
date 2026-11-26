@@ -269,13 +269,9 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     {
         const QByteArray utf8 = delta.toUtf8();
         if (utf8.size() > maxBytes) {
-            // ANTS-5098 — cut at the byte cap and back off over continuation
-            // bytes, so the head keeps every whole character that fits and
-            // the string is encoded once, not once per 64-character step.
-            int cut = maxBytes;
-            while (cut > 0 && (static_cast<unsigned char>(utf8.at(cut)) & 0xC0) == 0x80)
-                --cut;
-            delta = QString::fromUtf8(utf8.constData(), cut);
+            // ANTS-5098 — the head keeps every whole character that fits,
+            // and the string is encoded once.
+            delta = QString::fromUtf8(Utf8Cut::prefix(utf8, maxBytes));
             truncated = true;
         }
     }

@@ -30,6 +30,10 @@ TEST(DocEngineGuards, TocWriterUsesSharedFenceRule) {
 TEST(DocEngineGuards, DocsIndexChecksCacheCommit) {
     const QString s = source("docsindex.cpp");
     ASSERT_FALSE(s.isEmpty());
-    EXPECT_TRUE(s.contains(QStringLiteral("|| !sf.commit())")))
-        << "docs_index ignores QSaveFile::commit()'s result";
+    EXPECT_TRUE(s.contains(QStringLiteral("IndexCache::write(")))
+        << "docs_index must write its cache through IndexCache";
+    const QString cache = source("indexcache.h");
+    ASSERT_FALSE(cache.isEmpty());
+    EXPECT_TRUE(cache.contains(QStringLiteral("|| !sf.commit())")))
+        << "IndexCache::write ignores QSaveFile::commit()'s result";
 }

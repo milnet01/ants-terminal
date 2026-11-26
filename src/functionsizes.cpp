@@ -79,9 +79,10 @@ QList<Function> measure(const QString &absPath, const QStringList &lines,
         FileOutline::kMaxSymbolsCap);
     const QString language = outline.value(QStringLiteral("language")).toString();
     if (languageOut) *languageOut = language;
-    const bool python = language == QLatin1String("py");
+    const FileOutline::BodyEnd bodyEnd = FileOutline::bodyEndFor(language);
+    const bool python = bodyEnd == FileOutline::BodyEnd::Indent;
     // Ruby closes a body with `end`, which the brace scan cannot see.
-    const bool keywordDelimited = language == QLatin1String("ruby");
+    const bool keywordDelimited = bodyEnd == FileOutline::BodyEnd::Keyword;
     const QJsonArray symbols = outline.value(QStringLiteral("symbols")).toArray();
     // Every symbol's line, sorted once: the next-symbol lookup below was a
     // scan of the whole outline per function, quadratic in the file's symbols.
@@ -159,11 +160,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
             return e;
         }
     }
-    CodeWalk::Options walkOpts;
-    walkOpts.includeTests = args.value(QStringLiteral("include_tests")).toBool(false);
-    walkOpts.includeGenerated = args.value(QStringLiteral("include_generated")).toBool(false);
-    const CodeWalk::Result files = CodeWalk::collect(
-        rootCanonical, args.value(QStringLiteral("paths")).toArray(), walkOpts, verb);
+    const CodeWalk::Result files = CodeWalk::collectFromArgs(rootCanonical, args, verb);
     if (!files.refusal.isEmpty()) return files.refusal;
 
     struct Row {

@@ -51,9 +51,14 @@ TEST(IndexReadPagingGuards, AutoPageAlwaysAdvances) {
 
 // INV-3
 TEST(IndexReadPagingGuards, CodebaseIndexChecksCacheCommit) {
-    QFile f(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
-            + QStringLiteral("/../../../src/codebaseindex.cpp"));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text));
-    EXPECT_TRUE(QString::fromUtf8(f.readAll()).contains(QStringLiteral("|| !sf.commit())")))
-        << "codebase_index ignores QSaveFile::commit()'s result";
+    const auto src = [](const char *rel) {
+        QFile f(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
+                + QStringLiteral("/../../../src/") + QString::fromUtf8(rel));
+        return f.open(QIODevice::ReadOnly | QIODevice::Text)
+            ? QString::fromUtf8(f.readAll()) : QString();
+    };
+    EXPECT_TRUE(src("codebaseindex.cpp").contains(QStringLiteral("IndexCache::write(")))
+        << "codebase_index must write its cache through IndexCache";
+    EXPECT_TRUE(src("indexcache.h").contains(QStringLiteral("|| !sf.commit())")))
+        << "IndexCache::write ignores QSaveFile::commit()'s result";
 }

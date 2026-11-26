@@ -2,6 +2,7 @@
 
 #include "findsources.h"
 #include "codewalk.h"           // ANTS-4120 — the generated-file predicate
+#include "fileoutline.h"        // isCFamilyExt — the one C-family list
 #include "projectsettings.h"   // ANTS-3489 — source_roots / test_roots override
 
 #include <QDir>
@@ -97,25 +98,18 @@ QString classifyRole(const QString &relPath) {
         return QStringLiteral("test");
     }
     if (relPath.endsWith(QLatin1String(".h"))
-        || relPath.endsWith(QLatin1String(".hpp"))) {
+        || relPath.endsWith(QLatin1String(".hpp"))
+        || relPath.endsWith(QLatin1String(".hh"))
+        || relPath.endsWith(QLatin1String(".hxx"))) {
         return QStringLiteral("header");
     }
     return QStringLiteral("impl");
 }
 
-// Append `path` to `out` if it's a source file we want to scan
-// (.cpp/.cc/.cxx/.h/.hpp). Skips obvious generated artefacts.
+// Append `path` to `out` if it's a C-family source file (the extensions
+// FileOutline::isCFamilyExt names). Skips obvious generated artefacts.
 void maybeAddSource(QVector<QString> *out, const QString &relPath) {
-    static const QStringList kExts = {
-        QStringLiteral(".cpp"), QStringLiteral(".cc"),
-        QStringLiteral(".cxx"), QStringLiteral(".h"),
-        QStringLiteral(".hpp"),
-    };
-    bool ok = false;
-    for (const QString &ext : kExts) {
-        if (relPath.endsWith(ext)) { ok = true; break; }
-    }
-    if (!ok) return;
+    if (!FileOutline::isCFamilyExt(QFileInfo(relPath).suffix())) return;
     // INV-6 — skip generated files: anything under a /generated/ path, and
     // every file name CodeWalk::isGeneratedSource calls generated (ANTS-4120).
     const QString base = relPath.mid(relPath.lastIndexOf(QLatin1Char('/')) + 1);
@@ -162,10 +156,13 @@ QVector<QString> collectCandidates(const QString &rootCanonical) {
             const QString abs = it.next();
             QString rel = abs.mid(rootCanonical.size());
             if (rel.startsWith(QLatin1Char('/'))) rel.remove(0, 1);
-            // Skip files under any vendored / build / virtualenv dir.
+            // Skip files under any vendored / build / virtualenv dir. The
+            // file name is not a dir: src/buildinfo.cpp is kept, as
+            // codebaseindex.cpp::candidates keeps it.
             bool noisy = false;
-            for (const QString &comp : rel.split(QLatin1Char('/')))
-                if (ProjectSettings::isNoiseDir(comp)) { noisy = true; break; }
+            const QStringList parts = rel.split(QLatin1Char('/'));
+            for (int i = 0; i + 1 < parts.size() && !noisy; ++i)
+                noisy = ProjectSettings::isNoiseDir(parts.at(i));
             if (!noisy) maybeAddSource(&candidates, rel);
         }
     }

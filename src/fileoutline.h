@@ -16,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 
 namespace FileOutline {
 
@@ -98,6 +99,8 @@ Mode parseMode(const QString &s);
 // set ANTS-3558 (find_definition) and ANTS-3800 (this verb) already share,
 // rather than a fourth copy that can drift out of step with them.
 bool isGlslExt(const QString &ext);
+// The same set as a list, for the trace verb's extension table.
+const QStringList &glslExtensions();
 
 // True for an HTML extension (lowercase, no dot).
 // ANTS-4425 — exported for the same reason isGlslExt is: this verb has outlined
@@ -126,6 +129,12 @@ bool isYamlExt(const QString &ext);
 bool isCFamilyExt(const QString &ext);
 bool isGenericExt(const QString &ext);
 
+// The interpreter a shebang names, by basename, empty when `firstLine` is not
+// one. Under `env` it is the first word that is not a `-` flag, so
+// `#!/usr/bin/env -S bash` gives `bash`. The trace verb reads scripts with
+// it too, so the outline and the trace agree on what a script is.
+QByteArray shebangInterpreter(const QByteArray &firstLine);
+
 // True when `firstLine` is a shebang naming a shell interpreter.
 // ANTS-4826 — a script is routinely EXTENSIONLESS (a git hook, a launcher, a
 // CI gate), and those are the files a session most wants outlined. The
@@ -135,6 +144,12 @@ bool isShShebang(const QByteArray &firstLine);
 
 // True when `firstLine` is a shebang naming a Python interpreter. ANTS-6352.
 bool isPythonShebang(const QByteArray &firstLine);
+
+// How a body ends in a language, by the outline's `language` string: Python
+// by indentation, Ruby by the keyword `end`, the rest by a closing brace.
+// read_region and function_sizes both decide by it.
+enum class BodyEnd { Brace, Indent, Keyword };
+BodyEnd bodyEndFor(const QString &language);
 
 // Compute the outline for a single file. `absPath` MUST be a
 // canonical filesystem path under the project root (the caller is

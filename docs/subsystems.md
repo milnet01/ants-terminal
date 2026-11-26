@@ -163,6 +163,8 @@ Listed only where behavior isn't obvious from the name.
   verb reads: `paths[]` under the project root resolved into files, leaving
   out tests and generated files unless asked. Holds the shared
   generated-file predicate (ANTS-4120). ANTS-5787.
+- `indexcache` (header only) — the on-disk cache `codebase_index` and
+  `docs_index` share: its path, its read and its atomic write (ANTS-6592).
 - `functionsizes` (Qt6::Core, `ants_mcpcore_lib`) — the `function_sizes`
   verb's seam: FileOutline's functions measured to their closing brace, or by
   indentation for Python, and ranked longest first. ANTS-5787.
@@ -354,8 +356,8 @@ Listed only where behavior isn't obvious from the name.
   running git. The branch chip, the visibility badge and `rcGitDirOf`
   share it (ANTS-6187).
 - `utf8cut` (header only) — cuts UTF-8 bytes to a byte budget on a character
-  boundary. `git_state` op `log` and `changelog_log` op `release` use it
-  (ANTS-6269).
+  boundary. A new byte-budget clip calls it rather than adding a copy
+  (ANTS-6269, ANTS-6592).
 - `gitorigin` (header only) — the GitHub `owner/name` of a checkout's
   `origin`, and of every GitHub remote (ANTS-6726), read from `.git/config`.
   Shared by `session_message` op `projects` and the status bar's repo label

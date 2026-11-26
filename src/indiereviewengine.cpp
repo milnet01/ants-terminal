@@ -60,21 +60,11 @@ QStringList sourcePathsForLane(const QString &projectPath,
     QDir dir(src);
     if (!dir.exists()) return out;
 
-    static const QStringList kGenPrefixes = {
-        QStringLiteral("moc_"),
-        QStringLiteral("ui_"),
-        QStringLiteral("qrc_"),
-    };
-
     const QStringList all = dir.entryList(
         QStringList{QStringLiteral("*.h"), QStringLiteral("*.cpp")},
         QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
     for (const QString &entry : all) {
-        bool generated = false;
-        for (const QString &p : kGenPrefixes) {
-            if (entry.startsWith(p)) { generated = true; break; }
-        }
-        if (generated) continue;
+        if (CodeWalk::isGeneratedSource(entry)) continue;
 
         // A lane owns `<name>.h`, `<name>.cpp` and `<name>_*.{h,cpp}`.
         // The `_` or `.` boundary keeps lane `claude` off

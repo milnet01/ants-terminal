@@ -583,11 +583,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
             return mcp::refusal(QStringLiteral("bad_args"),
                            QStringLiteral("comment_claims: \"limit\" must be 1 to %1").arg(kMaxLimit));
     }
-    CodeWalk::Options walkOpts;
-    walkOpts.includeTests = args.value(QStringLiteral("include_tests")).toBool(false);
-    walkOpts.includeGenerated = args.value(QStringLiteral("include_generated")).toBool(false);
-    const CodeWalk::Result files = CodeWalk::collect(
-        rootCanonical, args.value(QStringLiteral("paths")).toArray(), walkOpts, verb);
+    const CodeWalk::Result files = CodeWalk::collectFromArgs(rootCanonical, args, verb);
     if (!files.refusal.isEmpty()) return files.refusal;
 
     const QSet<QString> ids = roadmapIds(rootCanonical);

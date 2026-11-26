@@ -19,16 +19,16 @@
 
 namespace FileOutline {
 
-// ANTS-3800 — the SAME extension set symbolquery.cpp's ANTS-3558 lane accepts,
-// deliberately: the whole defect was three verbs disagreeing about which files
-// are GLSL, and a second list here would be that defect with an extra step.
+// ANTS-3800 — the one GLSL extension list. SymbolQuery::langForExt,
+// CodebaseIndex::isIndexableSuffix and the trace verb's table all read it:
+// the whole defect was three verbs disagreeing about which files are GLSL.
 // Note what it omits, and why: `.vs`/`.fs`/`.gs` are excluded because `.fs` is
 // also F# source.
 // ANTS-4096 — hoisted out of the anonymous namespace and declared in the
 // header so CodebaseIndex::isIndexableSuffix reuses this list instead of
 // growing the fourth copy the comment above warns about.
-bool isGlslExt(const QString &ext) {
-    static const QSet<QString> kGlsl = {
+const QStringList &glslExtensions() {
+    static const QStringList kGlsl = {
         QStringLiteral("glsl"), QStringLiteral("comp"), QStringLiteral("frag"),
         QStringLiteral("vert"), QStringLiteral("geom"), QStringLiteral("tesc"),
         QStringLiteral("tese"), QStringLiteral("vsh"),  QStringLiteral("fsh"),
@@ -36,6 +36,12 @@ bool isGlslExt(const QString &ext) {
         QStringLiteral("rchit"),QStringLiteral("rmiss"),QStringLiteral("rahit"),
         QStringLiteral("rint"), QStringLiteral("rcall"),
     };
+    return kGlsl;
+}
+
+bool isGlslExt(const QString &ext) {
+    static const QSet<QString> kGlsl(glslExtensions().cbegin(),
+                                     glslExtensions().cend());
     return kGlsl.contains(ext);
 }
 
@@ -60,10 +66,9 @@ bool isYamlExt(const QString &ext) {
     return ext == QLatin1String("yml") || ext == QLatin1String("yaml");
 }
 
-// ANTS-4826 — the interpreter a shebang names, empty when `firstLine` is not
-// one. Reads the direct form (`#!/bin/sh`) and the env form
+// ANTS-4826 — reads the direct form (`#!/bin/sh`) and the env form
 // (`#!/usr/bin/env bash`), which is what these scripts are actually written with.
-static QByteArray shebangInterpreter(const QByteArray &firstLine) {
+QByteArray shebangInterpreter(const QByteArray &firstLine) {
     QByteArray l = firstLine.trimmed();
     if (!l.startsWith("#!")) return {};
     l = l.mid(2).trimmed();
@@ -91,8 +96,7 @@ bool isShShebang(const QByteArray &firstLine) {
            interp == "ksh"  || interp == "zsh"  || interp == "ash";
 }
 
-// ANTS-6352 — `python`, `python3`, `python3.13`: the test trace's
-// languageForFile uses.
+// ANTS-6352 — `python`, `python3`, `python3.13`.
 bool isPythonShebang(const QByteArray &firstLine) {
     return shebangInterpreter(firstLine).startsWith("python");
 }
@@ -156,8 +160,10 @@ QString funcHead() {
     return QLatin1Char('^') + externPrefix() + leadModifier() + notKeyword() +
            returnType() + QStringLiteral(R"((\w+)\s*)");
 }
-QRegularExpression optimized(const QString &pattern) {
-    QRegularExpression r(pattern);
+// Every pattern in this file is built here, so how they compile changes once.
+QRegularExpression optimized(const QString &pattern,
+                             QRegularExpression::PatternOptions options = {}) {
+    QRegularExpression r(pattern, options);
     r.optimize();
     return r;
 }
@@ -175,12 +181,8 @@ QRegularExpression optimized(const QString &pattern) {
 // and because the block never opened a body, every local declared inside it
 // (`FakeHttpServer server(...)`) was outlined as a function.
 const QRegularExpression &rxCppGtest() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(
             R"(^(?:TEST|TEST_F|TEST_P|TYPED_TEST|TYPED_TEST_P)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\))"));
-        r.optimize();
-        return r;
-    }();
     return rx;
 }
 
@@ -189,34 +191,22 @@ const QRegularExpression &rxCppGtest() {
 // the quoted test name, as written (escapes kept). TEST_CASE_METHOD's fixture
 // class comes first.
 const QRegularExpression &rxCppCatch2() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(
             R"re(^(?:TEST_CASE|TEST_CASE_METHOD|SCENARIO)\s*\(\s*(?:[\w:]+\s*,\s*)?"((?:[^"\\]|\\.)*)")re"));
-        r.optimize();
-        return r;
-    }();
     return rx;
 }
 
 // ANTS-5349 — a SECTION inside a Catch2 test block, outlined as kind
 // "section" so a reader can see which cases a test runs.
 const QRegularExpression &rxCppCatch2Section() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(
             R"re(^\s*SECTION\s*\(\s*"((?:[^"\\]|\\.)*)")re"));
-        r.optimize();
-        return r;
-    }();
     return rx;
 }
 
 const QRegularExpression &rxCppCtorDtor() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(
             R"(^(?:[A-Za-z_]\w*::)*([A-Za-z_]\w*)::~?\1\s*\()"));
-        r.optimize();
-        return r;
-    }();
     return rx;
 }
 
@@ -239,11 +229,7 @@ const QRegularExpression &rxCppMember() {
     return rx;
 }
 const QRegularExpression &rxCppType() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(class|struct|namespace)\s+(\w+))"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^(class|struct|namespace)\s+(\w+))"));
     return rx;
 }
 // ANTS-2228 — opening line of the dominant C aggregate idiom
@@ -252,21 +238,13 @@ const QRegularExpression &rxCppType() {
 // alias sits on the matching close line, captured by rxCppTypedefStructClose.
 // Distinct from rxCppType, which only catches a bare `struct X` / forward decl.
 const QRegularExpression &rxCppTypedefStructOpen() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^typedef\s+struct\s+(\w+)?\s*\{)"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^typedef\s+struct\s+(\w+)?\s*\{)"));
     return rx;
 }
 // ANTS-2228 — `} ALIAS;` (or `} ALIAS, *PTR;`) closing line of a
 // typedef-struct; group 1 = the typedef alias.
 const QRegularExpression &rxCppTypedefStructClose() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(\}\s*(\w+)\s*[;,])"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(\}\s*(\w+)\s*[;,])"));
     return rx;
 }
 const QRegularExpression &rxCppFunc() {
@@ -323,11 +301,7 @@ const QRegularExpression &rxCppFunc() {
     return rx;
 }
 const QRegularExpression &rxCppQt() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(signals|slots|public|private|protected|Q_(?:PROPERTY|INVOKABLE|DECLARE_\w+))\s*[:(])"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^(signals|slots|public|private|protected|Q_(?:PROPERTY|INVOKABLE|DECLARE_\w+))\s*[:(])"));
     return rx;
 }
 // ANTS-2159 — multi-line definition support. `rxCppFuncOpen` is rxCppFunc
@@ -378,11 +352,7 @@ const QRegularExpression &rxCppFuncHeaderOpen() {
 // definition split across lines. Statement / declaration keywords are
 // rejected so a bare `return`/`else`/`class` line is never a pending type.
 const QRegularExpression &rxCppTypeOnly() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^\s*(?!(?:return|co_return|else|do|case|default|break|continue|goto|public|private|protected|using|namespace|typedef|friend|template|class|struct|enum|union)\b)[\w:<>*&]+(?:\s+[\w:<>*&]+)*\s*$)"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^\s*(?!(?:return|co_return|else|do|case|default|break|continue|goto|public|private|protected|using|namespace|typedef|friend|template|class|struct|enum|union)\b)[\w:<>*&]+(?:\s+[\w:<>*&]+)*\s*$)"));
     return rx;
 }
 // ANTS-2159 — net `{` minus `}` on a line, ignoring braces inside string /
@@ -470,12 +440,8 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
 // ANTS-4361 — an element's `id="…"` attribute: the anchor a caller navigates
 // to. Single or double quoted, since a hand-written page uses both.
 const QRegularExpression &rxHtmlId() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(
             R"(\bid\s*=\s*["\']([A-Za-z_][\w:.-]*)["\'])"));
-        r.optimize();
-        return r;
-    }();
     return rx;
 }
 // ANTS-4379 — a TOP-LEVEL Python assignment (`NAME = …`, `NAME: T = …`).
@@ -491,12 +457,8 @@ const QRegularExpression &rxHtmlId() {
 // attribute, not a module constant, and emitting those would bury the outline
 // in every intermediate variable in every function body.
 const QRegularExpression &rxPyConst() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(
             R"(^([A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=))"));
-        r.optimize();
-        return r;
-    }();
     return rx;
 }
 const QRegularExpression &rxPy() {
@@ -505,19 +467,11 @@ const QRegularExpression &rxPy() {
     // uses the indent to qualify a class method as `Class.method` (so
     // read_region symbol-mode can address it). Groups: 1=indent,
     // 2=async?, 3=keyword, 4=name.
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(\s*)(async\s+)?(def|class)\s+(\w+))"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^(\s*)(async\s+)?(def|class)\s+(\w+))"));
     return rx;
 }
 const QRegularExpression &rxMdHeading() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(#{1,6})\s+(.+)$)"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^(#{1,6})\s+(.+)$)"));
     return rx;
 }
 
@@ -536,15 +490,11 @@ const QRegularExpression &rxMdHeading() {
 // (1) keyword declarations: optional modifiers, a declaration keyword, an
 // optional Go receiver `(s *T)`, then the name. Captures kw=group1, name=group2.
 const QRegularExpression &rxGenericDecl() {
-    static const QRegularExpression rx = []{
-        // ANTS-4902 appends the UnrealScript function modifiers — simulated,
-        // singular, latent, exec, native, iterator — to the modifier list. A
-        // modifier is consumed only when a declaration keyword follows it, so
-        // this cannot change what any other brace-family file outlines.
-        QRegularExpression r(QStringLiteral(R"(^\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data|simulated|singular|latent|exec|native|iterator)\s++)*+(fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\b(?:\s++\([^)]*\))?\s++(?:self\.)?([A-Za-z_$][\w$]*[?!]?))"));
-        r.optimize();
-        return r;
-    }();
+    // ANTS-4902 appends the UnrealScript function modifiers — simulated,
+    // singular, latent, exec, native, iterator — to the modifier list. A
+    // modifier is consumed only when a declaration keyword follows it, so
+    // this cannot change what any other brace-family file outlines.
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data|simulated|singular|latent|exec|native|iterator)\s++)*+(fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\b(?:\s++\([^)]*\))?\s++(?:self\.)?([A-Za-z_$][\w$]*[?!]?))"));
     return rx;
 }
 // ANTS-4902 — (1b) a `function` whose RETURN TYPE sits between the keyword and
@@ -558,11 +508,7 @@ const QRegularExpression &rxGenericDecl() {
 // immediately by the parenthesis, so no valid file in those languages can
 // reach this rule. Captures name=group1.
 const QRegularExpression &rxGenericFunctionTyped() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^\s*(?:(?:static|final|simulated|singular|latent|exec|native|iterator|public|private|protected)\s++)*+function\s++[A-Za-z_$][\w$<>\[\].]*\s++([A-Za-z_$][\w$]*)\s*\()"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^\s*(?:(?:static|final|simulated|singular|latent|exec|native|iterator|public|private|protected)\s++)*+function\s++[A-Za-z_$][\w$<>\[\].]*\s++([A-Za-z_$][\w$]*)\s*\()"));
     return rx;
 }
 
@@ -571,11 +517,7 @@ const QRegularExpression &rxGenericFunctionTyped() {
 // The trailing `{` (not `;`) keeps it a definition, never a call; the negative
 // lookahead rejects control-flow keywords. Captures name=group1.
 const QRegularExpression &rxGenericMethod() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^\s*(?!(?:return|if|for|while|switch|catch|else|throw|new|await|do|in|of)\b)(?:[A-Za-z_$<>\[\].]+[\s*&]++)++([A-Za-z_$][\w$]*)\s*\([^;{]*\)\s*(?:->\s*[\w$<>\[\].?]+\s*|:\s*[\w$<>\[\].?]+\s*)?\{)"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^\s*(?!(?:return|if|for|while|switch|catch|else|throw|new|await|do|in|of)\b)(?:[A-Za-z_$<>\[\].]+[\s*&]++)++([A-Za-z_$][\w$]*)\s*\([^;{]*\)\s*(?:->\s*[\w$<>\[\].?]+\s*|:\s*[\w$<>\[\].?]+\s*)?\{)"));
     return rx;
 }
 // ANTS-4826 — the shell set. Three rules, all anchored at column 0 with NO
@@ -586,22 +528,14 @@ const QRegularExpression &rxGenericMethod() {
 // (sh 1) POSIX function definitions: `name() {`. The brace may sit on the next
 // line, so it is not required here. Captures name=group1.
 const QRegularExpression &rxShFunc() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))"));
     return rx;
 }
 // (sh 2) The keyword spelling, `function name {` / `function name() {`, which
 // ksh and bash both accept and which real scripts mix freely with (sh 1). The
 // name may carry a `-` here, which the POSIX form does not allow.
 const QRegularExpression &rxShFuncKeyword() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^function\s++([A-Za-z_][A-Za-z0-9_-]*))"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^function\s++([A-Za-z_][A-Za-z0-9_-]*))"));
     return rx;
 }
 // (sh 3) Top-level assignments, with the declaration keywords a script actually
@@ -609,21 +543,13 @@ const QRegularExpression &rxShFuncKeyword() {
 // legal inside a function, so admitting it would outline exactly the body
 // variables rule (sh 1)'s column-0 anchor exists to exclude. Captures name=group1.
 const QRegularExpression &rxShBinding() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(?:export\s++|readonly\s++|declare\s++-\w++\s++|typeset\s++)?([A-Za-z_][A-Za-z0-9_]*)=)"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^(?:export\s++|readonly\s++|declare\s++-\w++\s++|typeset\s++)?([A-Za-z_][A-Za-z0-9_]*)=)"));
     return rx;
 }
 // (3) JS/TS arrow-function assignments: `export const foo = (…) => …`.
 // Captures name=group1.
 const QRegularExpression &rxGenericArrow() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^\s*(?:export\s++)?(?:default\s++)?(?:const|let|var)\s++([A-Za-z_$][\w$]*)\s*=\s*(?:async\s++)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^\s*(?:export\s++)?(?:default\s++)?(?:const|let|var)\s++([A-Za-z_$][\w$]*)\s*=\s*(?:async\s++)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"));
     return rx;
 }
 
@@ -638,11 +564,7 @@ const QRegularExpression &rxGenericArrow() {
 // line-based scanner has for "top level". Without it every local inside every
 // function body would be outlined. Captures name=group1.
 const QRegularExpression &rxGenericBinding() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(?:export\s++)?(?:default\s++)?(?:const|let|var)\s++([A-Za-z_$][\w$]*)\s*=)"));
-        r.optimize();
-        return r;
-    }();
+    static const QRegularExpression rx = cppre::optimized(QStringLiteral(R"(^(?:export\s++)?(?:default\s++)?(?:const|let|var)\s++([A-Za-z_$][\w$]*)\s*=)"));
     return rx;
 }
 
@@ -679,6 +601,14 @@ QString genericLangName(const QString &ext) {
 }  // namespace
 
 bool isGenericExt(const QString &ext) { return !genericLangName(ext).isEmpty(); }
+
+// The strings are modeToLanguageString's and genericLangName's: Python is
+// "py", not "python".
+BodyEnd bodyEndFor(const QString &language) {
+    if (language == QLatin1String("py")) return BodyEnd::Indent;
+    if (language == QLatin1String("ruby")) return BodyEnd::Keyword;
+    return BodyEnd::Brace;
+}
 
 // ANTS-2148 — the C family (`.c`, `.hxx`) outlines fine with the C++ regex
 // set (shared surface syntax).
@@ -1223,6 +1153,8 @@ struct MdScanner {
 // outliner already parses well is exactly what is inside a <script>, so the
 // brace-family regexes run over those lines. Only the file's extension ever
 // routed it to the fallback.
+void scanGenericLine(const QString &line, int lineNo, SymbolSink &out);
+
 struct HtmlScanner {
     bool inScript   = false;
     bool scriptIsJs = true;
@@ -1243,19 +1175,7 @@ struct HtmlScanner {
         } else if (lower.contains(QStringLiteral("<style"))) {
             out.offer(lineNo, "region", QStringLiteral("<style>"), line.trimmed());
         } else if (inScript && scriptIsJs) {
-            // A hand copy of the Generic arm, not a call to it: it skips the
-            // typed-function rule and labels every declaration "func"
-            // (ANTS-5992).
-            QRegularExpressionMatch m = rxGenericDecl().match(line);
-            if (m.hasMatch()) {
-                out.offer(lineNo, "func", m.captured(2), line);
-            } else if ((m = rxGenericMethod().match(line)).hasMatch()) {  // NOLINT(bugprone-branch-clone): deliberate
-                out.offer(lineNo, "func", m.captured(1), line);
-            } else if ((m = rxGenericArrow().match(line)).hasMatch()) {
-                out.offer(lineNo, "func", m.captured(1), line);
-            } else if ((m = rxGenericBinding().match(line)).hasMatch()) {
-                offerBinding(out, lineNo, line, m);
-            }
+            scanGenericLine(line, lineNo, out);   // ANTS-5992 — the same rules
         } else {
             // Every element carrying an `id=` is an anchor a caller can
             // navigate to — outside a script, where an `id:` in JS would be a
@@ -1285,11 +1205,9 @@ void scanShLine(const QString &line, int lineNo, SymbolSink &out) {
 
 // ANTS-6801 — the NASM, CMake and YAML landmarks below. Captures name=group1.
 QRegularExpression landmark(const char *pattern, bool caseless) {
-    QRegularExpression r(QString::fromLatin1(pattern),
-                         caseless ? QRegularExpression::CaseInsensitiveOption
-                                  : QRegularExpression::NoPatternOption);
-    r.optimize();
-    return r;
+    return cppre::optimized(QString::fromLatin1(pattern),
+                            caseless ? QRegularExpression::CaseInsensitiveOption
+                                     : QRegularExpression::NoPatternOption);
 }
 
 // NASM: a `%macro`, an `equ` constant, a global label. A label must start in

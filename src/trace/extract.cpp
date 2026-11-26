@@ -3,6 +3,7 @@
 #include "trace/extract.h"
 
 #include "trace/languages.h"
+#include "utf8cut.h"
 
 #include <tree_sitter/api.h>
 
@@ -59,12 +60,7 @@ QString signatureOf(const QByteArray &text, TSNode node) {
     }
     const uint32_t start = ts_node_start_byte(node);
     QByteArray raw = text.mid(int(start), int(end - start)).simplified();
-    if (raw.size() > kSignatureMax) {
-        raw.truncate(kSignatureMax);
-        // Do not leave half a UTF-8 sequence.
-        while (!raw.isEmpty() && (uchar(raw.back()) & 0xC0) == 0x80) raw.chop(1);
-        if (!raw.isEmpty() && (uchar(raw.back()) & 0x80)) raw.chop(1);
-    }
+    if (raw.size() > kSignatureMax) raw = Utf8Cut::prefix(raw, kSignatureMax);
     return QString::fromUtf8(raw);
 }
 

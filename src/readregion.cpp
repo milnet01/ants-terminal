@@ -8,6 +8,7 @@
 
 #include "boundedreadline.h"
 #include "fileoutline.h"
+#include "utf8cut.h"
 #include "markdownscan.h"
 #include "pathvalidation.h"
 
@@ -35,13 +36,8 @@ QString ReadRegion::clipToBytes(const QString &s, int capBytes) {
     constexpr int kEllipsisBytes = 3;
     int budget = capBytes - kEllipsisBytes;
     if (budget < 0) budget = 0;
-    int cut = std::min<int>(budget, utf8.size());
-    while (cut > 0 &&
-           (static_cast<unsigned char>(utf8.at(cut)) & 0xC0) == 0x80) {
-        --cut;
-    }
     // The marker is a CHARACTER, not three bytes (ANTS-4389).
-    return QString::fromUtf8(utf8.constData(), cut) + QChar(0x2026);
+    return QString::fromUtf8(Utf8Cut::prefix(utf8, budget)) + QChar(0x2026);
 }
 
 
@@ -452,16 +448,13 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
     // either way — its body can span the whole file, not a quotable unit.
     const QString kind = symObj.value(QStringLiteral("kind")).toString();
     const QString sig  = symObj.value(QStringLiteral("signature")).toString().trimmed();
-    // The rule: brace languages end a body by brace matching; Python ends it
-    // at the outline's next symbol, because indentation, not braces, delimits
-    // a Python body (ANTS-4735: brace matching stopped at the first `}` of a
-    // dict literal and reported truncated:false). The language string is
-    // "py", not "python" (modeToLanguageString); spelled wrong, the test
-    // matches nothing and the fix silently stops working. Not widened to
-    // Ruby, which ends bodies with `end`: nobody has measured it.
+    // The rule: brace languages end a body by brace matching; the others end
+    // it at the outline's next symbol (ANTS-4735: brace matching a Python
+    // body stopped at the first `}` of a dict literal and reported
+    // truncated:false).
     const bool braceDelimited =
-        outline.value(QStringLiteral("language")).toString()
-            != QLatin1String("py");
+        FileOutline::bodyEndFor(outline.value(QStringLiteral("language")).toString())
+            == FileOutline::BodyEnd::Brace;
     const bool isAggregate = braceDelimited && kind == QLatin1String("class") &&
         (sig.startsWith(QLatin1String("struct")) ||
          sig.startsWith(QLatin1String("class"))  ||

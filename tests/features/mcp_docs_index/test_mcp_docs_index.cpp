@@ -311,8 +311,9 @@ TEST(DocsIndex, WiringRegistered) {
     // handler routes doc_path through PathValidation (INV-9 path defence).
     EXPECT_TRUE(has(rc, "cmdDocsIndex"));
     EXPECT_TRUE(has(rc, "validatePath"));
-    // atomic cache write (INV-13).
-    EXPECT_TRUE(has(di, "QSaveFile"));
+    // atomic cache write (INV-13), through the cache both indexes share.
+    EXPECT_TRUE(has(di, "IndexCache::write("));
+    EXPECT_TRUE(has(ants_test::slurpFile(srcPath("src/indexcache.h")), "QSaveFile"));
 }
 
 // INV-10 (behavioural) — warm serve stability.

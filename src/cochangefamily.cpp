@@ -2,6 +2,7 @@
 // docs/specs/ANTS-3368-co-change-family.md for the reasoning.
 
 #include "cochangefamily.h"
+#include "utf8cut.h"
 
 #include <QHash>
 #include <QRegularExpression>
@@ -45,10 +46,7 @@ QString clipUtf8(const QString &s, int maxBytes) {
     if (maxBytes <= 0) return s;
     const QByteArray utf8 = s.toUtf8();
     if (utf8.size() <= maxBytes) return s;
-    int cut = maxBytes;
-    while (cut > 0 && (static_cast<unsigned char>(utf8.at(cut)) & 0xC0) == 0x80)
-        --cut;
-    return QString::fromUtf8(utf8.constData(), cut);
+    return QString::fromUtf8(Utf8Cut::prefix(utf8, maxBytes));
 }
 
 }  // namespace

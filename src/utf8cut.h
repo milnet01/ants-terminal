@@ -1,5 +1,5 @@
 // Cutting UTF-8 bytes to a byte budget without splitting a character
-// (ANTS-6269). Used by git_state op:"log" and changelog_log op:"release".
+// (ANTS-6269). A new byte-budget clip calls this rather than adding a copy.
 #pragma once
 
 #include <QByteArray>

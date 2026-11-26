@@ -1,6 +1,7 @@
 // ANTS-5734 — see languages.h.
 
 #include "trace/languages.h"
+#include "fileoutline.h"
 
 #include <QHash>
 #include <QList>
@@ -94,10 +95,8 @@ const QHash<QString, QString> &extensionMap() {
         add("python", {"py", "pyi"});
         add("bash", {"sh", "bash"});
         add("lua", {"lua"});
-        // SymbolQuery's ANTS-3558 list: the unambiguous shader stages only.
-        add("glsl", {"glsl", "comp", "frag", "vert", "geom", "tesc", "tese",
-                     "vsh", "fsh", "mesh", "task", "rgen", "rchit", "rmiss",
-                     "rahit", "rint", "rcall"});
+        for (const QString &e : FileOutline::glslExtensions())   // ANTS-3558
+            m.insert(e, QStringLiteral("glsl"));
         add("javascript", {"js", "jsx", "mjs", "cjs"});
         add("typescript", {"ts", "mts", "cts"});
         add("tsx", {"tsx"});
@@ -150,17 +149,11 @@ QString languageForFile(const QString &fileName, const QByteArray &head) {
     const qsizetype dot = fileName.lastIndexOf(QLatin1Char('.'));
     if (dot > 0)
         return extensionMap().value(fileName.mid(dot + 1).toLower());
-    if (!head.startsWith("#!")) return {};
-    // "#!/usr/bin/env python3", "#!/bin/bash": the interpreter's basename.
-    const QByteArray line = head.left(head.indexOf('\n')).mid(2).trimmed();
-    QList<QByteArray> words = line.split(' ');
-    words.removeAll(QByteArray());
-    QByteArray interp = words.isEmpty() ? QByteArray() : words.first();
-    interp = interp.mid(interp.lastIndexOf('/') + 1);
-    if (interp == "env" && words.size() > 1) interp = words.at(1);
-    if (interp.startsWith("python")) return QStringLiteral("python");
-    if (interp == "bash" || interp == "sh" || interp == "zsh" || interp == "dash")
-        return QStringLiteral("bash");
+    // FileOutline's shebang reader, so the outline and the trace agree.
+    const QByteArray first = head.left(head.indexOf('\n'));
+    if (FileOutline::isPythonShebang(first)) return QStringLiteral("python");
+    if (FileOutline::isShShebang(first)) return QStringLiteral("bash");
+    const QByteArray interp = FileOutline::shebangInterpreter(first);
     if (interp.startsWith("lua")) return QStringLiteral("lua");
     if (interp == "node") return QStringLiteral("javascript");
     if (interp == "perl") return QStringLiteral("perl");

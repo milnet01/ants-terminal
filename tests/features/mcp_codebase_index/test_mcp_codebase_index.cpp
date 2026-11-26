@@ -685,8 +685,9 @@ TEST(CodebaseIndex, WiringRegistered) {
     // `(alias: "file_path", "paths")`, so match the prefix without the
     // trailing ')' (the alias is still wired; the list just grew).
     EXPECT_TRUE(has(rc, "(alias: \\\"file_path\\\""));
-    // atomic cache write (INV-12).
-    EXPECT_TRUE(has(ants_test::slurpFile(srcPath("src/codebaseindex.cpp")), "QSaveFile"));
+    // atomic cache write (INV-12), through the cache both indexes share.
+    EXPECT_TRUE(has(ants_test::slurpFile(srcPath("src/codebaseindex.cpp")), "IndexCache::write("));
+    EXPECT_TRUE(has(ants_test::slurpFile(srcPath("src/indexcache.h")), "QSaveFile"));
 }
 
 // ANTS-4425 — the same drift ANTS-4096 fixed for shaders, one verb later.

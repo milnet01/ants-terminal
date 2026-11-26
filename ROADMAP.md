@@ -97841,7 +97841,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6592] **Fold the duplicated logic the 2026-11-06 reviews found in code-index-search.**
+- ✅ [ANTS-6592] **Fold the duplicated logic the 2026-11-06 reviews found in code-index-search.**
   15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1046 `src/findsources.cpp:110` (Medium)
   - row 1047 `src/findsources.cpp:167` (Medium)
@@ -97858,6 +97858,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1077 `src/cochangefamily.cpp:44` (Medium)
   - row 1078 `src/commentclaims.cpp:557-559` (Low)
   - row 1080 `src/symbolquery.cpp:903-908` (Low)
+  Shipped 2026-11-26. 1046/1047: find_sources uses
+  FileOutline::isCFamilyExt and checks only folders for noise. 1049:
+  IndexCache (src/indexcache.h) holds both indexes' cache path, read and
+  write. 1050: FileOutline::shebangInterpreter is the one #! reader.
+  1051/1075: langForExt and the trace table read FileOutline's lists
+  (glslExtensions). 1054: the HTML script arm calls scanGenericLine
+  (ANTS-5992). 1055: every builder goes through cppre::optimized. 1056:
+  FileOutline::bodyEndFor. 1074: indiereviewengine calls
+  isGeneratedSource; comments fixed. 1076: litRe/litIndexRe. 1077: five
+  clips use Utf8Cut::prefix (the rest of src is ANTS-6776). 1078:
+  CodeWalk::collectFromArgs. 1080: invalidSymbol<R>; two copies were
+  left, not three. 1052 was already fixed.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -113075,7 +113087,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: code-index-search-a.
 
-- 📋 [ANTS-5992] **src/fileoutline.cpp:1180: Inside an HTML <script>, a class is emitted as kind "func", and the typed function T name( form is not tried.**
+- ✅ [ANTS-5992] **src/fileoutline.cpp:1180: Inside an HTML <script>, a class is emitted as kind "func", and the typed function T name( form is not tried.**
   Lead L30-C7 from the readability review of 2026-10-22, lane code-index-search-a.
   Location: src/fileoutline.cpp:1180
   Inside an HTML `<script>`, a class is emitted as kind "func", and the typed `function T name(` form is not tried. — Searched: none.
@@ -113085,6 +113097,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   2026-10-26: also readability L30-F2 (ANTS-6139): fix by one
   brace-family line matcher shared by the Generic arm and the <script>
   arm, so the typed-function rule and the kind mapping reach both.
+  Shipped 2026-11-26 with ANTS-6592 row 1054: the <script> arm calls
+  scanGenericLine, so a class keeps kind class and the typed-function
+  rule is tried. McpFileOutline.Ants4361HtmlLandmarksAndScriptBodies
+  asserts it; seen red first.
   **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

@@ -51,40 +51,14 @@ Lang langForExt(const QString &ext) {
     if (FileOutline::isCFamilyExt(ext)) return Lang::Cpp;
     if (ext == QLatin1String("py") || ext == QLatin1String("pyi")) return Lang::Py;
     if (ext == QLatin1String("lua")) return Lang::Lua;
-    if (ext == QLatin1String("sh") || ext == QLatin1String("bash")) return Lang::Sh;
-    if (ext == QLatin1String("cmake")) return Lang::Cmake;   // ANTS-5544
-    // ANTS-2150 — brace family + Ruby (kept in step with
-    // FileOutline::genericLangName + CodebaseIndex::isIndexableSuffix so
-    // count → outline → symbol query agree). Ruby (`.rb`) reuses Lang::Generic:
-    // `def`/`class`/`module` are in the keyword alternation; the Generic def
-    // anchor carries an optional `self.` receiver for singleton methods.
-    if (ext == QLatin1String("rs")  || ext == QLatin1String("go")  ||
-        ext == QLatin1String("js")  || ext == QLatin1String("jsx") ||
-        ext == QLatin1String("mjs") || ext == QLatin1String("cjs") ||
-        ext == QLatin1String("ts")  || ext == QLatin1String("tsx") ||
-        ext == QLatin1String("java")|| ext == QLatin1String("cs")  ||
-        ext == QLatin1String("kt")  || ext == QLatin1String("kts") ||
-        ext == QLatin1String("swift")|| ext == QLatin1String("scala") ||
-        ext == QLatin1String("sc")  || ext == QLatin1String("php") ||
-        ext == QLatin1String("rb")  ||
-        ext == QLatin1String("uc")) {   // ANTS-4902 — UnrealScript
-        return Lang::Generic;
-    }
-    // ANTS-3558 — GLSL / Vulkan shader stages. Only the UNAMBIGUOUS
-    // extensions: the two-letter `.vs`/`.fs`/`.gs` are deliberately omitted
-    // because `.fs` is also F# source — `.vert`/`.frag`/`.geom` cover those
-    // stages without the cross-language collision.
-    if (ext == QLatin1String("glsl") || ext == QLatin1String("comp") ||
-        ext == QLatin1String("frag") || ext == QLatin1String("vert") ||
-        ext == QLatin1String("geom") || ext == QLatin1String("tesc") ||
-        ext == QLatin1String("tese") || ext == QLatin1String("vsh")  ||
-        ext == QLatin1String("fsh")  || ext == QLatin1String("mesh") ||
-        ext == QLatin1String("task") || ext == QLatin1String("rgen") ||
-        ext == QLatin1String("rchit")|| ext == QLatin1String("rmiss")||
-        ext == QLatin1String("rahit")|| ext == QLatin1String("rint") ||
-        ext == QLatin1String("rcall")) {
-        return Lang::Glsl;
-    }
+    if (FileOutline::isShExt(ext)) return Lang::Sh;
+    if (FileOutline::isCmakeExt(ext)) return Lang::Cmake;   // ANTS-5544
+    // ANTS-2150 — FileOutline's lists, so count → outline → symbol query
+    // agree. Ruby (`.rb`) reuses Lang::Generic: `def`/`class`/`module` are in
+    // the keyword alternation; the Generic def anchor carries an optional
+    // `self.` receiver for singleton methods.
+    if (FileOutline::isGenericExt(ext)) return Lang::Generic;
+    if (FileOutline::isGlslExt(ext)) return Lang::Glsl;     // ANTS-3558
     return Lang::Auto;
 }
 
@@ -1159,16 +1133,24 @@ bool isValidSymbol(const QString &symbol) {
     return true;
 }
 
+namespace {
+// The bad_args refusal for a symbol isValidSymbol rejects.
+template <typename R>
+R invalidSymbol(const QString &verb) {
+    R r;
+    r.ok = false;
+    r.code = QStringLiteral("bad_args");
+    r.error = verb + QStringLiteral(": invalid symbol");
+    return r;
+}
+}  // namespace
+
 DefResult findDefinition(const QString &rootCanonical,
                          const QString &symbol,
                          const Options &opts) {
     DefResult r;
-    if (!isValidSymbol(symbol)) {
-        r.ok = false;
-        r.code = QStringLiteral("bad_args");
-        r.error = QStringLiteral("find_definition: invalid symbol");
-        return r;
-    }
+    if (!isValidSymbol(symbol))
+        return invalidSymbol<DefResult>(QStringLiteral("find_definition"));
     if (!rootUsable(rootCanonical)) return r;  // empty ok result
 
     ScanState st;
@@ -1216,11 +1198,7 @@ QHash<QString, DefResult> findDefinitions(const QString &rootCanonical,
     for (const QString &sym : symbols) {
         if (out.contains(sym)) continue;             // duplicate needle
         if (!isValidSymbol(sym)) {
-            DefResult bad;
-            bad.ok = false;
-            bad.code = QStringLiteral("bad_args");
-            bad.error = QStringLiteral("find_definition: invalid symbol");
-            out.insert(sym, bad);
+            out.insert(sym, invalidSymbol<DefResult>(QStringLiteral("find_definition")));
             continue;
         }
         out.insert(sym, DefResult{});
@@ -1267,12 +1245,8 @@ CallResult findCaller(const QString &rootCanonical,
                       const QString &symbol,
                       const Options &opts) {
     CallResult r;
-    if (!isValidSymbol(symbol)) {
-        r.ok = false;
-        r.code = QStringLiteral("bad_args");
-        r.error = QStringLiteral("find_caller: invalid symbol");
-        return r;
-    }
+    if (!isValidSymbol(symbol))
+        return invalidSymbol<CallResult>(QStringLiteral("find_caller"));
     if (!rootUsable(rootCanonical)) return r;  // empty ok result
 
     ScanState st;

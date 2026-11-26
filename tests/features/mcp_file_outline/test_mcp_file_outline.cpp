@@ -876,6 +876,8 @@ TEST(McpFileOutline, Ants4361HtmlLandmarksAndScriptBodies) {
         "<script>\n"
         "const API_BASE = \"/api/v1\";\n"
         "function renderResults(rows) { return rows; }\n"
+        "class ResultTable {\n"
+        "}\n"
         "</script>\n"
         "</body>\n"
         "</html>\n";
@@ -919,6 +921,8 @@ TEST(McpFileOutline, Ants4361HtmlLandmarksAndScriptBodies) {
 
     // The valuable half: the brace-family parser over the <script> body.
     EXPECT_EQ(kindOf("renderResults"), QStringLiteral("func"));
+    EXPECT_EQ(kindOf("ResultTable"), QStringLiteral("class"))
+        << "ANTS-5992: a script body is the brace-family arm's, kinds included";
     EXPECT_EQ(kindOf("API_BASE"), QStringLiteral("const"))
         << "ANTS-4090's top-level const kind comes along for free";
     EXPECT_GT(lineOf("renderResults"), lineOf("<script>"))

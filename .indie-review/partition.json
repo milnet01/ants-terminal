@@ -489,6 +489,7 @@
         "src/findsources.h",
         "src/functionsizes.cpp",
         "src/functionsizes.h",
+        "src/indexcache.h",
         "src/sourcescrapes.cpp",
         "src/sourcescrapes.h",
         "src/commentclaims.cpp",

@@ -10,8 +10,9 @@ to `maxBytes`, with `truncated:true`.
 `PaginationEngine::pageBullets` with no explicit limit returns at least one
 row when rows remain, so `next_offset` is always past `offset`.
 
-**INV-3 — codebase_index checks its cache write.** The cache write in
-`src/codebaseindex.cpp` checks the write and `QSaveFile::commit()`.
+**INV-3 — codebase_index checks its cache write.** `src/codebaseindex.cpp`
+writes its cache through `IndexCache::write` (`src/indexcache.h`), which
+checks the write and `QSaveFile::commit()`.
 
 ## Rationale
 

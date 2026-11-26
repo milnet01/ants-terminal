@@ -46,12 +46,10 @@ void walk(const QDir &root, const QString &dir, QStringList &out) {  // NOLINT(m
 // shaders/ directory partitioned into 22 `*.spv.h` byte-array headers and none
 // of the 19 hand-written GLSL sources beside them.
 //
-// Deliberately NOT AuditDialog::isGeneratedFile: that one lives on a
-// Widgets-linked class this core library must not see, and it carries
-// audit-artifact rules (`.audit_cache/`, `audit_fixtures/`) that have no
-// meaning for a review partition. It also predates `.spv.h`. Moved here from
-// indiereviewengine.cpp (ANTS-4120); auditdialog and findsources still keep
-// their own copies.
+// The one file-name list (ANTS-4120): find_sources, the review engine and
+// AuditDialog::isGeneratedFile call it. AuditDialog adds audit-artifact
+// rules (`.audit_cache/`, `audit_fixtures/`) on top, which mean nothing for
+// a review partition, so they stay there.
 bool isGeneratedSource(const QString &fileName) {
     static const QStringList kPrefixes = {
         QStringLiteral("moc_"), QStringLiteral("ui_"), QStringLiteral("qrc_"),
@@ -176,6 +174,16 @@ Result collect(const QString &rootCanonical, const QJsonArray &paths,
         r.files.append(abs);
     }
     return r;
+}
+
+Result collectFromArgs(const QString &rootCanonical, const QJsonObject &args,
+                       const QString &verb) {
+    Options opts;
+    opts.includeTests = args.value(QStringLiteral("include_tests")).toBool(false);
+    opts.includeGenerated =
+        args.value(QStringLiteral("include_generated")).toBool(false);
+    return collect(rootCanonical, args.value(QStringLiteral("paths")).toArray(),
+                   opts, verb);
 }
 
 QJsonObject scannedSummary(const Result &r) {

@@ -307,11 +307,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         return refusal(QStringLiteral("duplicate_blocks: \"top\" must be 1 to 500"));
     const bool names = args.value(QStringLiteral("normalise_names")).toBool(false);
 
-    CodeWalk::Options walkOpts;
-    walkOpts.includeTests = args.value(QStringLiteral("include_tests")).toBool(false);
-    walkOpts.includeGenerated = args.value(QStringLiteral("include_generated")).toBool(false);
-    const CodeWalk::Result walked = CodeWalk::collect(
-        rootCanonical, args.value(QStringLiteral("paths")).toArray(), walkOpts, verb);
+    const CodeWalk::Result walked = CodeWalk::collectFromArgs(rootCanonical, args, verb);
     if (!walked.refusal.isEmpty()) return walked.refusal;
 
     const QDir root(rootCanonical);

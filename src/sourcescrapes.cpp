@@ -32,6 +32,22 @@ namespace {
 
 constexpr QChar kLitOpen = QChar(0x01);
 constexpr QChar kLitClose = QChar(0x02);
+
+// Regex text for one character, and for one literal's placeholder around
+// `index`: built from kLitOpen and kLitClose, so changing either reaches
+// every pattern below.
+QString charRe(QChar c) {
+    return QStringLiteral("\\x{%1}").arg(int(c.unicode()), 0, 16);
+}
+QString litRe(const QString &index) {
+    return charRe(kLitOpen) + index + charRe(kLitClose);
+}
+// One placeholder, capturing the literal's index.
+const QRegularExpression &litIndexRe() {
+    static const QRegularExpression re(litRe(QStringLiteral("(\\d+)")));
+    return re;
+}
+
 inline constexpr int kDefaultLimit = 500;
 inline constexpr int kMaxLimit = 5000;
 
@@ -175,7 +191,8 @@ void lex(const QString &text, QList<Event> *events, QList<Literal> *lits) {
 // The literal indices of an argument made only of literals ("a" "b"), else
 // empty.
 QList<int> literalsOnly(const QString &arg) {
-    static const QRegularExpression re(QStringLiteral("^\\s*(?:\\x01\\d+\\x02\\s*)+$"));
+    static const QRegularExpression re(
+        QStringLiteral("^\\s*(?:") + litRe(QStringLiteral("\\d+")) + QStringLiteral("\\s*)+$"));
     static const QRegularExpression wrapped(QStringLiteral(
         "^\\s*(?:QStringLiteral|QLatin1String|QLatin1StringView|QByteArrayLiteral|QString|"
         "QByteArray|std::string|std::string_view)\\s*\\((.*)\\)\\s*$"));
@@ -184,8 +201,7 @@ QList<int> literalsOnly(const QString &arg) {
     if (w.hasMatch()) a = w.captured(1);
     if (!re.match(a).hasMatch()) return {};
     QList<int> out;
-    static const QRegularExpression idx(QStringLiteral("\\x01(\\d+)\\x02"));
-    for (auto it = idx.globalMatch(a); it.hasNext();) out.append(it.next().captured(1).toInt());
+    for (auto it = litIndexRe().globalMatch(a); it.hasNext();) out.append(it.next().captured(1).toInt());
     return out;
 }
 
@@ -196,8 +212,7 @@ QList<int> regexLiterals(const QString &arg) {
     const auto m = re.match(arg);
     if (!m.hasMatch()) return {};
     QList<int> out;
-    static const QRegularExpression idx(QStringLiteral("\\x01(\\d+)\\x02"));
-    for (auto it = idx.globalMatch(m.captured(1)); it.hasNext();)
+    for (auto it = litIndexRe().globalMatch(m.captured(1)); it.hasNext();)
         out.append(it.next().captured(1).toInt());
     return out;
 }
@@ -259,7 +274,8 @@ private:
     };
 
     void open(const Event &e) {
-        static const QRegularExpression ns(QStringLiteral("^\\s*(?:inline\\s+)?namespace\\b|^\\s*extern\\s*\\x01"));
+        static const QRegularExpression ns(
+            QStringLiteral("^\\s*(?:inline\\s+)?namespace\\b|^\\s*extern\\s*") + charRe(kLitOpen));
         const bool isNs = ns.match(e.code).hasMatch();
         if (!isNs && m_itemDepth == 0) {
             m_item = Item();
@@ -368,9 +384,11 @@ private:
             // (a root set outside CMake) and `localHelper("name")`. Only a
             // literal naming one file counts.
             static const QRegularExpression glued(
-                QStringLiteral("\\b[A-Z][A-Z0-9_]+\\s*(?:\\)\\s*)?\\+?\\s*\\x01(\\d+)\\x02"));
+                QStringLiteral("\\b[A-Z][A-Z0-9_]+\\s*(?:\\)\\s*)?\\+?\\s*")
+                + litRe(QStringLiteral("(\\d+)")));
             static const QRegularExpression bare(
-                QStringLiteral("(?<![\\w.>])([A-Za-z_]\\w*)\\s*\\(\\s*\\x01(\\d+)\\x02\\s*\\)"));
+                QStringLiteral("(?<![\\w.>])([A-Za-z_]\\w*)\\s*\\(\\s*")
+                + litRe(QStringLiteral("(\\d+)")) + QStringLiteral("\\s*\\)"));
             static const QRegularExpression shape(
                 QStringLiteral("^/?[\\w.+-]+(?:/[\\w.+-]+)*\\.[A-Za-z0-9]+$"));
             const auto take = [&](int litIdx) {
@@ -391,12 +409,13 @@ private:
             }
         }
         if (!m_dirs.isEmpty()) {
-            static const QRegularExpression idx(QStringLiteral("\\x01(\\d+)\\x02"));
+            const QRegularExpression &idx = litIndexRe();
             static const QRegularExpression shape(
                 QStringLiteral("^/?[\\w.+-]+(?:/[\\w.+-]+)*\\.[A-Za-z0-9]+$"));
             // ANTS-6340 — `path(DIR) / ".." / "engine" / "a.cpp"` is one path.
             static const QRegularExpression chain(
-                QStringLiteral("\\x01\\d+\\x02(?:\\s*/\\s*\\x01\\d+\\x02)+"));
+                litRe(QStringLiteral("\\d+")) + QStringLiteral("(?:\\s*/\\s*")
+                + litRe(QStringLiteral("\\d+")) + QStringLiteral(")+"));
             for (auto ci = chain.globalMatch(code); ci.hasNext();) {
                 const QString links = ci.next().captured(0);
                 QStringList parts;
@@ -546,8 +565,7 @@ private:
             "\\b(?:std::w?regex|QRegularExpression)\\s+(\\w+)\\s*[({=]"));
         if (const auto m = regexDecl.match(code); m.hasMatch()) {
             QList<int> lits;
-            static const QRegularExpression idx(QStringLiteral("\\x01(\\d+)\\x02"));
-            for (auto it = idx.globalMatch(code); it.hasNext();) lits.append(it.next().captured(1).toInt());
+            for (auto it = litIndexRe().globalMatch(code); it.hasNext();) lits.append(it.next().captured(1).toInt());
             if (!lits.isEmpty()) regexVars().insert(m.captured(1), lits);
         }
 

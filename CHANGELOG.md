@@ -25,6 +25,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **The code-search tools agree on which files are what** (ANTS-6592)
+  `find_sources` now scans `.c`, `.hh` and `.hxx` files, and a source
+  file whose own name starts with `build` or a dot. `trace` reads a
+  `#!/usr/bin/env -S bash` script, and ksh and ash scripts, as shell, as
+  `file_outline` already did. A class inside an HTML `<script>` is
+  outlined as a class (ANTS-5992). `read_region` ends a Ruby body at the
+  next symbol instead of at a brace. A clipped `trace` signature keeps
+  its last whole character.
+
 - **The context meter, allowlist hints and transcript viewer each follow one rule** (ANTS-6591)
   The context meter turns red at 80%, where its tooltip starts saying
   "Nearly full". The allowlist's live hint now also says when a typed
