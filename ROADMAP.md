@@ -98021,7 +98021,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: hooks-packaging.
 
-- 📋 [ANTS-6600] **Fold the duplicated logic the 2026-11-06 reviews found in mainwindow.**
+- ✅ [ANTS-6600] **Fold the duplicated logic the 2026-11-06 reviews found in mainwindow.**
   6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 538 `src/mainwindow.cpp:2374-2376` (Low)
   - row 539 `src/mainwindow.cpp:1467` (Low)
@@ -98029,6 +98029,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 550 `src/mainwindow_sessions.cpp:300` (Low)
   - row 551 `src/mainwindow_tabs.cpp:904` (Low)
   - row 552 `src/mainwindow_menus.cpp:93` (Low)
+  Shipped 4151f635. Rows 538, 539, 551, 552 folded; 548 and 550 were
+  already fixed.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
