@@ -29,7 +29,11 @@ for security-relevant changes.
   `doc_facts` no longer has its own `count_mismatch` kind or the
   `count_claims_checked` statistic; its rules read prose less precisely.
   A citation into another repository, or on a loop-log row, is no longer a
-  `doc_lint` finding, matching `doc_citations only:"stale"`.
+  `doc_lint` finding, matching `doc_citations only:"stale"`. The table of
+  contents repair finds a heading written `## Name ##` and links the slug
+  `doc_integrity` checks. `doc_dedup`'s `exclude_headings` also leaves out
+  a section under a blockquoted heading. A quotation in prose is no longer
+  credited to a document named in the table row above it.
 
 - **A restarted window opens without loading every saved tab's history first** (ANTS-5225)
   Each saved tab shows its name at once, but loads its history and starts

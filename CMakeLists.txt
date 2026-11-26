@@ -711,7 +711,7 @@ add_library(ants_mcpcore_lib STATIC
     # over one enumeration and one shared read, so a review pre-pass is one call
     # rather than five that each re-walk the tree. Qt6::Core-only.
     src/doclint.cpp
-    # ANTS-5506 — doc_facts: doc_lint's sixth checker (five document-fact
+    # ANTS-5506 — doc_facts: doc_lint's sixth checker (four document-fact
     # kinds). Native, so it rides doc_lint's shared read. Qt6::Core-only.
     src/docfacts.cpp
     # ANTS-1961 / ANTS-1962 — feedback-file parse + render helpers.
