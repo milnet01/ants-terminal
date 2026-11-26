@@ -50,11 +50,6 @@ it in sync with the code.
 **Review lanes come from `.indie-review/partition.json`, not
 `docs/subsystems.md`.** To change what a lane covers, edit that file.
 
-## Data flow
-
-`PTY → VtParser → TerminalGrid → TerminalWidget`
-Reverse (DA/CPR/DSR): `TerminalGrid → ResponseCallback → PTY`
-
 ## Build & test
 
 ```bash
@@ -79,8 +74,7 @@ cmake -G Ninja -B build && cmake --build build && ctest --test-dir build --outpu
 - The push hook runs `tools/local-ci.sh`. It refuses a tree with uncommitted
   or untracked files. A cold CI image or Qt 6.2 cache blocks the push: run
   the command it names through `cc-job`, then push again.
-- `SKIP_LOCAL_CI=1`, `git push --no-verify` and the `ANTS_PREPUSH_NO_*`
-  switches all need the user (`commits.md` § 2.3).
+- The `ANTS_PREPUSH_NO_*` switches need the user, as `SKIP_LOCAL_CI=1` does.
 - Faster loops, presets, `tools/safe-build.sh` and the gate in full:
   [`docs/build-and-ci.md`](docs/build-and-ci.md).
 
@@ -102,27 +96,14 @@ session in its tabs (`~Pty`, `src/ptyhandler.cpp`).
 
 - Behaviour that is data — a rule pack, schema, description, theme, keymap,
   template — lives in a file the process re-reads.
-- A verb that needs no tab or terminal state is registered in
-  `mcp::registerProjectScopedVerbs()` (`src/mcptoolregistry.cpp`), or in
-  `mcp::registerMcpdOnlyVerbs()` (`src/trace/traceverb.h`) when only
-  `ants-mcpd` serves it. Its body
-  reaches `MainWindow` in none of ANTS-4932 § 1's three forms: a direct call,
-  a call inside the root resolver, or an `if (!m_main)` refusal.
-- A verb that needs that state names its `MainWindow` method in its design
-  and joins `mcp::terminalScopedVerbNames()`, which gives `ants-mcpd` its
-  forwarder.
-- `CallerCwdContract::TabSpecific` is not that register. It covers per-tab
-  reads routed by `tab` or `caller_cwd`; adding a verb to it switches on a
-  refusal.
+- Where an MCP verb is registered: `.claude/rules/mcp-verbs.md`.
 - **Build every new feature as modular as possible (user, 2026-10-15).** It
-  can be stopped and started on its own while the terminal runs, tearing
-  down and rebuilding its state, so a stuck feature never needs a relaunch.
-  The same statement says whether its code runs in its own process, and
-  why. In the `ants-mcpd` model a new build reaches clients on their next
-  reconnect, with no terminal relaunch; code only the terminal serves still
-  needs one. The statement also names the feature's stop/start control, or
-  says why it has none: it holds no running state, or a terminal restart
-  is unavoidable.
+  can be stopped and started on its own while the terminal runs, so a stuck
+  feature never needs a relaunch. The statement says whether its code runs
+  in its own process and why. It names the feature's stop/start control, or
+  why it has none: no running state, or a terminal restart is unavoidable.
+  Under `ants-mcpd` a new build reaches clients on their next reconnect;
+  code only the terminal serves still needs a relaunch.
 
 It does not apply to a bug fix, a test, a document or a version bump.
 Retrofitting is a roadmap item, never an obligation. Models to copy:
@@ -131,7 +112,6 @@ Retrofitting is a roadmap item, never an obligation. Models to copy:
 
 ## Conventions
 
-- Signals/slots for cross-component comms.
 - Config at `~/.config/ants-terminal/config.json`, mode 0600.
 - **The roadmap store is machine-global**
   (`~/.local/share/ants-terminal/roadmap.sqlite`, mode 0600). Its rules
@@ -141,24 +121,14 @@ Retrofitting is a roadmap item, never an obligation. Models to copy:
   `test_roots`, `docs_dir`, `roadmap`, `changelog`, `specs_dir`, and
   `repo_root` for an outer folder whose clone sits one level down).
   World-readable, no secrets. Edited by `project_settings`.
-- Scrollback default 50k, max 1M.
-- Theme colours are set on `TerminalGrid`, which holds the ANSI palette.
-- QTextLayout for ligature shaping.
 
 ## MCP tool authoring
 
-- Full verb catalogue: `tool_info {catalog:true}`, then `ToolSearch`
-  `select:mcp__ants__<name>` for a schema.
-- `session_orient` refreshes `codebase_index`. Query it (`codebase_index`,
-  `find_definition`, `find_sources`, `workspace_search`) rather than `grep`.
-- Adding or changing a verb: follow
-  [`docs/standards/mcp-tools.md`](docs/standards/mcp-tools.md). Its
-  *Load-bearing contracts* list the response-wrap, caller_cwd,
-  CallerCwdContract, path validation, ETag-304, `fields=`, refusal codes and
-  state routing. Per-verb notes:
-  [`docs/standards/mcp-behavioural-notes.md`](docs/standards/mcp-behavioural-notes.md).
-  Config keys, including the master gate `claude.mcp_enabled`:
-  [`docs/standards/mcp-config-keys.md`](docs/standards/mcp-config-keys.md).
+Adding or changing a verb: follow
+[`docs/standards/mcp-tools.md`](docs/standards/mcp-tools.md). Its
+*Load-bearing contracts* list the response-wrap, caller_cwd,
+CallerCwdContract, path validation, ETag-304, `fields=`, refusal codes and
+state routing.
 
 ## Cross-session MCP feedback
 
@@ -197,8 +167,8 @@ Global rule 18's `append_finding`-only bullet is for other sessions.
 
 ## Key design decisions (non-obvious)
 
-Parser, wrapping, sandbox, opacity and audit scoring:
-[`.claude/rules/design-decisions.md`](.claude/rules/design-decisions.md),
+Data flow, code conventions, parser, wrapping, sandbox, opacity and audit
+scoring: [`.claude/rules/design-decisions.md`](.claude/rules/design-decisions.md),
 which loads when a file under `src/` is read.
 
 ---

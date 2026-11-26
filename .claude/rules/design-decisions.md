@@ -3,6 +3,18 @@ paths:
   - "src/**"
 ---
 
+## Data flow
+
+`PTY → VtParser → TerminalGrid → TerminalWidget`
+Reverse (DA/CPR/DSR): `TerminalGrid → ResponseCallback → PTY`
+
+## Code conventions
+
+- Signals/slots for cross-component comms.
+- Scrollback default 50k, max 1M.
+- Theme colours are set on `TerminalGrid`, which holds the ANSI palette.
+- QTextLayout for ligature shaping.
+
 ## Key design decisions (non-obvious)
 
 - Custom VT100 parser, no pyte/libvterm. Qt6 is the only runtime dep.
