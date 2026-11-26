@@ -1646,6 +1646,32 @@ TEST(DocCitations, Ants4638AttributionWidensToTheParagraph) {
            "paragraph's path must not be inherited: " << qPrintable(render(r));
 }
 
+// ANTS-6598 — a table row ends the paragraph for attribution too, as it already
+// ended the quotation's window: a row is another subject. The prose line below
+// the table names nothing, so its quotation has no target.
+TEST(DocCitations, Ants6598TableRowEndsTheAttributionParagraph) {
+    Fixture fx;
+    fx.write(QStringLiteral("standards/gate.md"),
+             "# Gate\n\na phrase the table row's document happens to hold\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+    const QString doc = fx.write(QStringLiteral("standards/commits.md"),
+        "# Commits\n"
+        "\n"
+        "| Doc | Use |\n"
+        "|---|---|\n"
+        "| `standards/gate.md` | the gate |\n"
+        "Prose under the table quotes \"a phrase the table row's document "
+        "happens to hold\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    ASSERT_EQ(qs.size(), 1) << qPrintable(render(r));
+    EXPECT_EQ(qs.at(0).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("no_target")) << qPrintable(render(r));
+}
+
 // ANTS-4639 — three defects in one resolver, and they compound.
 //
 // (1) `standards/commits.md` attributes quotations to `releases.md` and

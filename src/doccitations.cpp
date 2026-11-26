@@ -1111,19 +1111,25 @@ static void dcQuotationPass(QJsonObject &out, const QString &rootCanonical,
     int harvested = 0;
     int skipped   = 0;
 
-    // ANTS-4638 — the blank-line-delimited paragraph above this line,
-    // nearest first. A blank line ends the scope: without that bound the
-    // rule reaches back across the document and produces a confident wrong
-    // attribution, which is worse than the silence it replaces. A fenced
-    // line stops it for the same reason the citation antecedent resets.
+    // Where a block ends: a blank line, a fenced line, or a table row. One
+    // rule for the window below and for the attribution walk, so a quotation
+    // in prose is never credited to a table row above it, which is another
+    // subject (ANTS-6598).
+    auto endsBlock = [&](int j) {
+        return prefix.at(j).trimmed().isEmpty() || (j < fence.size() && fence.at(j))
+            || dcIsTableRow(prefix.at(j));
+    };
+
+    // ANTS-4638 — the paragraph above this line, nearest first. Without
+    // that bound the rule reaches back across the document and produces a
+    // confident wrong attribution, which is worse than the silence it
+    // replaces.
     // ANTS-4696 — `rejected` reports the nearest path-shaped token that
     // was NOT accepted as a document, so the caller can say why nothing
     // was attributed instead of attributing something else.
     auto paragraphAttribution = [&](int i, QString *rejected = nullptr)
             -> QStringList {
-        for (int j = i - 1; j >= 0; --j) {
-            if (prefix.at(j).trimmed().isEmpty()) break;
-            if (j < fence.size() && fence.at(j)) break;
+        for (int j = i - 1; j >= 0 && !endsBlock(j); --j) {
             QStringList c = dcDocTokensIn(prefix.at(j));
             if (!c.isEmpty()) return c;
             const QStringList bad = dcRejectedPathTokensIn(prefix.at(j));
@@ -1177,10 +1183,7 @@ static void dcQuotationPass(QJsonObject &out, const QString &rootCanonical,
         // documents while building this: scanning every line produced 2078
         // quotations against 745 before, and the surplus was full of such
         // fragments; opening one window per block gives the real number.
-        if (!tableRow && i > 0 && !prefix.at(i - 1).trimmed().isEmpty()
-            && !(i - 1 < fence.size() && fence.at(i - 1))
-            && !dcIsTableRow(prefix.at(i - 1)))
-            continue;
+        if (!tableRow && i > 0 && !endsBlock(i - 1)) continue;
 
         // `lineStarts[k]` is the window offset at which line `i + k`
         // begins, so a match resolves back to the line it really starts
@@ -1190,10 +1193,7 @@ static void dcQuotationPass(QJsonObject &out, const QString &rootCanonical,
         lineStarts.append(0);
         QString window = line;
         if (!tableRow) {
-            for (int j = i + 1; j < prefix.size(); ++j) {
-                if (prefix.at(j).trimmed().isEmpty()) break;
-                if (j < fence.size() && fence.at(j)) break;
-                if (dcIsTableRow(prefix.at(j))) break;
+            for (int j = i + 1; j < prefix.size() && !endsBlock(j); ++j) {
                 window += QLatin1Char('\n');
                 lineStarts.append(window.size());
                 window += prefix.at(j);
