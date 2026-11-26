@@ -25,6 +25,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log's batch, section, release and repair ops share one refusal builder, one roadmap lookup and one reply per op.** (ANTS-6603)
+
 - **The document, changelog, spec-log and git-state MCP verbs share one copy of their path checks, refusals and reply building.** (ANTS-6601)
 
 - **The branch chip's colour, the close-confirm dialogs and Undo Close Tab's folder quoting each come from one shared piece of code.** (ANTS-6600)

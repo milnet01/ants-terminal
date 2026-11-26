@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6948 -->
+<!-- ants-roadmap-id-high-water: ANTS=6951 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98066,15 +98066,17 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6602] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-review-verbs.**
+- ✅ [ANTS-6602] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-review-verbs.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 917 `src/remotecontrol_review.cpp:465` (Medium)
+  Shipped: row 917 not folded — the disk path counts bytes, the inline
+  path UTF-16 units, on purpose; a comment now says why.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: mcp-review-verbs.
 
-- 📋 [ANTS-6603] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-roadmap-batch.**
+- ✅ [ANTS-6603] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-roadmap-batch.**
   10 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 861 `src/remotecontrol_roadmap_log_batch.cpp:3089-3127` (High)
   - row 864 `src/remotecontrol_roadmap_release.cpp:48-55` (Medium)
@@ -98086,6 +98088,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 874 `src/remotecontrol_roadmap_log_batch.cpp:223-241` (Low)
   - row 875 `src/remotecontrol_roadmap_log_batch.cpp:1106-1116` (Low)
   - row 876 `src/remotecontrol_roadmap_log_batch.cpp:2138-2150` (Low)
+  Shipped: rows 864, 865 (part), 870, 873, 874 folded; 861, 866, 869,
+  875 already fixed. 876 → ANTS-6949; rest of 865 → ANTS-6951; ANTS-6950
+  seen while folding.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -115317,6 +115322,36 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6601).
   Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6949] **bundle_row's sorted insert drops a table row's last cell when the row has no trailing pipe, so sort_col on that column always appends.**
+  src/remotecontrol_roadmap_log_batch.cpp, the splitter loop in
+  bundle_row's sorted-insert path: it never strips a trailing `|` and
+  never keeps the last cell; a cell ending in an escaped `\|` is
+  misread too. Using rowColumns there fixes it and folds review row
+  876.
+  **Layman:** Adding a row to a sorted roadmap table can put it in the wrong place.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6603).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6950] **create_section and bundle_row put op in their dry-run reply but not in their write reply.**
+  src/remotecontrol_roadmap_log_batch.cpp. Every other roadmap_log op
+  echoes op on both paths. Add it to the write reply and pin it.
+  **Layman:** Two roadmap tools leave out a field after a real write that they include in a preview.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6603).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6951] **roadmap_log's subtree walks disagree on a section from another file: log_batch's stop at it, release.cpp's skip it.**
+  rcSubtreeEnd/rcPastDeeper (log_batch) stop; release.cpp's subtreeOf
+  and pastDeeper skip, and pastDeeper also stops at level <= 2 and at
+  sections made in the same run. createSectionSkipCount is not
+  file-aware. Decide the rule, then fold review row 865's remaining
+  copies onto rcPastDeeper.
+  **Layman:** Moving or placing roadmap sections can treat sections stored in other files differently.
+  Kind: fix.
+  Source: close-findings sweep 2026-11-26 (ANTS-6603).
+  Lanes: mcp-roadmap-batch.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
