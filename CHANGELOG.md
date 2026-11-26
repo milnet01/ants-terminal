@@ -88,6 +88,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`ants-mcpd` shuts down cleanly after a call** (ANTS-6939)
+  It stops its worker threads before releasing what they use, so a
+  call that has just answered can no longer touch freed memory as the
+  server exits.
+
 - **`build_status` counts a compiler's `fatal error:` line as an error** (ANTS-6596)
   A build that stopped on a missing header now reports that error,
   as `recent_errors` already did.

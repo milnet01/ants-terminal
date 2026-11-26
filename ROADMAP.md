@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6938 -->
+<!-- ants-roadmap-id-high-water: ANTS=6941 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -115190,6 +115190,46 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: test.
   Source: ANTS-6936 fix, 2026-11-26.
   Lanes: dev-python-ci-packaging.
+
+- ✅ [ANTS-6939] **ants-mcpd's shared-lane idle hook can call into RemoteControl after main() has destroyed it.**
+  Nightly ASan run 45793672504 (2153eec0): McpdCall.Inv3OffloadIsForcedOff
+  failed with UBSan "member call on address ... which does not point to an
+  object of type 'RemoteControl'" at src/mcpdmain.cpp:217. pipeline is
+  declared before rc, so rc is destroyed first, while the worker can still
+  run the idle hook after the --call reply. Reproduced 3/3 on build-asan.
+  Shipped e84b03d8: rc declared before pipeline. Old code: 1/20 pinned
+  ASan runs hit CI's error; new: 0/60.
+  **Layman:** The MCP server could touch freed memory as it shut down after a one-off call.
+  Kind: fix.
+  Source: ci-nightly-45793672504-2026-11-26.
+  Lanes: mcp.
+
+- ✅ [ANTS-6940] **roadmap_query mode:sources counts no shipped items in a build that does not merge string literals.**
+  Nightly ASan run 45793672504: RoadmapQuerySourceFilter.Inv9 got
+  shipped_count 0. src/remotecontrol_roadmap_query_verb.cpp compares
+  st->glyph == RoadmapParse::kEmojiDone as pointers (from f31db9cf,
+  ANTS-6242); ASan keeps one copy of the literal per translation unit,
+  so the pointers differ. Reproduced 3/3 on build-asan.
+  Shipped edc2433b: qstrcmp instead of a pointer compare. ASan Inv9 red
+  3/3, green 3/3.
+  **Layman:** A count of finished roadmap items read zero in one kind of build.
+  Kind: fix.
+  Source: ci-nightly-45793672504-2026-11-26.
+  Lanes: mcp.
+
+- 📋 [ANTS-6941] **A closing MainWindow deletes m_remoteControl before m_claudeIntegration joins the workers whose jobs call into it.**
+  Found 2026-11-26 beside ANTS-6939 (the same order in ants-mcpd). Both
+  are QObject children of MainWindow, deleted in creation order:
+  m_remoteControl (mainwindow.cpp, RemoteControl(this, ...)) before
+  m_claudeIntegration (ClaudeIntegration(this)). ~ClaudeIntegration joins
+  the dispatch workers, but by then a running verb job or the ANTS-5208
+  idle hook may have called into the deleted RemoteControl. ~MainWindow
+  does not order the two. Not seen in a test yet; check under ASan with a
+  window closed while a verb runs.
+  **Layman:** Closing a window while an MCP call is running might touch freed memory.
+  Kind: fix.
+  Source: ANTS-6939 fix, 2026-11-26.
+  Lanes: mcp, mainwindow.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
