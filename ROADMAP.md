@@ -75317,6 +75317,8 @@ indie-review finding.
   2026-11-17: p95 109.2 ms (budget 50 ms) when ctest --preset=perf ran
   straight after a full ctest --preset=default; the same test alone a
   minute later passed.
+  Seen again 2026-11-26: p95 70.0 ms over 20 warm reads of 3700 items,
+  under ctest --preset=perf while two other projects' builds ran.
   **Layman:** A speed test for reading the roadmap fails now and then when the machine is busy with other tests.
   Kind: test.
   Source: in-session-2026-11-08 (ANTS-5141 test run).
