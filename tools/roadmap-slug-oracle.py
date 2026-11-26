@@ -16,10 +16,15 @@ Usage: tools/roadmap-slug-oracle.py <fixture-dir> > expected-section-slugs.json
 """
 import json
 import os
+import re
 import sys
 import unicodedata
 
 from roadmap_paths import root_roadmap
+
+# CommonMark § 4.5: a backtick fence's info string holds no backtick, so a
+# line opening ```` ```python ```` is an inline code span, not a fence.
+FENCE_RE = re.compile(r"^(`{3,}(?!.*`)|~{3,})(.*)$")
 
 
 def slugify(heading: str) -> str:
@@ -69,13 +74,18 @@ def heading_level(line: str):
 def slugs_for(path: str):
     seen: set[str] = set()
     out: list[str] = []
-    in_fence = False
+    fence = None   # (char, run length) of the open fence
     with open(path, encoding="utf-8") as fh:
         for line in fh.read().split("\n"):
-            if line.strip().startswith("```"):
-                in_fence = not in_fence
+            m = FENCE_RE.match(line.strip())
+            if fence:
+                # The closer is a bare run of the same char, at least as long.
+                if (m and m.group(1)[0] == fence[0]
+                        and len(m.group(1)) >= fence[1] and not m.group(2).strip()):
+                    fence = None
                 continue
-            if in_fence:
+            if m:
+                fence = (m.group(1)[0], len(m.group(1)))
                 continue
             lvl, text = heading_level(line)
             if lvl in (2, 3):
