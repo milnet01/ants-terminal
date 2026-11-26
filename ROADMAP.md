@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6935 -->
+<!-- ants-roadmap-id-high-water: ANTS=6937 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97925,18 +97925,24 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6594] **Fold the duplicated logic the 2026-11-06 reviews found in dev-python-ci-packaging.**
+- ✅ [ANTS-6594] **Fold the duplicated logic the 2026-11-06 reviews found in dev-python-ci-packaging.**
   2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 464 `tools/rc-namespace-scan.py:107-114` (Low)
   - row 465 `tools/roadmap-archive-survey.py:65-71` (Low)
+  Shipped c6f31d0d. Row 464: digit separators. Row 465: fences skipped
+  by MarkdownScan's rule, not the oracle's toggle (that toggle hid 265
+  live headings).
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: dev-python-ci-packaging.
 
-- 📋 [ANTS-6595] **Fold the duplicated logic the 2026-11-06 reviews found in dev-shell-tools.**
+- ✅ [ANTS-6595] **Fold the duplicated logic the 2026-11-06 reviews found in dev-shell-tools.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 448 `tools/local-ci.sh:364-369` (Medium)
+  Shipped ed1ecdd8. tools/build-marker-lib.sh: marker written before the
+  build, removed on its own result. The build stays in the foreground: a
+  backgrounded job ignores SIGINT.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -115141,6 +115147,32 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: fix.
   Source: user-report-2026-11-23.
   Lanes: claude-session-widgets.
+
+- ✅ [ANTS-6936] **tools/roadmap-slug-oracle.py treats any line starting with ``` as a fence toggle, so a prose line quoting fence syntax hides every later heading.**
+  Found while fixing ANTS-6594. The same toggle in roadmap-archive-survey.py
+  dropped ROADMAP.md's live heading count from 325 to 60, because a line
+  opening with ```` ```python ```` (an inline code span) opened a fence
+  nothing closed. The oracle only reads tests/features/roadmap_migrate_read
+  fixtures, and none holds such a line, so expected-section-slugs.json is
+  right today. Fix: CommonMark § 4.5's rule, as roadmap-archive-survey.py's
+  FENCE_RE now does; the oracle must stay written from stated behaviour,
+  not from src/.
+  Shipped 30adbe6f. Fixture output byte-identical before and after.
+  **Layman:** A test helper could misread a roadmap that talks about code blocks; it is right today, but would go wrong on such a file.
+  Kind: fix.
+  Source: ANTS-6594 fix, 2026-11-26.
+  Lanes: dev-python-ci-packaging.
+
+- 📋 [ANTS-6937] **expected-section-slugs.json lacks the archives/declaredformat root that tools/roadmap-slug-oracle.py emits for today's fixtures.**
+  Seen 2026-11-26 while fixing ANTS-6936: the oracle's output over
+  tests/features/roadmap_migrate_read/fixtures has one root more than the
+  committed golden, so INV-2 never checks that fixture's live slugs.
+  Regenerate the golden and see whether the roadmap_migrate_read test
+  still passes; if not, find which side is wrong.
+  **Layman:** One test fixture is never checked against the expected answers, because the answer file was not regenerated when it was added.
+  Kind: test.
+  Source: ANTS-6936 fix, 2026-11-26.
+  Lanes: dev-python-ci-packaging.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
