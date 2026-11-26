@@ -368,8 +368,10 @@ std::vector<Theme> Themes::loadUserThemes() {
             //     the file disappears from the *.json glob, the cache
             //     reflects on-disk reality, and a future re-save can
             //     write a fresh good version of the same name without
-            //     a stale bad twin shadowing it. Mirror the
-            //     config.cpp parse-failure rotation pattern.
+            //     a stale bad twin shadowing it.
+            // Renamed, not copied: configbackup.h's rotateCorruptFileAside
+            // copies, which would leave the bad file in the glob to fail
+            // and be copied again on every launch.
             f.close();
             const qint64 epoch =
                 QDateTime::currentSecsSinceEpoch();
