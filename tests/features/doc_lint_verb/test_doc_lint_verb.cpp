@@ -94,6 +94,8 @@ TEST(DocLintVerb, Inv2CheckFilterAndUnknownName) {
     Tree t;
     const QString doc = QStringLiteral("docs/a.md");
     t.write(doc, "# A\n\n[dead](nowhere.md)\n\nsee `src/gone.cpp:1` here\n");
+    // A real src/ makes the cited file ours and missing, not foreign_path.
+    t.write(QStringLiteral("src/present.cpp"), "x\n");
 
     // Guard: BOTH checkers really do produce findings on this fixture.
     const DocLint::Result all = DocLint::run({doc}, optsFor(t));
@@ -527,6 +529,8 @@ TEST(DocLintVerb, Inv29StagedTextReachesEveryChecker) {
     ASSERT_FALSE(realGit().isEmpty()) << "git is not installed";
     ASSERT_TRUE(gitRun(t.root, {QStringLiteral("init"), QStringLiteral("-q")}));
     const QString doc = QStringLiteral("docs/a.md");
+    // A real src/ makes the cited file ours and missing, not foreign_path.
+    t.write(QStringLiteral("src/present.cpp"), "x\n");
     t.write(doc, kClean);
     ASSERT_TRUE(gitCommitAll(t.root));
 
