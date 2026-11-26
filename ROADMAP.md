@@ -98058,6 +98058,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Shipped bef22175. 932 and 941 were already fixed. 931 → ANTS-6948 and
   957 → ANTS-6947 (the copies differ in behaviour). Bugs seen while
   folding: ANTS-6944, 6945, 6946.
+  Row 936 undone in 0c65f357: a shared lookup outside the verb bodies
+  hides the MainWindow reads from mcp_verb_offthread_guard INV-6. The
+  three lookups stay inline.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
