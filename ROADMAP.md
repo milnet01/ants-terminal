@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6941 -->
+<!-- ants-roadmap-id-high-water: ANTS=6942 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -115230,6 +115230,20 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: fix.
   Source: ANTS-6939 fix, 2026-11-26.
   Lanes: mcp, mainwindow.
+
+- 📋 [ANTS-6942] **GCC 13 in CI's image warns in three places the host build does not: mcpdmain.cpp, claudetasklistdialog.cpp and test_project_repo_root.cpp.**
+  Seen 2026-11-26 in the push gate's qt62-guard build (ubuntu 24.04):
+  - src/mcpdmain.cpp, a lambda's std::min_element over a QHash<QString,
+    qint64>: -Wnull-dereference in qhash.h. Present on 2153eec0 too.
+  - src/claudetasklistdialog.cpp: -Wnull-dereference in qlist.h size().
+  - tests/features/project_repo_root/test_project_repo_root.cpp:140:
+    __builtin_memcpy "out of the bounds [0, 32]" in char_traits.h.
+  Each is a fix or a silencing with the ANTS-1554 class reason, as in
+  ANTS-6798.
+  **Layman:** CI's compiler prints three warnings that should be fixed or explained.
+  Kind: fix.
+  Source: push-gate-log-2026-11-26.
+  Lanes: mcp, claude-session-widgets.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
