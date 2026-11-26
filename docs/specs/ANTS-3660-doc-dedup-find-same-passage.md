@@ -307,7 +307,8 @@ a rate nobody reads is not a measurement.
 
 **Excluded on request: named sections (ANTS-5471).** `exclude_headings`, on
 `doc_dedup` and `doc_lint`, leaves out the sections under the headings it names.
-A section runs to the next heading of its level or higher. The caller names
+A section is `MarkdownScan::headings`' span, so it runs to the next heading of
+its level or higher, and a blockquoted heading starts one too. The caller names
 them, because only the corpus's own standard knows which sections it requires.
 Measured 2026-11-01 on `~/.claude/standards`: `Cold-eyes loop log` took
 `doc_dedup` from 140 pairs to 4. The reply's `sections_excluded`, and
@@ -510,7 +511,7 @@ enforce.
   similarities fixes the primary key, and one with two EQUAL similarities fixes
   the location tiebreak; either alone passes against an implementation carrying
   only the other.
-- **INV-11** — `exclude_headings` leaves out each named section and its subsections, keeps every other passage's line number, and reports `sections_excluded`. Case is ignored and a heading matches whole. Anything but an array of non-blank strings refuses `bad_args` (§ 2.4).. *Test:* `DocDedup.Ants5471ExcludedHeadingLeavesItsSectionOut` and `DocDedup.Ants5471ArgumentShape`, with a mutant for the fence, the section end, the line numbers and the case rule..
+- **INV-11** — `exclude_headings` leaves out each named section and its subsections, keeps every other passage's line number, and reports `sections_excluded`. Case is ignored and a heading matches whole. Anything but an array of non-blank strings refuses `bad_args` (§ 2.4).. *Test:* `DocDedup.Ants5471ExcludedHeadingLeavesItsSectionOut`, `DocDedup.Ants5471ArgumentShape` and `DocDedup.Ants6598QuotedHeadingIsExcludedToo`, with a mutant for the fence, the section end, the line numbers and the case rule..
 - **INV-12** — For each reported pair, a `figure_mismatch` finding is emitted
   for every place the two passages state a different figure between the same
   words. It is anchored at the earlier passage, names both values and the other

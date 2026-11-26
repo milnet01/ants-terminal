@@ -90,6 +90,26 @@ TEST(DocDedup, Ants5471ExcludedHeadingLeavesItsSectionOut) {
     EXPECT_EQ(pairsAt(run(docs, unmatched)), 4) << "a heading matches whole, never in part";
 }
 
+// ANTS-6598 — sections come from MarkdownScan::headings, so a blockquoted
+// heading starts one too, ending at the next unquoted heading.
+TEST(DocDedup, Ants6598QuotedHeadingIsExcludedToo) {
+    const QString quoted = para(tokens(QStringLiteral("qt"), 30));
+    const QString kept   = para(tokens(QStringLiteral("kp"), 30));
+    const QString doc =
+        QStringLiteral("# T\n\n> ## What checks this\n>\n> %1\n\n## Real\n\n%2\n")
+            .arg(quoted, kept);
+    const QVector<QPair<QString, QString>> docs{{QStringLiteral("a.md"), doc},
+                                                {QStringLiteral("b.md"), doc}};
+    ASSERT_EQ(pairsAt(run(docs, DocDedup::Options{})), 2);
+
+    DocDedup::Options named;
+    named.excludedHeadings = {QStringLiteral("What checks this")};
+    const DocDedup::Result r = run(docs, named);
+    EXPECT_EQ(r.sectionsExcluded, 2);
+    ASSERT_EQ(pairsAt(r), 1);
+    EXPECT_EQ(r.pairs.at(0).a.line, 9) << "the unquoted section stays";
+}
+
 // ANTS-5471 — a mistyped filter refuses rather than reading as no filter.
 TEST(DocDedup, Ants5471ArgumentShape) {
     EXPECT_EQ(DocDedup::excludedHeadingsArg(QJsonValue(QJsonValue::Undefined)),

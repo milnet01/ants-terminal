@@ -48,23 +48,13 @@ QString headingKey(const QString &heading) {
 int blankExcludedSections(QStringList &lines, const QStringList &headings) {
     QSet<QString> wanted;
     for (const QString &h : headings) wanted.insert(headingKey(h));
-    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
-    static const QRegularExpression atx(QStringLiteral("^(#{1,6}) +(.*)$"));
     int removed = 0;
-    int cutLevel = 0;  // the level of the section being blanked; 0 is none
-    for (int i = 0; i < lines.size(); ++i) {
-        if (!fence.at(i)) {
-            const auto m = atx.match(lines.at(i).trimmed());
-            if (m.hasMatch()) {
-                const int level = int(m.capturedLength(1));
-                if (cutLevel != 0 && level <= cutLevel) cutLevel = 0;
-                if (cutLevel == 0 && wanted.contains(headingKey(m.captured(2)))) {
-                    cutLevel = level;
-                    ++removed;
-                }
-            }
-        }
-        if (cutLevel != 0) lines[i].clear();
+    int blankedTo = 0;  // 1-based last line already blanked; a nested match is inside it
+    for (const MarkdownScan::Heading &h : MarkdownScan::headings(lines)) {
+        if (h.line <= blankedTo || !wanted.contains(headingKey(h.text))) continue;
+        for (int ln = h.line; ln <= h.endLine; ++ln) lines[ln - 1].clear();
+        blankedTo = h.endLine;
+        ++removed;
     }
     return removed;
 }
