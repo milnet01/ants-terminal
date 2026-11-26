@@ -447,7 +447,9 @@ QJsonDocument RemoteControl::corroborateWithRoot(const QJsonObject &req,
         // point of ANTS-1282.
 
         // ANTS-1344 — re-walk the validated dir to detect files whose
-        // on-disk size exceeded the engine's read cap. Top-level
+        // on-disk size exceeded the engine's read cap. Bytes, not the inline
+        // path's UTF-16 units: corroboratedFindingsFromDir reads at most
+        // kMaxScanBytes bytes of each file (INV-8). Top-level
         // `*.md` only (matches corroboratedFindingsFromDir's entry
         // filter); QDir::NoDotAndDotDot so hidden + traversal entries
         // are excluded. Bounded by lane count.
