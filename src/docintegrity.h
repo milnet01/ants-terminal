@@ -28,6 +28,7 @@
 #include <QList>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 namespace DocIntegrity {
 
@@ -118,6 +119,18 @@ QList<Finding> check(const QString &rootCanonical,
                      const Options &opts = {},
                      QStringList *checkedDocs = nullptr,
                      Suppressed *suppressed = nullptr);
+
+// One ATX heading as this engine reads it: no indent, the closing `#`s
+// stripped, the slug disambiguated in document order. doc_lint's TOC repair
+// reads these, so the rows it writes carry the slugs this engine checks.
+struct Heading {
+    QString slug;
+    int level = 0;
+    int     line = 0;   // 1-based
+    QString text;
+};
+// Every heading outside a fenced line (`fence` is MarkdownScan::fenceMask).
+QList<Heading> headings(const QStringList &lines, const QVector<bool> &fence);
 
 // GitHub-compatible heading anchor slug (`github-slugger` algorithm): strip
 // backtick code-span markers, lowercase, delete every char that is not a

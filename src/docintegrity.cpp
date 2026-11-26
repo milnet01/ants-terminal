@@ -2,6 +2,8 @@
 
 #include "docintegrity.h"
 
+#include <limits>
+
 #include "doccitations.h"
 #include "markdownscan.h"
 
@@ -48,13 +50,6 @@ bool isListItem(const QString &line) {
     static const QRegularExpression re(QStringLiteral(R"(^\s*([-*+]|\d+[.)])\s)"));
     return re.match(line).hasMatch();
 }
-
-struct Heading {
-    QString slug;
-    int level = 0;
-    int     line = 0;   // 1-based
-    QString text;
-};
 
 struct Link {
     QString target;  // raw target inside the parens, incl. any #anchor
@@ -395,6 +390,10 @@ Resolved resolveRelative(const QString &rootCanonical, const QString &docAbsDir,
 }
 
 }  // namespace
+
+QList<Heading> headings(const QStringList &lines, const QVector<bool> &fence) {
+    return extractHeadings(lines, fence, std::numeric_limits<int>::max());
+}
 
 QString gfmSlug(const QString &headingText, QHash<QString, int> &seen) {
     QString s = headingText;

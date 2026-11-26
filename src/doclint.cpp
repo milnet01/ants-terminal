@@ -134,31 +134,10 @@ QString citationMessage(const QJsonObject &e, const QString &status) {
 // list item, so the writer saw different headings from the check that asked
 // for the patch and could put a TOC row in the wrong place.
 
-struct TocHeading {
-    QString text;
-    QString slug;
-    int level = 0;
-    int     line = 0;   // 1-based
-};
-
-// Slugs are assigned in document order through one `seen` map, which is how
-// DocIntegrity::gfmSlug disambiguates repeats. Computing them independently
-// per heading would give two headings of the same text the same slug and make
-// the entry->heading lookup below ambiguous.
-QVector<TocHeading> headingsOf(const QStringList &lines, const QVector<bool> &fence) {
-    static const QRegularExpression re(QStringLiteral(R"(^ {0,3}(#{1,6})\s+(\S.*?)\s*$)"));
-    QVector<TocHeading> out;
-    QHash<QString, int> seen;
-    for (int i = 0; i < lines.size(); ++i) {
-        if (fence.at(i)) continue;
-        const auto m = re.match(lines.at(i));
-        if (!m.hasMatch()) continue;
-        const QString text = m.captured(2);
-        out.append({text, DocIntegrity::gfmSlug(text, seen),
-                    static_cast<int>(m.captured(1).size()), i + 1});
-    }
-    return out;
-}
+// Headings are DocIntegrity's own (ANTS-6598): a reader that accepted an
+// indented heading or kept a closing `##` slugged a repeat differently, or
+// failed to find the heading a toc_gap names.
+using TocHeading = DocIntegrity::Heading;
 
 bool isTocListItem(const QString &s) {
     static const QRegularExpression re(QStringLiteral(R"(^\s*(?:[-*+]|\d+[.)])\s)"));
@@ -181,11 +160,11 @@ struct TocRegion {
 // indented non-item counted as a wrapped continuation rather than the end.
 //
 // It is a deliberate second copy of the smallest part the patch needs, because
-// spec § 2.2 freezes that engine and its locator is file-static over types
-// (`DocData`, `Heading`) that are not exported. Keep the two identical, and
+// spec § 2.2 freezes that engine and its locator is file-static over
+// `DocData`, which is not exported. Keep the two identical, and
 // detectToc points back here: a region shorter than DocIntegrity's anchors an
 // inserted entry on the wrong row (ANTS-6135).
-TocRegion detectTocRegion(const QStringList &lines, const QVector<TocHeading> &heads) {
+TocRegion detectTocRegion(const QStringList &lines, const QList<TocHeading> &heads) {
     TocRegion t;
     int contentsLine = -1;
     for (const TocHeading &h : heads) {
@@ -256,7 +235,7 @@ bool isMissingSectionGap(const QString &message, QString *heading) {
 bool patchTocRegion(QStringList &lines, const QList<DocFinding::Finding> &gaps,
                     QString *reason) {
     const QVector<bool> fence = MarkdownScan::fenceMask(lines);
-    const QVector<TocHeading>   heads = headingsOf(lines, fence);
+    const QList<TocHeading>     heads = DocIntegrity::headings(lines, fence);
     const TocRegion     toc   = detectTocRegion(lines, heads);
     if (!toc.found) { *reason = QStringLiteral("no_template"); return false; }
 

@@ -430,6 +430,36 @@ TEST(DocLintFix, Ants6135RepairReadsTheRegionDocIntegrityReads) {
         << renderResult(r2);
 }
 
+// ANTS-6598 — the repair reads headings as DocIntegrity reads them. An indented
+// `### Setup` is no heading there, so the real `## Setup` is slug `setup`; and
+// `## Gamma ##` is text `Gamma`, the name its toc_gap message carries.
+TEST(DocLintFix, Ants6598RepairReadsTheHeadingsDocIntegrityReads) {
+    const QString doc = QStringLiteral(
+        "# Doc\n"
+        "\n"
+        "## Contents\n"
+        "\n"
+        "- [Alpha](#alpha)\n"
+        "\n"
+        "## Alpha\n"
+        "\n"
+        "Intro text.\n"
+        "\n"
+        "  ### Setup\n"
+        "\n"
+        "## Setup\n"
+        "\n"
+        "## Gamma ##\n");
+    Tree t;
+    t.write(QStringLiteral("docs/h.md"), doc);
+    const DocLint::Result r =
+        DocLint::run({QStringLiteral("docs/h.md")}, optsFor(t, /*fix=*/true));
+    EXPECT_EQ(2, r.fixed.size()) << renderResult(r);
+    const QString after = t.read(QStringLiteral("docs/h.md"));
+    EXPECT_TRUE(after.contains(QStringLiteral("- [Setup](#setup)\n"))) << after.toStdString();
+    EXPECT_TRUE(after.contains(QStringLiteral("- [Gamma](#gamma)\n"))) << after.toStdString();
+}
+
 // ---------------------------------------------------------------------------
 // INV-12 — dry_run computes the same envelope down the same path, and writes
 // nothing.
