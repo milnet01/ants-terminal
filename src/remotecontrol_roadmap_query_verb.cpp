@@ -469,8 +469,10 @@ void rcEmitSourcesRollup(QJsonObject &out, const QJsonArray &bullets,
         Counts &c = by[group == QLatin1String("exact") ? src : rcSourceStem(src)];
         const auto *st = RoadmapParse::statusByGlyph(
             b.value(QStringLiteral("status")).toString());
-        if (st && st->active)                                  ++c.active;
-        else if (st && st->glyph == RoadmapParse::kEmojiDone)  ++c.shipped;
+        // ANTS-6940 — compare the text, not the pointers: a build that does
+        // not merge string literals (ASan) keeps one "✅" per object file.
+        if (st && st->active) ++c.active;
+        else if (st && qstrcmp(st->glyph, RoadmapParse::kEmojiDone) == 0) ++c.shipped;
         ++c.total;
     }
     QStringList keys = by.keys();
