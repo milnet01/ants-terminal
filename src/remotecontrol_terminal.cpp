@@ -542,15 +542,6 @@ QJsonDocument RemoteControl::cmdSelectWindow(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
-// The terminal a per-tab read targets: the explicit `tab` index (woken), else
-// the caller_cwd tab, which falls back to the focused one (ANTS-1392). Null
-// when there is none; each verb words its own refusal.
-static TerminalWidget *requestTerminal(MainWindow *main, const QJsonObject &req) {
-    const QJsonValue tabVal = req.value(QStringLiteral("tab"));
-    if (tabVal.isDouble()) return main->wakeTerminalAtTab(tabVal.toInt());
-    return main->terminalForCaller(req.value(QStringLiteral("caller_cwd")).toString());
-}
-
 QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     // Request shape: {"cmd":"get-text","tab":<int optional>,"lines":<int optional>}
     //   - `tab`   optional; default = active tab. isDouble() guard
@@ -565,13 +556,25 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     //     wants the file directly (Ctrl+Shift+P → Export Scrollback)
     //     rather than over the wire.
     QJsonObject out;
-    TerminalWidget *target = requestTerminal(m_main, req);
-    if (!target) {   // ANTS-6379 — the shared refusal shape
-        const QJsonValue tabVal = req.value(QStringLiteral("tab"));
-        return QJsonDocument(mcp::refusal(QStringLiteral("not_found"),
-            tabVal.isDouble()
-                ? QStringLiteral("get-text: no tab at index %1").arg(tabVal.toInt())
-                : QStringLiteral("get-text: no active terminal")));
+    TerminalWidget *target = nullptr;
+    const QJsonValue tabVal = req.value("tab");
+    if (tabVal.isDouble()) {
+        const int idx = tabVal.toInt();
+        target = m_main->wakeTerminalAtTab(idx);
+        if (!target)   // ANTS-6379 — the shared refusal shape
+            return QJsonDocument(mcp::refusal(QStringLiteral("not_found"),
+                QStringLiteral("get-text: no tab at index %1").arg(idx)));
+    } else {
+        // ANTS-1392 — when `tab` is omitted, prefer the caller_cwd
+        // anchor over the focused tab. terminalForCaller falls back
+        // to focusedTerminal() when caller_cwd is empty or no tab
+        // matches, preserving the pre-1392 contract.
+        const QString callerCwd =
+            req.value(QStringLiteral("caller_cwd")).toString();
+        target = m_main->terminalForCaller(callerCwd);
+        if (!target)
+            return QJsonDocument(mcp::refusal(QStringLiteral("not_found"),
+                QStringLiteral("get-text: no active terminal")));
     }
 
     int lines = 100;
@@ -617,9 +620,18 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
 
 QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     // ANTS-1301 — scan the focused terminal's recent scrollback for
-    // structured errors, in the terminal requestTerminal picks. MCP-only.
+    // structured errors. Terminal resolution mirrors cmdGetText
+    // (ANTS-1392): explicit `tab` int → wakeTerminalAtTab; else caller_cwd
+    // → terminalForCaller → focused fallback. MCP-only.
     QJsonObject out;
-    TerminalWidget *target = requestTerminal(m_main, req);
+    TerminalWidget *target = nullptr;
+    const QJsonValue tabVal = req.value(QStringLiteral("tab"));
+    if (tabVal.isDouble()) {
+        target = m_main->wakeTerminalAtTab(tabVal.toInt());
+    } else {
+        target = m_main->terminalForCaller(
+            req.value(QStringLiteral("caller_cwd")).toString());
+    }
     if (!target) {
         out["ok"]    = false;
         out["error"] = QStringLiteral("recent_errors: no terminal to read");
@@ -675,7 +687,16 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
 // TerminalWidget::selectedText() — no reimplementation.
 QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
     QJsonObject out;
-    TerminalWidget *target = requestTerminal(m_main, req);
+    TerminalWidget *target = nullptr;
+    const QJsonValue tabVal = req.value(QStringLiteral("tab"));
+    if (tabVal.isDouble()) {
+        target = m_main->wakeTerminalAtTab(tabVal.toInt());
+    } else {
+        // ANTS-1392 — caller_cwd anchors to caller's tab; falls back
+        // to focused tab when absent or no match.
+        target = m_main->terminalForCaller(
+            req.value(QStringLiteral("caller_cwd")).toString());
+    }
     if (!target) {
         out[QStringLiteral("ok")]    = false;
         out[QStringLiteral("error")] = QStringLiteral(
