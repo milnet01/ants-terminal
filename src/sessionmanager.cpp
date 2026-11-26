@@ -42,7 +42,9 @@ QString SessionManager::sessionPath(const QString &tabId) {
 }
 
 // One cell on disk: codepoint, fg, bg, then a flags byte. restore()'s
-// readCell lambda is the other half and must read the same order and bits.
+// readCell lambda reads the same order and bits, and firstLineWithin()
+// sizes the stream with kCellBytes.
+constexpr qint64 kCellBytes = sizeof(uint32_t) + 2 * sizeof(QRgb) + sizeof(uint8_t);
 static void writeCell(QDataStream &out, const Cell &c) {
     out << c.codepoint;
     out << c.attrs.fg.rgba();
@@ -57,6 +59,17 @@ static void writeCell(QDataStream &out, const Cell &c) {
     if (c.isWideChar) flags |= 0x40;
     if (c.isWideCont) flags |= 0x80;
     out << flags;
+}
+
+// One line's combining table: entry count, then each column and its marks.
+// restore()'s readCombining lambda reads it back.
+static void writeCombining(QDataStream &out, const CombiningMap::Map &combining) {
+    out << static_cast<int32_t>(combining.size());
+    for (const auto &[col, cps] : combining) {
+        out << static_cast<int32_t>(col);
+        out << static_cast<int32_t>(cps.size());
+        for (uint32_t cp : cps) out << cp;
+    }
 }
 
 QByteArray SessionManager::serializeStream(const TerminalGrid *grid,
@@ -85,15 +98,7 @@ QByteArray SessionManager::serializeStream(const TerminalGrid *grid,
         out << wrapped;
 
         for (const auto &c : cells) writeCell(out, c);
-
-        // Combining characters
-        const auto &combining = grid->scrollbackCombining(i);
-        out << static_cast<int32_t>(combining.size());
-        for (const auto &[col, cps] : combining) {
-            out << static_cast<int32_t>(col);
-            out << static_cast<int32_t>(cps.size());
-            for (uint32_t cp : cps) out << cp;
-        }
+        writeCombining(out, grid->scrollbackCombining(i));
     }
 
     // Screen lines
@@ -104,15 +109,7 @@ QByteArray SessionManager::serializeStream(const TerminalGrid *grid,
         out << static_cast<int32_t>(colCount);
         for (int col = 0; col < colCount; ++col)
             writeCell(out, grid->cellAt(row, col));
-
-        // Screen combining characters
-        const auto &combining = grid->screenCombining(row);
-        out << static_cast<int32_t>(combining.size());
-        for (const auto &[col, cps] : combining) {
-            out << static_cast<int32_t>(col);
-            out << static_cast<int32_t>(cps.size());
-            for (uint32_t cp : cps) out << cp;
-        }
+        writeCombining(out, grid->screenCombining(row));
     }
 
     // Window title
@@ -132,12 +129,13 @@ int SessionManager::firstLineWithin(const TerminalGrid *grid,
                                     const QString &pinnedTitle,
                                     qint64 maxRawBytes) {
     // ANTS-5031 — never write what restore() refuses. A line's stream size
-    // is exact (int32 cell count, bool wrapped, 13 bytes per cell, int32
+    // is exact (int32 cell count, bool wrapped, kCellBytes per cell, int32
     // combining count, 8 + 4n per combining entry), so the newest scrollback
     // lines that fit the uncompressed cap are kept and the oldest are left
-    // out first.
+    // out first. The sizes follow serializeStream(), writeCell() and
+    // writeCombining(); a change to any of them changes these.
     const int sbSize = grid->scrollbackSize();
-    auto combiningBytes = [](const auto &combining) {
+    auto combiningBytes = [](const CombiningMap::Map &combining) {
         qint64 b = 4;
         for (const auto &entry : combining)
             b += 8 + 4 * qint64(entry.second.size());
@@ -146,14 +144,14 @@ int SessionManager::firstLineWithin(const TerminalGrid *grid,
     auto stringBytes = [](const QString &s) { return 4 + 2 * qint64(s.size()); };
     qint64 fixedBytes = 6 * 4 + 4 + 4;  // header, scrollback count, row count
     for (int row = 0; row < grid->rows(); ++row)
-        fixedBytes += 4 + 13 * qint64(grid->cols())
+        fixedBytes += 4 + kCellBytes * grid->cols()
                       + combiningBytes(grid->screenCombining(row));
     fixedBytes += stringBytes(grid->windowTitle()) + stringBytes(cwd)
                   + stringBytes(pinnedTitle);
 
     int first = sbSize;
     for (qint64 used = fixedBytes; first > 0; --first) {
-        const qint64 b = 4 + 1 + 13 * qint64(grid->scrollbackLine(first - 1).size())
+        const qint64 b = 4 + 1 + kCellBytes * qint64(grid->scrollbackLine(first - 1).size())
                          + combiningBytes(grid->scrollbackCombining(first - 1));
         if (used + b > maxRawBytes) break;
         used += b;
@@ -385,6 +383,26 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
         return true;
     };
 
+    // One line: cell count, the wrapped flag (scrollback lines only), the
+    // cells, then the combining table — serializeStream()'s order. Every
+    // line in the stream is read here; cells past keepCols are read and
+    // dropped, for a line saved wider than this grid.
+    auto readLine = [&](TermLine &line, bool hasWrapped, int keepCols) -> bool {
+        int32_t cellCount;
+        in >> cellCount;
+        if (hasWrapped) in >> line.softWrapped;
+        if (in.status() != QDataStream::Ok || cellCount < 0 || cellCount > kMaxRestoreLineCells) return false;
+        line.cells.resize(cellCount);
+        for (Cell &c : line.cells) {
+            if (!readCell(c)) return false;
+        }
+        if (cellCount > keepCols) line.cells.resize(keepCols);
+        CombiningMap::Map comb;  // ANTS-6395 — an empty table stays unallocated.
+        if (!readCombining(comb)) return false;
+        line.combining = std::move(comb);
+        return true;
+    };
+
     // Read and restore scrollback lines
     int32_t sbSize;
     in >> sbSize;
@@ -392,23 +410,8 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
 
     std::vector<TermLine> scrollback;
     for (int i = 0; i < sbSize; ++i) {
-        int32_t cellCount;
-        bool wrapped;
-        in >> cellCount >> wrapped;
-        if (in.status() != QDataStream::Ok || cellCount < 0 || cellCount > kMaxRestoreLineCells) return false;
-
         TermLine line;
-        line.softWrapped = wrapped;
-        line.cells.resize(cellCount);
-        for (int j = 0; j < cellCount; ++j) {
-            if (!readCell(line.cells[j])) return false;
-        }
-        {   // ANTS-6395 — an empty table stays unallocated.
-            CombiningMap::Map comb;
-            if (!readCombining(comb)) return false;
-            line.combining = std::move(comb);
-        }
-
+        if (!readLine(line, /*hasWrapped=*/true, kMaxRestoreLineCells)) return false;
         scrollback.push_back(std::move(line));
     }
 
@@ -422,40 +425,12 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     if (in.status() != QDataStream::Ok || screenRows < 0 ||
         screenRows > kMaxRestoreRows) return false;
 
+    // Rows past this grid's height are read and dropped, for a grid saved taller.
     std::vector<TermLine> screen;
-    for (int row = 0; row < screenRows && row < rows; ++row) {
-        int32_t colCount;
-        in >> colCount;
-        if (in.status() != QDataStream::Ok || colCount < 0 || colCount > kMaxRestoreLineCells) return false;
-
-        screen.emplace_back();
-        TermLine &screenLine = screen.back();
-        screenLine.cells.resize(std::min<int>(colCount, cols));
-        for (int col = 0; col < colCount && col < cols; ++col) {
-            if (!readCell(screenLine.cells[col])) return false;
-        }
-        // Skip extra columns if saved grid was wider
-        for (int col = cols; col < colCount; ++col) {
-            Cell skip;
-            if (!readCell(skip)) return false;
-        }
-        {   // ANTS-6395 — an empty table stays unallocated.
-            CombiningMap::Map comb;
-            if (!readCombining(comb)) return false;
-            screenLine.combining = std::move(comb);
-        }
-    }
-    // Skip extra rows if saved grid was taller
-    for (int row = rows; row < screenRows; ++row) {
-        int32_t colCount;
-        in >> colCount;
-        if (in.status() != QDataStream::Ok || colCount < 0 || colCount > kMaxRestoreLineCells) return false;
-        for (int col = 0; col < colCount; ++col) {
-            Cell skip;
-            if (!readCell(skip)) return false;
-        }
-        std::unordered_map<int, std::vector<uint32_t>> skipComb;
-        if (!readCombining(skipComb)) return false;
+    for (int row = 0; row < screenRows; ++row) {
+        TermLine line;
+        if (!readLine(line, /*hasWrapped=*/false, cols)) return false;
+        if (row < rows) screen.push_back(std::move(line));
     }
 
     QString title;

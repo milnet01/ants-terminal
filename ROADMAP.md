@@ -97875,13 +97875,20 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6593] **Fold the duplicated logic the 2026-11-06 reviews found in config-session-project.**
+- ✅ [ANTS-6593] **Fold the duplicated logic the 2026-11-06 reviews found in config-session-project.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1129 `src/sessionmanager.cpp:44` (High)
   - row 1130 `src/sessionmanager.cpp:398` (Medium)
   - row 1131 `src/projectsettings.cpp:514` (High)
   - row 1132 `src/projectsettings.cpp:630` (Medium)
   - row 1145 `src/sessionmemoryengine.cpp:191` (Low)
+  2026-11-26: rows 1129, 1130: sessionmanager.cpp sizes cells with
+  kCellBytes, writes combining tables through writeCombining, and restore()
+  reads every line through one readLine lambda. Rows 1131, 1132: one path-key
+  table in projectsettings.cpp gives each key its kind and conventional paths;
+  applyWrite, proposeAuxLayout, splitUndeclared, specsDirOf and psLayoutKeys
+  read it. load() still fills each typed field by name. Row 1145 was already
+  fixed.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).

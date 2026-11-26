@@ -4,6 +4,7 @@
 // loop drops its status check.
 
 #include <cstdio>
+#include <iterator>
 #include <regex>
 #include <string>
 
@@ -115,41 +116,38 @@ static int runMain() {
                  "off the end — which is undefined for non-void lambdas.");
     }
 
-    // INV-2 — every readCell call site is `if (!readCell(...))`.
-    // Count total readCell( occurrences (excluding the lambda
-    // declaration itself, which is `readCell\s*=`), then count the
-    // guarded form `if (!readCell(`.
-    int totalCalls = 0;
-    {
-        std::regex any(R"(\breadCell\s*\()");
-        auto b = std::sregex_iterator(resBody.begin(), resBody.end(), any);
-        auto e = std::sregex_iterator();
-        for (auto it = b; it != e; ++it) ++totalCalls;
-    }
-    int guarded = 0;
-    {
-        std::regex guard(R"(if\s*\(\s*!\s*readCell\s*\()");
-        auto b = std::sregex_iterator(resBody.begin(), resBody.end(), guard);
-        auto e = std::sregex_iterator();
-        for (auto it = b; it != e; ++it) ++guarded;
-    }
-    if (totalCalls < 4) {
-        std::fprintf(stderr,
-            "INV-2 readCell call count: %d (expected ≥ 4 — scrollback, "
-            "screen-in-range, screen-skip-cols, screen-skip-rows)\n",
-            totalCalls);
-        fail("INV-2: fewer than four readCell call sites in restore. The "
-             "decoder must touch every saved-cell category, including the "
-             "skip paths used when grid dimensions shrink between save and "
-             "restore.");
-    }
-    if (guarded != totalCalls) {
-        std::fprintf(stderr,
-            "INV-2 readCell guarded vs total: %d / %d\n",
-            guarded, totalCalls);
-        fail("INV-2: at least one readCell call site does not check the "
-             "return value with `if (!readCell(...))`. Bare calls are the "
-             "pre-fix shape that silently committed uninitialized cells.");
+    // INV-2 — every readCell call, and every readLine call (the one line
+    // reader every saved line goes through), is `if (!name(...))`.
+    // `\bname\s*\(` skips the lambda declarations (`name = [`).
+    auto countMatches = [&](const char *pattern) {
+        std::regex re(pattern);
+        return int(std::distance(
+            std::sregex_iterator(resBody.begin(), resBody.end(), re),
+            std::sregex_iterator()));
+    };
+    struct GuardedCall { const char *name, *any, *guard; int minCalls; };
+    const GuardedCall calls[] = {
+        {"readCell", R"(\breadCell\s*\()", R"(if\s*\(\s*!\s*readCell\s*\()", 1},
+        // Scrollback lines, then screen lines (rows past the grid included).
+        {"readLine", R"(\breadLine\s*\()", R"(if\s*\(\s*!\s*readLine\s*\()", 2},
+    };
+    for (const GuardedCall &c : calls) {
+        const int total = countMatches(c.any);
+        const int guarded = countMatches(c.guard);
+        if (total < c.minCalls) {
+            std::fprintf(stderr, "INV-2 %s call count: %d (expected >= %d)\n",
+                         c.name, total, c.minCalls);
+            fail("INV-2: restore has fewer call sites than it has saved-line "
+                 "categories. Scrollback and screen lines, including rows "
+                 "skipped when the grid shrank, must all be decoded.");
+        }
+        if (guarded != total) {
+            std::fprintf(stderr, "INV-2 %s guarded vs total: %d / %d\n",
+                         c.name, guarded, total);
+            fail("INV-2: a call site does not check the return value with "
+                 "`if (!name(...))`. Bare calls are the pre-fix shape that "
+                 "silently committed uninitialized cells.");
+        }
     }
 
     // INV-3 — combining-codepoint inner loop checks status.

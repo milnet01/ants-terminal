@@ -28,10 +28,16 @@ defects turned a refusal into data loss.
 - **INV-D — a copy kept aside is swept by age (ANTS-6508).**
   `cleanupOldSessions` removes a `session_*.dat.corrupt-*` copy older than
   its age limit, as it does a session file, and keeps a recent one.
+- **INV-E — a screen larger than its header is cropped, not refused
+  (ANTS-6593).** A stream whose screen lines are wider, and whose screen
+  rows are more, than its header's grid restores at the header's size. The
+  extra cells and rows are read and dropped, so the fields after the
+  screen still restore.
 
 ## Test scope
 
 Behavioural against `SessionManager` and `TerminalGrid`, headless. INV-A
 builds a legacy blob with no checksum, so the cut is found only while
 parsing. INV-B isolates the sessions directory with `QStandardPaths` test
-mode. INV-C passes small caps, so the test stays small.
+mode. INV-C passes small caps, so the test stays small. INV-E saves a
+grid, then rewrites the legacy blob's header to a smaller grid.

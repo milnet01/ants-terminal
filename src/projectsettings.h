@@ -240,6 +240,11 @@ UndeclaredSplit splitUndeclared(const QString &rootCanonical,
                                 const QStringList &recognisedKeys,
                                 const QStringList &declaredKeys);
 
+// ANTS-6593 — the layout keys: the path keys with a conventional path, which
+// detect can find on disk and init proposes. repo_root is a path key with no
+// convention, so it is set-only.
+QStringList layoutKeys();
+
 // Merge `changes` into `existing` for an op:"set"/"init" write. `changes`
 // carries only the caller-supplied keys; a JSON-null value REMOVES the key.
 // Recognised keys are validated at write-time under the canonical root

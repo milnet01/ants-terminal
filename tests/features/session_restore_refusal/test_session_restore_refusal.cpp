@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <QByteArray>
+#include <QDataStream>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -68,6 +69,35 @@ TEST(SessionRestoreRefusal, InvARefusedRestoreLeavesGridUntouched) {
     EXPECT_EQ(target.cols(), 80) << "a refused restore resized the grid";
     EXPECT_EQ(target.scrollbackSize(), 0)
         << "a refused restore pushed scrollback lines";
+}
+
+// INV-E — a screen saved wider and taller than its header is cropped.
+TEST(SessionRestoreRefusal, InvEOversizedScreenIsCropped) {
+    TerminalGrid source(6, 20);
+    feed(source, "abcdefghijklmnopqrst\r\nrow-1\r\nrow-2\r\nrow-3\r\nrow-4");
+    const QString savedCwd = QStringLiteral("/saved/cwd");
+    const QByteArray envelope = SessionManager::serialize(&source, savedCwd);
+
+    // Legacy blob (no checksum) with the header's rows and cols, which
+    // follow the magic and version, rewritten to a 3x10 grid.
+    constexpr int kEnvelopeHeader = 4 + 4 + 32 + 4;
+    QByteArray raw = qUncompress(envelope.mid(kEnvelopeHeader));
+    ASSERT_FALSE(raw.isEmpty());
+    {
+        QDataStream patch(&raw, QIODevice::ReadWrite);
+        patch.setVersion(QDataStream::Qt_6_0);
+        ASSERT_TRUE(patch.device()->seek(4 + 4));
+        patch << qint32(3) << qint32(10);
+    }
+
+    TerminalGrid target(24, 80);
+    QString cwd;
+    ASSERT_TRUE(SessionManager::restore(&target, qCompress(raw, 6), &cwd));
+    EXPECT_EQ(target.rows(), 3);
+    EXPECT_EQ(target.cols(), 10);
+    EXPECT_EQ(rowText(target.screenLine(0).cells), QStringLiteral("abcdefghij"));
+    EXPECT_EQ(rowText(target.screenLine(2).cells), QStringLiteral("row-2"));
+    EXPECT_EQ(cwd, savedCwd) << "the fields after the screen were not read";
 }
 
 // INV-B — loadSession keeps a file that restore refuses.

@@ -27,6 +27,37 @@ namespace ProjectSettings {
 
 namespace {
 
+// ANTS-6593 — every path key: its kind, which applyWrite() validates, and
+// the conventional paths detect probes for it, in order. proposeAuxLayout(),
+// splitUndeclared(), specsDirOf() and layoutKeys() all read this one table.
+enum class PathKind { DirArray, Dir, File };
+struct PathKey {
+    const char *name;
+    PathKind kind;
+    const char *conventional[2];  // nullptr where a key has fewer
+};
+constexpr PathKey kPathKeys[] = {
+    {"source_roots", PathKind::DirArray, {"src", nullptr}},
+    {"test_roots",   PathKind::DirArray, {"tests", "test"}},
+    {"docs_dir",     PathKind::Dir,      {"docs", nullptr}},
+    {"specs_dir",    PathKind::Dir,      {"docs/specs", nullptr}},
+    {"repo_root",    PathKind::Dir,      {nullptr, nullptr}},  // ANTS-5667 — set-only
+    {"roadmap",      PathKind::File,     {"ROADMAP.md", nullptr}},
+    {"changelog",    PathKind::File,     {"CHANGELOG.md", nullptr}},
+};
+
+const PathKey *findPathKey(const QString &name) {
+    for (const PathKey &k : kPathKeys)
+        if (name == QLatin1String(k.name)) return &k;
+    return nullptr;
+}
+
+// The key's first conventional path; empty for a key with none.
+QString conventionalPath(const QString &name) {
+    const PathKey *k = findPathKey(name);
+    return k && k->conventional[0] ? QString::fromLatin1(k->conventional[0]) : QString();
+}
+
 // A declared relative path is valid iff it is a non-blank string and
 // stays inside the canonical root. isInsideProject canonicalises the
 // candidate, so a root-escape OR a non-existent path (canonicalisation
@@ -244,7 +275,14 @@ QString specsDirOf(const QString &rootCanonical) {
     if (const auto sd = load(rootCanonical).specsDir;
         sd && QFileInfo(rootCanonical + QLatin1Char('/') + *sd).isDir())
         return *sd;
-    return QStringLiteral("docs/specs");
+    return conventionalPath(QStringLiteral("specs_dir"));
+}
+
+QStringList layoutKeys() {
+    QStringList keys;
+    for (const PathKey &k : kPathKeys)
+        if (k.conventional[0]) keys << QString::fromLatin1(k.name);
+    return keys;
 }
 
 // ----- ANTS-2161 — detector + writer ------------------------------------
@@ -286,6 +324,20 @@ bool validFileUnder(const QString &root, const QString &rel) {
     return PathValidation::isInsideProject(root, abs) && QFileInfo(abs).isFile();
 }
 
+// The key's conventional paths that exist under root as its kind needs.
+QStringList conventionalOnDisk(const QString &root, const QString &name) {
+    QStringList found;
+    const PathKey *k = findPathKey(name);
+    if (!k) return found;
+    for (const char *c : k->conventional) {
+        if (!c) continue;
+        const QString rel = QString::fromLatin1(c);
+        if (k->kind == PathKind::File ? validFileUnder(root, rel) : validDirUnder(root, rel))
+            found << rel;
+    }
+    return found;
+}
+
 // ANTS-3588 (INV-19) — attach the conventional auxiliary layout keys that EXIST
 // on disk, so a single op:init writes the whole layout block. Each field stays
 // nullopt when its conventional path is absent (never a present-but-empty
@@ -294,12 +346,9 @@ bool validFileUnder(const QString &root, const QString &rel) {
 // on the no-override path too.
 void proposeAuxLayout(Suggestion &s, const QString &root,
                       const ResolvedAux &aux) {
-    QStringList testDirs;
-    for (const QString &d : {QStringLiteral("tests"), QStringLiteral("test")})
-        if (validDirUnder(root, d)) testDirs << d;
-    if (!testDirs.isEmpty()) s.testRoots = testDirs;
-    if (validDirUnder(root, QStringLiteral("docs")))
-        s.docsDir = QStringLiteral("docs");
+    if (const QStringList t = conventionalOnDisk(root, QStringLiteral("test_roots"));
+        !t.isEmpty())
+        s.testRoots = t;
     // ANTS-3353 — an injected RESOLVED path wins over the conventional probe
     // when it differs from the default. That is the whole point: a project
     // already at the conventional path gains nothing by declaring it, while
@@ -308,23 +357,16 @@ void proposeAuxLayout(Suggestion &s, const QString &root,
     //
     // A resolved path EQUAL to the default proposes nothing new, so a standard
     // project stays silent and its envelope stays ETag-stable.
-    const auto preferResolved = [](std::optional<QString> &slot,
-                                   const QString &resolved,
-                                   const QString &conventional) {
-        if (!resolved.isEmpty() && resolved != conventional) slot = resolved;
+    const auto propose = [&root](std::optional<QString> &slot, const QString &key,
+                                 const QString &resolved) {
+        if (const QStringList p = conventionalOnDisk(root, key); !p.isEmpty())
+            slot = p.first();
+        if (!resolved.isEmpty() && resolved != conventionalPath(key)) slot = resolved;
     };
-
-    if (validDirUnder(root, QStringLiteral("docs/specs")))
-        s.specsDir = QStringLiteral("docs/specs");
-    preferResolved(s.specsDir, aux.specsDir, QStringLiteral("docs/specs"));
-
-    if (validFileUnder(root, QStringLiteral("ROADMAP.md")))
-        s.roadmap = QStringLiteral("ROADMAP.md");
-    preferResolved(s.roadmap, aux.roadmap, QStringLiteral("ROADMAP.md"));
-
-    if (validFileUnder(root, QStringLiteral("CHANGELOG.md")))
-        s.changelog = QStringLiteral("CHANGELOG.md");
-    preferResolved(s.changelog, aux.changelog, QStringLiteral("CHANGELOG.md"));
+    propose(s.docsDir,   QStringLiteral("docs_dir"),  QString());
+    propose(s.specsDir,  QStringLiteral("specs_dir"), aux.specsDir);
+    propose(s.roadmap,   QStringLiteral("roadmap"),   aux.roadmap);
+    propose(s.changelog, QStringLiteral("changelog"), aux.changelog);
 }
 
 }  // namespace
@@ -614,13 +656,7 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
         const QJsonValue v = it.value();
         if (v.isNull()) { out.remove(key); continue; }          // explicit clear (INV-8)
 
-        const bool dirArray = key == QLatin1String("source_roots")
-                           || key == QLatin1String("test_roots");
-        const bool dir      = key == QLatin1String("docs_dir")
-                           || key == QLatin1String("specs_dir")
-                           || key == QLatin1String("repo_root");   // ANTS-5667
-        const bool file     = key == QLatin1String("roadmap")
-                           || key == QLatin1String("changelog");
+        const PathKey *pathKey = findPathKey(key);
 
         // ANTS-3771 § 2.5 — the write side is STRICT where load() is lenient,
         // exactly as every path key here already is: a caller who typed a bad
@@ -685,7 +721,7 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
                                 QStringLiteral("(not a root-relative glob: ")
                                     + e.toVariant().toString() + QLatin1Char(')'));
             out[key] = arr;
-        } else if (dirArray) {
+        } else if (pathKey && pathKey->kind == PathKind::DirArray) {
             if (!v.isArray())
                 return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not an array)"));
             const QJsonArray arr = v.toArray();
@@ -699,18 +735,14 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
                     return fail(QStringLiteral("bad_path"), key, e.toString());
             }
             out[key] = arr;
-        } else if (dir) {
+        } else if (pathKey) {                                   // one dir or file
             if (!v.isString())
                 return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not a string)"));
             const QString rel = v.toString().trimmed();
-            if (rel.isEmpty() || !validDirUnder(rootCanonical, rel))
-                return fail(QStringLiteral("bad_path"), key, v.toString());
-            out[key] = rel;
-        } else if (file) {
-            if (!v.isString())
-                return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not a string)"));
-            const QString rel = v.toString().trimmed();
-            if (rel.isEmpty() || !validFileUnder(rootCanonical, rel))
+            const bool onDisk = pathKey->kind == PathKind::File
+                                    ? validFileUnder(rootCanonical, rel)
+                                    : validDirUnder(rootCanonical, rel);
+            if (rel.isEmpty() || !onDisk)
                 return fail(QStringLiteral("bad_path"), key, v.toString());
             out[key] = rel;
         } else {
@@ -730,33 +762,24 @@ UndeclaredSplit splitUndeclared(const QString &rootCanonical,
                                 const Suggestion &s,
                                 const QStringList &recognisedKeys,
                                 const QStringList &declaredKeys) {
+    const auto suggested = [&s](const QString &k) {
+        // source_roots: a suggestion (misplaced layout) or the defaults
+        // already in effect both mean a real directory holds source, so the
+        // key is declarable even where declaring it changes nothing.
+        if (k == QLatin1String("source_roots"))
+            return s.sourceRoots.has_value() || s.wouldUseRoots.has_value();
+        if (k == QLatin1String("test_roots")) return s.testRoots.has_value();
+        if (k == QLatin1String("docs_dir"))   return s.docsDir.has_value();
+        if (k == QLatin1String("specs_dir"))  return s.specsDir.has_value();
+        if (k == QLatin1String("roadmap"))    return s.roadmap.has_value();
+        if (k == QLatin1String("changelog"))  return s.changelog.has_value();
+        return false;
+    };
     UndeclaredSplit out;
     for (const QString &k : recognisedKeys) {
         if (declaredKeys.contains(k)) continue;
-        bool candidate = false;
-        if (k == QLatin1String("source_roots")) {
-            // Either a suggestion (misplaced layout) or the defaults already
-            // in effect: both mean a real directory holds source, so the key
-            // is declarable even where declaring it changes nothing.
-            candidate = s.sourceRoots.has_value() || s.wouldUseRoots.has_value()
-                        || validDirUnder(rootCanonical, QStringLiteral("src"));
-        } else if (k == QLatin1String("test_roots")) {
-            candidate = s.testRoots.has_value()
-                        || validDirUnder(rootCanonical, QStringLiteral("tests"))
-                        || validDirUnder(rootCanonical, QStringLiteral("test"));
-        } else if (k == QLatin1String("docs_dir")) {
-            candidate = s.docsDir.has_value()
-                        || validDirUnder(rootCanonical, QStringLiteral("docs"));
-        } else if (k == QLatin1String("specs_dir")) {
-            candidate = s.specsDir.has_value()
-                        || validDirUnder(rootCanonical, QStringLiteral("docs/specs"));
-        } else if (k == QLatin1String("roadmap")) {
-            candidate = s.roadmap.has_value()
-                        || validFileUnder(rootCanonical, QStringLiteral("ROADMAP.md"));
-        } else if (k == QLatin1String("changelog")) {
-            candidate = s.changelog.has_value()
-                        || validFileUnder(rootCanonical, QStringLiteral("CHANGELOG.md"));
-        }
+        const bool candidate = suggested(k)
+                               || !conventionalOnDisk(rootCanonical, k).isEmpty();
         (candidate ? out.undeclared : out.unavailable) << k;
     }
     return out;

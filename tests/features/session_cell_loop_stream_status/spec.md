@@ -45,6 +45,9 @@ Source-grep: every `readCell(...)` invocation in `restore` MUST be
 guarded by `if (!readCell(...))` returning false from the surrounding
 function. Bare `readCell(x);` statements (return-value discarded) are
 not allowed — they're the pre-fix shape that led to silent corruption.
+Every saved line is read through one `readLine` lambda, and each
+`readLine(...)` call — at least one for scrollback and one for the
+screen — is guarded the same way.
 
 **INV-3 — Combining-codepoint inner loop checks status.** Source-grep:
 inside `readCombining`, the inner `for (int k = 0; k < cpCount; ++k)`
@@ -56,9 +59,9 @@ default-constructed `0` codepoints into the combining map.
 
 ### In scope
 - `readCell` lambda return type + status check.
-- All four `readCell` call sites (scrollback cells, screen cells in
-  range, screen cells skipped on width shrink, screen cells skipped
-  on height shrink).
+- Every saved-cell category: scrollback cells, screen cells in range,
+  screen cells skipped on width shrink, and screen rows skipped on
+  height shrink. All four go through `readLine`, and so `readCell`.
 - Inner codepoint read in `readCombining`.
 
 ### Out of scope

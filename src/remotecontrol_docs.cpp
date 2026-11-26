@@ -1772,10 +1772,7 @@ namespace {
 
 // The layout keys: paths detect can find on disk and init proposes.
 const QStringList &psLayoutKeys() {
-    static const QStringList k = {
-        QStringLiteral("source_roots"), QStringLiteral("test_roots"),
-        QStringLiteral("docs_dir"), QStringLiteral("specs_dir"),
-        QStringLiteral("roadmap"), QStringLiteral("changelog")};
+    static const QStringList k = ProjectSettings::layoutKeys();
     return k;
 }
 
