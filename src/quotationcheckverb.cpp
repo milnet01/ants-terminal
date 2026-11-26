@@ -4,6 +4,7 @@
 #include "quotationcheckverb.h"
 
 #include "gitwrap.h"
+#include "mcprefusal.h"
 #include "pathvalidation.h"
 #include "remotecontrol.h"  // capJsonArrayToBytes, header-inline
 
@@ -237,9 +238,7 @@ bool isIntAtLeast(const QJsonValue &v, int min)
 
 QJsonObject refuse(const QString &message)
 {
-    return QJsonObject{{QStringLiteral("ok"), false},
-                       {QStringLiteral("code"), QStringLiteral("bad_args")},
-                       {QStringLiteral("error"), QStringLiteral("quotation_check: ") + message}};
+    return mcp::refusal(QStringLiteral("bad_args"), QStringLiteral("quotation_check: ") + message);
 }
 
 bool underRoot(const QString &abs, const QString &root)

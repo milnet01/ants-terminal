@@ -6,6 +6,7 @@
 #include "speclint.h"            // ANTS-3662 — spec_lint verb
 #include "gitwrap.h"             // ANTS-5537 — spec_lint diff scope
 #include "specconformance.h"     // ANTS-4108 — spec_conformance verb
+#include "mcprefusal.h"
 #include "pathvalidation.h"
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "falseposledger.h"
@@ -23,6 +24,8 @@
 #include <QCryptographicHash>
 #include <QDirIterator>
 #include <QElapsedTimer>
+
+#include <optional>
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -111,6 +114,45 @@ static QJsonObject docPathNotFound(const QString &verb, const QString &rawPath) 
     return o;
 }
 
+// The opening the doc verbs share: no project refuses bad_path, and a `path`
+// is validated before any walk, so a root-escape refuses bad_path (INV-10)
+// and a path naming nothing refuses not_found. Null when the verb may go on.
+static QJsonDocument docVerbRefusal(const QString &verb, const QString &rootCanonical,
+                                    const QString &rawPath) {
+    if (rootCanonical.isEmpty())
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_path"),
+                                          verb + QStringLiteral(": no focused project")));
+    if (rawPath.isEmpty()) return {};
+    const auto check = PathValidation::validatePath(rawPath, rootCanonical, verb,
+                                                    QStringLiteral("path"));
+    if (check.bad) return QJsonDocument(check.err);
+    if (check.resolved.isEmpty()) return QJsonDocument(docPathNotFound(verb, rawPath));
+    return {};
+}
+
+// The project's docs_dir override, else `docs`.
+static QString docsDirOf(const QString &rootCanonical) {
+    return ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
+}
+
+// A doc walk's documents, cut to the per-run document cap.
+static QStringList docVerbWalk(QStringList relDocs) {
+    const DocIntegrity::Options walk;  // shared caps: the doc walks cost the same
+    if (relDocs.size() > walk.maxDocsPerRun)
+        relDocs = relDocs.mid(0, walk.maxDocsPerRun);
+    return relDocs;
+}
+
+// A walked document's text; nullopt when it is over `maxDocBytes` or cannot
+// be opened, which leaves it silently out of the run (INV-15).
+static std::optional<QString> docVerbRead(const QString &rootCanonical,
+                                          const QString &rel, qint64 maxDocBytes) {
+    QFile f(QDir(rootCanonical).filePath(rel));
+    if (f.size() > maxDocBytes) return std::nullopt;
+    if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
+    return QString::fromUtf8(f.readAll());
+}
+
 // ANTS-3601 — doc_integrity: deterministic dead-anchor / broken-link / TOC
 // checks over a project-relative doc set. caller_cwd Required (the dispatcher
 // enforces caller_cwd_required before this runs). Optional `path` (a single
@@ -131,24 +173,11 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
         req.value(QStringLiteral("caller_cwd")).toString());
     const QString rootCanonical =
         sentinelRoot.isEmpty() ? resolveRootCanonical(m_roots, req) : sentinelRoot;
-    if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("error")] = QStringLiteral("doc_integrity: no focused project");
-        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
-    }
-    // path → relDocs (validate a supplied path first, so a root-escape refuses
-    // bad_path before any enumeration — INV-10).
     const QString rawPath = req.value(QStringLiteral("path")).toString();
-    if (!rawPath.isEmpty()) {
-        const auto check = PathValidation::validatePath(
-            rawPath, rootCanonical, QStringLiteral("doc_integrity"),
-            QStringLiteral("path"));
-        if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
-        if (check.resolved.isEmpty())
-            return QJsonDocument(docPathNotFound(QStringLiteral("doc_integrity"), rawPath));
-    }
+    if (QJsonDocument r = docVerbRefusal(QStringLiteral("doc_integrity"), rootCanonical,
+                                         rawPath);
+        !r.isNull())
+        return r;
     // ANTS-4106 — `paths:[…]`, the multi-file form file_outline already has.
     // /apply-fixes step 5 says to pass the files a run edited, precisely to
     // avoid a whole-tree walk; a real pass edits a handful spread across the
@@ -174,18 +203,15 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
             return QJsonDocument(docPathNotFound(QStringLiteral("doc_integrity"), p));
     }
 
-    const QString docsDir =
-        ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
+    const QString docsDir = docsDirOf(rootCanonical);
     bool walkCut = false;
-    QStringList relDocs =
+    QStringList relDocs = docVerbWalk(
         rawPaths.isEmpty()
             ? docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut)
             : docIntegrityEnumerateMany(rootCanonical, rawPaths, docsDir,
-                                        &walkCut);
+                                        &walkCut));
 
     DocIntegrity::Options opts;
-    if (relDocs.size() > opts.maxDocsPerRun)
-        relDocs = relDocs.mid(0, opts.maxDocsPerRun);
 
     QStringList checked;
     DocIntegrity::Suppressed suppressed;   // ANTS-4641 / ANTS-4642
@@ -340,6 +366,16 @@ static QSet<QString> docSymbolsRefusalCodes(const QString &rootCanonical) {
     return out;
 }
 
+// DocSymbols' whole `excludedNames`: the refusal codes, plus every MCP verb
+// name when the vocabulary provider is installed (ANTS-3688).
+static QSet<QString> docSymbolsExcludedNames(
+    const QString &rootCanonical, const std::function<QStringList()> &verbVocabulary) {
+    QSet<QString> names = docSymbolsRefusalCodes(rootCanonical);
+    if (verbVocabulary)
+        for (const QString &n : verbVocabulary()) names.insert(n);
+    return names;
+}
+
 // ANTS-3661 — doc_symbols: resolve the identifiers a doc asserts something
 // about, and report — never judge. caller_cwd Required. `path` routes through
 // PathValidation and then the SAME enumeration doc_integrity uses. ETag-304 is
@@ -347,31 +383,14 @@ static QSet<QString> docSymbolsRefusalCodes(const QString &rootCanonical) {
 // docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md.
 QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
-    if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("error")] = QStringLiteral("doc_symbols: no focused project");
-        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
-    }
     const QString rawPath = req.value(QStringLiteral("path")).toString();
-    if (!rawPath.isEmpty()) {
-        const auto check = PathValidation::validatePath(
-            rawPath, rootCanonical, QStringLiteral("doc_symbols"),
-            QStringLiteral("path"));
-        if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
-        if (check.resolved.isEmpty())
-            return QJsonDocument(docPathNotFound(QStringLiteral("doc_symbols"), rawPath));
-    }
-    const QString docsDir =
-        ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
+    if (QJsonDocument r = docVerbRefusal(QStringLiteral("doc_symbols"), rootCanonical, rawPath);
+        !r.isNull())
+        return r;
     bool walkCut = false;
-    QStringList relDocs =
-        docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut);
-
-    const DocIntegrity::Options walk;  // shared caps: the two doc walks cost the same
-    if (relDocs.size() > walk.maxDocsPerRun)
-        relDocs = relDocs.mid(0, walk.maxDocsPerRun);
+    QStringList relDocs = docVerbWalk(
+        docIntegrityEnumerate(rootCanonical, rawPath, docsDirOf(rootCanonical), &walkCut));
+    const DocIntegrity::Options walk;
 
     // ANTS-3689-INV-6 — validate `only` before the scan, and REFUSE an
     // unrecognised value rather than reading it as "all". A filter that
@@ -426,9 +445,8 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
 
     DocSymbols::Options opts;
     opts.rootCanonical = rootCanonical;
-    opts.excludedNames = docSymbolsRefusalCodes(rootCanonical);
-    if (m_mcpVerbVocabularyProvider)
-        for (const QString &n : m_mcpVerbVocabularyProvider()) opts.excludedNames.insert(n);
+    opts.excludedNames =
+        docSymbolsExcludedNames(rootCanonical, m_mcpVerbVocabularyProvider);
 
     QVector<DocSymbols::Symbol> symbols;
     QList<DocFinding::Finding> findings;
@@ -444,11 +462,9 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
     QElapsedTimer runClock;
     runClock.start();
     for (const QString &rel : std::as_const(relDocs)) {
-        QFile f(QDir(rootCanonical).filePath(rel));
-        if (f.size() > walk.maxDocBytes) continue;
-        if (!f.open(QIODevice::ReadOnly)) continue;  // unreadable → INV-15, silently out
-        const QString text = QString::fromUtf8(f.readAll());
-        f.close();
+        const std::optional<QString> doc = docVerbRead(rootCanonical, rel, walk.maxDocBytes);
+        if (!doc) continue;
+        const QString &text = *doc;
         checked << rel;
 
         opts.maxSymbolsPerRun = budget;
@@ -756,6 +772,26 @@ static QSet<QString> specLintWiredTestDirs(const QString &rootCanonical,
     return SpecLint::wiredTestDirs(QString::fromUtf8(f.readAll()), existing);
 }
 
+// The SpecLint inputs spec_lint and doc_lint both read from the project. Read
+// ONCE per run, not once per spec: they are the same for every document in the
+// walk (spec § 4). `sectionsSource` gets the standard consulted.
+static SpecLint::Options specLintProjectOptions(const QString &rootCanonical,
+                                                QString *sectionsSource) {
+    SpecLint::Options opts;
+    opts.requiredSections =
+        specLintRequiredSections(rootCanonical, sectionsSource,
+                                 &opts.sectionsPrefixMatch);
+    // ANTS-4127 — same once-per-run rule, same reason (spec § 2.8).
+    opts.existingTestDirs = specLintExistingTestDirs(rootCanonical);
+    opts.wiredTestDirs    = specLintWiredTestDirs(rootCanonical,
+                                                  opts.existingTestDirs);
+    opts.laymanRequired = true;   // ANTS-5511
+    // ANTS-4890 — the project's own coverage convention, re-read every call.
+    opts.testClauseCoverage =
+        ProjectSettings::load(rootCanonical).specTestClauseCoverage.value_or(false);
+    return opts;
+}
+
 // ANTS-5537 — what a `since` / `staged` run read from git (spec § 2.4). Either
 // `err` is set and the call refuses, or every walked document has a scope.
 namespace {
@@ -789,12 +825,9 @@ QSet<int> specLintSiblingInvNumbers(const QString &rootCanonical, const QString 
     int specsWithInvariants = 0;
     for (const QString &rel : std::as_const(corpus)) {
         if (!rel.startsWith(specsDir)) continue;
-        QFile sf(QDir(rootCanonical).filePath(rel));
-        if (sf.size() > walk.maxDocBytes) continue;
-        if (!sf.open(QIODevice::ReadOnly)) continue;
-        const QSet<int> ns =
-            SpecLint::invariantNumbers(QString::fromUtf8(sf.readAll()));
-        sf.close();
+        const std::optional<QString> doc = docVerbRead(rootCanonical, rel, walk.maxDocBytes);
+        if (!doc) continue;
+        const QSet<int> ns = SpecLint::invariantNumbers(*doc);
         if (ns.isEmpty()) continue;
         ++specsWithInvariants;
         for (const int n : ns) ownersByNumber[n]++;
@@ -954,30 +987,15 @@ SpecLintScope specLintReadScope(const QString &root, const QString &since,
 // SpecLint::check. See docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md.
 QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
-    if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("error")] = QStringLiteral("spec_lint: no focused project");
-        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
-    }
     const QString rawPath = req.value(QStringLiteral("path")).toString();
-    if (!rawPath.isEmpty()) {
-        const auto check = PathValidation::validatePath(
-            rawPath, rootCanonical, QStringLiteral("spec_lint"),
-            QStringLiteral("path"));
-        if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
-        if (check.resolved.isEmpty())
-            return QJsonDocument(docPathNotFound(QStringLiteral("spec_lint"), rawPath));
-    }
+    if (QJsonDocument r = docVerbRefusal(QStringLiteral("spec_lint"), rootCanonical, rawPath);
+        !r.isNull())
+        return r;
     const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
     bool walkCut = false;
     QStringList relDocs =
-        docIntegrityEnumerate(rootCanonical, rawPath, specsDir, &walkCut);
-
-    const DocIntegrity::Options walk;  // shared caps: the doc walks cost the same
-    if (relDocs.size() > walk.maxDocsPerRun)
-        relDocs = relDocs.mid(0, walk.maxDocsPerRun);
+        docVerbWalk(docIntegrityEnumerate(rootCanonical, rawPath, specsDir, &walkCut));
+    const DocIntegrity::Options walk;
 
     // ANTS-5537 — diff scope. Both argument checks run before any git does, so
     // a `since` shaped like an option never reaches git's argv; `isValidRange`
@@ -998,25 +1016,12 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         if (!scope.err.isEmpty()) return QJsonDocument(scope.err);
     }
 
-    // Read ONCE per run, not once per spec: it is the same file for every
-    // document in the walk (spec § 4). Absent, or present with no marked block,
-    // means the check is skipped.
-    SpecLint::Options opts;
+    // A standard absent, or present with no marked block, skips the section
+    // check.
     QString sectionsSource;
-    opts.requiredSections =
-        specLintRequiredSections(rootCanonical, &sectionsSource,
-                                 &opts.sectionsPrefixMatch);
+    SpecLint::Options opts = specLintProjectOptions(rootCanonical, &sectionsSource);
     opts.maxFindings      = qBound(1, req.value(QStringLiteral("max_findings"))
                                           .toInt(500), 5000);
-    // ANTS-4127 — same once-per-run rule, same reason (spec § 2.8).
-    opts.existingTestDirs = specLintExistingTestDirs(rootCanonical);
-    opts.wiredTestDirs    = specLintWiredTestDirs(rootCanonical,
-                                                  opts.existingTestDirs);
-    opts.laymanRequired = true;   // ANTS-5511
-    // ANTS-4890 — the project's own coverage convention, re-read every call.
-    opts.testClauseCoverage =
-        ProjectSettings::load(rootCanonical).specTestClauseCoverage.value_or(false);
-
     opts.siblingInvNumbers =
         specLintSiblingInvNumbers(rootCanonical, specsDir, walk, &walkCut);
 
@@ -1422,31 +1427,14 @@ QJsonObject RemoteControl::specConformanceBuildResponse(
 // per-document result. See docdedup.h.
 QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
-    if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("error")] = QStringLiteral("doc_dedup: no focused project");
-        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
-    }
     const QString rawPath = req.value(QStringLiteral("path")).toString();
-    if (!rawPath.isEmpty()) {
-        const auto check = PathValidation::validatePath(
-            rawPath, rootCanonical, QStringLiteral("doc_dedup"),
-            QStringLiteral("path"));
-        if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
-        if (check.resolved.isEmpty())
-            return QJsonDocument(docPathNotFound(QStringLiteral("doc_dedup"), rawPath));
-    }
-    const QString docsDir =
-        ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
+    if (QJsonDocument r = docVerbRefusal(QStringLiteral("doc_dedup"), rootCanonical, rawPath);
+        !r.isNull())
+        return r;
     bool walkCut = false;
-    QStringList relDocs =
-        docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut);
-
-    const DocIntegrity::Options walk;  // shared caps: the doc walks cost the same
-    if (relDocs.size() > walk.maxDocsPerRun)
-        relDocs = relDocs.mid(0, walk.maxDocsPerRun);
+    QStringList relDocs = docVerbWalk(
+        docIntegrityEnumerate(rootCanonical, rawPath, docsDirOf(rootCanonical), &walkCut));
+    const DocIntegrity::Options walk;
 
     DocDedup::Options opts;
     opts.minSimilarity = qBound(0.0, req.value(QStringLiteral("min_similarity"))
@@ -1472,13 +1460,10 @@ QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
         // Tested here rather than left to the engine so an excluded file is
         // never READ, and `checked_docs` lists what was actually compared.
         if (DocDedup::isExcludedPath(rel, opts)) continue;
-        QFile f(QDir(rootCanonical).filePath(rel));
-        if (f.size() > walk.maxDocBytes) continue;
-        if (!f.open(QIODevice::ReadOnly)) continue;  // unreadable → INV-15, silently out
-        const QString text = QString::fromUtf8(f.readAll());
-        f.close();
+        const std::optional<QString> doc = docVerbRead(rootCanonical, rel, walk.maxDocBytes);
+        if (!doc) continue;
         checked << rel;
-        acc.add(text, rel, opts);
+        acc.add(*doc, rel, opts);
     }
     // etag injected centrally (isEtagSupportedTool).
     QJsonObject out = docDedupBuildResponse(acc.finish(), checked);
@@ -1494,18 +1479,41 @@ QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+// doc_dedup's `pairs` and `clusters` wire shapes, which doc_lint hoists whole.
+static QJsonObject docDedupPassageJson(const DocDedup::Passage &p) {
+    return QJsonObject{{QStringLiteral("file"), p.file},
+                       {QStringLiteral("line"), p.line}};
+}
+
+// 3 dp on the wire: the score is a triage signal, and full double precision
+// makes an otherwise-identical response differ in its last bits.
+static double docDedupWireSimilarity(double v) { return qRound(v * 1000.0) / 1000.0; }
+
+static QJsonArray docDedupPairsJson(const QVector<DocDedup::Pair> &pairs) {
+    QJsonArray arr;
+    for (const DocDedup::Pair &p : pairs)
+        arr.append(QJsonObject{{QStringLiteral("a"), docDedupPassageJson(p.a)},
+                               {QStringLiteral("b"), docDedupPassageJson(p.b)},
+                               {QStringLiteral("similarity"),
+                                docDedupWireSimilarity(p.similarity)}});
+    return arr;
+}
+
+static QJsonArray docDedupClustersJson(const QVector<DocDedup::Cluster> &clusters) {
+    QJsonArray arr;
+    for (const DocDedup::Cluster &c : clusters) {
+        QJsonArray ps;
+        for (const DocDedup::Passage &p : c.passages) ps.append(docDedupPassageJson(p));
+        arr.append(QJsonObject{{QStringLiteral("passages"), ps},
+                               {QStringLiteral("size"), ps.size()},
+                               {QStringLiteral("max_similarity"),
+                                docDedupWireSimilarity(c.maxSimilarity)}});
+    }
+    return arr;
+}
+
 QJsonObject RemoteControl::docDedupBuildResponse(const DocDedup::Result &result,
                                                  const QStringList &checkedDocs) {
-    const auto passageObj = [](const DocDedup::Passage &p) {
-        QJsonObject o;
-        o[QStringLiteral("file")] = p.file;
-        o[QStringLiteral("line")] = p.line;
-        return o;
-    };
-    // 3 dp on the wire: the score is a triage signal, and full double precision
-    // makes an otherwise-identical response differ in its last bits.
-    const auto sim = [](double v) { return qRound(v * 1000.0) / 1000.0; };
-
     QJsonObject o;
     o[QStringLiteral("ok")]       = true;
     o[QStringLiteral("findings")] = DocFinding::toJson(result.findings);
@@ -1514,27 +1522,8 @@ QJsonObject RemoteControl::docDedupBuildResponse(const DocDedup::Result &result,
         DocFinding::countsByVerbAndKind(result.findings)
             .value(QStringLiteral("doc_dedup")).toObject();
 
-    QJsonArray pairs;
-    for (const DocDedup::Pair &p : result.pairs) {
-        QJsonObject e;
-        e[QStringLiteral("a")]          = passageObj(p.a);
-        e[QStringLiteral("b")]          = passageObj(p.b);
-        e[QStringLiteral("similarity")] = sim(p.similarity);
-        pairs.append(e);
-    }
-    o[QStringLiteral("pairs")] = pairs;
-
-    QJsonArray clusters;
-    for (const DocDedup::Cluster &c : result.clusters) {
-        QJsonArray ps;
-        for (const DocDedup::Passage &p : c.passages) ps.append(passageObj(p));
-        QJsonObject e;
-        e[QStringLiteral("passages")]       = ps;
-        e[QStringLiteral("size")]           = ps.size();
-        e[QStringLiteral("max_similarity")] = sim(c.maxSimilarity);
-        clusters.append(e);
-    }
-    o[QStringLiteral("clusters")] = clusters;
+    o[QStringLiteral("pairs")]    = docDedupPairsJson(result.pairs);
+    o[QStringLiteral("clusters")] = docDedupClustersJson(result.clusters);
 
     o[QStringLiteral("passages_total")]    = result.passagesTotal;
     o[QStringLiteral("passages_compared")] = result.passagesCompared;
@@ -2209,13 +2198,11 @@ static QJsonObject docLintReadStaged(const QString &root, const QString &pathRel
 // property either.
 QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
-    if (rootCanonical.isEmpty()) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("error")] = QStringLiteral("doc_lint: no focused project");
-        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
-    }
+    // The path half of docVerbRefusal is below: a staged-only path is absent
+    // from disk by design, so it is not refused not_found here.
+    if (QJsonDocument r = docVerbRefusal(QStringLiteral("doc_lint"), rootCanonical, {});
+        !r.isNull())
+        return r;
     const QString rawPath = req.value(QStringLiteral("path")).toString();
     QString pathRel;   // staged:true filters git's list by it; "" is the root
     if (!rawPath.isEmpty()) {
@@ -2287,8 +2274,7 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
         return QJsonDocument(bad);
     }
 
-    const ProjectSettings::Settings layout = ProjectSettings::load(rootCanonical);
-    const QString docsDir  = layout.docsDir.value_or(QStringLiteral("docs"));
+    const QString docsDir  = docsDirOf(rootCanonical);
     const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
     DocLint::Options opts;
     bool walkCut = false;
@@ -2316,21 +2302,9 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     // loops removed, and a sections_checked:false that reads as a missing
     // standard rather than a missing pass-through.
     opts.symbols.rootCanonical = rootCanonical;
-    opts.symbols.excludedNames = docSymbolsRefusalCodes(rootCanonical);
-    if (m_mcpVerbVocabularyProvider)
-        for (const QString &n : m_mcpVerbVocabularyProvider())
-            opts.symbols.excludedNames.insert(n);
-
-    bool prefixMatch = false;
-    opts.spec.requiredSections =
-        specLintRequiredSections(rootCanonical, nullptr, &prefixMatch);
-    opts.spec.sectionsPrefixMatch = prefixMatch;
-    opts.spec.laymanRequired      = true;   // ANTS-5511
-    opts.spec.testClauseCoverage =   // ANTS-6315 — as spec_lint reads it
-        ProjectSettings::load(rootCanonical).specTestClauseCoverage.value_or(false);
-    opts.spec.existingTestDirs    = specLintExistingTestDirs(rootCanonical);
-    opts.spec.wiredTestDirs =
-        specLintWiredTestDirs(rootCanonical, opts.spec.existingTestDirs);
+    opts.symbols.excludedNames =
+        docSymbolsExcludedNames(rootCanonical, m_mcpVerbVocabularyProvider);
+    opts.spec = specLintProjectOptions(rootCanonical, nullptr);
 
     opts.dedup.excludedPathGlobs = DocDedup::generatedPathGlobs();
     const auto excludedHeadings =
@@ -2420,31 +2394,12 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
     }
 
     // doc_dedup's structured payload, hoisted whole. Hoisting only pairs hands
-    // the caller the ungrouped output clustering was added to prevent.
-    const auto passageObj = [](const DocDedup::Passage &p) {
-        return QJsonObject{{QStringLiteral("file"), p.file},
-                           {QStringLiteral("line"), p.line}};
-    };
-    const auto sim = [](double v) { return qRound(v * 1000.0) / 1000.0; };
-    if (!result.pairs.isEmpty()) {
-        QJsonArray arr;
-        for (const DocDedup::Pair &p : result.pairs)
-            arr.append(QJsonObject{{QStringLiteral("a"), passageObj(p.a)},
-                                   {QStringLiteral("b"), passageObj(p.b)},
-                                   {QStringLiteral("similarity"), sim(p.similarity)}});
-        o[QStringLiteral("pairs")] = arr;
-    }
-    if (!result.clusters.isEmpty()) {
-        QJsonArray arr;
-        for (const DocDedup::Cluster &c : result.clusters) {
-            QJsonArray ps;
-            for (const DocDedup::Passage &p : c.passages) ps.append(passageObj(p));
-            arr.append(QJsonObject{{QStringLiteral("passages"), ps},
-                                   {QStringLiteral("size"), ps.size()},
-                                   {QStringLiteral("max_similarity"), sim(c.maxSimilarity)}});
-        }
-        o[QStringLiteral("clusters")] = arr;
-    }
+    // the caller the ungrouped output clustering was added to prevent. Unlike
+    // doc_dedup, doc_lint omits each key when it is empty.
+    if (!result.pairs.isEmpty())
+        o[QStringLiteral("pairs")] = docDedupPairsJson(result.pairs);
+    if (!result.clusters.isEmpty())
+        o[QStringLiteral("clusters")] = docDedupClustersJson(result.clusters);
 
     // check_stats: an entry per checker that RAN. The per-check envelopes are
     // gone, so a value a checker would have returned at its own top level needs

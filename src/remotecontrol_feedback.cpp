@@ -205,16 +205,10 @@ static QJsonObject fbStoreRefusal(const FeedbackStore::Result &r,
 }
 
 QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
-    QString resolved;
-    bool exists = false;
-    bool derived = false;
-    QString derivedReason;   // ANTS-5500
-    QJsonObject err;
-    if (!resolveFeedbackPath(req, QStringLiteral("feedback_query"),
-                             resolved, exists, err, &derived,
-                             &derivedReason)) {
-        return QJsonDocument(err);
-    }
+    FeedbackPath fp;
+    if (!resolveFeedbackPath(req, QStringLiteral("feedback_query"), fp))
+        return QJsonDocument(fp.err);
+    const QString &resolved = fp.resolved;
     // ANTS-4513 § 4.6 — the answer comes from the store, importing the file on
     // first touch. A reporter is found when it has a row, file or not.
     QJsonObject storeRefusal;
@@ -239,13 +233,13 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         // path that does not resolve stays ok:false — that one is a caller
         // error, not an empty state. ANTS-3587 made the same call for
         // session_orient's absent ROADMAP.
-        if (!derived) return QJsonDocument(nf);
+        if (!fp.derived) return QJsonDocument(nf);
         nf[QStringLiteral("ok")]     = true;
         nf[QStringLiteral("reason")] = nf.value(QStringLiteral("error")).toString();
         nf.remove(QStringLiteral("error"));
         nf.remove(QStringLiteral("code"));
         nf[QStringLiteral("path")]                   = resolved;
-        fbMarkDerived(nf, derivedReason);
+        fbMarkDerived(nf, fp.derivedReason);
         nf[QStringLiteral("found")]                  = false;
         nf[QStringLiteral("delta")]                  = QString();
         nf[QStringLiteral("delta_present")]          = false;
@@ -282,7 +276,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     // present on a success, so one branch covers both.
     out["found"]                 = true;
     out["path"]                  = resolved;
-    if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
+    if (fp.derived) fbMarkDerived(out, fp.derivedReason);  // ANTS-3376
     out["delta"]                 = delta;
     out["delta_present"]         = pr.deltaPresent;
     out["delta_line_count"]      = pr.deltaLineCount;
@@ -703,16 +697,10 @@ static bool fbComposeAssignValue(const QJsonObject &a, QString *value,
 // ANTS-1962 — feedback_log. ANTS-4513 — every write goes through the store
 // (FeedbackStore::write, § 4.4); the text edits are FeedbackFile's, unchanged.
 QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
-    QString resolved;
-    bool exists = false;
-    bool derived = false;
-    QString derivedReason;   // ANTS-5500
-    QJsonObject err;
-    if (!resolveFeedbackPath(req, QStringLiteral("feedback_log"),
-                             resolved, exists, err, &derived,
-                             &derivedReason)) {
-        return QJsonDocument(err);
-    }
+    FeedbackPath fp;
+    if (!resolveFeedbackPath(req, QStringLiteral("feedback_log"), fp))
+        return QJsonDocument(fp.err);
+    const QString &resolved = fp.resolved;
 
     const QString op = req.value(QStringLiteral("op")).toString();
     // ANTS-4513 § 4.6 — ops that kept a file tidy or served format version 1.
@@ -745,7 +733,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out[QStringLiteral("ok")]   = true;
         out[QStringLiteral("op")]   = op;
         out[QStringLiteral("path")] = resolved;
-        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
+        if (fp.derived) fbMarkDerived(out, fp.derivedReason);  // ANTS-3376
         return QJsonDocument(out);
     };
 
@@ -1065,11 +1053,7 @@ void RemoteControl::setForceSpecWriteFailForTest(bool on) {
 
 QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     auto slErr = [](const QString &code, const QString &message) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = message;
-        o["code"]  = code;
-        return QJsonDocument(o);
+        return QJsonDocument(mcp::refusal(code, message));
     };
 
     // ANTS-6771 — the op is checked first, so a wrong op is named as such
@@ -1267,6 +1251,28 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
 
     const QByteArray utf8 = res.content.toUtf8();
 
+    QJsonObject out;
+    out["ok"]   = true;
+    out["op"]   = op;
+    if (!id.isEmpty()) out["id"] = id;
+    out["path"] = rel;
+    out["line"] = res.line;
+    // ANTS-4114 — set_status echoes the value it replaced. A project whose
+    // standard defines its own Status vocabulary otherwise learns of a wrong
+    // value at its lint gate minutes later; the replaced value makes the
+    // mismatch visible in the write's own envelope.
+    if (statusOp) {
+        out["previous_status"] = res.previousValue;
+        out["new_status"]      = res.newValue;   // ANTS-6364
+    }
+    // ANTS-4353/4364 — say which SHAPE was written and which DIRECTION
+    // was inferred, so a caller can see which way the row went instead of
+    // re-reading the file to find out.
+    if (!res.rowShape.isEmpty()) out["row_shape"] = res.rowShape;
+    if (!res.rowOrder.isEmpty()) out["row_order"] = res.rowOrder;
+    // ANTS-5346 — `path` is the file written; this names the spec that led there.
+    if (!followedFrom.isEmpty()) out["followed_from"] = followedFrom;
+
     // ANTS-2136 — dry_run: spec_log is section-routed (set_status rewrites
     // the Status line in place; append_loop / append_inv splice at a
     // computed section end, synthesising a heading when absent), so the
@@ -1274,24 +1280,8 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     // Preview them without writing the spec (parity with roadmap_log /
     // changelog_log dry_run).
     if (req.value(QStringLiteral("dry_run")).toBool()) {
-        QJsonObject out;
-        out["ok"]      = true;
-        out["op"]      = op;
         out["dry_run"] = true;
-        if (!id.isEmpty()) out["id"] = id;
-        out["path"]    = rel;
-        out["line"]    = res.line;
         out["bytes"]   = static_cast<qint64>(utf8.size());
-        if (statusOp) {
-            out["previous_status"] = res.previousValue;
-            out["new_status"]      = res.newValue;   // ANTS-6364
-        }
-        // ANTS-4353/4364 — say which SHAPE was written and which DIRECTION
-        // was inferred, so a caller can see which way the row went instead of
-        // re-reading the file to find out.
-        if (!res.rowShape.isEmpty()) out["row_shape"] = res.rowShape;
-        if (!res.rowOrder.isEmpty()) out["row_order"] = res.rowOrder;
-        if (!followedFrom.isEmpty()) out["followed_from"] = followedFrom;
         return QJsonDocument(out);
     }
 
@@ -1322,25 +1312,6 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
                          .arg(rel));
     }
 
-    QJsonObject out;
-    out["ok"]            = true;
-    out["op"]            = op;
-    if (!id.isEmpty()) out["id"] = id;
-    out["path"]          = rel;
-    out["line"]          = res.line;
-    // ANTS-4114 — set_status echoes the value it replaced. A project whose
-    // standard defines its own Status vocabulary otherwise learns of a wrong
-    // value at its lint gate minutes later; the replaced value makes the
-    // mismatch visible in the write's own envelope.
-    if (statusOp) {
-        out["previous_status"] = res.previousValue;
-        out["new_status"]      = res.newValue;   // ANTS-6364
-    }
-    // ANTS-4353/4364 — the shape written and the direction inferred.
-    if (!res.rowShape.isEmpty()) out["row_shape"] = res.rowShape;
-    if (!res.rowOrder.isEmpty()) out["row_order"] = res.rowOrder;
-    // ANTS-5346 — `path` is the file written; this names the spec that led there.
-    if (!followedFrom.isEmpty()) out["followed_from"] = followedFrom;
     rcSetWriteBytes(out, specBefore, static_cast<qint64>(utf8.size()));
     return QJsonDocument(out);
 }
@@ -1358,10 +1329,7 @@ constexpr int kGitLogBodyCapBytes  = 1024;  // ANTS-1250-INV-3
 
 QJsonObject gitErr(const char *code, const QString &message,
                    const QByteArray &stderrTail) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = message;
-    o["code"]  = QString::fromLatin1(code);
+    QJsonObject o = mcp::refusal(QString::fromLatin1(code), message);
     if (!stderrTail.isEmpty()) {
         o["stderr"] = QString::fromUtf8(stderrTail);
     }
@@ -1431,6 +1399,25 @@ bool isValidRange(const QString &range) {
             R"((\.\.\.?[a-zA-Z0-9._/^~][a-zA-Z0-9._/^~\-]*)?$)"));
     const auto m = re.match(range);
     return m.hasMatch() && m.capturedLength(0) == range.size();
+}
+
+// The project root a git_state op runs in; when empty, `err` holds its
+// bad_path refusal.
+QString gitStateRoot(const ants::RootProvider *roots, const QJsonObject &req,
+                     QJsonObject &err) {
+    const QString root = resolveRootCanonical(roots, req);
+    if (root.isEmpty())
+        err = gitErr("bad_path",
+            QStringLiteral("git_state: project root does not exist"));
+    return root;
+}
+
+// The bad_range refusal for a `range` given but failing isValidRange, else
+// an empty object.
+QJsonObject gitRangeRefusal(const QString &range) {
+    if (range.isEmpty() || isValidRange(range)) return {};
+    return gitErr("bad_range",
+        QStringLiteral("git_state: \"range\" failed validation"));
 }
 
 // Project root resolution mirrors cmdWorkspaceSearch / cmdFileOutline:
@@ -1643,11 +1630,9 @@ void parseStatusHeader(const QString &headerLine, QJsonObject &out) {
 // ANTS-1391: req carries optional caller_cwd; pass-through to the
 // read-verb resolveRootCanonical overload.
 QJsonObject runStatusOp(const ants::RootProvider *roots, const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(roots, req);
-    if (rootCanonical.isEmpty()) {
-        return gitErr("bad_path",
-            QStringLiteral("git_state: project root does not exist"));
-    }
+    QJsonObject rootErr;
+    const QString rootCanonical = gitStateRoot(roots, req, rootErr);
+    if (rootCanonical.isEmpty()) return rootErr;
     QStringList argv;
     argv << QStringLiteral("status")
          << QStringLiteral("--porcelain=v1")
@@ -1737,11 +1722,9 @@ static bool gitPathArgv(const QJsonObject &req, const QString &rootCanonical,
 
 QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
     // ANTS-1391: prefer caller_cwd when present.
-    const QString rootCanonical = resolveRootCanonical(roots, req);
-    if (rootCanonical.isEmpty()) {
-        return gitErr("bad_path",
-            QStringLiteral("git_state: project root does not exist"));
-    }
+    QJsonObject rootErr;
+    const QString rootCanonical = gitStateRoot(roots, req, rootErr);
+    if (rootCanonical.isEmpty()) return rootErr;
     // ANTS-1250-INV-3: server-clamp n to [1, 100].
     int n = 10;
     const QJsonValue nVal = req.value("n");
@@ -1870,11 +1853,9 @@ QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
 
 QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
     // ANTS-1391: prefer caller_cwd when present.
-    const QString rootCanonical = resolveRootCanonical(roots, req);
-    if (rootCanonical.isEmpty()) {
-        return gitErr("bad_path",
-            QStringLiteral("git_state: project root does not exist"));
-    }
+    QJsonObject rootErr;
+    const QString rootCanonical = gitStateRoot(roots, req, rootErr);
+    if (rootCanonical.isEmpty()) return rootErr;
     const QString range = req.value("range").toString();
     // ANTS-3377 — staged: diff the index vs HEAD (`git diff --cached`) so a
     // commit split can verify what has been staged. A cached diff of an
@@ -1891,10 +1872,7 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
     // single most common "what have I changed so far" call, so it needs no args.
     const bool worktreeDiff = range.isEmpty() && !staged;
     // ANTS-1250-INV-4: strict regex; first char excludes `-`.
-    if (!range.isEmpty() && !isValidRange(range)) {
-        return gitErr("bad_range",
-            QStringLiteral("git_state: \"range\" failed validation"));
-    }
+    if (QJsonObject e = gitRangeRefusal(range); !e.isEmpty()) return e;
     QStringList pathArgv;   // ANTS-5508 — path or paths[]
     QJsonObject pathErr;
     if (!gitPathArgv(req, rootCanonical, pathArgv, pathErr)) return pathErr;
@@ -2074,21 +2052,16 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
 // files: at the range's last commit, or in the working tree without one.
 QJsonObject runRenameSweepOp(const ants::RootProvider *roots,
                              const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(roots, req);
-    if (rootCanonical.isEmpty()) {
-        return gitErr("bad_path",
-            QStringLiteral("git_state: project root does not exist"));
-    }
+    QJsonObject rootErr;
+    const QString rootCanonical = gitStateRoot(roots, req, rootErr);
+    if (rootCanonical.isEmpty()) return rootErr;
     const QString old = req.value("old").toString();
     if (old.isEmpty()) {
         return gitErr("bad_args",
             QStringLiteral("git_state: rename_sweep needs \"old\""));
     }
     const QString range = req.value("range").toString();
-    if (!range.isEmpty() && !isValidRange(range)) {
-        return gitErr("bad_range",
-            QStringLiteral("git_state: \"range\" failed validation"));
-    }
+    if (QJsonObject e = gitRangeRefusal(range); !e.isEmpty()) return e;
     QStringList pathArgv;
     QJsonObject pathErr;
     if (!gitPathArgv(req, rootCanonical, pathArgv, pathErr)) return pathErr;
@@ -2142,11 +2115,7 @@ QJsonObject runRenameSweepOp(const ants::RootProvider *roots,
 // ants::falsepos::appendEntry. See docs/specs/ANTS-2129-audit-falsepos-log-mcp-write.md.
 QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
     auto afErr = [](const QString &code, const QString &message) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = message;
-        o["code"]  = code;
-        return QJsonDocument(o);
+        return QJsonDocument(mcp::refusal(code, message));
     };
 
     // Resolve the root directly from caller_cwd (m_main-independent, like the

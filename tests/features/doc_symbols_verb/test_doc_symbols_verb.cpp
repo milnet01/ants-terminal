@@ -86,8 +86,12 @@ TEST(DocSymbolsVerb, Inv6RefusalMinimums) {
     const QString handler = QString::fromStdString(ants_test::slurpFunctionBody(
         rc.toStdString(), "RemoteControl::cmdDocSymbols"));   // ANTS-3681
     ASSERT_FALSE(handler.isEmpty()) << "cmdDocSymbols body not found";
-    EXPECT_TRUE(handler.contains(QStringLiteral("validatePath(")));
-    EXPECT_TRUE(handler.contains(QStringLiteral("check.err")));
+    // The validation is docVerbRefusal's, shared by the doc verbs.
+    EXPECT_TRUE(handler.contains(QStringLiteral("docVerbRefusal(")));
+    const QString opening = QString::fromStdString(ants_test::slurpFunctionBody(
+        rc.toStdString(), "static QJsonDocument docVerbRefusal("));
+    EXPECT_TRUE(opening.contains(QStringLiteral("validatePath(")));
+    EXPECT_TRUE(opening.contains(QStringLiteral("check.err")));
 
     // (3) nothing to scan → ok:true with an EMPTY symbols[], not a refusal.
     const QJsonObject empty = RemoteControl::docSymbolsBuildResponse({}, {}, false, {});

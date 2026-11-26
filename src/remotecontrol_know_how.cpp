@@ -12,6 +12,7 @@
 #include "remotecontrol.h"
 
 #include "knowhowstore.h"
+#include "mcprefusal.h"
 #include "projectsettings.h"
 #include "resolvedroot.h"
 #include "roadmapstore.h"
@@ -19,11 +20,8 @@
 namespace {
 
 QJsonDocument refuse(const char *code, const QString &message) {
-    QJsonObject e;
-    e[QStringLiteral("ok")] = false;
-    e[QStringLiteral("code")] = QString::fromLatin1(code);
-    e[QStringLiteral("error")] = QStringLiteral("know_how: ") + message;
-    return QJsonDocument(e);
+    return QJsonDocument(mcp::refusal(QString::fromLatin1(code),
+                                      QStringLiteral("know_how: ") + message));
 }
 
 }  // namespace

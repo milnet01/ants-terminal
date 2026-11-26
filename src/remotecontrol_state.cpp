@@ -65,10 +65,9 @@ QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
         return QJsonDocument(runRenameSweepOp(m_roots, req));
     }
     if (op == QLatin1String("hooks")) {   // ANTS-5505
-        const QString root = resolveRootCanonical(m_roots, req);
-        if (root.isEmpty())
-            return QJsonDocument(gitErr("bad_path",
-                QStringLiteral("git_state: project root does not exist")));
+        QJsonObject rootErr;
+        const QString root = gitStateRoot(m_roots, req, rootErr);
+        if (root.isEmpty()) return QJsonDocument(rootErr);
         return QJsonDocument(GitHooksReport::run(
             root, GitHooksReport::defaultMachineHooksDir()));
     }

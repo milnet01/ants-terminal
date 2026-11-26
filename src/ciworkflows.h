@@ -57,8 +57,11 @@ struct Result {
     QJsonArray unread;      // [{file, job, field}]
 };
 
-// The *.yml and *.yaml file names in <root>/.github/workflows, sorted: what
-// counts as a workflow file, for every reader of the directory.
+// The workflow directory, relative to a project root.
+inline const QString kDirRel = QStringLiteral(".github/workflows");
+
+// The *.yml and *.yaml file names in <root>/kDirRel, sorted: what counts as
+// a workflow file, for every reader of the directory.
 QStringList files(const QString &root);
 // Every file files() names, read.
 Result read(const QString &root);

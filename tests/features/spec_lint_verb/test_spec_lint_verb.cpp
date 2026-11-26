@@ -131,8 +131,12 @@ TEST(SpecLintVerb, Inv7RefusalMinimums) {
     const QString handler = QString::fromStdString(ants_test::slurpFunctionBody(
         rc.toStdString(), "RemoteControl::cmdSpecLint"));     // ANTS-3681
     ASSERT_FALSE(handler.isEmpty()) << "cmdSpecLint body not found";
-    EXPECT_TRUE(handler.contains(QStringLiteral("validatePath(")));
-    EXPECT_TRUE(handler.contains(QStringLiteral("check.err")));
+    // The validation is docVerbRefusal's, shared by the doc verbs.
+    EXPECT_TRUE(handler.contains(QStringLiteral("docVerbRefusal(")));
+    const QString opening = QString::fromStdString(ants_test::slurpFunctionBody(
+        rc.toStdString(), "static QJsonDocument docVerbRefusal("));
+    EXPECT_TRUE(opening.contains(QStringLiteral("validatePath(")));
+    EXPECT_TRUE(opening.contains(QStringLiteral("check.err")));
 
     // (3) nothing to scan → ok:true with EMPTY findings, not a refusal.
     const QJsonObject empty =
@@ -214,8 +218,13 @@ TEST(SpecLintVerb, Ants4127SurfaceFieldsReachTheWire) {
     const QString handler = QString::fromStdString(
         ants_test::slurpFunctionBody(rcSrc, "RemoteControl::cmdSpecLint"));
     ASSERT_FALSE(handler.isEmpty());
-    EXPECT_TRUE(handler.contains(QStringLiteral("opts.existingTestDirs =")));
-    EXPECT_TRUE(handler.contains(QStringLiteral("opts.wiredTestDirs    =")));
+    // The gathering lives in specLintProjectOptions, which spec_lint and
+    // doc_lint share; the handler calls it once, outside the document loop.
+    EXPECT_TRUE(handler.contains(QStringLiteral("opts = specLintProjectOptions(")));
+    const QString gather = QString::fromStdString(ants_test::slurpFunctionBody(
+        rcSrc, "SpecLint::Options specLintProjectOptions("));
+    EXPECT_TRUE(gather.contains(QStringLiteral("opts.existingTestDirs =")));
+    EXPECT_TRUE(gather.contains(QStringLiteral("opts.wiredTestDirs    =")));
     EXPECT_TRUE(handler.contains(QStringLiteral("surfacesResolved += r.surfacesResolved")))
         << "a walk's total is the SUM over documents (§ 2.3)";
 
@@ -1398,9 +1407,16 @@ TEST(SpecLintVerb, Ants5511LaymanReachesTheVerb) {
     EXPECT_EQ(findingsOfKind(r, "header_layman_missing").size(), 1)
         << dump(r).toStdString();
 
-    EXPECT_NE(ants_test::slurpRemoteControl().find("opts.spec.laymanRequired"),
+    // doc_lint is not exercised above; it shares spec_lint's options builder.
+    const std::string rc = ants_test::slurpRemoteControl();
+    EXPECT_NE(ants_test::slurpFunctionBody(rc, "RemoteControl::cmdDocLint(")
+                  .find("opts.spec = specLintProjectOptions("),
               std::string::npos)
         << "doc_lint builds its own options";
+    EXPECT_NE(ants_test::slurpFunctionBody(rc, "SpecLint::Options specLintProjectOptions(")
+                  .find("opts.laymanRequired = true;"),
+              std::string::npos)
+        << "the shared spec-lint options leave the Layman check off";
 }
 
 // ANTS-5554 — a mistyped path must never read as a clean run: every document

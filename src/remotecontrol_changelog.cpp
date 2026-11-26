@@ -9,6 +9,7 @@
 #include "pathvalidation.h"
 #include "changelogquery.h"
 #include "gitwrap.h"
+#include "mcprefusal.h"
 #include "roadmapledger.h"
 #include "roadmapstore.h"
 #include <QDir>
@@ -291,11 +292,8 @@ FileTurn changelogTurn(const QString &clPath) {
 // The refusal when the turn could not be had: see
 // docs/standards/mcp-error-codes.md § 2, `file_busy`.
 QJsonDocument clBusy() {
-    QJsonObject e;
-    e[QStringLiteral("ok")]    = false;
-    e[QStringLiteral("code")]  = QStringLiteral("file_busy");
-    e[QStringLiteral("error")] = QStringLiteral(
-        "changelog_log: another call is writing this changelog; retry shortly");
+    QJsonObject e = mcp::refusal(QStringLiteral("file_busy"), QStringLiteral(
+        "changelog_log: another call is writing this changelog; retry shortly"));
     e[QStringLiteral("retry_after_ms")] = 250;
     return QJsonDocument(e);
 }
@@ -304,11 +302,13 @@ QJsonDocument clBusy() {
 // changelog_log op. The read and write return the refusal to send, or a
 // null document on success.
 QJsonDocument clErr(const QString &code, const QString &message) {
-    QJsonObject env;
-    env["ok"]    = false;
-    env["code"]  = code;
-    env["error"] = message;
-    return QJsonDocument(env);
+    return QJsonDocument(mcp::refusal(code, message));
+}
+
+// The leaked tool-XML names a scrub dropped, reported as `scrubbed_params`.
+void clSetScrubbed(QJsonObject &out, const QStringList &scrubbed) {
+    if (!scrubbed.isEmpty())
+        out["scrubbed_params"] = QJsonArray::fromStringList(scrubbed);
 }
 
 QJsonDocument clReadFile(const QString &path, QString *content) {
@@ -423,11 +423,7 @@ QJsonDocument clAmend(const QJsonObject &req, const QString &clPath, bool dryRun
     else out["line_text"] = res.lineText;
     if (res.lineTexts.size() > 1)  // ANTS-6796 — line_text shows only the first
         out["line_texts"] = QJsonArray::fromStringList(res.lineTexts);
-    if (!scrubbed.isEmpty()) {
-        QJsonArray dropped;
-        for (const QString &n : scrubbed) dropped.append(n);
-        out["scrubbed_params"] = dropped;
-    }
+    clSetScrubbed(out, scrubbed);
 
     const QByteArray utf8 = res.markdown.toUtf8();
     if (dryRun) {
@@ -450,23 +446,15 @@ QJsonDocument clAmend(const QJsonObject &req, const QString &clPath, bool dryRun
 // the symmetric read side of changelog_log. Mirrors cmdRoadmapQuery's
 // arg/mode/refusal discipline. See docs/specs/ANTS-3533-changelog-query-read-verb-mirror.md.
 QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
-    auto err = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env[QStringLiteral("ok")]    = false;
-        env[QStringLiteral("code")]  = code;
-        env[QStringLiteral("error")] = message;
-        return QJsonDocument(env);
-    };
-
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
     if (callerRaw.isEmpty())
-        return err(QStringLiteral("caller_cwd_required"),
-                   QStringLiteral("changelog_query: caller_cwd is required"));
+        return clErr(QStringLiteral("caller_cwd_required"),
+                     QStringLiteral("changelog_query: caller_cwd is required"));
     const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
     if (callerCanonical.isEmpty())
-        return err(QStringLiteral("no_changelog"),
-                   QStringLiteral("changelog_query: caller_cwd \"%1\" does not "
-                                  "canonicalise to an existing directory").arg(callerRaw));
+        return clErr(QStringLiteral("no_changelog"),
+                     QStringLiteral("changelog_query: caller_cwd \"%1\" does not "
+                                    "canonicalise to an existing directory").arg(callerRaw));
 
     // (1) path resolution — no_changelog / format_mismatch (§ 2.3 precedence).
     // ANTS-4812 — an explicit `path` wins over discovery; the read side takes
@@ -477,13 +465,13 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
     const QString clPath = clTarget.path;
     if (clPath.isEmpty()) {
         if (!findYamlChangelogUnder(callerCanonical).isEmpty())
-            return err(QStringLiteral("format_mismatch"),
-                       QStringLiteral("changelog_query: found a YAML changelog; "
-                                      "only Keep-a-Changelog Markdown (CHANGELOG.md) "
-                                      "is read"));
-        return err(QStringLiteral("no_changelog"),
-                   QStringLiteral("changelog_query: no CHANGELOG.md found under \"%1\"")
-                       .arg(callerCanonical));
+            return clErr(QStringLiteral("format_mismatch"),
+                         QStringLiteral("changelog_query: found a YAML changelog; "
+                                        "only Keep-a-Changelog Markdown (CHANGELOG.md) "
+                                        "is read"));
+        return clErr(QStringLiteral("no_changelog"),
+                     QStringLiteral("changelog_query: no CHANGELOG.md found under \"%1\"")
+                         .arg(callerCanonical));
     }
 
     // (2) bad_mode.
@@ -525,9 +513,9 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         };
         if ((present(idv) && !idv.isString()) ||
             (present(idsv) && !idsv.isString() && !idsv.isArray()))
-            return err(QStringLiteral("bad_args"),
-                       QStringLiteral("changelog_query: `id` must be a string "
-                                      "and `ids` an array or a string"));
+            return clErr(QStringLiteral("bad_args"),
+                         QStringLiteral("changelog_query: `id` must be a string "
+                                        "and `ids` an array or a string"));
     }
     const QString singleId = req.value(QStringLiteral("id")).toString().trimmed();
     const bool hasId = !singleId.isEmpty();
@@ -554,19 +542,19 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         }
     }
     if (hasId && hasIds)
-        return err(QStringLiteral("bad_args"),
-                   QStringLiteral("changelog_query: pass either id or ids, not both"));
+        return clErr(QStringLiteral("bad_args"),
+                     QStringLiteral("changelog_query: pass either id or ids, not both"));
     if (reqIds.size() > 100)
-        return err(QStringLiteral("bad_args"),
-                   QStringLiteral("changelog_query: ids exceeds 100 entries"));
+        return clErr(QStringLiteral("bad_args"),
+                     QStringLiteral("changelog_query: ids exceeds 100 entries"));
     const bool idMode = hasId || hasIds;
 
     // (5) bad_mode_combo — id/ids + version_index, or + lint.
     if (idMode && (mode == QLatin1String("version_index") ||
                    mode == QLatin1String("lint")))
-        return err(QStringLiteral("bad_mode_combo"),
-                   QStringLiteral("changelog_query: id/ids cannot combine with "
-                                  "mode:%1").arg(mode));
+        return clErr(QStringLiteral("bad_mode_combo"),
+                     QStringLiteral("changelog_query: id/ids cannot combine with "
+                                    "mode:%1").arg(mode));
 
     // --- parse (mtime+TTL cache, single-slot, path-keyed) ---
     const QFileInfo fi(clPath);
@@ -679,9 +667,9 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
             if (!sinceArg.isEmpty()) {
                 since = QDate::fromString(sinceArg, Qt::ISODate);
                 if (!since.isValid())
-                    return err(QStringLiteral("bad_args"),
-                               QStringLiteral("changelog_query: since takes a "
-                                              "YYYY-MM-DD date"));
+                    return clErr(QStringLiteral("bad_args"),
+                                 QStringLiteral("changelog_query: since takes a "
+                                                "YYYY-MM-DD date"));
             }
             RoadmapSource::ReadError storeWhy = RoadmapSource::ReadError::None;
             QString skipped;
@@ -725,9 +713,9 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         const QJsonValue v = req.value(QStringLiteral("offset"));
         const double d = v.toDouble(-1);
         if (!v.isDouble() || d < 0 || d != std::floor(d))
-            return err(QStringLiteral("bad_args"),
-                       QStringLiteral("changelog_query: offset must be a "
-                                      "non-negative integer"));
+            return clErr(QStringLiteral("bad_args"),
+                         QStringLiteral("changelog_query: offset must be a "
+                                        "non-negative integer"));
         offset = static_cast<int>(d);
     }
     int limitArg = -1;
@@ -736,9 +724,9 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         const QJsonValue v = req.value(QStringLiteral("limit"));
         const double d = v.toDouble(0);
         if (!v.isDouble() || d < 1 || d != std::floor(d))
-            return err(QStringLiteral("bad_args"),
-                       QStringLiteral("changelog_query: limit must be an "
-                                      "integer >= 1"));
+            return clErr(QStringLiteral("bad_args"),
+                         QStringLiteral("changelog_query: limit must be an "
+                                        "integer >= 1"));
         limitArg = static_cast<int>(d);
         passedLimit = true;
     }
@@ -1002,23 +990,23 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             return a;
         };
 
+        QJsonObject out;
+        out["ok"]           = true;
+        out["op"]           = op;
+        out["file"]         = clPath.section('/', -1);
+        out["changed"]      = res.changed;
+        out["order_before"] = orderArr(res.order_before);
+        out["order_after"]  = orderArr(res.order_after);
+        out["prose_moved"]  = res.prose_moves.size();
+        if (!res.prose_moves.isEmpty())
+            out["moves"] = movesArr(res.prose_moves);
+        if (res.malformed_section)
+            out["advisory"] = proseAdvisory(res.malformed_line);
+
         // dry_run, or an already-canonical section, both write nothing.
         if (dryRun || !res.changed) {
-            QJsonObject out;
-            out["ok"]           = true;
-            out["op"]           = op;
-            out["file"]         = clPath.section('/', -1);
-            out["changed"]      = res.changed;
-            out["order_before"] = orderArr(res.order_before);
-            out["order_after"]  = orderArr(res.order_after);
-            out["bytes"]        =
-                static_cast<qint64>(res.markdown.toUtf8().size());
-            out["prose_moved"]  = res.prose_moves.size();
-            if (!res.prose_moves.isEmpty())
-                out["moves"] = movesArr(res.prose_moves);
+            out["bytes"] = static_cast<qint64>(res.markdown.toUtf8().size());
             if (dryRun) out["dry_run"] = true;
-            if (res.malformed_section)
-                out["advisory"] = proseAdvisory(res.malformed_line);
             return QJsonDocument(out);
         }
 
@@ -1026,24 +1014,11 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         const QByteArray utf8 = res.markdown.toUtf8();
         if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
             return e;
-
-        QJsonObject out;
-        out["ok"]            = true;
-        out["op"]            = op;
-        out["file"]          = clPath.section('/', -1);
-        out["changed"]       = true;
-        out["order_before"]  = orderArr(res.order_before);
-        out["order_after"]   = orderArr(res.order_after);
-        out["prose_moved"]   = res.prose_moves.size();
-        if (!res.prose_moves.isEmpty())
-            out["moves"] = movesArr(res.prose_moves);
         // ANTS-3723 — a reorder adds no content, so the honest delta is 0;
         // `file_bytes` carries the size the old field used to report.
         // (A fold adds the two indent spaces per relocated line, so a
         // prose-relocating normalize reports a small positive delta.)
         rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
-        if (res.malformed_section)
-            out["advisory"] = proseAdvisory(res.malformed_line);
         return QJsonDocument(out);
     }
 
@@ -1251,19 +1226,18 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
 
         const QString heading = QStringLiteral("### %1 %2 — %3")
                                     .arg(date, category, headline.trimmed());
+        QJsonObject out;
+        out["ok"]       = true;
+        out["op"]       = op;
+        out["file"]     = clPath.section('/', -1);
+        out["category"] = category;
+        out["date"]     = date;
+        out["heading"]  = heading;
+        out["line"]     = res.line;
         if (dryRun) {
-            QJsonObject out;
-            out["ok"]       = true;
-            out["op"]       = op;
-            out["dry_run"]  = true;
-            out["written"]  = false;
-            out["file"]     = clPath.section('/', -1);
-            out["category"] = category;
-            out["date"]     = date;
-            out["heading"]  = heading;
-            out["line"]     = res.line;
-            out["bytes"]    =
-                static_cast<qint64>(res.markdown.toUtf8().size());
+            out["dry_run"] = true;
+            out["written"] = false;
+            out["bytes"]   = static_cast<qint64>(res.markdown.toUtf8().size());
             return QJsonDocument(out);
         }
 
@@ -1271,15 +1245,6 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         const QByteArray utf8 = res.markdown.toUtf8();
         if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
             return e;
-
-        QJsonObject out;
-        out["ok"]            = true;
-        out["op"]            = op;
-        out["file"]          = clPath.section('/', -1);
-        out["category"]      = category;
-        out["date"]          = date;
-        out["heading"]       = heading;
-        out["line"]          = res.line;
         rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
         return QJsonDocument(out);
     }
@@ -1423,38 +1388,40 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     }
     const QString &echoLine = routedInsert.echoLine;
 
+    QJsonObject out;
+    out["ok"]               = true;
+    out["op"]               = op;
+    out["file"]             = clPath.section('/', -1);
+    out["category"]         = category;
+    out["line"]             = res.line;
+    out["created_category"] = res.created_category;
+    out["section"] = QStringLiteral("Unreleased");   // ANTS-4847
+    // ANTS-4629 — echo what is written, on the write as on the preview, so a
+    // malformed bullet is visible without a re-read.
+    out["bullet"]           = echoLine;
+    // ANTS-4563 — a routed write changed SHAPE, so it says so. Silence here
+    // would leave a caller unable to tell it from a flat insert, and
+    // `bullet` then carries a dated heading rather than a bullet.
+    if (routeToSubsection) out["routed_to_subsection"] = true;
+    if (!id.isEmpty()) out["id"] = id;
+    if (!laymanOmitted.isEmpty())
+        out["layman_body_omitted"] = laymanOmitted;   // ANTS-5673
+    // ANTS-2125 — non-blocking advisory: the Unreleased section already
+    // interleaves non-heading prose between its `### ` category blocks, so
+    // the layout is malformed. Surface it (parity with roadmap_log
+    // possible_duplicates) so the caller can tidy it before the insert
+    // compounds it.
+    if (res.malformed_section) {
+        out["advisory"] = changelogMalformedAdvisory(
+            res.malformed_line, /*plural=*/false, /*applied=*/!dryRun);
+    }
+    clSetScrubbed(out, scrubbed);
+
     // ANTS-2136 — dry_run: return the resolved insert preview without
-    // writing CHANGELOG.md. `bytes` is the would-be file size; `bullet`
-    // is the rendered entry so the caller can eyeball category routing
-    // and prose before committing.
+    // writing CHANGELOG.md. `bytes` is the would-be file size.
     if (dryRun) {
-        QJsonObject out;
-        out["ok"]               = true;
-        out["op"]               = op;
-        out["dry_run"]          = true;
-        out["file"]             = clPath.section('/', -1);
-        out["category"]         = category;
-        out["line"]             = res.line;
-        out["bytes"]            = static_cast<qint64>(res.markdown.toUtf8().size());
-        out["created_category"] = res.created_category;
-        out["section"] = QStringLiteral("Unreleased");   // ANTS-4847
-        out["bullet"]           = echoLine;
-        // ANTS-4563 — a routed write changed SHAPE, so it says so. Silence here
-        // would leave a caller unable to tell it from a flat insert, and
-        // `bullet` then carries a dated heading rather than a bullet.
-        if (routeToSubsection) out["routed_to_subsection"] = true;
-        if (!id.isEmpty()) out["id"] = id;
-        if (!laymanOmitted.isEmpty())
-            out["layman_body_omitted"] = laymanOmitted;   // ANTS-5673
-        if (res.malformed_section) {
-            out["advisory"] = changelogMalformedAdvisory(
-                res.malformed_line, /*plural=*/false, /*applied=*/false);
-        }
-        if (!scrubbed.isEmpty()) {
-            QJsonArray dropped;
-            for (const QString &n : scrubbed) dropped.append(n);
-            out["scrubbed_params"] = dropped;
-        }
+        out["dry_run"] = true;
+        out["bytes"]   = static_cast<qint64>(res.markdown.toUtf8().size());
         return QJsonDocument(out);
     }
 
@@ -1462,41 +1429,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     const QByteArray utf8 = res.markdown.toUtf8();
     if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
         return e;
-
-    QJsonObject out;
-    out["ok"]               = true;
-    out["op"]               = op;
-    out["file"]             = clPath.section('/', -1);
-    out["category"]         = category;
-    out["line"]             = res.line;
     rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
-    out["created_category"] = res.created_category;
-    out["section"] = QStringLiteral("Unreleased");   // ANTS-4847
-    // ANTS-4629 — echo what was actually written. This was emitted on the
-    // dry-run path only, so a caller who did not already suspect a problem had
-    // no way to see a malformed bullet: the write reported ok:true with a
-    // plausible byte count and said nothing about its own output. Seven
-    // malformed entries in one project outlived that silence by five days.
-    out["bullet"]           = echoLine;
-    // ANTS-4563 — same contract on the write path as on the preview.
-    if (routeToSubsection) out["routed_to_subsection"] = true;
-    if (!id.isEmpty()) out["id"] = id;
-    if (!laymanOmitted.isEmpty())
-        out["layman_body_omitted"] = laymanOmitted;   // ANTS-5673
-    // ANTS-2125 — non-blocking advisory: the entry was inserted in
-    // canonical order, but the Unreleased section already interleaves
-    // non-heading prose between its `### ` category blocks, so the layout
-    // is malformed. Surface it (parity with roadmap_log possible_duplicates)
-    // so the caller can tidy the section before the insert compounds it.
-    if (res.malformed_section) {
-        out["advisory"] = changelogMalformedAdvisory(
-            res.malformed_line, /*plural=*/false, /*applied=*/true);
-    }
-    if (!scrubbed.isEmpty()) {
-        QJsonArray dropped;
-        for (const QString &n : scrubbed) dropped.append(n);
-        out["scrubbed_params"] = dropped;
-    }
     return QJsonDocument(out);
 }
 
@@ -1848,59 +1781,41 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         }
     }
 
-    qint64 bytesWritten = 0;
+    QJsonObject out;
+    out["ok"]               = true;
+    out["op"]               = QStringLiteral("add_batch");
+    out["file"]             = clPath.section('/', -1);
+    out["applied"]          = applied;
+    out["applied_count"]    = applied.size();
+    out["skipped"]          = skipped;
+    out["skipped_count"]    = skipped.size();
+    out["created_category"] = anyCreatedCategory;   // ANTS-3804
+    out["section"] = QStringLiteral("Unreleased");   // ANTS-4847
+    if (malformedSection) {
+        out["advisory"] = changelogMalformedAdvisory(
+            malformedLine, /*plural=*/true, /*applied=*/!dryRun);
+    }
     // ANTS-2136 — dry_run: skip the commit, report what WOULD apply.
     // `bytes` reflects the accumulated markdown size (0 when nothing
-    // applied, parity with the write path's bytesWritten).
+    // applied, parity with the write path's bytes_written).
     if (dryRun) {
-        QJsonObject out;
-        out["ok"]              = true;
-        out["op"]              = QStringLiteral("add_batch");
-        out["dry_run"]         = true;
-        out["file"]            = clPath.section('/', -1);
-        out["applied"]         = applied;
-        out["applied_count"]   = applied.size();
-        out["skipped"]         = skipped;
-        out["skipped_count"]   = skipped.size();
-        out["bytes"]           = applied.isEmpty()
+        out["dry_run"] = true;
+        out["bytes"]   = applied.isEmpty()
             ? static_cast<qint64>(0)
             : static_cast<qint64>(markdown.toUtf8().size());
-        out["created_category"] = anyCreatedCategory;   // ANTS-3804
-        out["section"] = QStringLiteral("Unreleased");   // ANTS-4847
-        if (malformedSection) {
-            out["advisory"] = changelogMalformedAdvisory(
-                malformedLine, /*plural=*/true, /*applied=*/false);
-        }
         return QJsonDocument(out);
     }
     // Only touch the file when at least one entry applied — an all-skip
     // batch leaves CHANGELOG.md untouched.
-    qint64 fileBytes = QFileInfo(clPath).size();        // ANTS-3723
+    const qint64 clBefore = QFileInfo(clPath).size();   // ANTS-3723
+    qint64 clAfter = clBefore;
     if (!applied.isEmpty()) {
-        const qint64 clBefore = fileBytes;
         const QByteArray utf8 = markdown.toUtf8();
         if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
             return e;
-        fileBytes    = utf8.size();
-        bytesWritten = fileBytes - clBefore;            // ANTS-3723 — delta
+        clAfter = utf8.size();
     }
-
-    QJsonObject out;
-    out["ok"]            = true;
-    out["op"]            = QStringLiteral("add_batch");
-    out["file"]          = clPath.section('/', -1);
-    out["applied"]       = applied;
-    out["applied_count"] = applied.size();
-    out["skipped"]       = skipped;
-    out["skipped_count"] = skipped.size();
-    out["bytes_written"] = bytesWritten;
-    out["file_bytes"]    = fileBytes;                   // ANTS-3723
-    out["created_category"] = anyCreatedCategory;       // ANTS-3804
-    out["section"] = QStringLiteral("Unreleased");       // ANTS-4847
-    if (malformedSection) {
-        out["advisory"] = changelogMalformedAdvisory(
-            malformedLine, /*plural=*/true, /*applied=*/true);
-    }
+    rcSetWriteBytes(out, clBefore, clAfter);
     return QJsonDocument(out);
 }
 

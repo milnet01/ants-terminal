@@ -4248,18 +4248,10 @@ QString pickFeedbackNameIn(const QString &dir, const QString &leaf,
 
 }  // namespace
 
-// Resolve + validate the feedback-file `path` arg. On reject, fills
-// `err` and returns false. On success, `resolvedOut` is the absolute
-// path to read/write (which may not yet exist when `mustExist` is
-// false), and `existsOut` says whether it currently exists. When
-// `derivedOut` is non-null it reports whether the path was auto-derived
-// from caller_cwd (ANTS-3376) rather than supplied by the caller.
+// Resolve + validate the feedback-file `path` arg into `out` (a fresh
+// FeedbackPath). On reject, fills `out.err` and returns false.
 bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
-                         QString &resolvedOut, bool &existsOut,
-                         QJsonObject &err, bool *derivedOut,
-                         QString *derivedReasonOut) {
-    if (derivedOut) *derivedOut = false;
-    if (derivedReasonOut) derivedReasonOut->clear();
+                         FeedbackPath &out) {
     const QString rawPath = req.value(QStringLiteral("path")).toString();
     if (rawPath.isEmpty()) {
         // ANTS-3376 — no explicit path: derive the conventional
@@ -4275,7 +4267,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
             QFileInfo(callerRaw).canonicalFilePath();
         const QString leaf = QFileInfo(rootCanonical).fileName();
         if (rootCanonical.isEmpty() || leaf.isEmpty()) {
-            err = mcp::refusal(QStringLiteral("bad_args"),
+            out.err = mcp::refusal(QStringLiteral("bad_args"),
                         toolName + QStringLiteral(": \"path\" is required "
                         "(no resolvable caller_cwd to derive a default)"));
             return false;
@@ -4295,7 +4287,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
         // and the siblings are the actionable retry — the same shape
         // op:append_tracking's not_found already uses.
         if (leaf.startsWith(QChar('.'))) {
-            err = mcp::refusal(QStringLiteral("bad_args"),
+            out.err = mcp::refusal(QStringLiteral("bad_args"),
                         toolName + QStringLiteral(": \"path\" is required — "
                         "caller_cwd's leaf \"%1\" begins with a dot, and a "
                         "feedback name derived from it could never match the "
@@ -4317,27 +4309,26 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                         hits << p;
                 }
                 if (hits.size() == 1) {
-                    err = QJsonObject();
-                    resolvedOut = hits.first();
-                    existsOut   = true;
-                    if (derivedOut) *derivedOut = true;
-                    if (derivedReasonOut)
-                        *derivedReasonOut = QStringLiteral(
-                            "caller_cwd's leaf \"%1\" begins with a dot; the "
-                            "git origin remote names the repository \"%2\", "
-                            "and exactly one feedback file matches it")
-                                .arg(leaf, repo);
+                    out.err = QJsonObject();
+                    out.resolved = hits.first();
+                    out.exists = true;
+                    out.derived = true;
+                    out.derivedReason = QStringLiteral(
+                        "caller_cwd's leaf \"%1\" begins with a dot; the "
+                        "git origin remote names the repository \"%2\", "
+                        "and exactly one feedback file matches it")
+                            .arg(leaf, repo);
                     return true;
                 }
             }
             if (!cands.isEmpty()) {
-                err[QStringLiteral("candidates")] = cands;
-                err[QStringLiteral("hint")] = QStringLiteral(
+                out.err[QStringLiteral("candidates")] = cands;
+                out.err[QStringLiteral("hint")] = QStringLiteral(
                     "pass one of `candidates` as `path`");
             }
             return false;
         }
-        resolvedOut = pickFeedbackNameIn(sharedRoot, leaf, existsOut);
+        out.resolved = pickFeedbackNameIn(sharedRoot, leaf, out.exists);
         // ANTS-4647 — the derivation assumes caller_cwd sits DIRECTLY under the
         // shared root, which is every project the convention was designed
         // around. One level deeper it is wrong: a repo nested inside another
@@ -4357,7 +4348,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
         // file in any new corpus impossible to create, a worse bug than the
         // one being closed. It fires only when the parent holds NO corpus AND
         // an ancestor (or the configured `claude.mcp_feedback_root`) does.
-        if (!existsOut) {
+        if (!out.exists) {
             const auto holdsCorpus = [](const QString &dir) {
                 if (dir.isEmpty()) return false;
                 return !QDir(dir).entryList(
@@ -4373,13 +4364,12 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                 // requires ok:true + candidates from the configured root).
                 const QString declared = Config().claudeMcpFeedbackRoot();
                 if (holdsCorpus(declared)) {
-                    resolvedOut = pickFeedbackNameIn(declared, leaf, existsOut);
-                    if (derivedOut) *derivedOut = true;
-                    if (derivedReasonOut)
-                        *derivedReasonOut = QStringLiteral(
-                            "caller_cwd's parent \"%1\" holds no feedback file; "
-                            "derived under claude.mcp_feedback_root \"%2\"")
-                                .arg(sharedRoot, declared);
+                    out.resolved = pickFeedbackNameIn(declared, leaf, out.exists);
+                    out.derived = true;
+                    out.derivedReason = QStringLiteral(
+                        "caller_cwd's parent \"%1\" holds no feedback file; "
+                        "derived under claude.mcp_feedback_root \"%2\"")
+                            .arg(sharedRoot, declared);
                     return true;
                 }
                 // ANTS-4900 — the corpus may also be one level DOWN. Once a
@@ -4417,7 +4407,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                     }
                 }
                 if (!corpus.isEmpty()) {
-                    err = mcp::refusal(QStringLiteral("bad_args"),
+                    out.err = mcp::refusal(QStringLiteral("bad_args"),
                         toolName + QStringLiteral(": \"path\" is required — "
                         "caller_cwd's parent \"%1\" holds no "
                         "*%2 file, so the derived name would land where no "
@@ -4431,8 +4421,8 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                     const QJsonArray cands = feedbackSiblingCandidates(
                         QDir::cleanPath(corpus + QLatin1Char('/') + leaf));
                     if (!cands.isEmpty()) {
-                        err[QStringLiteral("candidates")] = cands;
-                        err[QStringLiteral("hint")] = QStringLiteral(
+                        out.err[QStringLiteral("candidates")] = cands;
+                        out.err[QStringLiteral("hint")] = QStringLiteral(
                             "pass one of `candidates` as `path`, or the new "
                             "name you want under \"%1\"").arg(corpus);
                     }
@@ -4441,7 +4431,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                 // No corpus anywhere above: this IS the first file. Derive.
             }
         }
-        if (derivedOut) *derivedOut = true;
+        out.derived = true;
         return true;
     }
     // Root for the relative case: the caller_cwd canonical dir. Absolute
@@ -4457,14 +4447,14 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
     const auto check = PathValidation::validatePath(
         rawPath, rootCanonical, toolName, QStringLiteral("path"),
         /*allowOutsideRoot=*/true);
-    if (check.bad) { err = check.err; return false; }
+    if (check.bad) { out.err = check.err; return false; }
 
     // Determine the path to act on. validatePath leaves `resolved` empty
     // for a non-existent path; reconstruct the would-be absolute path so
     // the writer (feedback_log) can create it. For an absolute rawPath we
     // use it directly; for a relative one we join the caller_cwd root.
     QString candidate = check.resolved;
-    existsOut = !candidate.isEmpty();
+    out.exists = !candidate.isEmpty();
     if (candidate.isEmpty()) {
         const QFileInfo rawFi(rawPath);
         if (rawFi.isAbsolute()) {
@@ -4474,7 +4464,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                 rootCanonical + QLatin1Char('/') + rawPath);
         } else {
             // Relative path with no resolvable caller_cwd root.
-            err = mcp::refusal(QStringLiteral("bad_path"),
+            out.err = mcp::refusal(QStringLiteral("bad_path"),
                         toolName + QStringLiteral(": relative \"path\" "
                         "needs a resolvable caller_cwd"));
             return false;
@@ -4486,13 +4476,13 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
     // already canonicalised existing paths into `check.resolved`).
     const QString base = QFileInfo(candidate).fileName();
     if (!base.endsWith(QLatin1String(kFeedbackSuffix))) {
-        err = mcp::refusal(QStringLiteral("not_feedback_file"),
+        out.err = mcp::refusal(QStringLiteral("not_feedback_file"),
                     toolName + QStringLiteral(": \"path\" basename must "
                     "end in ") + QLatin1String(kFeedbackSuffix));
         return false;
     }
 
-    resolvedOut = std::move(candidate);
+    out.resolved = std::move(candidate);
     return true;
 }
 

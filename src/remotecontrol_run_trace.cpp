@@ -15,6 +15,7 @@
 
 #include "remotecontrol.h"
 
+#include "mcprefusal.h"
 #include "pathvalidation.h"
 #include "resolvedroot.h"
 #include "runtraceverb.h"
@@ -28,11 +29,7 @@
 namespace {
 
 QJsonDocument refuse(const char *code, const QString &message) {
-    QJsonObject e;
-    e[QStringLiteral("ok")]    = false;
-    e[QStringLiteral("code")]  = QString::fromLatin1(code);
-    e[QStringLiteral("error")] = message;
-    return QJsonDocument(e);
+    return QJsonDocument(mcp::refusal(QString::fromLatin1(code), message));
 }
 
 }  // namespace

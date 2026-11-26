@@ -714,12 +714,22 @@ bool isValidSpecId(const QString &id);
 QString resolveSpecRelForId(const QString &rootCanonical, const QString &dirRel, const QString &id);
 QString feedbackCallerLeaf(const QJsonObject &req);
 QJsonObject fbNotFound(const QString &message, const QString &resolved, const QString &callerLeaf = QString());
-// ANTS-5500 — `derivedReasonOut` says how a derived path was chosen, where
-// the rule is not the plain leaf convention (a dot leaf matched by its
-// git origin remote). Empty otherwise.
-bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName, QString &resolvedOut, bool &existsOut, QJsonObject &err, bool *derivedOut = nullptr, QString *derivedReasonOut = nullptr);
+// What resolveFeedbackPath decides about a feedback verb's `path` arg.
+struct FeedbackPath {
+    QString resolved;       // absolute path to read or write; may not exist yet
+    bool exists = false;    // whether `resolved` exists now
+    bool derived = false;   // ANTS-3376 — derived from caller_cwd, not passed
+    // ANTS-5500 — how a derived path was chosen, where the rule is not the
+    // plain leaf convention (a dot leaf matched by its git origin remote).
+    // Empty otherwise.
+    QString derivedReason;
+    QJsonObject err;        // the refusal when resolveFeedbackPath returns false
+};
+bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName, FeedbackPath &out);
 QJsonObject gitErr(const char *code, const QString &message, const QByteArray &stderrTail = {});
 bool isValidRange(const QString &range);
+QString gitStateRoot(const ants::RootProvider *roots, const QJsonObject &req, QJsonObject &err);
+QJsonObject gitRangeRefusal(const QString &range);
 void parseStatusHeader(const QString &headerLine, QJsonObject &out);
 QJsonObject runStatusOp(const ants::RootProvider *roots, const QJsonObject &req);
 QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req);

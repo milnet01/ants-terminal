@@ -15,6 +15,7 @@
 #include "cihistory.h"
 #include "cireport.h"
 #include "ciworkflows.h"
+#include "mcprefusal.h"
 #include "resolvedroot.h"
 #include "secureio.h"
 #include "sessionmemoryengine.h"
@@ -46,9 +47,9 @@ constexpr int kMaxDays = 90;
 const qint64 kLiveBudgetMs = CiHistory::Options().deadlineMs;
 
 QJsonDocument refuse(const char *code, const QString &message, QJsonObject extra = {}) {
-    extra[QStringLiteral("ok")] = false;
-    extra[QStringLiteral("code")] = QString::fromLatin1(code);
-    extra[QStringLiteral("error")] = QStringLiteral("ci_report: ") + message;
+    const QJsonObject base =
+        mcp::refusal(QString::fromLatin1(code), QStringLiteral("ci_report: ") + message);
+    for (auto it = base.begin(); it != base.end(); ++it) extra.insert(it.key(), it.value());
     return QJsonDocument(extra);
 }
 

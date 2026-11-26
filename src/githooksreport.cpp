@@ -5,6 +5,7 @@
 #include "ciworkflows.h"
 
 #include "gitwrap.h"
+#include "mcprefusal.h"
 
 #include <QDir>
 #include <QFile>
@@ -24,10 +25,7 @@ constexpr int kCandidatesTimeoutMs = 2000;
 
 QJsonObject refuse(const char *code, const QString &message,
                    const QByteArray &stderrTail = {}) {
-    QJsonObject o;
-    o[QStringLiteral("ok")]    = false;
-    o[QStringLiteral("code")]  = QString::fromLatin1(code);
-    o[QStringLiteral("error")] = message;
+    QJsonObject o = mcp::refusal(QString::fromLatin1(code), message);
     if (!stderrTail.isEmpty())
         o[QStringLiteral("stderr")] = QString::fromUtf8(stderrTail);
     return o;
@@ -225,7 +223,7 @@ QJsonObject run(const QString &root, const QString &machineHooksDir) {
     out[QStringLiteral("gate_keys")] = keys;
 
     QJsonObject gate = resolveGate(root, keys, machinePrePush);
-    const QDir wfDir(absUnder(root, QStringLiteral(".github/workflows")));
+    const QDir wfDir(absUnder(root, CiWorkflows::kDirRel));
     const QStringList workflows = CiWorkflows::files(root);
     out[QStringLiteral("workflows")] = QJsonArray::fromStringList(workflows);
     // ci-gate's workflow_calls: a workflow naming the script's basename.

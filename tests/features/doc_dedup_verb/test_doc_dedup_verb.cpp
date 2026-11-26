@@ -105,9 +105,13 @@ TEST(DocDedupVerb, Inv8RefusalMinimums) {
     const QString handler = QString::fromStdString(ants_test::slurpFunctionBody(
         rc.toStdString(), "RemoteControl::cmdDocDedup"));     // ANTS-3681
     ASSERT_FALSE(handler.isEmpty()) << "cmdDocDedup body not found";
-    EXPECT_TRUE(handler.contains(QStringLiteral("validatePath(")));
-    EXPECT_TRUE(handler.contains(QStringLiteral("check.err")));
-    const int validate = handler.indexOf(QStringLiteral("validatePath("));
+    // The validation is docVerbRefusal's, shared by the doc verbs.
+    EXPECT_TRUE(handler.contains(QStringLiteral("docVerbRefusal(")));
+    const QString opening = QString::fromStdString(ants_test::slurpFunctionBody(
+        rc.toStdString(), "static QJsonDocument docVerbRefusal("));
+    EXPECT_TRUE(opening.contains(QStringLiteral("validatePath(")));
+    EXPECT_TRUE(opening.contains(QStringLiteral("check.err")));
+    const int validate = handler.indexOf(QStringLiteral("docVerbRefusal("));
     const int enumerate = handler.indexOf(QStringLiteral("docIntegrityEnumerate("));
     ASSERT_GE(enumerate, 0);
     EXPECT_LT(validate, enumerate)

@@ -27,8 +27,9 @@ source-scrape the registration sites — the pattern `doc_integrity`'s and
   at `registerToolProvider` in `mainwindow.cpp` and in
   `callerCwdContractFor` in `claudeintegration.cpp` — and the two can disagree.
 
-`Inv8`'s ordering assertion (`validatePath` appears before
-`docIntegrityEnumerate` in the handler body) is the one that would otherwise be
+`Inv8`'s ordering assertion (the `docVerbRefusal` call, which runs
+`validatePath`, appears before `docIntegrityEnumerate` in the handler body) is
+the one that would otherwise be
 missed: a handler that validates *after* enumerating still refuses a
 root-escaping path, but has already walked the tree it was supposed to refuse.
 

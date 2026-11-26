@@ -17,6 +17,7 @@
 #include "remotecontrol.h"
 
 #include "gitorigin.h"         // ANTS-6720 — op:"projects"' github_repo
+#include "mcprefusal.h"
 #include "projectsettings.h"   // ANTS-5667 — repoRootOf
 #include "resolvedroot.h"
 #include "roadmapstore.h"
@@ -48,11 +49,7 @@ QJsonObject RemoteControl::mailBodyFields(const QString &body, bool wholeBody) {
 namespace {
 
 QJsonDocument refuse(const char *code, const QString &message) {
-    QJsonObject e;
-    e[QStringLiteral("ok")]    = false;
-    e[QStringLiteral("code")]  = QString::fromLatin1(code);
-    e[QStringLiteral("error")] = message;
-    return QJsonDocument(e);
+    return QJsonDocument(mcp::refusal(QString::fromLatin1(code), message));
 }
 
 // ANTS-5473 — an unknown recipient refusal names the slugs probably meant,

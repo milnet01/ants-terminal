@@ -2,6 +2,7 @@
 
 #include "versioncheck.h"
 
+#include "mcprefusal.h"
 #include "pathvalidation.h"
 
 #include <QFile>
@@ -18,9 +19,7 @@ constexpr int kMaxUnlistedFileBytes = 1024 * 1024;
 constexpr int kMaxUnlistedFindings = 100;
 
 QJsonObject refuse(const QString &code, const QString &message) {
-    return {{QStringLiteral("ok"), false},
-            {QStringLiteral("code"), code},
-            {QStringLiteral("error"), QStringLiteral("version_check: ") + message}};
+    return mcp::refusal(code, QStringLiteral("version_check: ") + message);
 }
 
 // The recipe and the tracked list come from the repository, so a path in

@@ -484,15 +484,15 @@ void parseInto(Result &out, const QString &rel, const QString &body) {
 }
 
 QStringList files(const QString &root) {
-    return QDir(root + QStringLiteral("/.github/workflows"))
+    return QDir(root + QLatin1Char('/') + kDirRel)
         .entryList({QStringLiteral("*.yml"), QStringLiteral("*.yaml")}, QDir::Files, QDir::Name);
 }
 
 Result read(const QString &root) {
     Result out;
-    const QDir dir(root + QStringLiteral("/.github/workflows"));
+    const QDir dir(root + QLatin1Char('/') + kDirRel);
     for (const QString &f : files(root)) {
-        const QString rel = QStringLiteral(".github/workflows/") + f;
+        const QString rel = kDirRel + QLatin1Char('/') + f;
         QFile file(dir.filePath(f));
         if (!file.open(QIODevice::ReadOnly)) {
             addUnread(out.unread, rel, QString(), QStringLiteral("file"));
@@ -516,7 +516,8 @@ BySha readAtCommits(const QString &root, const QStringList &shas) {
             asked.append({sha, f});
             // `./` resolves against the working directory, so a project
             // below its clone's top reads its own .github.
-            input += (sha + QStringLiteral(":./.github/workflows/") + f + QLatin1Char('\n')).toUtf8();
+            input += (sha + QStringLiteral(":./") + kDirRel + QLatin1Char('/') + f
+                      + QLatin1Char('\n')).toUtf8();
         }
     }
     BySha out;
@@ -541,7 +542,7 @@ BySha readAtCommits(const QString &root, const QStringList &shas) {
         if (head.size() != 3) continue;
         const qsizetype size = head[2].toLongLong();
         if (head[1] == "blob")
-            parseInto(out[sha], QStringLiteral(".github/workflows/") + file,
+            parseInto(out[sha], kDirRel + QLatin1Char('/') + file,
                       QString::fromUtf8(reply.mid(at, size)));
         at += size + 1;
     }
