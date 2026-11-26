@@ -60,6 +60,11 @@ For every hook event arriving on the singleton's UDS:
   `permissionRequested`, so no Allow / Deny / Add to allowlist bar
   appears; the question path (ANTS-1858) shows the tab as awaiting
   input. Test: `ClaudeStatusBarPerTab.QuestionIsNotAPermission`.
+- **I8 — A read is not an edit (ANTS-6914).** `fileTouched` carries
+  whether the tool edited the file, so the status bar says "Claude
+  read" or "Claude edited". It fires once per path for a read, and
+  once more when an Edit or Write first changes a path already read.
+  Test: `ClaudeStatusBarPerTab.Ants6914ReadIsNotAnEdit`.
 
 ## Out of scope
 

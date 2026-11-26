@@ -706,9 +706,11 @@ signals:
     void toolFinished(const QString &toolName, bool success);
     void sessionStarted(const QString &sessionId);
     void sessionStopped(const QString &reason);
-    // The first time Claude reads, edits or writes a file this session
-    // (updateTouchedFiles); m_touchedFiles holds the recent ones.
-    void fileTouched(const QString &filePath);
+    // The first time Claude reads, edits or writes a file this session, and
+    // the first Edit or Write of a file it had only read (updateTouchedFiles).
+    // `edited` is true for an Edit or Write. m_touchedFiles holds the recent
+    // paths, m_editedFiles the recent edited ones.
+    void fileTouched(const QString &filePath, bool edited);
     // ANTS-5169 — Claude read a file isSecretFileName() matches. Fires on
     // every read, not once per path like fileTouched.
     void sensitiveFileRead(const QString &filePath);
@@ -804,6 +806,7 @@ private:
     bool m_contextEstimated = false;
     qint64 m_contextWindowTokens = kDefaultContextWindowTokens;
     QStringList m_touchedFiles;
+    QStringList m_editedFiles;   // ANTS-6914
     bool m_planMode = false;
     bool m_auditing = false;
     // 0.7.54 (2026-04-27 indie-review) — per-shellPid plan-mode cache.

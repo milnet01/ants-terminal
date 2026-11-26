@@ -82,6 +82,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The status bar says "Claude read" or "Claude edited", whichever Claude did** (ANTS-6914)
+  A file Claude only reads shows "Claude read: <file>". The first edit of
+  a file it had already read now shows "Claude edited: <file>" too.
+
 - **Every MCP tool schema says it refuses undeclared arguments** (ANTS-6934)
   About half the tools' schemas left out `additionalProperties:false`,
   although the server refuses an undeclared argument on every tool.

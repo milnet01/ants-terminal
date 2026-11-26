@@ -673,8 +673,10 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
     });
 
     connect(m_integration, &ClaudeIntegration::fileTouched,
-            this, [this](const QString &path) {
-        emit statusMessageRequested(QString("Claude edited: %1").arg(path), 3000);
+            this, [this](const QString &path, bool edited) {
+        emit statusMessageRequested(
+            (edited ? QStringLiteral("Claude edited: %1") : QStringLiteral("Claude read: %1"))
+                .arg(path), 3000);
         // 0.6.22 — refreshReviewButton decides visibility + enabled state:
         //   * not a git repo (or no cwd) → hidden entirely
         //   * git repo with no diff     → visible but disabled

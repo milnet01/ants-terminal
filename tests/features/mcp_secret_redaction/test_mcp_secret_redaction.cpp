@@ -206,7 +206,7 @@ TEST(McpSecretRedaction, Inv6ReadOfSecretFileWarns) {
     const std::string body = between(ci, "void ClaudeIntegration::updateTouchedFiles(",
                                      "\n}\n");
     ASSERT_FALSE(body.empty());
-    EXPECT_TRUE(before(body, "emit sensitiveFileRead(", "m_touchedFiles.contains("));
+    EXPECT_TRUE(before(body, "emit sensitiveFileRead(", "firstTime(m_touchedFiles)"));
     EXPECT_TRUE(has(body, "isSecretFileName("));
 
     const std::string sw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/claudestatuswidgets.cpp");

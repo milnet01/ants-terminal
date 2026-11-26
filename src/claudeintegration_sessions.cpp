@@ -131,6 +131,7 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
         // on PID change keeps MCP `get_session_info` from returning the
         // prior tab's touched-file list to the new tab's queries.
         m_touchedFiles.clear();
+        m_editedFiles.clear();
         emit stateChanged(ClaudeState::NotRunning, QString());
         emit contextUpdated(0);
     }
@@ -1233,12 +1234,20 @@ void ClaudeIntegration::updateTouchedFiles(const QString &toolName,
     if (toolName == "Read" && isSecretFileName(filePath))
         emit sensitiveFileRead(filePath);
 
-    if (!filePath.isEmpty() && !m_touchedFiles.contains(filePath)) {
-        m_touchedFiles.append(filePath);
-        if (m_touchedFiles.size() > 50)
-            m_touchedFiles.removeFirst();
-        emit fileTouched(filePath);
-    }
+    if (filePath.isEmpty()) return;
+    // ANTS-6914 — once per path, and once more when an Edit or Write first
+    // changes a path that was only read.
+    const auto firstTime = [&filePath](QStringList &seen) {
+        if (seen.contains(filePath)) return false;
+        seen.append(filePath);
+        if (seen.size() > 50) seen.removeFirst();
+        return true;
+    };
+    const bool edited = toolName == "Edit" || toolName == "Write";
+    const bool firstTouch = firstTime(m_touchedFiles);
+    const bool firstEdit = edited && firstTime(m_editedFiles);
+    if (firstTouch || firstEdit)
+        emit fileTouched(filePath, edited);
 }
 
 // --- Project / Session Discovery ---

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6934 -->
+<!-- ants-roadmap-id-high-water: ANTS=6935 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70914,12 +70914,16 @@ minor tag (next: pre-0.8.0).
   Source: in-session-2026-11-24, 0.7.116 OBS staging.
   Lanes: tests.
 
-- 📋 [ANTS-6914] **The status bar says "Claude edited: <file>" when Claude only read the file.**
+- ✅ [ANTS-6914] **The status bar says "Claude edited: <file>" when Claude only read the file.**
   ClaudeStatusBarController's handler for ClaudeIntegration::fileChanged
   (fileTouched once ANTS-6224 lands) shows "Claude edited: %1" for every
   file the signal reports, and the signal fires for Read as well as Edit
   and Write. Fix: carry the tool name, or word the message for both.
   Hot reload: none needed.
+  2026-11-26: fileTouched carries an edited flag and fires once more on
+  the first Edit or Write of a path already read; the status bar words it
+  "Claude read" or "Claude edited". Test: ClaudeStatusBarPerTab
+  .Ants6914ReadIsNotAnEdit (red on the old code: 2 signals, not 3).
   **Layman:** The bottom bar says Claude edited a file when it only looked at it.
   Kind: fix.
   Source: in-session-2026-11-24, found during ANTS-6224.
@@ -70940,6 +70944,18 @@ minor tag (next: pre-0.8.0).
   Kind: investigate.
   Source: in-session-2026-11-24, 0.7.116 OBS staging.
   Lanes: tests, packaging.
+
+- 📋 [ANTS-6935] **get_session_info's `changed_files` lists files Claude only read.**
+  ClaudeIntegration's session info sets changed_files from m_touchedFiles,
+  which holds every path Claude read, edited or wrote. m_editedFiles
+  (ANTS-6914) holds only the edited ones. Fix: report edited files under
+  changed_files, or rename the field; either changes the verb's reply, so
+  the verb's description and notes move with it.
+  Hot reload: the verb reaches clients on the next ants-mcpd rebuild.
+  **Layman:** The session report calls a file "changed" when Claude only looked at it.
+  Kind: fix.
+  Source: in-session-2026-11-26, found during ANTS-6914.
+  Lanes: claude-integration.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 

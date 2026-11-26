@@ -26,7 +26,10 @@
 #include <QThread>
 
 #include <cstdio>
+#include <memory>
 #include <unistd.h>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -50,6 +53,16 @@ QJsonObject permissionRequest(const QString &sessionId, const QString &tool) {
     QJsonObject input;
     input.insert("command", QStringLiteral("rm -rf /tmp/x"));
     ev.insert("tool_input", input);
+    return ev;
+}
+
+QJsonObject postToolUse(const QString &sessionId, const QString &tool,
+                        const QString &filePath) {
+    QJsonObject ev;
+    ev.insert("hook_event_name", QStringLiteral("PostToolUse"));
+    ev.insert("session_id", sessionId);
+    ev.insert("tool_name", tool);
+    ev.insert("tool_input", QJsonObject{{"file_path", filePath}});
     return ev;
 }
 
@@ -232,6 +245,27 @@ TEST(ClaudeStatusBarPerTab, QuestionIsNotAPermission) {
     EXPECT_EQ(permSpy.count(), 1) << "a real permission prompt no longer fires";
 }
 
+
+// I8 (ANTS-6914) — each fileTouched says whether the tool edited the file.
+TEST(ClaudeStatusBarPerTab, Ants6914ReadIsNotAnEdit) {
+    std::unique_ptr<ClaudeIntegration> ci(makeFocused());
+    QSignalSpy spy(ci.get(), &ClaudeIntegration::fileTouched);
+    const QString a = QStringLiteral("/p/a.cpp");
+    const QString b = QStringLiteral("/p/b.cpp");
+    for (const auto &[tool, path] : {std::pair{"Read", a}, {"Edit", a}, {"Edit", a},
+                                     {"Read", a}, {"Write", b}, {"Read", b}})
+        ci->processHookEventForTest(postToolUse(kFocusedSession, tool, path));
+
+    // a read, a's first edit, then b's write; repeats and a read after an
+    // edit add nothing.
+    const std::vector<std::pair<QString, bool>> want = {{a, false}, {a, true}, {b, true}};
+    ASSERT_EQ(spy.count(), int(want.size()));
+    for (int i = 0; i < spy.count(); ++i) {
+        ASSERT_EQ(spy.at(i).size(), 2) << "fileTouched carries no edited flag";
+        EXPECT_EQ(spy.at(i).at(0).toString(), want[i].first) << i;
+        EXPECT_EQ(spy.at(i).at(1).toBool(), want[i].second) << i;
+    }
+}
 
 TEST(ClaudeStatusBarPerTab, ForeignSessionIsDropped) {
     ASSERT_EQ(runForeignSessionIsDropped(), 0);
