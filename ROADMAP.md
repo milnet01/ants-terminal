@@ -71848,6 +71848,11 @@ extends an existing item, that item carries it instead.
   bench_session_save's new restore phase (session.restore_ms): restoring
   one 50000-line x 80-col tab took 406.9 ms (878054-byte file), so each
   such tab adds about 0.4 s before the window shows. Next: write-spec.
+  2026-11-26: spec docs/specs/ANTS-5225-lazy-tab-restore.md. The user
+  chose: a tab sleeps (no history, no shell) until first needed, and the
+  session file format does not change. Measured: reading title, cwd and
+  pin costs about 35 ms of the 403 ms restore, so no format change is
+  needed. No review owed (no format or contract change).
   **Layman:** Ants reads every saved tab's history when it starts, even tabs you never open.
   Kind: perf.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a), split from ANTS-5079.
