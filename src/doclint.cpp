@@ -509,7 +509,6 @@ Result run(const QStringList &relDocs, const Options &opts) {
             factsRan = true;
             const DocFacts::Result fr = DocFacts::check(text, rel, factsOpts);
             r.findings.append(fr.findings);
-            r.stats.countClaimsChecked   += fr.countClaimsChecked;
             r.stats.versionClaimsChecked += fr.versionClaimsChecked;
             r.stats.verbCallsChecked     += fr.verbCallsChecked;
         }

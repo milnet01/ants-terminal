@@ -197,8 +197,8 @@ Listed only where behavior isn't obvious from the name.
   REPORT-ONLY: which copy is canonical is a judgement, so nothing is ever
   auto-fixable and ANTS-3669 refuses to fix one by name. Powers the `doc_dedup`
   MCP verb. ANTS-3660.
-- `docfacts` (Qt6::Core, `ants_core_lib`) — `doc_lint`'s sixth checker, five
-  document-fact kinds: `count_mismatch`, `invariant_duplicate`,
+- `docfacts` (Qt6::Core, `ants_core_lib`) — `doc_lint`'s sixth checker, four
+  document-fact kinds: `invariant_duplicate`,
   `leaked_markup`, `version_drift`, `verb_arg_unknown`. Native (text in); the
   project version and the verb-argument map are injected. Report-only. No
   standalone verb. ANTS-5506.

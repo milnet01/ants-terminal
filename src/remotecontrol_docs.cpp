@@ -2490,7 +2490,6 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
         // without them a clean run and one with nothing to compare against
         // (no version, no schema yet) are the same envelope.
         stats[QStringLiteral("doc_facts")] = QJsonObject{
-            {QStringLiteral("count_claims_checked"), result.stats.countClaimsChecked},
             {QStringLiteral("version_claims_checked"), result.stats.versionClaimsChecked},
             {QStringLiteral("verb_calls_checked"), result.stats.verbCallsChecked},
             {QStringLiteral("version_unavailable"), result.stats.versionUnavailable},

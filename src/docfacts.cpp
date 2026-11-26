@@ -19,7 +19,7 @@ const QString kVerb = QStringLiteral("doc_facts");
 
 // The table's row order. Findings on one line are emitted in this order, which
 // is the producer order doc_lint's INV-7 tiebreak consumes.
-enum Row { RowCountMismatch = 0, RowInvariant, RowMarkup, RowVersion, RowVerbArg };
+enum Row { RowInvariant = 0, RowMarkup, RowVersion, RowVerbArg };
 
 struct Pending {
     int     line;
@@ -53,104 +53,6 @@ QString spanContent(const QStringList &lines, const MarkdownScan::CodeSpan &s) {
     for (int ln = s.startLine + 1; ln < s.endLine; ++ln) parts << lines.at(ln);
     parts << lines.at(s.endLine).left(s.endCol);
     return parts.join(QLatin1Char(' '));
-}
-
-int leadingSpaces(const QString &s) {
-    int n = 0;
-    while (n < s.size() && s.at(n) == QLatin1Char(' ')) ++n;
-    return n;
-}
-
-// ---- count_mismatch ---------------------------------------------------------
-
-// True when `masked` (the last-sentence tail of a code-masked line) holds
-// exactly one number and that number is a cardinal:
-// digits 2-99 or a word two-twelve. "one" and "1" are numbers but never a
-// claim ("The one step:" states no count worth checking) — they still count
-// toward the one-number rule, so "three problems and one other:" is a sum and
-// not a claim of three.
-bool singleCardinal(const QString &masked, int *value) {
-    // A STANDALONE token: whitespace or line start before it, whitespace, `:`,
-    // `,` or line end after it. Measured over this repo's docs, a bare \b
-    // boundary read `INV-6`, `loop-2`, `Steps 1–3`, `(62 LoC)` and `~25` as
-    // counts, and every one of those hits was false.
-    static const QRegularExpression re(
-        QStringLiteral(R"((?:^|(?<=\s))([0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?=$|[\s:,]))"),
-        QRegularExpression::CaseInsensitiveOption);
-    // A digit after a capitalised word is a LABEL — `Phase 7`, `Qt 6`,
-    // `Step 3` — unless that word is a determiner, as in `The 3 steps`.
-    static const QRegularExpression labelWord(QStringLiteral(R"(([A-Za-z]+)\s+$)"));
-    static const QSet<QString> determiners = {
-        QStringLiteral("the"),  QStringLiteral("these"), QStringLiteral("those"),
-        QStringLiteral("all"),  QStringLiteral("its"),   QStringLiteral("our"),
-        QStringLiteral("their"), QStringLiteral("both"), QStringLiteral("only"),
-    };
-    static const QHash<QString, int> words = {
-        {QStringLiteral("one"), 1},
-        {QStringLiteral("two"), 2},    {QStringLiteral("three"), 3},
-        {QStringLiteral("four"), 4},   {QStringLiteral("five"), 5},
-        {QStringLiteral("six"), 6},    {QStringLiteral("seven"), 7},
-        {QStringLiteral("eight"), 8},  {QStringLiteral("nine"), 9},
-        {QStringLiteral("ten"), 10},   {QStringLiteral("eleven"), 11},
-        {QStringLiteral("twelve"), 12},
-    };
-    int n = 0;
-    auto it = re.globalMatch(masked);
-    while (it.hasNext()) {
-        const QRegularExpressionMatch m = it.next();
-        const QString tok = m.captured(1);
-        int v = 0;
-        if (tok.at(0).isDigit()) {
-            bool ok = false;
-            v = tok.toInt(&ok);
-            if (!ok) continue;
-            const QRegularExpressionMatch prev =
-                labelWord.match(masked.left(m.capturedStart(1)));
-            if (prev.hasMatch() && prev.captured(1).at(0).isUpper() &&
-                !determiners.contains(prev.captured(1).toLower()))
-                continue;
-        } else {
-            v = words.value(tok.toLower());
-        }
-        ++n;
-        *value = v;
-    }
-    return n == 1 && *value >= 2 && *value <= 99;
-}
-
-const QRegularExpression &listItemRe() {
-    static const QRegularExpression re(QStringLiteral(R"(^ *(?:([-*+])|[0-9]+([.)]))\s)"));
-    return re;
-}
-
-// The marker's kind: the bullet character, or the ordered delimiter. A change
-// of kind starts a new list (CommonMark § 5.3), so `- a` then `1. b` is two.
-QString markerKind(const QRegularExpressionMatch &m) {
-    return m.captured(1).isEmpty() ? QStringLiteral("ol") + m.captured(2) : m.captured(1);
-}
-
-// Top-level items of the list opening at `first`. A line indented more than
-// one space deeper than the first item is a nested item or a continuation and
-// is not counted (a nested marker sits at least two columns in, so one extra
-// space is a sibling written loosely, and counts); a
-// line at its level that is not an item ends the list, and so does any line
-// LEFT of it — where the lead-in is itself an item, that line is the parent
-// list's next item, not one of this list's.
-int countListItems(const QStringList &lines, int first) {
-    const int base = leadingSpaces(lines.at(first));
-    const QString kind = markerKind(listItemRe().match(lines.at(first)));
-    int items = 0;
-    for (int k = first; k < lines.size(); ++k) {
-        const QString &l = lines.at(k);
-        if (l.trimmed().isEmpty()) continue;
-        const int ind = leadingSpaces(l);
-        if (ind > base + 1) continue;
-        if (ind < base) break;
-        const QRegularExpressionMatch m = listItemRe().match(l);
-        if (!m.hasMatch() || markerKind(m) != kind) break;
-        ++items;
-    }
-    return items;
 }
 
 // ---- verb_arg_unknown -------------------------------------------------------
@@ -258,47 +160,6 @@ Result check(const QString &text, const QString &relPath, const Options &opts) {
     const auto add = [&out](int line, int row, const QString &kind, const QString &msg) {
         out.append({line, row, kind, msg});
     };
-
-    // ---- count_mismatch ----
-    // The CLAIM is the last sentence of the lead-in line: in `GUI users. Two new
-    // files:` only the second sentence introduces the list. A numbered item's
-    // own marker (`2. For each file:`) is never the claim — `2.` is not a
-    // standalone token, and its `. ` reads as a sentence break anyway.
-    // A line with no sentence break that continues a wrapped paragraph is not a
-    // claim either — its sentence began on an earlier line, where any number
-    // in it (`Qt 6`, `those six whether or not…`) describes something else.
-    static const QRegularExpression marker(
-        QStringLiteral(R"(^\s*(?:>\s*)*(?:[-*+]|[0-9]+[.)])\s+)"));
-    static const QRegularExpression sentenceBreak(QStringLiteral(R"([.!?]\**\s+(?=\S))"));
-    for (int i = 0; i < lines.size(); ++i) {
-        if (fence.at(i)) continue;
-        if (!lines.at(i).trimmed().endsWith(QLatin1Char(':'))) continue;
-        QString t = masked.at(i);
-        const bool isItem = marker.match(t).hasMatch();
-        qsizetype cut = -1;
-        for (auto sb = sentenceBreak.globalMatch(t); sb.hasNext();)
-            cut = sb.next().capturedEnd();
-        if (cut >= 0) {
-            t = t.mid(cut);
-        } else if (!isItem && i > 0 && !fence.at(i - 1) &&
-                   !lines.at(i - 1).trimmed().isEmpty() &&
-                   !lines.at(i).trimmed().startsWith(QLatin1Char('#'))) {
-            continue;  // the tail of a wrapped paragraph
-        }
-        t = t.trimmed();
-        int stated = 0;
-        if (!singleCardinal(t, &stated)) continue;
-        ++r.countClaimsChecked;
-        int j = i + 1;
-        while (j < lines.size() && lines.at(j).trimmed().isEmpty()) ++j;
-        if (j >= lines.size() || fence.at(j) || !listItemRe().match(lines.at(j)).hasMatch())
-            continue;  // a lead-in over prose or a table states no list count
-        const int actual = countListItems(lines, j);
-        if (actual != stated)
-            add(i + 1, RowCountMismatch, QStringLiteral("count_mismatch"),
-                 QStringLiteral("lead-in states %1, the list below it has %2 items")
-                     .arg(stated).arg(actual));
-    }
 
     // ---- invariant_duplicate ----
     {

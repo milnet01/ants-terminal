@@ -25,6 +25,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **`doc_lint` reports a miscounted list once, through `doc_integrity`'s `list_count`, and skips citations no edit here can clear** (ANTS-6598)
+  `doc_facts` no longer has its own `count_mismatch` kind or the
+  `count_claims_checked` statistic; its rules read prose less precisely.
+  A citation into another repository, or on a loop-log row, is no longer a
+  `doc_lint` finding, matching `doc_citations only:"stale"`.
+
 - **A restarted window opens without loading every saved tab's history first** (ANTS-5225)
   Each saved tab shows its name at once, but loads its history and starts
   its shell only when you first open it, rename it, or a command names it.

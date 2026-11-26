@@ -2,9 +2,9 @@
 // INV-3, INV-4, INV-7, INV-9, INV-10, INV-17, INV-19, INV-20. The fix-path rows
 // (INV-5/6/12/14/15/16/18/21) belong to ANTS-3669 and its own directory.
 //
-// ANTS-5506 — the sixth checker, doc_facts, adds five engine rows here:
-// INV-22 (count_mismatch), INV-23 (invariant_duplicate), INV-24
-// (leaked_markup), INV-25 (version_drift) and INV-27 (verb_arg_unknown). Its
+// ANTS-5506 — the sixth checker, doc_facts, adds four engine rows here:
+// INV-23 (invariant_duplicate), INV-24 (leaked_markup), INV-25
+// (version_drift) and INV-27 (verb_arg_unknown); INV-22 is withdrawn. Its
 // two verb-layer rows (INV-26, INV-28) live in doc_lint_verb/ because
 // cmdDocLint needs a live MainWindow. THE CODE DOES NOT EXIST YET at the time
 // these rows were written: DocLint::Options carries no projectVersion or
@@ -486,102 +486,29 @@ TEST(DocLint, Inv20CitationFilesUnderItsDocument) {
     EXPECT_FALSE(r.checkedDocs.contains(target));
 }
 
-// ANTS-5506 INV-22 — count_mismatch fires only when both sides resolve.
-// (a) "The three steps:" + two bullets -> mismatch (claims three, lists two).
-// (b) "The three steps:" + three bullets, one carrying a nested bullet ->
-//     matches (nested items are not counted, so the top-level count is three).
-// (c) "Two of the three steps:" + two bullets -> not a claim (two cardinals).
-// (d) "The three steps:" + a paragraph -> a claim, but not followed by a list.
-// (e) (a)'s text inside a fence -> not a claim (fenced).
-TEST(DocLint, Inv22CountMismatchNeedsBothSides) {
+// ANTS-6598 — a lead-in whose list outgrew its count is reported once, by
+// doc_integrity's list_count. doc_facts carried its own count_mismatch with
+// looser rules (INV-22, withdrawn), so doc_lint reported the same line twice.
+TEST(DocLint, Ants6598MiscountedLeadInReportedOnce) {
     Fixture fx;
     const QString doc = QStringLiteral("docs/counts.md");
     fx.write(doc,
              "# Doc\n"
              "\n"
-             "The three steps:\n"          // line 3 — (a), mismatch
-             "- one\n"
-             "- two\n"
+             "Two new files:\n"          // line 3 — states two, lists three
              "\n"
-             "The three steps:\n"          // line 7 — (b), matches
-             "- one\n"
-             "- two\n"
-             "  - nested\n"
-             "- three\n"
-             "\n"
-             "Two of the three steps:\n"   // line 13 — (c), two cardinals
-             "- one\n"
-             "- two\n"
-             "\n"
-             "The three steps:\n"          // line 17 — (d), no list follows
-             "Paragraph text, not a list.\n"
-             "\n"
-             "```text\n"                   // line 20 — (e), fenced
-             "The three steps:\n"
-             "- one\n"
-             "- two\n"
-             "```\n");
+             "- a\n"
+             "- b\n"
+             "- c\n");
 
     DocLint::Options o = baseOpts(fx);
-    o.checks = {kDocFacts};
+    o.checks = {kIntegrity, kDocFacts};
     const DocLint::Result r = DocLint::run({doc}, o);
 
-    ASSERT_EQ(1, countKind(r, kDocFacts, QStringLiteral("count_mismatch"))) << render(r);
-    const DocFinding::Finding &f = r.findings.at(0);
-    EXPECT_EQ(doc, f.file);
-    EXPECT_EQ(3, f.line) << "filed at the lead-in line, (a)";
-    EXPECT_TRUE(f.message.contains(QStringLiteral("3")) || f.message.contains(QStringLiteral("three")))
-        << "message must name the claimed number: " << render(r);
-    EXPECT_TRUE(f.message.contains(QStringLiteral("2")) || f.message.contains(QStringLiteral("two")))
-        << "message must name the counted number: " << render(r);
-
-    // (a), (b) and (d) are claims; (c) has two cardinals and (e) is fenced.
-    EXPECT_EQ(3, r.stats.countClaimsChecked) << render(r);
-    EXPECT_EQ(QStringList{kDocFacts}, r.checksRun);
-}
-
-// ANTS-5506 INV-22, the claim and the list as measured on this repo's docs.
-// Each case below was a false count_mismatch before the rule it names; the
-// last is the positive guard, without which every absence here is vacuous.
-TEST(DocLint, Inv22CountClaimIsOneSentence) {
-    Fixture fx;
-    const QString doc = QStringLiteral("docs/claims.md");
-    fx.write(doc,
-             "# Doc\n\n"
-             // A numbered item's own marker is not a count.
-             "2. Scan these markers:\n   - a\n   - b\n   - c\n\n"
-             // A number after a capitalised word is a label.
-             "Phase 7 covers:\n\n- a\n- b\n\n"
-             // A number joined to another token is not standalone.
-             "The loop-2 edits:\n\n- a\n- b\n- c\n\n"
-             // `one` makes it a sum, not a claim of three.
-             "Three problems and one other:\n\n- a\n- b\n- c\n- d\n\n"
-             // The tail of a wrapped paragraph: its sentence began earlier.
-             "This paragraph wraps across lines and its tail\n"
-             "mentions six widgets as an aside:\n\n- a\n- b\n\n"
-             // A lead-in that is itself an item: the parent's next item ends it.
-             "- Three signal hookups:\n  - a\n  - b\n  - c\n- next parent item\n\n"
-             // A change of marker kind starts a new list.
-             "Two region scopes:\n\n- a\n- b\n\n1. x\n2. y\n\n"
-             // Positive guard: only the last sentence is the claim, and it is wrong.
-             "Some context here. Two new files:\n\n- only one\n");
-
-    DocLint::Options o = baseOpts(fx);
-    o.checks = {kDocFacts};
-    const DocLint::Result r = DocLint::run({doc}, o);
-
-    ASSERT_EQ(1, countKind(r, kDocFacts, QStringLiteral("count_mismatch"))) << render(r);
-    const QStringList lines = QStringLiteral(
-        "# Doc\n\n2. Scan these markers:\n   - a\n   - b\n   - c\n\n"
-        "Phase 7 covers:\n\n- a\n- b\n\nThe loop-2 edits:\n\n- a\n- b\n- c\n\n"
-        "Three problems and one other:\n\n- a\n- b\n- c\n- d\n\n"
-        "This paragraph wraps across lines and its tail\n"
-        "mentions six widgets as an aside:\n\n- a\n- b\n\n"
-        "- Three signal hookups:\n  - a\n  - b\n  - c\n- next parent item\n\n"
-        "Two region scopes:\n\n- a\n- b\n\n1. x\n2. y\n\n"
-        "Some context here. Two new files:\n").split(QLatin1Char('\n'));
-    EXPECT_EQ(lines.indexOf(QStringLiteral("Some context here. Two new files:")) + 1,
-              r.findings.at(0).line) << render(r);
+    ASSERT_EQ(1, r.findings.size()) << render(r);
+    EXPECT_EQ(kIntegrity, r.findings.at(0).verb) << render(r);
+    EXPECT_EQ(QStringLiteral("list_count"), r.findings.at(0).kind) << render(r);
+    EXPECT_EQ(3, r.findings.at(0).line) << render(r);
 }
 
 // ANTS-5506 INV-23 — invariant_duplicate names both definitions. INV-1 is

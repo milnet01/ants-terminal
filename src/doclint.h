@@ -199,7 +199,6 @@ struct Stats {
 
     // doc_facts — counters summed; the two flags describe the run's inputs, not
     // a document, and are set once (spec § 2.6).
-    int  countClaimsChecked   = 0;
     int  versionClaimsChecked = 0;
     int  verbCallsChecked     = 0;
     bool versionUnavailable   = false;

@@ -1,16 +1,18 @@
-// ANTS-5506 — doc_facts: five document checks skills otherwise do by hand.
+// ANTS-5506 — doc_facts: four document checks skills otherwise do by hand.
 // Qt6::Core only, in ants_core_lib beside markdownscan.h / docfinding.h, so it
 // is unit-testable without RemoteControl / MainWindow.
 //
-// ONE checker with five kinds, not five checkers (spec § 2.6): one `checks[]`
+// ONE checker with four kinds, not four checkers (spec § 2.6): one `checks[]`
 // name, one eligibility row, one ran-flag. It is NATIVE — it takes the shared
 // read's text — so doc_lint opens nothing extra for it.
 //
-//   count_mismatch      a "The three steps:" lead-in over a list of another size
 //   invariant_duplicate an INV-N bullet defined twice under an Invariants heading
 //   leaked_markup       a tool-call tag left in prose
 //   version_drift       a version claim that disagrees with the project version
 //   verb_arg_unknown    an MCP call example passing a key the verb does not take
+//
+// A lead-in's count against the list beneath it is doc_integrity's list_count;
+// this engine's own copy read less precisely and was removed (ANTS-6598).
 //
 // Every finding is autoFixable:false. This engine reports and never edits —
 // which is also why it shares nothing with rcScrubLeakedToolXml, a RemoteControl
@@ -39,9 +41,8 @@ struct Options {
 
 struct Result {
     QList<DocFinding::Finding> findings;  // ascending line, then kind row order
-    // The three denominators. Without them a clean run and one that found
+    // The two denominators. Without them a clean run and one that found
     // nothing to check are the same envelope.
-    int countClaimsChecked   = 0;
     int versionClaimsChecked = 0;
     int verbCallsChecked     = 0;
 };

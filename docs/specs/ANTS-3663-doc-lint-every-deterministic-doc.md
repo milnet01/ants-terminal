@@ -211,7 +211,7 @@ is wrong by two orders of magnitude on a real corpus.
 | `spec_lint` | `sections_checked`, `line_count`, `truncated` |
 | `doc_integrity` | — (its envelope carries no scalar beyond `counts`) |
 | `doc_dedup` | `passages_total`, `passages_compared`, `truncated` (`pairs[]` and `clusters[]` are hoisted to the top level) |
-| `doc_facts` | `count_claims_checked`, `version_claims_checked`, `verb_calls_checked`, `version_unavailable`, `schema_unavailable` (§ 2.6) |
+| `doc_facts` | `version_claims_checked`, `verb_calls_checked`, `version_unavailable`, `schema_unavailable` (§ 2.6) |
 
 `doc_symbols`' entry is a nested object, not four dotted keys: it is that verb's
 own shape (ANTS-3661 § 2.2) and flattening it would collide by name with this
@@ -724,8 +724,8 @@ regeneration itself in `src/doclint.cpp`.
 
 ### 2.6 The sixth checker: `doc_facts` (ANTS-5506)
 
-`doc_facts` holds five document checks that skills otherwise do by hand. It is
-one checker with five kinds, not five checkers: one `checks[]` name, one
+`doc_facts` holds four document checks that skills otherwise do by hand. It is
+one checker with four kinds, not four checkers: one `checks[]` name, one
 eligibility row, one ran-flag. It is **native** — it takes the shared read's
 text and path — so it adds no open to § 2.1's budget. It has **no standalone
 verb**; `checks:["doc_facts"]` is how a caller runs it alone.
@@ -736,11 +736,15 @@ Every finding has `autoFixable:false`; § 2.3 is unchanged.
 
 | Kind | Fires when | Never fires on |
 |---|---|---|
-| `count_mismatch` | A lead-in line ends in `:`. Its claim, the text after its last sentence break, holds exactly one number, and that number is a cardinal (digits `2`–`99`, or a word `two`–`twelve`). A number is a standalone token: whitespace or line start before it; whitespace, `:`, `,` or line end after it. The next non-blank line opens a bullet or numbered list, and the list's top-level item count differs from the cardinal. The list ends at a line left of its first item, at a non-item at its level, or at a change of marker kind. Filed at the lead-in line; the message names both numbers. | A claim with two or more numbers; `one` and `1` count toward this but are never a claim. A digit after a capitalised word other than a determiner (`Phase 7`, `Qt 6`: a label). A lead-in with no sentence break that continues a wrapped paragraph. A lead-in followed by prose or a table. Nested items (they are not counted). |
 | `invariant_duplicate` | Two definitions of one id. A definition is a line matching `spec_lint`'s bullet anchor, `^ {0,3}-\s+\*\*(INV-\d+[a-z]?)\.?\*\*`, inside a section whose heading contains `Invariants` (subsections included). Filed at the second; the message names the first's line. | A table row, a mention in prose, a bullet under any other heading. A document with no such section. Table-defined invariants are not checked (§ 6, *Accepted residue*). |
 | `leaked_markup` | A line, with its inline code spans removed, holds an opening or closing tag named `invoke`, `function_calls`, `function_results` or `parameter`, with or without a namespace prefix. One finding per line. | Text inside a fence or an inline code span. |
 | `version_drift` | A version claim whose `X.Y.Z` differs from `Options::projectVersion`. A claim is `Version <strong>X.Y.Z` or, the phrase `current version` or `current release` and the first `X.Y.Z` after it on the same line. | Any other version string. An inline code span. A file whose name starts `CHANGELOG`. Every document when `projectVersion` is empty. |
 | `verb_arg_unknown` | An inline code span, or one fenced line, starts with a verb name (bare or `mcp__ants__`-prefixed) that is a key of `Options::verbArgs`, followed by whitespace and then either one `{…}` object or only `key:value` tokens. Each top-level key not in that verb's set is one finding naming the verb and the key. This kind reads fenced lines. | A name not in the map. Keys inside a nested value. A span where the verb is followed by anything else. Every document when `verbArgs` is empty. |
+
+**A lead-in's count against its list is not here.** `doc_integrity`'s
+`list_count` (ANTS-5295) checks it. This checker's own copy, `count_mismatch`,
+was withdrawn with INV-22 (ANTS-6598): it read prose less precisely, and
+`doc_lint` reported one line twice.
 
 **Emission order within one document** is ascending line, then the table's row
 order. That is the producer order INV-7's tiebreak needs.
@@ -765,9 +769,8 @@ order. That is the producer order INV-7's tiebreak needs.
   copy. Before the first `tools/list` the copy is empty; then
   `verb_arg_unknown` does not run and `schema_unavailable` is `true`.
 
-The three `*_checked` counters make a clean run distinguishable from one that
-found nothing to check. `count_claims_checked` counts unfenced lead-ins whose
-claim holds exactly one cardinal; `version_claims_checked` counts
+The two `*_checked` counters make a clean run distinguishable from one that
+found nothing to check. `version_claims_checked` counts
 claims; `verb_calls_checked` counts spans with a known verb and the call
 shape. `version_unavailable` and `schema_unavailable` are always present,
 `true` or `false`, whenever `doc_facts` ran.
@@ -1090,14 +1093,10 @@ A run with no staged documents returns `ok:true` with an empty
   implementation that patches the walk's in-memory text passes every other
   invariant in this document and silently discards an edit made while the run
   was in flight.
-- **INV-22** — `count_mismatch` fires only when both sides resolve. *Test:*
-  `checks:["doc_facts"]` over one document holding five lead-ins → exactly one
-  finding, at lead-in (a), and `checks_run` equal to `["doc_facts"]`. (a) "The
-  three steps:" then two bullets. (b) "The three steps:" then three bullets,
-  one carrying a nested bullet. (c) "Two of the three steps:" then two bullets.
-  (d) "The three steps:" then a paragraph. (e) (a)'s text inside a fence.
-  `count_claims_checked` is 3: (a), (b) and (d); (c) is no claim and (e) is
-  fenced.
+- **INV-22** — *Withdrawn (ANTS-6598).* A lead-in whose list outgrew its count
+  is reported once, by `doc_integrity`'s `list_count`. *Test:*
+  `checks:["doc_integrity","doc_facts"]` over "Two new files:" then three
+  bullets → exactly one finding, `list_count`, at the lead-in.
 - **INV-23** — `invariant_duplicate` names both definitions. *Test:* a document
   whose `## 3. Invariants` section defines `INV-1` as a bullet at line 3 and
   again at line 9, plus a table row `| INV-1 |`, a prose mention, and an
@@ -1297,7 +1296,7 @@ directory.
 | INV-19 | `DocLint.Inv19UncheckedDocumentsAreNamed` | 1 |
 | INV-20 | `DocLint.Inv20CitationFilesUnderItsDocument` | 1 |
 | INV-21 | `DocLintFix.Inv21StaleDocumentIsRefusedWhole`, `DocLintFix.Inv21StaleDuplicateDoesNotDeleteAnInnocentLine`, `DocLintFix.Inv21ShiftedLinesStillRepair` | 2 |
-| INV-22 | `DocLint.Inv22CountMismatchNeedsBothSides`, `DocLint.Inv22CountClaimIsOneSentence` | ANTS-5506 |
+| INV-22 | `DocLint.Ants6598MiscountedLeadInReportedOnce` | ANTS-6598 |
 | INV-23 | `DocLint.Inv23DuplicateInvariantNamesBoth` | ANTS-5506 |
 | INV-24 | `DocLint.Inv24LeakedMarkupIgnoresCode` | ANTS-5506 |
 | INV-25 | `DocLint.Inv25VersionDriftReadsOnlyClaims` | ANTS-5506 |
@@ -1340,7 +1339,7 @@ confirming the fixture still fails:
 | INV-19 | list a cap-elided document in `skipped[]` without setting `truncated` |
 | INV-20 | file a citation finding under the target path instead of the document |
 | INV-21 | patch the walk's in-memory text instead of re-reading and re-deriving |
-| INV-22 | drop the one-cardinal rule, or count nested items |
+| INV-22 | emit a count finding from `doc_facts` as well |
 | INV-24 | stop removing inline code spans before matching |
 | INV-25 | drop the `CHANGELOG` exclusion |
 | INV-27 | descend into nested values |
@@ -1404,12 +1403,6 @@ rather than file it fresh:
   needs a format standard carrying a real `<!-- required-sections -->` block,
   which `docs/standards/specs.md` does not have today.
 - **`pairs[]` / `clusters[]` hoisting** is stated in § 2.1 and unasserted.
-- **`count_mismatch` reads prose, and prose defeats it.** Over this repo's
-  `docs/` on 2026-09-28 it filed nine findings, about half real. The rest were
-  subsets ("two new BLOCKERs" over a list that also holds other rows), a total
-  broken down by category ("the 55 findings:" over three rows), and a number
-  that counts something else ("so two implementers build the same thing:").
-  No rule a checker can apply separates those from a real count.
 - **Invariants defined in a table** are not checked for duplicates by
   `doc_facts` (§ 2.6). § 6's own coverage table repeats every id by design, so
   a table row cannot be told from a definition.
@@ -1458,8 +1451,9 @@ that no fixture names them.
 - **`doc_lint`'s `tools/list` description** in `src/claudeintegration.cpp` says
   "all five"; ANTS-5506 makes it six and names `doc_facts`.
 - **`check-doc-facts`** (a global skill, owned by the `claude-config` session)
-  can route its count-vs-list, markup and version checks, and the verb-call
-  check, through `doc_lint checks:["doc_facts"]`, adding `path:"README.md"`
+  can route its markup and version checks, and the verb-call check, through
+  `doc_lint checks:["doc_facts"]`, and count-vs-list through
+  `checks:["doc_integrity"]` (`list_count`), adding `path:"README.md"`
   for the version banner, which sits outside `docs_dir`. Sent to that session on ship,
   not edited from here.
 - **ANTS-3664 § 2.4** defines a bare *check* as one of the checkers; its
