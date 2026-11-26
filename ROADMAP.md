@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6937 -->
+<!-- ants-roadmap-id-high-water: ANTS=6938 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93196,6 +93196,18 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md (pressless review 2026-11-23).
   Lanes: claude-integration.
 
+- 📋 [ANTS-6938] **source_scrapes resolves a path a C++ test builds from its own __FILE__ plus a literal, such as "/../../../src/verifytrust.cpp".**
+  Seen 2026-11-26 on ANTS-6597: source_scrapes on src/verifytrust.cpp
+  reported readers_total 0, but test_verify_trust_gate.cpp TF-5 reads it
+  through QFileInfo(QString::fromUtf8(__FILE__)).absolutePath() +
+  "/../../../src/verifytrust.cpp" and anchors on "::saveToDisk(". The
+  test file's own path is known, so the read resolves statically.
+  Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  **Layman:** The tool that lists which tests read a file misses tests that find the file relative to where they live.
+  Kind: enhancement.
+  Source: ANTS-6597 fix, 2026-11-26.
+  Lanes: mcp.
+
 ### Ants MCP feedback from CC sessions — 2026-11-05 triage
 
 - ✅ [ANTS-6380] **spec_log append_loop writes to the first table in a loop log that holds two, not the live last one.**
@@ -97959,9 +97971,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: diagnostics-logging.
 
-- 📋 [ANTS-6597] **Fold the duplicated logic the 2026-11-06 reviews found in dialog-chrome-theme.**
+- ✅ [ANTS-6597] **Fold the duplicated logic the 2026-11-06 reviews found in dialog-chrome-theme.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 578 `src/themes.cpp:374` (Medium)
+  Shipped cb88347e. The review's second remedy: each comment names why
+  it renames instead of calling rotateCorruptFileAside (themes: the
+  glob; trust store: TF-6 pins it).
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
