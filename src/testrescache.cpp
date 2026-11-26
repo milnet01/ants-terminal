@@ -2,17 +2,12 @@
 
 #include "testrescache.h"
 
-#include "secureio.h"
+#include "privatejsoncache.h"
 
 #include <QDateTime>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QJsonArray>
-#include <QJsonDocument>
 #include <QJsonValue>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <QStringList>
 
 #include <algorithm>
@@ -28,13 +23,6 @@ constexpr int  kLineCap          = 1'000;
 constexpr int  kExcerptTailLines = 20;
 constexpr int  kSchemaVersion    = 1;
 const char    *kFileName         = "tests.json";
-
-// Same path the AuditCache GUI/runner uses (see auditcache.h);
-// inlined to keep testrescache off the ants_audit_lib link path.
-QString cacheDirLocal(const QString &canonProject) {
-    if (canonProject.isEmpty()) return {};
-    return canonProject + QLatin1String("/.audit_cache");
-}
 
 // Per-test status line (see § 3.4 of ANTS-1300-test-results-mcp-last-test.md).
 //   "   1/1221 Test #N: TestName ...   Passed    1.03 sec"
@@ -101,7 +89,7 @@ QString clampExcerpt(const QStringList &lines) {
 }  // namespace
 
 QString cachePath(const QString &canonProject) {
-    const QString dir = cacheDirLocal(canonProject);
+    const QString dir = PrivateJsonCache::dir(canonProject);
     if (dir.isEmpty()) return {};
     return dir + QLatin1Char('/') + QLatin1String(kFileName);
 }
@@ -236,11 +224,8 @@ bool appendFailure(ParsedTests &tests, const QString &name, QString block) {
 }
 
 bool recordTests(const QString &canonProject, ParsedTests &tests) {
-    const QString dir = cacheDirLocal(canonProject);
-    if (dir.isEmpty()) return false;
-    if (!QFileInfo(dir).isDir()) {
-        if (!QDir().mkpath(dir)) return false;
-    }
+    const QString path = cachePath(canonProject);
+    if (path.isEmpty()) return false;
 
     tests.recordedAtMs = QDateTime::currentMSecsSinceEpoch();
     if (tests.startedAtMs > 0 && tests.finishedAtMs > 0 &&
@@ -248,38 +233,14 @@ bool recordTests(const QString &canonProject, ParsedTests &tests) {
         tests.durationMs = tests.finishedAtMs - tests.startedAtMs;
     }
 
-    const QJsonObject obj = toJsonOnDisk(tests);
-    const QByteArray  body = QJsonDocument(obj).toJson(QJsonDocument::Indented);
-
-    QSaveFile sf(cachePath(canonProject));
-    if (!sf.open(QIODevice::WriteOnly)) return false;
-    // ANTS-5151 — test output excerpts: private or not written. An
-    // uncommitted QSaveFile discards its temp file.
-    if (!setOwnerOnlyPerms(sf)) return false;
-    if (sf.write(body) != body.size()) return false;
-    if (!sf.commit()) return false;
-    if (!setOwnerOnlyPerms(cachePath(canonProject))) {
-        QFile::remove(cachePath(canonProject));
-        return false;
-    }
-    return true;
+    return PrivateJsonCache::write(path, toJsonOnDisk(tests), "test results cache");
 }
 
 std::optional<ParsedTests> loadTests(const QString &canonProject) {
-    const QString p = cachePath(canonProject);
-    if (p.isEmpty()) return std::nullopt;
-    QFile f(p);
-    if (!f.exists()) return std::nullopt;
-    if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
-    const QByteArray bytes = f.readAll();
-    f.close();
-    QJsonParseError err{};
-    const QJsonDocument doc = QJsonDocument::fromJson(bytes, &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        return std::nullopt;
-    }
+    const auto obj = PrivateJsonCache::read(cachePath(canonProject));
+    if (!obj) return std::nullopt;
     bool ok = false;
-    ParsedTests t = fromJson(doc.object(), &ok);
+    ParsedTests t = fromJson(*obj, &ok);
     if (!ok) return std::nullopt;
     return t;
 }

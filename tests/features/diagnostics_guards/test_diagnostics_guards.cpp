@@ -172,3 +172,12 @@ TEST(DiagnosticsGuards, Ants6528FromJsonKeepsTheWritersCaps) {
     EXPECT_EQ(b.errors.size(), 50);
     for (const auto &e : b.errors) EXPECT_LE(e.message.size(), 240);
 }
+
+// INV-9 (ANTS-6596) — a `fatal error:` line is an error.
+TEST(DiagnosticsGuards, BuildLogFatalErrorIsAnError) {
+    const BuildCache::ParsedBuild b = BuildCache::parseBuildOutput(QStringLiteral(
+        "a.cpp:1:10: fatal error: x.h: No such file or directory\n"));
+    ASSERT_EQ(b.errors.size(), 1) << "a fatal error was not parsed as an error";
+    EXPECT_EQ(b.errorsCount, 1);
+    EXPECT_EQ(b.errors.front().message, QStringLiteral("x.h: No such file or directory"));
+}

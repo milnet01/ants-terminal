@@ -2,18 +2,15 @@
 
 #include "buildcache.h"
 
-#include "secureio.h"
+#include "privatejsoncache.h"
 
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
-#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
-#include <QJsonDocument>
 #include <QJsonValue>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <QStringList>
 
 namespace BuildCache {
@@ -23,21 +20,15 @@ namespace {
 constexpr int  kSchemaVersion    = 1;
 const char    *kFileName         = "build.json";
 
-// Same path the AuditCache GUI/runner uses (see auditcache.h);
-// inlined to keep buildcache off the ants_audit_lib link path.
-QString cacheDirLocal(const QString &canonProject) {
-    if (canonProject.isEmpty()) return {};
-    return canonProject + QLatin1String("/.audit_cache");
-}
-
-// path:line:col: (error|warning|note): message
+// path:line:col: [fatal ](error|warning|note): message
 // Column is optional (some clang/make/ld lines omit it). Path matches
 // up to the first colon followed by a digit. ANTS-5110 — `[ \t]`, not `\s`:
 // `\s*$` ate the newline and a blank line after it, so a note after a blank
-// line read as adjacent and folded into the previous error.
+// line read as adjacent and folded into the previous error. GCC's
+// `fatal error:` is an error, as in scrollbackerrors.cpp (ANTS-6596).
 const QRegularExpression &gccLineRe() {
     static const QRegularExpression re(
-        QStringLiteral(R"(^([^:\n]+):(\d+)(?::(\d+))?:[ \t]+(error|warning|note):[ \t]*(.+?)[ \t]*$)"),
+        QStringLiteral(R"(^([^:\n]+):(\d+)(?::(\d+))?:[ \t]+(?:fatal[ \t]+)?(error|warning|note):[ \t]*(.+?)[ \t]*$)"),
         QRegularExpression::MultilineOption);
     return re;
 }
@@ -90,7 +81,7 @@ void appendOrFoldError(QList<ParsedError> &errors,
 }  // namespace
 
 QString cachePath(const QString &canonProject) {
-    const QString dir = cacheDirLocal(canonProject);
+    const QString dir = PrivateJsonCache::dir(canonProject);
     if (dir.isEmpty()) return {};
     return dir + QLatin1Char('/') + QLatin1String(kFileName);
 }
@@ -134,11 +125,8 @@ ParsedBuild parseBuildOutput(const QString &output) {
 }
 
 bool recordBuild(const QString &canonProject, ParsedBuild &build) {
-    const QString dir = cacheDirLocal(canonProject);
-    if (dir.isEmpty()) return false;
-    if (!QFileInfo(dir).isDir()) {
-        if (!QDir().mkpath(dir)) return false;
-    }
+    const QString path = cachePath(canonProject);
+    if (path.isEmpty()) return false;
 
     build.recordedAtMs = QDateTime::currentMSecsSinceEpoch();
     if (build.startedAtMs > 0 && build.finishedAtMs > 0 &&
@@ -146,41 +134,17 @@ bool recordBuild(const QString &canonProject, ParsedBuild &build) {
         build.durationMs = build.finishedAtMs - build.startedAtMs;
     }
 
-    const QJsonObject obj = toJson(build);
-    const QByteArray  body = QJsonDocument(obj).toJson(QJsonDocument::Indented);
-
-    QSaveFile sf(cachePath(canonProject));
-    if (!sf.open(QIODevice::WriteOnly)) return false;
-    // ANTS-5151 — compiler output quotes the project's code: private or not
-    // written. An uncommitted QSaveFile discards its temp file.
-    if (!setOwnerOnlyPerms(sf)) return false;
-    if (sf.write(body) != body.size()) return false;
-    if (!sf.commit()) return false;
-    if (!setOwnerOnlyPerms(cachePath(canonProject))) {
-        QFile::remove(cachePath(canonProject));
-        return false;
-    }
-    return true;
+    return PrivateJsonCache::write(path, toJson(build), "build cache");
 }
 
 std::optional<ParsedBuild> loadBuild(const QString &canonProject) {
-    const QString p = cachePath(canonProject);
-    if (p.isEmpty()) return std::nullopt;
-    QFile f(p);
-    if (!f.exists()) return std::nullopt;
-    if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
-    // ANTS-6528 — the writer keeps the file small; one byte past the cap
-    // says this one is not ours to trust, without reading it whole.
-    const QByteArray bytes = f.read(kMaxCacheFileBytes + 1);
-    f.close();
-    if (bytes.size() > kMaxCacheFileBytes) return std::nullopt;
-    QJsonParseError err{};
-    const QJsonDocument doc = QJsonDocument::fromJson(bytes, &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        return std::nullopt;
-    }
+    // ANTS-6528 — the writer keeps the file small; a bigger one is not ours
+    // to trust.
+    const auto obj = PrivateJsonCache::read(cachePath(canonProject),
+                                            kMaxCacheFileBytes);
+    if (!obj) return std::nullopt;
     bool ok = false;
-    ParsedBuild b = fromJson(doc.object(), &ok);
+    ParsedBuild b = fromJson(*obj, &ok);
     if (!ok) return std::nullopt;
     return b;
 }

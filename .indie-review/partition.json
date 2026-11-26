@@ -644,6 +644,7 @@
         "src/buildcache.h",
         "src/debuglog.cpp",
         "src/debuglog.h",
+        "src/privatejsoncache.h",
         "src/readlog.cpp",
         "src/readlog.h",
         "src/rgdiagnosis.cpp",

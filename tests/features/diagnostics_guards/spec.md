@@ -31,6 +31,11 @@ returns nothing when it gets it.
 **INV-8 — `BuildCache::fromJson` keeps the writer's caps** (ANTS-6528): at
 most 50 errors, each message at most 240 characters.
 
+**INV-9 — a `fatal error:` line is an error** (ANTS-6596).
+`BuildCache::parseBuildOutput` counts GCC's
+`a.cpp:1:10: fatal error: x.h: No such file or directory` as an error with
+message `x.h: No such file or directory`, as `recent_errors` does.
+
 ## Rationale
 
 The ANTS-5110 performance pass found each of these. For INV-1 and INV-2:
@@ -41,7 +46,7 @@ file without limit, and a FIFO path blocked the worker on open.
 
 `test_diagnostics_guards.cpp` reads `src/debuglog.cpp` and
 `src/remotecontrol_workspace.cpp` (located from the test's own path) for
-INV-1 and INV-2. INV-3 to INV-8 call `BuildCache` and
+INV-1 and INV-2. INV-3 to INV-9 call `BuildCache` and
 `DebugLog` directly, with the debug log in a temporary directory.
 
 ## Regression history
