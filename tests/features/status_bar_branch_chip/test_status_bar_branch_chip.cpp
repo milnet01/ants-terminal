@@ -2,9 +2,9 @@
 //
 // Locks ANTS-1109 — git-branch chip styled to match the repo-
 // visibility pill, with green/amber color derived from the branch
-// name. Drives the pure helper branchchip::isPrimaryBranch +
-// source-greps mainwindow.cpp for the consultation site and the
-// shape match against the visibility pill.
+// name. Drives the pure helpers branchchip::isPrimaryBranch and
+// branchchip::chipColour, and source-greps mainwindow.cpp for every
+// site that styles the chip.
 //
 // Exit 0 = all invariants hold.
 
@@ -99,24 +99,21 @@ TEST(StatusBarBranchChip, Main) {
     if (branchchip::isPrimaryBranch(QStringLiteral("MAIN")))
         fail("INV-6", "MAIN should not be primary (case-sensitive)");
 
-    // INV-7: mainwindow.cpp consults the helper.
+    // INV-7: chipColour picks green (ansi[2]) on a primary branch and
+    // amber (ansi[3]) otherwise — the palette roles the visibility pill picks.
+    const Theme &theme = Themes::byName(QStringLiteral("dark"));
+    if (&branchchip::chipColour(theme, QStringLiteral("main")) != &theme.ansi[2])
+        fail("INV-7", "main should take theme.ansi[2]");
+    if (&branchchip::chipColour(theme, QStringLiteral("feature/foo")) != &theme.ansi[3])
+        fail("INV-7", "feature/foo should take theme.ansi[3]");
+
+    // INV-8: every branch-chip setStyleSheet site takes its colour from
+    // branchchip::chipColour. Scans ALL setStyleSheet matches because the
+    // chip is restyled from two paths — applyTheme (theme switch) and
+    // updateStatusBar (per-poll refresh on branch change). A path that
+    // picked its own colour would let the two drift (cold-eyes F1).
     const std::string source = ants_test::slurpMainWindow();
     if (source.empty()) fail("setup", "mainwindow.cpp not readable");
-    if (!contains(source, "branchchip::isPrimaryBranch"))
-        fail("INV-7",
-            "mainwindow.cpp does not call branchchip::isPrimaryBranch");
-
-    // INV-8: every branch-chip setStyleSheet site is wired off
-    // branchchip::isPrimaryBranch and uses theme.ansi[2] /
-    // theme.ansi[3] (the palette roles the visibility pill picks).
-    // Re-targeted from the original "shape substrings" check
-    // because today's branch-chip stylesheet *already* contains
-    // the shape literals (cold-eyes F8). Scans ALL setStyleSheet
-    // matches because the chip is restyled from two paths —
-    // applyTheme (theme switch) and updateStatusBar (per-poll
-    // refresh on branch change). A future regression that drops
-    // the helper from one path while keeping the other would
-    // silently break the user-visible cue (cold-eyes F1).
     {
         const std::string needle = "m_statusGitBranch->setStyleSheet(";
         size_t pos = 0;
@@ -126,15 +123,9 @@ TEST(StatusBarBranchChip, Main) {
             const size_t windowStart = pos > 400 ? pos - 400 : 0;
             const std::string region = source.substr(windowStart,
                 pos - windowStart + 600);
-            if (!contains(region, "branchchip::isPrimaryBranch"))
+            if (!contains(region, "branchchip::chipColour("))
                 fail("INV-8",
-                    "branch chip setStyleSheet site does not consult branchchip::isPrimaryBranch");
-            if (!contains(region, "ansi[2]"))
-                fail("INV-8",
-                    "branch chip setStyleSheet site does not reference theme.ansi[2] (primary green)");
-            if (!contains(region, "ansi[3]"))
-                fail("INV-8",
-                    "branch chip setStyleSheet site does not reference theme.ansi[3] (feature amber)");
+                    "branch chip setStyleSheet site does not take its colour from branchchip::chipColour");
             pos += needle.size();
         }
         if (sites < 2)

@@ -86,11 +86,8 @@ void MainWindow::setupFileMenu() {
         newTab();
         // cd to the previous working directory (shell-quote to prevent injection)
         if (!info.cwd.isEmpty()) {
-            if (auto *t = focusedTerminal()) {
-                QString escaped = info.cwd;
-                escaped.replace("'", "'\\''");
-                t->writeCommand("cd '" + escaped + "'\n");
-            }
+            if (auto *t = focusedTerminal())
+                t->writeCommand("cd " + shellQuote(info.cwd) + "\n");
         }
         showStatusMessage("Restored tab: " + info.title, 3000);
     });

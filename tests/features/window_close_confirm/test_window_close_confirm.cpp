@@ -109,13 +109,21 @@ TEST(WindowCloseConfirm, Inv3_windowDialogIsNonModal) {
            "ANTS-5120-INV-3: MainWindow::showCloseWindowConfirmDialog body extracted — the fix "
            "must define this helper (spec.md names the exact signature this test anchors on)");
 
-    expect(!contains(body, "exec("),
-           "ANTS-5120-INV-3: showCloseWindowConfirmDialog does not call exec() — a modal dialog "
-           "would deadlock the Wayland-correct non-modal pattern this app uses everywhere else");
-    expect(!contains(body, "setModal(true)"),
-           "ANTS-5120-INV-3: showCloseWindowConfirmDialog does not call setModal(true)");
-    expect(contains(body, "show()"),
-           "ANTS-5120-INV-3: showCloseWindowConfirmDialog calls show() — a non-modal dialog only "
+    // ANTS-6600 — the dialog is built and shown by the builder the
+    // tab-close dialog shares, so both bodies are checked.
+    const std::string builder = ants_test::slurpFunctionBody(
+        stripped, "CloseConfirmDialog buildCloseConfirmDialog(");
+    expect(contains(body, "buildCloseConfirmDialog(") && !builder.empty(),
+           "ANTS-5120-INV-3: showCloseWindowConfirmDialog builds through buildCloseConfirmDialog");
+    for (const std::string *b : {&body, &builder}) {
+        expect(!contains(*b, "exec("),
+               "ANTS-5120-INV-3: the window dialog does not call exec() — a modal dialog "
+               "would deadlock the Wayland-correct non-modal pattern this app uses everywhere else");
+        expect(!contains(*b, "setModal(true)"),
+               "ANTS-5120-INV-3: the window dialog does not call setModal(true)");
+    }
+    expect(contains(builder, "show()"),
+           "ANTS-5120-INV-3: the window dialog calls show() — a non-modal dialog only "
            "protects Wayland if it is actually shown non-modally, not exec()'d");
     EXPECT_EQ(0, expect_failures()) << "Inv3_windowDialogIsNonModal failed";
 }

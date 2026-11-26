@@ -12,7 +12,7 @@ INV labels are qualified by the roadmap item that added them.
 |----|-----------|
 | 1  | `MainWindow::closeEvent` checks `m_config.confirmCloseWithProcesses()` and calls `firstNonShellDescendant`. On a hit it calls `event->ignore()` before it calls `saveAllSessions()` and before it calls `anotherWindowStaysOpen()`. |
 | 2  | The running-program check in `closeEvent` covers every terminal in the window — it calls `liveTerminals()`, not just the active pane of the current tab. |
-| 3  | `MainWindow::showCloseWindowConfirmDialog` is non-modal: its body calls no `exec(` and no `setModal(true)`, and it calls `show()`. |
+| 3  | `MainWindow::showCloseWindowConfirmDialog` is non-modal: it builds through `buildCloseConfirmDialog`, the builder the tab-close dialog shares (ANTS-6600); neither body calls `exec(` or `setModal(true)`, and the builder calls `show()`. |
 | 4  | `showCloseWindowConfirmDialog`'s proceed path calls `close()` on the window (not only `dlg->close()`) and sets a `m_`-prefixed member flag to `true`; `closeEvent` reads that same flag. |
 | 5  | `showCloseWindowConfirmDialog`'s "don't ask again" path calls `m_config.setConfirmCloseWithProcesses(false)` — the same setting `closeTab` uses. |
 

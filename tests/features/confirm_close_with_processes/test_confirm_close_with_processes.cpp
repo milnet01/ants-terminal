@@ -137,17 +137,25 @@ TEST(ConfirmCloseWithProcesses, Main) {
            perfBody.contains(QStringLiteral("deleteLater()")),
            "INV-8/performTabClose-is-the-teardown");
 
-    // INV-9: dialog uses the Wayland-correct non-modal pattern.
+    // INV-9: the dialog uses the Wayland-correct non-modal pattern. Its
+    // shape lives in buildCloseConfirmDialog, which the window-close dialog
+    // shares (ANTS-6600); the tab wrapper must build through it.
     const QString dlgBody = extractFunctionBody(mwCpp,
         QStringLiteral(
             "void MainWindow::showCloseTabConfirmDialog"));
     expect(!dlgBody.isEmpty(),
            "INV-9-precondition/showCloseTabConfirmDialog-located");
-    expect(dlgBody.contains(QStringLiteral("new QDialog(this)")) &&
-           dlgBody.contains(QStringLiteral("WA_DeleteOnClose")) &&
-           !dlgBody.contains(QStringLiteral("setModal(")) &&
-           !dlgBody.contains(QStringLiteral("QDialogButtonBox")) &&
-           dlgBody.contains(QStringLiteral("new QPushButton(")),
+    const QString builderBody = extractFunctionBody(mwCpp,
+        QStringLiteral("CloseConfirmDialog buildCloseConfirmDialog("));
+    expect(!builderBody.isEmpty(),
+           "INV-9-precondition/buildCloseConfirmDialog-located");
+    expect(dlgBody.contains(QStringLiteral("buildCloseConfirmDialog(")),
+           "INV-9/tab-dialog-built-by-the-shared-builder");
+    expect(builderBody.contains(QStringLiteral("new QDialog(")) &&
+           builderBody.contains(QStringLiteral("WA_DeleteOnClose")) &&
+           !builderBody.contains(QStringLiteral("setModal(")) &&
+           !builderBody.contains(QStringLiteral("QDialogButtonBox")) &&
+           builderBody.contains(QStringLiteral("new QPushButton(")),
            "INV-9/wayland-correct-pattern");
 
     // INV-10: Don't-ask-again checkbox flips the config.
@@ -179,68 +187,56 @@ TEST(ConfirmCloseWithProcesses, Main) {
                    "m_confirmCloseWithProcesses->setChecked(true)")),
            "INV-11/restore-defaults-true");
 
-    // ANTS-5123: showCloseTabConfirmDialog must conform to dialogs.md
-    // D1-D4 via DialogChrome::install, matching the shape
-    // showCloseWindowConfirmDialog (ANTS-5120) already uses. Comment-
-    // stripped so a doc comment describing the fix can't satisfy this
-    // the wrong way (window_close_confirm's INV-1 takes the same
-    // precaution). Re-extracted from a stripped copy rather than reusing
-    // dlgBody, which was pulled from the raw (non-stripped) source above.
+    // ANTS-5123: the close dialogs conform to dialogs.md D1-D4 via
+    // DialogChrome::install, in the builder both share (ANTS-6600).
+    // Comment-stripped so a doc comment describing the fix can't satisfy
+    // this the wrong way (window_close_confirm's INV-1 takes the same
+    // precaution).
     const std::string mwStripped =
         ants_test::stripComments(mwCpp.toStdString());
     const std::string tabDlgBody = ants_test::slurpFunctionBody(
         mwStripped, "void MainWindow::showCloseTabConfirmDialog(");
-    expect(!tabDlgBody.empty(),
-           "INV-12-precondition/showCloseTabConfirmDialog-located-stripped");
+    const std::string winDlgBody = ants_test::slurpFunctionBody(
+        mwStripped, "void MainWindow::showCloseWindowConfirmDialog(");
+    const std::string builder = ants_test::slurpFunctionBody(
+        mwStripped, "CloseConfirmDialog buildCloseConfirmDialog(");
+    expect(!tabDlgBody.empty() && !winDlgBody.empty() && !builder.empty(),
+           "INV-12-precondition/dialog-bodies-located-stripped");
 
-    // INV-12: DialogChrome::install(...) with resizable=true and a
-    // non-empty size key distinct from the window dialog's
-    // "CloseWindowConfirmDialog".
-    const std::string installAnchor = "DialogChrome::install(";
-    const auto installPos = tabDlgBody.find(installAnchor);
+    // INV-12: DialogChrome::install(...) with resizable=true, and a size
+    // key per dialog: the key is built from `what`, which the tab and
+    // window wrappers pass differently.
+    const auto installPos = builder.find("DialogChrome::install(");
+    const auto keyPos = builder.find(
+        "QStringLiteral(\"Close%1ConfirmDialog\").arg(what)");
     expect(installPos != std::string::npos,
            "INV-12/calls-DialogChrome-install");
-
-    bool resizableTrue = false;
-    std::string sizeKey;
-    if (installPos != std::string::npos) {
-        const auto keyAnchor = std::string("QStringLiteral(\"");
-        const auto keyPos = tabDlgBody.find(keyAnchor, installPos);
-        const std::string between = (keyPos != std::string::npos)
-            ? tabDlgBody.substr(installPos, keyPos - installPos)
-            : std::string();
-        resizableTrue = between.find("true") != std::string::npos;
-        if (keyPos != std::string::npos) {
-            const auto keyStart = keyPos + keyAnchor.size();
-            const auto keyEnd = tabDlgBody.find('"', keyStart);
-            if (keyEnd != std::string::npos)
-                sizeKey = tabDlgBody.substr(keyStart, keyEnd - keyStart);
-        }
-    }
-    expect(resizableTrue, "INV-12/resizable-true");
-    expect(!sizeKey.empty(), "INV-12/non-empty-size-key",
-           "key seen: \"" + sizeKey + "\"");
-    expect(sizeKey != "CloseWindowConfirmDialog",
-           "INV-12/size-key-distinct-from-window-dialog",
-           "key seen: \"" + sizeKey + "\"");
+    expect(keyPos != std::string::npos && installPos < keyPos,
+           "INV-12/size-key-built-from-what");
+    expect(installPos < keyPos && keyPos != std::string::npos &&
+               builder.substr(installPos, keyPos - installPos).find("true")
+                   != std::string::npos,
+           "INV-12/resizable-true");
+    expect(tabDlgBody.find("QStringLiteral(\"Tab\")") != std::string::npos &&
+           winDlgBody.find("QStringLiteral(\"Window\")") != std::string::npos,
+           "INV-12/size-key-distinct-from-window-dialog");
 
     // INV-13: layout built on the chrome's content area, not directly
     // on the QDialog.
-    expect(tabDlgBody.find("QVBoxLayout(chrome.contentArea)")
+    expect(builder.find("QVBoxLayout(chrome.contentArea)")
                != std::string::npos,
            "INV-13/layout-on-chrome-contentArea");
-    expect(tabDlgBody.find("QVBoxLayout(dlg)") == std::string::npos,
+    expect(builder.find("QVBoxLayout(dlg)") == std::string::npos,
            "INV-13/layout-not-directly-on-dlg");
 
-    // INV-14 (guard): stays non-modal after adopting DialogChrome —
-    // reuses INV-9's non-modal check over the same comment-stripped
-    // body, so installing the chrome cannot silently reintroduce a
-    // modal dialog.
-    expect(tabDlgBody.find("exec(") == std::string::npos,
-           "INV-14/no-exec");
-    expect(tabDlgBody.find("setModal(true)") == std::string::npos,
-           "INV-14/no-setModal-true");
-    expect(tabDlgBody.find("dlg->show()") != std::string::npos,
+    // INV-14 (guard): stays non-modal after adopting DialogChrome, so
+    // installing the chrome cannot silently reintroduce a modal dialog.
+    for (const std::string *body : {&builder, &tabDlgBody}) {
+        expect(body->find("exec(") == std::string::npos, "INV-14/no-exec");
+        expect(body->find("setModal(true)") == std::string::npos,
+               "INV-14/no-setModal-true");
+    }
+    expect(builder.find("dlg->show()") != std::string::npos,
            "INV-14/calls-show");
 
     ASSERT_EQ(0, expect_finish());

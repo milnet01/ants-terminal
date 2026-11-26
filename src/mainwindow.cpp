@@ -1114,17 +1114,10 @@ void MainWindow::applyTheme(const QString &name, ThemeSave save) {
 
     // Status bar labels — ANTS-1147 routes through themedstylesheet
     // helpers (null-guarded for first call during construction).
-    // Branch chip's foreground colour follows ANTS-1109 (0.7.62) —
-    // green (theme.ansi[2], same role the visibility pill uses for
-    // "Public") on main/master/trunk; amber (theme.ansi[3], same
-    // role as "Private") on feature branches.
-    if (m_statusGitBranch) {
-        const bool primary =
-            branchchip::isPrimaryBranch(m_gitCacheBranch);
-        const QColor &col = primary ? theme.ansi[2] : theme.ansi[3];
-        m_statusGitBranch->setStyleSheet(
-            themedstylesheet::buildChipStylesheet(theme, col, /*leftMarginPx=*/4));
-    }
+    if (m_statusGitBranch)
+        m_statusGitBranch->setStyleSheet(themedstylesheet::buildChipStylesheet(
+            theme, branchchip::chipColour(theme, m_gitCacheBranch),
+            /*leftMarginPx=*/4));
     if (m_statusGitSep)
         m_statusGitSep->setStyleSheet(
             themedstylesheet::buildGitSeparatorStylesheet(theme));
@@ -2402,8 +2395,6 @@ void MainWindow::refreshStatusBarForActiveTab() {
     // Called from onTabChanged only; a file change or a finished probe
     // does not come through here. Cheap: just reads cached values and
     // schedules the async git probe.
-    const bool haveStatus = (m_statusGitBranch && m_statusProcess);
-
     auto *t = focusedTerminal();
     // Category B: always cancel transient notifications on tab switch.
     clearStatusMessage();
@@ -2426,13 +2417,7 @@ void MainWindow::refreshStatusBarForActiveTab() {
     // No active terminal (last tab closed, mid-teardown) — clear every
     // Category A widget so the bar doesn't show stale data.
     if (!t) {
-        if (haveStatus) {
-            m_statusGitBranch->clear();
-            m_statusGitBranch->hide();
-            if (m_statusGitSep) m_statusGitSep->hide();
-            m_statusProcess->clear();
-            m_statusProcess->hide();
-        }
+        updateStatusBar();  // with no terminal: clears the chip and process
         if (m_claudeIntegration)
             m_claudeIntegration->setShellPid(0);
         // ANTS-1146 — single atomic reset covers the five state
@@ -2511,22 +2496,14 @@ void MainWindow::updateStatusBar() {
     if (!m_statusGitBranch || !m_statusProcess)
         return;
 
+    // No active terminal (the last tab closed) leaves the branch and the
+    // process empty, so both widgets clear and nothing bleeds from the old tab.
     auto *t = focusedTerminal();
-    if (!t) {
-        // No active terminal — clear every per-tab widget so nothing
-        // bleeds from a previously-active tab after the last tab closes.
-        m_statusGitBranch->clear();
-        m_statusGitBranch->hide();
-        if (m_statusGitSep) m_statusGitSep->hide();
-        m_statusProcess->clear();
-        m_statusProcess->hide();
-        return;
-    }
 
     // Git branch (read .git/HEAD). Cached per-cwd for 5 seconds — the poll
     // timer runs every 2s, and walking the directory tree + reading HEAD
     // synchronously can stutter the UI on network mounts or deep trees.
-    QString fullCwd = t->shellCwd();
+    QString fullCwd = t ? t->shellCwd() : QString();
     QString gitBranch;
     if (!fullCwd.isEmpty()) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -2550,12 +2527,9 @@ void MainWindow::updateStatusBar() {
         // so a single string-compare is sufficient. m_lastBranchChipValid
         // covers the first-tick case where the cache is uninitialised.
         const Theme &chipTheme = Themes::byName(m_currentTheme);
-        const bool chipPrimary =
-            branchchip::isPrimaryBranch(gitBranch);
-        const QColor &chipCol =
-            chipPrimary ? chipTheme.ansi[2] : chipTheme.ansi[3];
         const QString newQss = themedstylesheet::buildChipStylesheet(
-            chipTheme, chipCol, /*leftMarginPx=*/4);
+            chipTheme, branchchip::chipColour(chipTheme, gitBranch),
+            /*leftMarginPx=*/4);
         if (!m_lastBranchChipValid || newQss != m_lastBranchChipQss) {
             m_statusGitBranch->setStyleSheet(newQss);
             m_lastBranchChipQss = newQss;
@@ -2570,7 +2544,7 @@ void MainWindow::updateStatusBar() {
     }
 
     // Foreground process
-    QString proc = t->foregroundProcess();
+    const QString proc = t ? t->foregroundProcess() : QString();
     if (!proc.isEmpty()) {
         m_statusProcess->setText(proc);
         m_statusProcess->show();
@@ -2580,7 +2554,7 @@ void MainWindow::updateStatusBar() {
     }
 
     // Auto-profile switching (check rules periodically)
-    checkAutoProfileRules(t);
+    checkAutoProfileRules(t);  // returns at once with no terminal
 }
 
 // --- Tab label customization ---

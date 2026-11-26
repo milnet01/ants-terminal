@@ -71,11 +71,12 @@ no `setModal`, no `QDialogButtonBox`).
   `performTabClose`, not `closeTab`. Source: ANTS-1102 (refactor
   invariant — the user-visible undo behaviour must continue to
   work for confirmed closes).
-- **INV-9**: The confirm dialog uses the Wayland-correct
-  pattern: `new QDialog(this)` (heap), `WA_DeleteOnClose`,
-  no `setModal`, plain `QPushButton`s wired to `clicked →`
-  lambda/close. No `QDialogButtonBox`. Source: 0.7.50
-  QTBUG-79126 lessons.
+- **INV-9**: `showCloseTabConfirmDialog` builds through
+  `buildCloseConfirmDialog`, which the window-close dialog shares
+  (ANTS-6600). The builder uses the Wayland-correct pattern:
+  `new QDialog(` (heap), `WA_DeleteOnClose`, no `setModal`, plain
+  `QPushButton`s wired to `clicked →` lambda/close. No
+  `QDialogButtonBox`. Source: 0.7.50 QTBUG-79126 lessons.
 - **INV-10**: The "Don't ask again" checkbox calls
   `m_config.setConfirmCloseWithProcesses(false)` when checked
   before the close fires. Source: ANTS-1102.
@@ -90,17 +91,18 @@ no `setModal`, no `QDialogButtonBox`).
   Source: ANTS-1102 + the cancel/rollback contract from 0.7.32
   (settings_profile_cancel_rollback).
 
-- **INV-12**: `MainWindow::showCloseTabConfirmDialog` calls
-  `DialogChrome::install(` with the resizable flag set to `true` and a
-  non-empty size key distinct from `showCloseWindowConfirmDialog`'s
-  `"CloseWindowConfirmDialog"` key. Source: ANTS-5123 (dialogs.md
-  D1–D4).
+- **INV-12**: The builder calls `DialogChrome::install(` with the
+  resizable flag set to `true` and the size key
+  `Close<what>ConfirmDialog`; the tab wrapper passes `"Tab"` and the
+  window wrapper `"Window"`, so each dialog remembers its own size.
+  Source: ANTS-5123 (dialogs.md D1–D4).
 - **INV-13**: Its layout is built on the chrome's `contentArea`, not
   directly on the `QDialog` — `new QVBoxLayout(chrome.contentArea)`,
   never `new QVBoxLayout(dlg)`. Source: ANTS-5123.
 - **INV-14**: Guard — the dialog stays non-modal after adopting
-  `DialogChrome::install`: no `exec(`, no `setModal(true)`, and it
-  still calls `dlg->show()`. Reuses INV-9's non-modal check so
+  `DialogChrome::install`: neither the builder nor the tab wrapper
+  calls `exec(` or `setModal(true)`, and the builder calls
+  `dlg->show()`. Reuses INV-9's non-modal check so
   installing the chrome cannot silently reintroduce a modal dialog.
   Source: ANTS-5123.
 

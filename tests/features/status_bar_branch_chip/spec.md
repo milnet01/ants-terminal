@@ -14,6 +14,7 @@ Inline helper in `src/branchchip.h`:
 ```cpp
 namespace branchchip {
 inline bool isPrimaryBranch(const QString &branch);
+inline const QColor &chipColour(const Theme &theme, const QString &branch);
 }
 ```
 
@@ -23,11 +24,11 @@ project's principal branch). All other names — feature branches,
 release branches, hotfix branches, detached-HEAD short SHAs — fall
 through to `false`.
 
-`MainWindow` consults the helper when styling
-`m_statusGitBranch`: green outline + foreground (`theme.ansi[2]`,
-the same role the visibility pill uses for `Public`) when primary,
-amber otherwise (`theme.ansi[3]`, matching the visibility pill's
-`Private` cue).
+`chipColour` turns that into the chip's colour: green outline +
+foreground (`theme.ansi[2]`, the same role the visibility pill uses
+for `Public`) when primary, amber otherwise (`theme.ansi[3]`,
+matching the visibility pill's `Private` cue). `MainWindow` styles
+`m_statusGitBranch` from it.
 
 ## Out of scope
 
@@ -65,20 +66,14 @@ Source-grep + behavioural drive of the pure helper.
   `false` — case-sensitive match. Git branch names are
   case-sensitive; `MAIN` is a different branch from `main`.
   Behavioural drive.
-- **INV-7** `mainwindow.cpp` consults the helper when computing
-  the branch-chip color. Asserted by source-grep on the
-  literal `branchchip::isPrimaryBranch` call.
-- **INV-8** The branch-chip styling site consults
-  `branchchip::isPrimaryBranch` and references both
-  `theme.ansi[2]` (green / primary branch) and `theme.ansi[3]`
-  (amber / feature branch) — proving the colour cue is wired
-  off the helper rather than the static `theme.ansi[6]` (cyan)
-  the pre-fix code used. Asserted by source-grep on the region
-  around `m_statusGitBranch->setStyleSheet(` in `mainwindow.cpp`.
-  *Note:* the original draft of INV-8 checked `border-radius`
-  / `padding` / `border` substrings; today's pre-fix branch
-  chip already passes those (cold-eyes F8). Re-targeted to the
-  substantive change.
+- **INV-7** `branchchip::chipColour(theme, branch)` returns
+  `theme.ansi[2]` (green) for `main` and `theme.ansi[3]` (amber)
+  for `feature/foo`. Behavioural drive.
+- **INV-8** Every site in `mainwindow.cpp` that styles the chip
+  takes its colour from `branchchip::chipColour(`, so the theme
+  switch and the poll cannot pick different colours. There are at
+  least two such sites. Asserted by source-grep on the region
+  around each `m_statusGitBranch->setStyleSheet(`.
 - **INV-9** (ANTS-6187) `GitRepo::branchOf` reads a git worktree's
   branch: its `.git` is a file whose `gitdir:` line points at the
   folder holding `HEAD`. A main checkout, a detached worktree (the

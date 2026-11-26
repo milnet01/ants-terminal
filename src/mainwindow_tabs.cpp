@@ -906,59 +906,83 @@ void MainWindow::performTabClose(int index) {
     saveTabOrderOnly();
 }
 
-void MainWindow::showCloseTabConfirmDialog(QWidget *tabWidget,
-                                           const QString &processName) {
-    // Wayland-correct non-modal QDialog pattern (mirrors the About
-    // dialog at MainWindow ctor — see commit 6bea531 / 0.7.50 for the
-    // QTBUG-79126 rationale). Plain QPushButtons; no setModal.
-    auto *dlg = new QDialog(this);
+namespace {
+
+// The dialog both close paths ask with (ANTS-1102 tab, ANTS-5120 window).
+// Non-modal on purpose: a heap QDialog with WA_DeleteOnClose and show(),
+// never exec() (QTBUG-79126, 0.7.50). dialogs.md D1–D4 chrome (ANTS-5123).
+// `what` is "Tab" or "Window": it names the widgets and the remembered size.
+// The caller wires "Close anyway"; Cancel, the default, just closes it.
+struct CloseConfirmDialog {
+    QDialog *dlg;
+    QCheckBox *dontAsk;
+    QPushButton *cancelBtn;
+    QPushButton *closeBtn;
+};
+
+CloseConfirmDialog buildCloseConfirmDialog(QWidget *parent, const QString &what,
+                                           const QString &title, const QString &body,
+                                           const QString &accessibleName,
+                                           const QString &dontAskText) {
+    auto *dlg = new QDialog(parent);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
-    dlg->setWindowTitle(tr("Close tab?"));
-    dlg->setObjectName(QStringLiteral("confirmCloseTabDialog"));
-    // ANTS-5123 — dialogs.md D1–D4: theme chrome, resizable, size persisted,
-    // re-centred, as the window-close dialog has.
-    auto chrome = DialogChrome::install(dlg, QString(),
-                                        /*resizable=*/true,
-                                        QStringLiteral("CloseTabConfirmDialog"));
+    dlg->setWindowTitle(title);
+    dlg->setObjectName(QStringLiteral("confirmClose%1Dialog").arg(what));
+    auto chrome = DialogChrome::install(dlg, QString(), /*resizable=*/true,
+                                        QStringLiteral("Close%1ConfirmDialog").arg(what));
     auto *layout = new QVBoxLayout(chrome.contentArea);
 
-    auto *label = new QLabel(
-        tr("This tab is running <b>%1</b>.<br>Close anyway? Long-running "
-           "processes will be terminated.")
-            .arg(processName.toHtmlEscaped()),
-        dlg);
-    label->setObjectName(QStringLiteral("confirmCloseTabBody"));
+    auto *label = new QLabel(body, dlg);
+    label->setObjectName(QStringLiteral("confirmClose%1Body").arg(what));
     label->setTextFormat(Qt::RichText);
     label->setWordWrap(true);
-    label->setAccessibleName(tr("Confirm tab close"));
-    label->setAccessibleDescription(label->text());
+    label->setAccessibleName(accessibleName);
+    label->setAccessibleDescription(body);
 
-    auto *dontAsk = new QCheckBox(
-        tr("Don't ask again (close tabs silently in future)"), dlg);
-    dontAsk->setObjectName(QStringLiteral("confirmCloseDontAsk"));
+    auto *dontAsk = new QCheckBox(dontAskText, dlg);
+    dontAsk->setObjectName(QStringLiteral("confirmClose%1DontAsk").arg(what));
 
     auto *btnRow = new QHBoxLayout;
     btnRow->addStretch();
-    auto *cancelBtn = new QPushButton(tr("Cancel"), dlg);
-    cancelBtn->setObjectName(QStringLiteral("confirmCloseCancelBtn"));
+    auto *cancelBtn = new QPushButton(
+        QCoreApplication::translate("MainWindow", "Cancel"), dlg);
+    cancelBtn->setObjectName(QStringLiteral("confirmClose%1CancelBtn").arg(what));
     cancelBtn->setDefault(true);
     cancelBtn->setAutoDefault(true);
-    auto *closeBtn = new QPushButton(tr("Close anyway"), dlg);
-    closeBtn->setObjectName(QStringLiteral("confirmCloseProceedBtn"));
+    auto *closeBtn = new QPushButton(
+        QCoreApplication::translate("MainWindow", "Close anyway"), dlg);
+    closeBtn->setObjectName(QStringLiteral("confirmClose%1ProceedBtn").arg(what));
     btnRow->addWidget(cancelBtn);
     btnRow->addWidget(closeBtn);
 
     layout->addWidget(label);
     layout->addWidget(dontAsk);
     layout->addLayout(btnRow);
+    QObject::connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
+
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
+    return {dlg, dontAsk, cancelBtn, closeBtn};
+}
+
+}  // namespace
+
+void MainWindow::showCloseTabConfirmDialog(QWidget *tabWidget,
+                                           const QString &processName) {
+    const CloseConfirmDialog d = buildCloseConfirmDialog(
+        this, QStringLiteral("Tab"), tr("Close tab?"),
+        tr("This tab is running <b>%1</b>.<br>Close anyway? Long-running "
+           "processes will be terminated.")
+            .arg(processName.toHtmlEscaped()),
+        tr("Confirm tab close"),
+        tr("Don't ask again (close tabs silently in future)"));
 
     // Track the actual widget; the index can shift if other tabs close
     // while this dialog is open.
     QPointer<QWidget> widgetRef(tabWidget);
-
-    connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
-    connect(closeBtn, &QPushButton::clicked, this,
-        [this, dlg, dontAsk, widgetRef]() {
+    connect(d.closeBtn, &QPushButton::clicked, this,
+        [this, dlg = d.dlg, dontAsk = d.dontAsk, widgetRef]() {
             if (dontAsk->isChecked())
                 m_config.setConfirmCloseWithProcesses(false);
             dlg->close();
@@ -966,69 +990,29 @@ void MainWindow::showCloseTabConfirmDialog(QWidget *tabWidget,
             const int idx = m_tabWidget->indexOf(widgetRef);
             if (idx >= 0) performTabClose(idx);
         });
-
-    dlg->show();
-    dlg->raise();
-    dlg->activateWindow();
 }
 
-// ANTS-5120 — the window-close counterpart of showCloseTabConfirmDialog:
-// the same non-modal pattern and the same "don't ask again" setting.
+// ANTS-5120 — the window-close counterpart of showCloseTabConfirmDialog,
+// with the same "don't ask again" setting.
 void MainWindow::showCloseWindowConfirmDialog(const QString &processName) {
-    auto *dlg = new QDialog(this);
-    dlg->setAttribute(Qt::WA_DeleteOnClose);
-    dlg->setWindowTitle(tr("Close window?"));
-    dlg->setObjectName(QStringLiteral("confirmCloseWindowDialog"));
-    // dialogs.md D1–D4: theme chrome, resizable, size persisted, re-centred.
-    auto chrome = DialogChrome::install(dlg, QString(),
-                                        /*resizable=*/true,
-                                        QStringLiteral("CloseWindowConfirmDialog"));
-    auto *layout = new QVBoxLayout(chrome.contentArea);
-
-    auto *label = new QLabel(
+    const CloseConfirmDialog d = buildCloseConfirmDialog(
+        this, QStringLiteral("Window"), tr("Close window?"),
         tr("This window is running <b>%1</b>.<br>Close anyway? Every program "
            "in its tabs will be terminated.")
             .arg(processName.toHtmlEscaped()),
-        dlg);
-    label->setObjectName(QStringLiteral("confirmCloseWindowBody"));
-    label->setTextFormat(Qt::RichText);
-    label->setWordWrap(true);
-    label->setAccessibleName(tr("Confirm window close"));
-    label->setAccessibleDescription(label->text());
+        tr("Confirm window close"),
+        tr("Don't ask again (close silently in future)"));
 
-    auto *dontAsk = new QCheckBox(
-        tr("Don't ask again (close silently in future)"), dlg);
-    dontAsk->setObjectName(QStringLiteral("confirmCloseWindowDontAsk"));
-
-    auto *btnRow = new QHBoxLayout;
-    btnRow->addStretch();
-    auto *cancelBtn = new QPushButton(tr("Cancel"), dlg);
-    cancelBtn->setObjectName(QStringLiteral("confirmCloseWindowCancelBtn"));
-    cancelBtn->setDefault(true);
-    cancelBtn->setAutoDefault(true);
-    auto *closeBtn = new QPushButton(tr("Close anyway"), dlg);
-    closeBtn->setObjectName(QStringLiteral("confirmCloseWindowProceedBtn"));
-    btnRow->addWidget(cancelBtn);
-    btnRow->addWidget(closeBtn);
-
-    layout->addWidget(label);
-    layout->addWidget(dontAsk);
-    layout->addLayout(btnRow);
-
-    connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
     // ANTS-5560 — a cancelled close also cancels a pending Restart now.
-    connect(cancelBtn, &QPushButton::clicked, this, [] { g_relaunchOnQuit = false; });
-    connect(closeBtn, &QPushButton::clicked, this, [this, dlg, dontAsk]() {
-        if (dontAsk->isChecked())
-            m_config.setConfirmCloseWithProcesses(false);
-        dlg->close();
-        m_closeConfirmed = true;
-        close();
-    });
-
-    dlg->show();
-    dlg->raise();
-    dlg->activateWindow();
+    connect(d.cancelBtn, &QPushButton::clicked, this, [] { g_relaunchOnQuit = false; });
+    connect(d.closeBtn, &QPushButton::clicked, this,
+        [this, dlg = d.dlg, dontAsk = d.dontAsk]() {
+            if (dontAsk->isChecked())
+                m_config.setConfirmCloseWithProcesses(false);
+            dlg->close();
+            m_closeConfirmed = true;
+            close();
+        });
 }
 
 void MainWindow::closeCurrentTab() {
