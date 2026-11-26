@@ -6,7 +6,8 @@
 # which is on $fpath out of the box for system-wide zsh installs.
 #
 # CLI surface mirrored here is the same surface enumerated in the manpage and
-# parsed in src/main.cpp via QCommandLineParser. Keep the three in sync.
+# parsed in src/main.cpp: QCommandLineParser, except --export-roadmaps and
+# --import-roadmap, read from argv before the app starts. Keep the three in sync.
 
 _ants-terminal() {
     local -a args

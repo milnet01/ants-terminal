@@ -5,7 +5,8 @@
 # which the bash-completion package sources on demand via its dynamic loader.
 #
 # CLI surface mirrored here is the same surface enumerated in the manpage and
-# parsed in src/main.cpp via QCommandLineParser. Keep the three in sync.
+# parsed in src/main.cpp: QCommandLineParser, except --export-roadmaps and
+# --import-roadmap, read from argv before the app starts. Keep the three in sync.
 
 _ants_terminal()
 {
@@ -13,6 +14,13 @@ _ants_terminal()
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    # --import-roadmap's second argument, <project-root>, is a directory.
+    if [[ ${COMP_CWORD} -ge 2 && "${COMP_WORDS[COMP_CWORD-2]}" == --import-roadmap ]]; then
+        compopt -o filenames 2>/dev/null
+        mapfile -t COMPREPLY < <(compgen -d -- "${cur}")
+        return 0
+    fi
 
     # Freeform arguments get no completions; paths get files or directories.
     case "${prev}" in

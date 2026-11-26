@@ -5,7 +5,8 @@
 # which fish auto-sources for system-wide installs (XDG fish completion path).
 #
 # CLI surface mirrored here is the same surface enumerated in the manpage and
-# parsed in src/main.cpp via QCommandLineParser. Keep the three in sync.
+# parsed in src/main.cpp: QCommandLineParser, except --export-roadmaps and
+# --import-roadmap, read from argv before the app starts. Keep the three in sync.
 
 complete -c ants-terminal -s h -l help     -d 'Display a short usage summary and exit'
 complete -c ants-terminal -s v -l version  -d 'Print the program version and exit'
@@ -14,6 +15,8 @@ complete -c ants-terminal      -l dropdown -d 'Run in Quake / drop-down mode (al
 complete -c ants-terminal      -l new-plugin -r -d 'Scaffold a new Lua plugin and exit' -x
 complete -c ants-terminal      -l export-roadmaps -r -a '(__fish_complete_directories)' -d 'Export every roadmap-store project as JSONL and exit'
 complete -c ants-terminal      -l import-roadmap -r -F -d 'Restore one project from its roadmap export and exit'
+# Its second argument, <project-root>, is a directory.
+complete -c ants-terminal -n 'set -l t (commandline -opc); test (count $t) -ge 2; and test "$t[-2]" = --import-roadmap' -x -a '(__fish_complete_directories)'
 complete -c ants-terminal      -l e2e      -d 'End-to-end test mode, for the tools/e2e harness'
 complete -c ants-terminal      -l remote   -x -d 'Send a remote-control command and exit'
 complete -c ants-terminal      -l remote-socket  -r -F -d 'Override the remote-control socket path'

@@ -5,6 +5,8 @@
 #include <gtest/gtest.h>
 
 #include <cctype>
+#include <cstdio>
+#include <cstdlib>
 #include <regex>
 #include <set>
 #include <string>
@@ -77,4 +79,38 @@ TEST(CliDocsSync, EveryLongOptionIsDocumentedEverywhere) {
         EXPECT_TRUE(hasWhole(zsh, dashed)) << dashed << " missing from zsh completion";
         EXPECT_TRUE(hasWhole(fish, "-l " + o)) << o << " missing from fish completion";
     }
+}
+
+// ANTS-6599 row 1293 — `--import-roadmap <export.jsonl> <project-root>`: the
+// second argument completes to a folder in bash and fish, as it does in zsh.
+// Each runs in a scratch folder holding one folder and one file.
+namespace {
+std::string runShell(const std::string &script) {
+    const std::string cmd = "bash -c '" + script + "' '" + root() + "/packaging/completions'";
+    std::string out;
+    if (FILE *p = popen(cmd.c_str(), "r")) {
+        char buf[256];
+        while (fgets(buf, sizeof buf, p)) out += buf;
+        pclose(p);
+    }
+    return out;
+}
+const char *kScratch =
+    R"(d=$(mktemp -d) && mkdir "$d/proj" && touch "$d/x.jsonl" && cd "$d" && )";
+}  // namespace
+
+TEST(CliDocsSync, Ants6599BashImportRoadmapSecondArgIsAFolder) {
+    EXPECT_EQ("proj\n", runShell(std::string(kScratch) + R"(source "$0/ants-terminal.bash"; )"
+        R"(COMP_WORDS=(ants-terminal --import-roadmap x.jsonl ""); COMP_CWORD=3; )"
+        R"(_ants_terminal; printf "%s\n" "${COMPREPLY[@]}"; rm -rf "$d")"));
+}
+
+TEST(CliDocsSync, Ants6599FishImportRoadmapSecondArgIsAFolder) {
+    if (std::system("command -v fish >/dev/null 2>&1") != 0) GTEST_SKIP() << "fish not installed";
+    // fish may append a tab and a description to each candidate.
+    const std::string out = runShell(std::string(kScratch) +
+        R"(fish -c "source $0/ants-terminal.fish; complete -C \"ants-terminal --import-roadmap x.jsonl \""; )"
+        R"(rm -rf "$d")");
+    EXPECT_EQ(0u, out.rfind("proj/", 0)) << out;
+    EXPECT_EQ(std::string::npos, out.find("x.jsonl")) << out;
 }
