@@ -55,6 +55,10 @@ private:
     // Rule validation and correction
     bool isDuplicate(QListWidget *list, const QString &rule) const;
     QString findSubsumingRule(QListWidget *list, const QString &rule) const;
+    // Why adding `rule` to `list` would change nothing: it is already there,
+    // or a broader rule covers it. Empty when it would add something. The
+    // caller picks the severity: an error only when the user pressed Add.
+    QString redundancyReason(QListWidget *list, const QString &rule) const;
     void showValidationHint(const QString &msg, bool isError = false);
 
     // Add rule with companion "cd * && cmd *" variant for Bash rules

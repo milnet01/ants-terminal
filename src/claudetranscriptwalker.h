@@ -77,6 +77,15 @@ inline bool canResume(const QString &path, const Cursor &cur) {
     return file.read(&prev, 1) == 1 && prev == '\n';
 }
 
+// The caller's half of canResume: when `cur` cannot resume against `path`,
+// clear it and the accumulator built from it, together.
+template <typename Accum>
+void resetIfStale(const QString &path, Cursor &cur, Accum &acc) {
+    if (canResume(path, cur)) return;
+    cur = {};
+    acc = {};
+}
+
 // Walk the transcript from `cur`, invoking `handler(ev, evMs)` per surviving
 // event and advancing `cur` over what it consumed. The gating below, at
 // walk(), applies unchanged — this is the one implementation of it.
@@ -91,8 +100,8 @@ inline bool canResume(const QString &path, const Cursor &cur) {
 //     at the cursor and reads to EOF, so an append is never skipped for
 //     sitting below the cap.
 //
-// A caller resuming MUST have checked `canResume` and, on false, cleared both
-// the cursor and its own accumulator: this function walks from the beginning
+// A caller resuming MUST first call `resetIfStale` (or check `canResume` and,
+// on false, clear both the cursor and its own accumulator): this function walks from the beginning
 // whenever the cursor is not primed, and a stale offset it was handed anyway
 // would resume into the wrong file.
 //

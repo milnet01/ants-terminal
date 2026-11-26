@@ -94,8 +94,7 @@ public:
 
     // ANTS-5050 — parse only what has been appended since `cursor`, folding
     // it into `acc`, and return the tracker's visible list. The caller must
-    // call ClaudeTranscript::canResume first and, on false, reset BOTH
-    // `cursor` and `acc`.
+    // call ClaudeTranscript::resetIfStale on `cursor` and `acc` first.
     //
     // ANTS-5773 — a task whose startedAt precedes processStartMs is not
     // running: it belonged to an earlier Claude process. 0 = unknown; the

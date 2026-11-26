@@ -84,24 +84,24 @@ TEST(ClaudeStatusbarFocusRouting, ModelChipClickHidesAndRefocuses) {
     ASSERT_FALSE(clickBody.empty())
         << "could not isolate the model-chip click handler";
 
-    const auto send = clickBody.find("sendToPty");
+    const auto send = clickBody.find("sendModelSwitch(focused");
     ASSERT_NE(send, std::string::npos)
-        << "model-chip click must dispatch via sendToPty";
+        << "model-chip click must dispatch via sendModelSwitch";
 
     // INV-3 — chip hidden after dispatch.
     const auto hide = clickBody.find("m_modelBtn->hide()");
     ASSERT_NE(hide, std::string::npos)
         << "INV-3: model-chip click must hide the chip after sending /model";
-    EXPECT_GT(hide, send) << "INV-3: hide() must follow sendToPty";
+    EXPECT_GT(hide, send) << "INV-3: hide() must follow sendModelSwitch";
 
     // INV-4 — focus returned to the terminal after dispatch.
     // ANTS-1915 added a deferral branch (chip clicked mid-generation) that
     // ALSO calls focused->setFocus() before its early return — textually
-    // before the immediate-dispatch sendToPty. That branch sends no /model,
+    // before the immediate-dispatch sendModelSwitch. That branch sends no /model,
     // so `send`/`hide` still occur only in the dispatch path; the
     // dispatch-path setFocus is the LAST one, hence rfind (not find).
     const auto focus = clickBody.rfind("focused->setFocus()");
     ASSERT_NE(focus, std::string::npos)
         << "INV-4: model-chip click must return focus to the terminal";
-    EXPECT_GT(focus, send) << "INV-4: dispatch-path setFocus() must follow sendToPty";
+    EXPECT_GT(focus, send) << "INV-4: dispatch-path setFocus() must follow sendModelSwitch";
 }

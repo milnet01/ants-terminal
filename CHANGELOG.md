@@ -25,6 +25,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **The context meter, allowlist hints and transcript viewer each follow one rule** (ANTS-6591)
+  The context meter turns red at 80%, where its tooltip starts saying
+  "Nearly full". The allowlist's live hint now also says when a typed
+  rule is already in the list, in the same words as the Add button.
+  The transcript viewer puts a line break between the text parts of a
+  user message.
+
 - **CI caches its apt packages with `awalsh128/cache-apt-pkgs-action` v2.0.0** (ANTS-6932)
 
 - **Every reader of a process's `/proc` stat line now goes through one shared helper** (ANTS-6439)

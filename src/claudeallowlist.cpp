@@ -30,6 +30,13 @@ QString envWildcardHint(const QString &variable) {
         .arg(variable);
 }
 
+// Commands the dialog never widens to `cmd *` and never pairs with a
+// `cd * && cmd *` companion: an over-broad rm or sudo rule is one click from
+// granting too much. Under sudo, generalizeRule() refuses a wider set.
+bool isDangerousCommand(const QString &cmd) {
+    return cmd == QLatin1String("rm") || cmd == QLatin1String("sudo");
+}
+
 }  // namespace
 
 ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) {
@@ -83,12 +90,9 @@ ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) 
         if (normalized != text.trimmed()) {
             showValidationHint(QString("Will be corrected to: %1").arg(normalized));
         } else {
-            // Check for subsumption
-            QListWidget *list = currentList();
-            QString subsumer = findSubsumingRule(list, normalized);
-            if (!subsumer.isEmpty()) {
-                showValidationHint(
-                    QString("Already covered by: %1").arg(subsumer));
+            const QString redundant = redundancyReason(currentList(), normalized);
+            if (!redundant.isEmpty()) {
+                showValidationHint(redundant);
             } else {
                 // Suggest generalization for specific Bash commands
                 QString generalized = generalizeRule(normalized);
@@ -208,16 +212,9 @@ void ClaudeAllowlistDialog::prefillRule(const QString &rule) {
     // pop-up window should check for duplicate commands first before
     // adding any command."
     const int preCount = m_allowList->count();
-    if (isDuplicate(m_allowList, finalRule)) {
-        showValidationHint(
-            QStringLiteral("Already in the Allow list: %1").arg(finalRule), false);
-        return;
-    }
-    QString subsumer = findSubsumingRule(m_allowList, finalRule);
-    if (!subsumer.isEmpty()) {
-        showValidationHint(
-            QStringLiteral("Already covered by existing rule: %1").arg(subsumer),
-            false);
+    const QString redundant = redundancyReason(m_allowList, finalRule);
+    if (!redundant.isEmpty()) {
+        showValidationHint(redundant, false);
         return;
     }
     addRuleWithCompanion(m_allowList, finalRule);
@@ -481,8 +478,8 @@ QString ClaudeAllowlistDialog::generalizeRule(const QString &rule) {
     //
     // Order matters within the alternation: `||` and `&&` must come
     // before the bare `|` (otherwise `|` captures half of `||`).
-    // ruleSubsumes() splits on the same operators without the trailing
-    // `\s+`, so the two disagree on a quoted `|`.
+    // ruleSubsumes() splits on any operator instead; why the two differ is
+    // at its splitter.
     static QRegularExpression opRe(R"(\s*(&&|\|\||;|\|)\s+)");
 
     QStringList segments;
@@ -504,8 +501,7 @@ QString ClaudeAllowlistDialog::generalizeRule(const QString &rule) {
     // don't want the button offering with a single click.
     for (const QString &seg : std::as_const(segments)) {
         const QString s = seg.trimmed();
-        if (s == "rm" || s.startsWith("rm ")) return {};
-        if (s == "sudo" || s.startsWith("sudo ")) return {};
+        if (isDangerousCommand(s.section(QLatin1Char(' '), 0, 0))) return {};
         if (s.startsWith("SUDO_") && !s.startsWith("SUDO_ASKPASS=")) return {};
     }
 
@@ -581,9 +577,6 @@ bool ClaudeAllowlistDialog::ruleSubsumes(const QString &broad, const QString &na
     // whole string starts with "make "; the dialog would then block the
     // user from adding the compound rule Claude Code actually needs and
     // keep re-prompting on every invocation.
-    //
-    // generalizeRule() splits on the same operators, but only where
-    // whitespace follows one; the splitter below splits on any (see there).
     static const QRegularExpression bashGlob(R"(^Bash\((.+?)(\s+\*)\)$)");
     auto bm = bashGlob.match(broad);
 
@@ -598,7 +591,13 @@ bool ClaudeAllowlistDialog::ruleSubsumes(const QString &broad, const QString &na
 
         // generalizeRule()'s operators (&&, ||, ;, |), but unlike its opRe
         // no whitespace is required after one, so `grep 'a|b'` splits here
-        // and not there.
+        // and not there. Neither regex knows shell quoting, so each errs
+        // the way that is safe for its job. generalizeRule() rewrites the
+        // rule, so it splits only where an operator is plainly one and never
+        // cuts a quoted pattern in two. Here every piece must be covered, so
+        // splitting too often only answers "not covered" and lets a harmless
+        // duplicate in; splitting too rarely could answer "covered" and
+        // block a rule the user needs.
         static const QRegularExpression splitter(R"(\s*(?:&&|\|\||;|\|)\s*)");
 
         // A compound broadPrefix would need segment-wise matching against
@@ -714,6 +713,16 @@ QString ClaudeAllowlistDialog::findSubsumingRule(QListWidget *list, const QStrin
     return {};
 }
 
+QString ClaudeAllowlistDialog::redundancyReason(QListWidget *list,
+                                                const QString &rule) const {
+    if (isDuplicate(list, rule))
+        return QStringLiteral("Already in the list: %1").arg(rule);
+    const QString subsumer = findSubsumingRule(list, rule);
+    if (!subsumer.isEmpty())
+        return QStringLiteral("Already covered by: %1").arg(subsumer);
+    return {};
+}
+
 void ClaudeAllowlistDialog::showValidationHint(const QString &msg, bool isError) {
     if (msg.isEmpty()) {
         m_validationLabel->hide();
@@ -745,8 +754,7 @@ void ClaudeAllowlistDialog::addRuleWithCompanion(QListWidget *list, const QStrin
     auto m = bashWild.match(rule);
     if (m.hasMatch()) {
         QString cmd = m.captured(1);
-        // Skip dangerous commands and cd itself
-        if (cmd != "cd" && cmd != "rm" && cmd != "sudo") {
+        if (cmd != QLatin1String("cd") && !isDangerousCommand(cmd)) {
             QString companion = QStringLiteral("Bash(cd * && ") + cmd + " *)";
             if (!isDuplicate(list, companion) && findSubsumingRule(list, companion).isEmpty()) {
                 list->addItem(companion);
@@ -784,17 +792,9 @@ void ClaudeAllowlistDialog::onAddRule() {
         }
     }
 
-    // Check exact duplicate
-    if (isDuplicate(list, rule)) {
-        showValidationHint("Rule already exists in the list.", true);
-        return;
-    }
-
-    // Check if already covered by a broader rule
-    QString subsumer = findSubsumingRule(list, rule);
-    if (!subsumer.isEmpty()) {
-        showValidationHint(
-            QString("Already covered by existing rule: %1").arg(subsumer), true);
+    const QString redundant = redundancyReason(list, rule);
+    if (!redundant.isEmpty()) {
+        showValidationHint(redundant, true);
         return;
     }
 

@@ -93,11 +93,11 @@ TEST(McpMasterToggle, INV3_OrientationGatedOnMaster) {
 TEST(McpMasterToggle, INV4_AutoSwitcherEarlyReturn) {
     const std::string cw = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     // Anchor inside refreshAutoModelSwitch — the chip-click handler also
-    // injects QStringLiteral("/model ") and appears earlier in the file.
+    // calls sendModelSwitch and appears earlier in the file.
     const auto fn = cw.find("ClaudeStatusBarController::refreshAutoModelSwitch");
     ASSERT_NE(fn, std::string::npos);
     const auto gate   = cw.find("!cfg.claudeMcpEnabled()", fn);
-    const auto inject = cw.find("QStringLiteral(\"/model \")", fn);
+    const auto inject = cw.find("sendModelSwitch(focused, dec.tierArg)", fn);
     ASSERT_NE(gate, std::string::npos);
     ASSERT_NE(inject, std::string::npos);
     EXPECT_LT(gate, inject)
@@ -112,7 +112,7 @@ TEST(McpMasterToggle, Ants2195ParkedGuardPrecedesInjection) {
     const auto fn = cw.find("ClaudeStatusBarController::refreshAutoModelSwitch");
     ASSERT_NE(fn, std::string::npos);
     const auto guard  = cw.find("kAutoSwitchActuatorParked", fn);
-    const auto inject = cw.find("QStringLiteral(\"/model \")", fn);
+    const auto inject = cw.find("sendModelSwitch(focused, dec.tierArg)", fn);
     ASSERT_NE(guard, std::string::npos)
         << "ANTS-2195 parked guard missing from refreshAutoModelSwitch";
     ASSERT_NE(inject, std::string::npos);

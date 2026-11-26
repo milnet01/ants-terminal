@@ -27,7 +27,7 @@ Ants-owned chip-click path, where Ants knows both the intent and the state.
 
 ## Invariants
 - **INV-1** — The chip-click handler defers (sets `m_deferredChipTier`) when the
-  focused shell is generating, and returns before the immediate `sendToPty`.
+  focused shell is generating, and returns before the immediate `sendModelSwitch`.
 - **INV-2** — `maybeFireDeferredChipSwitch` is connected to the tracker's
   `shellStateChanged` signal (event-driven; independent of whether the
   autonomous switcher is enabled).

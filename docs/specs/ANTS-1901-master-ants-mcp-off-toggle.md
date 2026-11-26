@@ -307,9 +307,8 @@ INV-4's early return, so a separate invariant would test the same code.
   `claudeMcpEnabled()` is false, before `decide()`, the `/model`
   injection, and both ledger writes. *Test:* source-grep
   `claudestatuswidgets.cpp` — a `claudeMcpEnabled()` early return precedes
-  the `QStringLiteral("/model ")` injection literal (the call spans
-  lines: `sendToPty(` then `QStringLiteral("/model ")` — match the
-  literal, not a `sendToPty("/model ` token that does not exist).
+  the `/model` injection, the `sendModelSwitch(focused, dec.tierArg)`
+  call inside `refreshAutoModelSwitch`.
 - **INV-5** — The `tools/call` dispatcher returns
   `{ok:false, code:"mcp_disabled"}` for any verb when `m_mcpEnabled` is
   false, and the guard sits ahead of the caller_cwd gate so a disabled

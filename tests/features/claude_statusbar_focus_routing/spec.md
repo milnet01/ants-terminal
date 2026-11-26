@@ -36,7 +36,7 @@ turn re-scored the transcript.
   (`m_modelBtn->hide()`) after dispatching `/model`, so the recommendation
   stops lingering once the user has acted on it.
 - **INV-4 (ANTS-1849)** — the model-chip click handler returns focus to
-  the terminal (`focused->setFocus()`) after `sendToPty`, so typing
+  the terminal (`focused->setFocus()`) after `sendModelSwitch`, so typing
   resumes in the terminal rather than staying on the button.
 
 ## Acceptance

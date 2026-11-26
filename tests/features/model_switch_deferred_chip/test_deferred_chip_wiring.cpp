@@ -24,7 +24,7 @@ std::string functionBody(const std::string &src, const std::string &marker) {
 }  // namespace
 
 // INV-1 — the chip-click handler defers when the focused shell is generating,
-// recording the tier + shell pid and returning before the immediate sendToPty.
+// recording the tier + shell pid and returning before the immediate sendModelSwitch.
 TEST(DeferredChipSwitch, Inv1ClickDefersWhileGenerating) {
     const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     // The deferral branch must reference the generating states and the
@@ -38,8 +38,7 @@ TEST(DeferredChipSwitch, Inv1ClickDefersWhileGenerating) {
     EXPECT_NE(src.find("ClaudeState::Compacting"), std::string::npos);
     // The immediate send (the non-deferred path) must come AFTER the defer
     // branch's early return — i.e. the deferral guards the send.
-    const auto sendPos = src.find(
-        "(QStringLiteral(\"/model \") + tier + QStringLiteral(\"\\r\")).toUtf8());");
+    const auto sendPos = src.find("sendModelSwitch(focused, tier);");
     ASSERT_NE(sendPos, std::string::npos);
     EXPECT_LT(deferPos, sendPos)
         << "the defer branch must precede (guard) the immediate /model send";
@@ -78,13 +77,13 @@ TEST(DeferredChipSwitch, Inv345FireHelperContract) {
     // INV-4: override cool-down seeded so the auto-switcher doesn't undo it.
     EXPECT_NE(body.find("m_lastOverrideMsByProject["), std::string::npos)
         << "INV-4: must seed the ANTS-1890 override cool-down";
-    // INV-4: the switch goes through the shared handshake.
-    EXPECT_NE(body.find("performModelSwitchHandshake(term)"), std::string::npos)
-        << "INV-4: must use the shared ESC+ENTER handshake";
+    // INV-4: the switch goes through the shared send + handshake.
+    EXPECT_NE(body.find("sendModelSwitch(term, tier)"), std::string::npos)
+        << "INV-4: must use the shared /model send and handshake";
     // INV-5: a missing terminal drops the deferral without sending.
     const auto noTermPos = body.find("if (!term)");
     ASSERT_NE(noTermPos, std::string::npos) << "INV-5: must handle tab-closed";
-    const auto sendPos = body.find("term->sendToPty(");
+    const auto sendPos = body.find("sendModelSwitch(term,");
     ASSERT_NE(sendPos, std::string::npos);
     EXPECT_LT(noTermPos, sendPos)
         << "INV-5: the tab-closed drop must precede the send";

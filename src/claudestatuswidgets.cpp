@@ -105,6 +105,10 @@ protected:
     }
 };
 
+// From this percentage the context meter turns red and its tooltip says
+// "Nearly full".
+constexpr int kContextNearlyFullPercent = 80;
+
 QString contextMeterStyle(const Theme &th, const QString &chunkColor) {
     return QStringLiteral(
                "QProgressBar { border: 1px solid %1; border-radius: 4px; background: %2; }"
@@ -163,6 +167,18 @@ ClaudeTabTracker::ShellState shellStateOf(const ClaudeTabTracker *tracker,
     return tracker->shellState(pid);
 }
 
+// ANTS-1915 — is this shell too busy for a manual `/model` (chip click,
+// undo)? Mid-turn or compacting, the line sits unsubmitted in the composer;
+// with a permission prompt open, its `\r` answers the prompt. Two paths
+// differ on purpose: the deferred chip waits for Idle, so it never types
+// into a shell Claude has left; the auto path refuses NotRunning,
+// awaitingInput and Compacting and leaves the rest to decide().
+bool busyForModelSwitch(const ClaudeTabTracker::ShellState &ss) {
+    return ss.awaitingInput || ss.state == ClaudeState::Thinking
+        || ss.state == ClaudeState::ToolUse
+        || ss.state == ClaudeState::Compacting;
+}
+
 // ANTS-6437 — whether the user submitted `/model` in this tab within
 // ModelAutoSwitch::kUserModelCommandWindowMs; false for no tab.
 bool userTypedModelRecently(const TerminalWidget *term) {
@@ -189,6 +205,17 @@ struct StateFace {
     ClaudeTabIndicator::Glyph glyph = ClaudeTabIndicator::Glyph::None;
 };
 
+// The status label's left and right padding. apply() takes both sides off
+// the pinned width when it elides the state text.
+constexpr int kStatusLabelPadPx = 8;
+
+QString statusLabelStyle(const QString &color) {
+    return QStringLiteral("color: %1; padding: 0 %2px; font-size: 11px;")
+        .arg(color).arg(kStatusLabelPadPx);
+}
+
+// A new state text here also goes in pinSlots()' list, or the label is
+// pinned too narrow and the text is cut with "…" (ANTS-5753).
 StateFace stateFace(const claudestate::Resolved &r) {
     StateFace f;
     // Status text vocabulary (user spec 2026-04-18):
@@ -273,7 +300,7 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     // widget is hidden when the tab's shell has no Claude process.
     m_statusLabel = new QLabel(m_statusBar);
     m_statusLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    m_statusLabel->setStyleSheet("color: gray; padding: 0 8px; font-size: 11px;");
+    m_statusLabel->setStyleSheet(statusLabelStyle(QStringLiteral("gray")));
     // 0.7.54 (2026-04-27 indie-review WCAG) — accessible name for the
     // status-bar Claude session label. The visible text already carries
     // the state (e.g. "Claude: thinking…"), but screen readers benefit
@@ -380,46 +407,22 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         auto *focused = m_focusedTerminalProvider
             ? m_focusedTerminalProvider() : nullptr;
         if (!focused) return;
-        // ANTS-1915 — if Claude is mid-generation on this tab, a `/model`
-        // sent now would sit unsubmitted in the composer until the user
-        // presses Escape (interrupting the turn). Defer the switch instead:
+        // ANTS-1915 — while the shell is busy, defer the switch instead:
         // record the tier + owning shell PID and fire it when the shell next
         // goes Idle (maybeFireDeferredChipSwitch on shellStateChanged). This
         // gives the user a "switch without interrupting" path through Ants's
         // own UI — the typed-`/model`-in-composer case stays blocked on
         // Claude Code exposing composer state (tracked on the roadmap).
-        const pid_t pid = focused->shellPid();
-        const ClaudeTabTracker::ShellState ss = (m_tracker && pid > 0)
-            ? m_tracker->shellState(pid) : ClaudeTabTracker::ShellState{};
-        const ClaudeState st = ss.state;
-        const bool generating = (st == ClaudeState::Thinking ||
-                                 st == ClaudeState::ToolUse ||
-                                 st == ClaudeState::Compacting);
-        // indie-review loop-2 2026-06-04 — also defer when a PermissionRequest
-        // is pending (awaitingInput): an injected `/model …\r` would answer the
-        // permission dialog instead of switching. Mirrors the auto-switch
-        // actuator's awaitingInput guard; the deferred switch fires when the
-        // shell next goes Idle with the prompt resolved.
-        if (generating || ss.awaitingInput) {
+        if (busyForModelSwitch(shellStateOf(m_tracker, focused))) {
             m_deferredChipTier     = tier;
-            m_deferredChipShellPid = pid;
+            m_deferredChipShellPid = focused->shellPid();
             m_modelBtn->setToolTip(
                 tr("Switch to %1 queued — applies when Claude finishes this turn")
                     .arg(tier));
             focused->setFocus();
             return;
         }
-        // ANTS-1912 — submit with `\r`, not `\n`. The Enter key produces
-        // CR (0x0D) on a PTY; Claude Code's TUI
-        // treats `\n` as a literal newline character in the composer and
-        // does NOT submit. Sending `\n` left `/model <tier>` sitting in
-        // the prompt waiting for the user to press Enter manually —
-        // defeats the entire auto-switch loop and also self-vetoes the
-        // next tick via the composer_not_empty gate (ANTS-1908).
-        focused->sendToPty(
-            (QStringLiteral("/model ") + tier + QStringLiteral("\r")).toUtf8());
-        // ANTS-1918/1924 — output-driven confirm + continuation prompt.
-        performModelSwitchHandshake(focused);
+        sendModelSwitch(focused, tier);
         // ANTS-1840 — the user just acted on the recommendation, so hide the
         // chip immediately rather than letting it linger until the next
         // assistant turn re-scores the transcript. We deliberately leave the
@@ -627,10 +630,11 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         }
         m_contextBar->setValue(percent);
         m_contextBar->show();
-        // Color-code: green < 60%, yellow 60-80%, red > 80%
+        // Colour: green to 60%, yellow above it, red when nearly full.
         const Theme &th = Themes::byName(m_currentThemeName);
         QString chunkColor = th.ansi[2].name();  // green
-        if (percent > 80) chunkColor = th.ansi[1].name();  // red
+        if (percent >= kContextNearlyFullPercent)
+            chunkColor = th.ansi[1].name();  // red
         else if (percent > 60) chunkColor = th.ansi[3].name();  // yellow
         m_contextBar->setStyleSheet(contextMeterStyle(th, chunkColor));
         const QString tip = contextMeterTooltip(
@@ -1020,9 +1024,8 @@ void ClaudeStatusBarController::resetForTabSwitch() {
 void ClaudeStatusBarController::applyTheme(const QString &themeName) {
     m_currentThemeName = themeName;
     const Theme &th = Themes::byName(m_currentThemeName);
-    QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
     if (m_statusLabel)
-        m_statusLabel->setStyleSheet(QStringLiteral("color: %1; %2").arg(th.textSecondary.name(), statusStyle));
+        m_statusLabel->setStyleSheet(statusLabelStyle(th.textSecondary.name()));
     if (m_contextBar)
         m_contextBar->setStyleSheet(contextMeterStyle(th, th.ansi[2].name()));
     if (m_reviewBtn) {
@@ -1447,7 +1450,6 @@ ClaudeTaskListTracker *ClaudeStatusBarController::tasksTracker() const {
 
 void ClaudeStatusBarController::apply() {
     if (!m_statusLabel) return;
-    const QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
 
     // ANTS-1873 — read the focused tab's state via the shared resolver,
     // same source the tab dot consumes. The two surfaces cannot diverge
@@ -1476,20 +1478,19 @@ void ClaudeStatusBarController::apply() {
     const QColor color = ClaudeTabIndicator::contrastColor(glyph, bg);
     // ANTS-5753 — the slot is pinned to the known vocabulary (pinSlots), so
     // a raw tool name wider than it is elided, full name in the tooltip.
-    // The text room is the pinned width less statusStyle's 8px padding each
-    // side and pin()'s one-character slack.
+    // The text room is the pinned width less the padding on both sides and
+    // pin()'s one-character slack.
     QString shown = text;
     if (m_statusLabel->maximumWidth() < QWIDGETSIZE_MAX) {
         const QFontMetrics fm = m_statusLabel->fontMetrics();
-        const int room = m_statusLabel->maximumWidth() - 16
+        const int room = m_statusLabel->maximumWidth() - 2 * kStatusLabelPadPx
                        - fm.averageCharWidth();
         shown = fm.elidedText(text, Qt::ElideRight, room);
     }
     if (tip.isEmpty() && shown != text) tip = text;
     m_statusLabel->setToolTip(tip);
     m_statusLabel->setText(shown);
-    m_statusLabel->setStyleSheet(
-        QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));
+    m_statusLabel->setStyleSheet(statusLabelStyle(color.name()));
     // 0.7.54 (2026-04-27 indie-review WCAG) — keep the accessible
     // description in sync with the visible state. Screen readers
     // announce accessibleName + accessibleDescription on focus, so
@@ -2175,15 +2176,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
         return;
 
     // Act — INV-9 keeps tierArg derived solely from the enum.
-    // QStringLiteral matches the model-chip click handler — CI's
-    // stricter Qt build rejected the `u"..."` form (char16_t[8] vs QString
-    // ambiguity at ants_claude_lib build).
-    // ANTS-1912 — `\r` (CR) not `\n` — see chip-click site for rationale.
-    focused->sendToPty(
-        (QStringLiteral("/model ") + dec.tierArg + QStringLiteral("\r"))
-            .toUtf8());
-    // ANTS-1918/1924 — output-driven confirm + continuation prompt.
-    performModelSwitchHandshake(focused);
+    sendModelSwitch(focused, dec.tierArg);
 
     // ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse
     // + Undo button) immediately after sendToPty, BEFORE the ledger
@@ -2219,9 +2212,28 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     m_autoSwitchLastTier       = dec.tierArg;
 }
 
+// ANTS-1912 — submit with `\r` (CR, what Enter sends on a PTY), not `\n`.
+// Claude Code's composer takes `\n` as a literal newline and does not submit,
+// which leaves `/model <tier>` waiting for the user and self-vetoes the next
+// auto tick on composer_not_empty (ANTS-1908).
+void ClaudeStatusBarController::sendModelSwitch(TerminalWidget *term,
+                                                const QString &tier) {
+    term->sendToPty(
+        (QStringLiteral("/model ") + tier + QStringLiteral("\r")).toUtf8());
+    performModelSwitchHandshake(term);
+}
+
+void ClaudeStatusBarController::sendContinuationLater(TerminalWidget *term,
+                                                      const QString &cont) {
+    QPointer<TerminalWidget> g(term);
+    QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
+        if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
+    });
+}
+
 // ANTS-1924 / ANTS-1920 — shared PTY handshake for every model-switch path
-// (auto-switch, chip-click, undo). The caller has already injected
-// `/model <tier>\r`; this confirms CC's "Switch model?" dialog and then sends
+// (auto-switch, chip-click, deferred chip, undo). sendModelSwitch has already
+// typed `/model <tier>\r`; this confirms CC's "Switch model?" dialog and then sends
 // a continuation prompt so CC resumes its task.
 //
 // ANTS-1920 replaced the original blind sequence (ESC@250 + \r@400 +
@@ -2282,11 +2294,7 @@ void ClaudeStatusBarController::pollModelSwitchConfirm(
         // clearing the "Switch model?" text from recentOutput. The latch
         // re-arms (set false) on the next tick once the dialog is gone.
         m_unarmedSwitchConfirmed = true;
-        if (!cont.isEmpty()) {
-            QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
-                if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
-            });
-        }
+        if (!cont.isEmpty()) sendContinuationLater(g, cont);
         return;
     }
 
@@ -2431,10 +2439,7 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
                     const QString cont =                       // ANTS-4457
                         cachedConfig().claudeAutoModelContinuationPrompt();
                     if (!cont.isEmpty()) {
-                        QPointer<TerminalWidget> g2(focused);
-                        QTimer::singleShot(kSwitchContinuationDelayMs, this, [g2, cont]() {
-                            if (g2) g2->sendToPty((cont + QStringLiteral("\r")).toUtf8());
-                        });
+                        sendContinuationLater(focused, cont);
                         m_unarmedDirectSwitchContinuationSent = true;
                     }
                 }
@@ -2464,11 +2469,7 @@ void ClaudeStatusBarController::sendUnarmedConfirm(TerminalWidget *term) {
         return;
 
     const QString cont = cfg.claudeAutoModelContinuationPrompt();
-    if (cont.isEmpty()) return;
-    QPointer<TerminalWidget> g(term);
-    QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
-        if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
-    });
+    if (!cont.isEmpty()) sendContinuationLater(term, cont);
 }
 
 // ANTS-1915 — fire a deferred manual chip-switch once its owning shell is Idle.
@@ -2507,9 +2508,7 @@ void ClaudeStatusBarController::maybeFireDeferredChipSwitch(pid_t shellPid) {
     m_deferredChipTier.clear();
     m_deferredChipShellPid = 0;
 
-    term->sendToPty(
-        (QStringLiteral("/model ") + tier + QStringLiteral("\r")).toUtf8());
-    performModelSwitchHandshake(term);
+    sendModelSwitch(term, tier);
     // ANTS-1890 / ANTS-1915 — seed the per-project override cool-down so the
     // autonomous switcher does not immediately undo this user-initiated switch
     // (mirrors the undo path).
@@ -2804,17 +2803,10 @@ void ClaudeStatusBarController::onUndoSwitchClicked()
     // mid-turn or a PermissionRequest is pending: the CR would answer the
     // prompt / land mid-generation instead of switching. Block with a toast
     // (undo is a 10 s affordance — the user can retry once the prompt clears).
-    {
-        const ClaudeTabTracker::ShellState ss =
-            m_tracker ? m_tracker->shellState(focused->shellPid())
-                      : ClaudeTabTracker::ShellState{};
-        if (ss.awaitingInput || ss.state == ClaudeState::Thinking ||
-                ss.state == ClaudeState::ToolUse ||
-                ss.state == ClaudeState::Compacting) {
-            emit statusMessageRequested(
-                tr("Undo unavailable — finish the current prompt first"), 3000);
-            return;
-        }
+    if (busyForModelSwitch(shellStateOf(m_tracker, focused))) {
+        emit statusMessageRequested(
+            tr("Undo unavailable — finish the current prompt first"), 3000);
+        return;
     }
 
     // Capture before clearing — the "Switched back to <X>" toast
@@ -2824,12 +2816,7 @@ void ClaudeStatusBarController::onUndoSwitchClicked()
     const QString priorProject     = m_undoSwitchPendingProject;
     const ModelRecommender::Tier priorTier = m_undoSwitchPendingFromTierEnum;
 
-    // ANTS-1912 — `\r` (CR) not `\n` — see chip-click site for rationale.
-    focused->sendToPty(
-        (QStringLiteral("/model ") + priorTierName +
-         QStringLiteral("\r")).toUtf8());
-    // ANTS-1918/1924 — output-driven confirm + continuation prompt.
-    performModelSwitchHandshake(focused);
+    sendModelSwitch(focused, priorTierName);
 
     // Seed the in-memory cool-down so the gate's 10-min lock-out
     // (ANTS-1890 / kOverrideCooldownMs) trips on the next tick.
@@ -3069,7 +3056,7 @@ QString contextMeterTooltip(qint64 tokens, qint64 window, int percent,
     if (estimated)
         tip += QObject::tr("\nEstimated: includes tool output since Claude's "
                            "last reply. The next reply gives the exact count.");
-    if (percent >= 80)
-        tip += QObject::tr("\nNearly full: run /compact or start a new session.");
+    if (percent >= kContextNearlyFullPercent)
+        tip +=QObject::tr("\nNearly full: run /compact or start a new session.");
     return tip;
 }

@@ -97813,7 +97813,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6591] **Fold the duplicated logic the 2026-11-06 reviews found in claude-session-widgets.**
+- ✅ [ANTS-6591] **Fold the duplicated logic the 2026-11-06 reviews found in claude-session-widgets.**
   14 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 750 `src/claudestatuswidgets.cpp:388-389` (Medium)
   - row 751 `src/claudestatuswidgets.cpp:364-372` (Medium)
@@ -97829,6 +97829,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 778 `src/claudeallowlist.cpp:466-468` (Low)
   - row 779 `src/claudeallowlist.cpp:669` (Low)
   - row 789 `src/claudetranscript.cpp:134-141` (Low)
+  Shipped 2026-11-26. Rows 750/751/757: sendModelSwitch,
+  busyForModelSwitch and sendContinuationLater. 756: statusLabelStyle +
+  kStatusLabelPadPx. 758: keep-in-step note on stateFace. 760:
+  kContextNearlyFullPercent. 771: ClaudeTranscript::resetIfStale. 777:
+  redundancyReason. 778: one comment on why the splitters differ. 779:
+  isDangerousCommand. 789: ClaudeContent::toText. Rows 752, 773, 774
+  were already fixed in current code.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).

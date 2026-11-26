@@ -314,8 +314,17 @@ private:
     // tracker's per-shell path comes first; the cwd walk is the fallback.
     QString focusedSessionPath(TerminalWidget *focused) const;
 
-    // ANTS-1924 / ANTS-1920 — shared model-switch PTY handshake. After a
-    // caller injects `/model <tier>\r`, this confirms CC's "Switch model?"
+    // Every model-switch path (chip, deferred chip, auto, undo) switches
+    // through this: it types `/model <tier>\r` into `term` and starts
+    // performModelSwitchHandshake.
+    void sendModelSwitch(TerminalWidget *term, const QString &tier);
+
+    // Type `cont` + `\r` into `term` kSwitchContinuationDelayMs from now, so
+    // CC has left the dialog first; nothing is sent if the tab closes.
+    void sendContinuationLater(TerminalWidget *term, const QString &cont);
+
+    // ANTS-1924 / ANTS-1920 — shared model-switch PTY handshake. After
+    // sendModelSwitch types `/model <tier>\r`, this confirms CC's "Switch model?"
     // dialog and then sends a configurable continuation prompt so CC resumes
     // without user input. ANTS-1920 replaced the original blind timer (ESC@250
     // + \r@400) with an output-driven confirm: it polls recentOutput for the

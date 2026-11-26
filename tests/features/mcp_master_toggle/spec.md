@@ -25,7 +25,8 @@ master-off path reaches `ants::mcp_orientation::uninstall()`. *Test:*
 source-grep `mainwindow.cpp`.
 
 **INV-4 — Auto-switcher early return.** A `!cfg.claudeMcpEnabled()`
-early return precedes the `QStringLiteral("/model ")` injection in
+early return precedes the `/model` injection, the
+`sendModelSwitch(focused, dec.tierArg)` call in
 `src/claudestatuswidgets.cpp`. *Test:* source-grep ordering.
 
 **INV-5 — Dispatcher refusal.** A `!m_mcpEnabled` guard emitting

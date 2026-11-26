@@ -289,12 +289,8 @@ void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {
     const ShellState before = it->state;
 
     // ANTS-5773 § 2.3 — this shell's background tasks, from its own
-    // transcript. Cursor and accumulator reset together whenever the
-    // cursor cannot be trusted; see ClaudeTranscript::canResume.
-    if (!ClaudeTranscript::canResume(it->transcriptPath, it->bgCursor)) {
-        it->bgCursor = {};
-        it->bgAcc = {};
-    }
+    // transcript, resumed where the last read stopped.
+    ClaudeTranscript::resetIfStale(it->transcriptPath, it->bgCursor, it->bgAcc);
     setBackgroundCounts(*it, ClaudeBgTaskTracker::parseIncremental(
         it->transcriptPath, it->bgCursor, it->bgAcc, it->state.claudeStartMs));
 

@@ -79,9 +79,9 @@ public:
     // ANTS-5050 — parse only what has been appended since `cursor`, folding
     // it into `acc`, and return the tracker's visible list.
     //
-    // The caller must call ClaudeTranscript::canResume first and, on false,
-    // reset BOTH `cursor` and `acc` — a cursor without its accumulator
-    // resumes into a half-built list. `parseTranscript` above is this with a
+    // The caller must call ClaudeTranscript::resetIfStale on `cursor` and
+    // `acc` first — a cursor without its accumulator resumes into a
+    // half-built list. `parseTranscript` above is this with a
     // fresh cursor and accumulator, and remains the full-parse contract.
     static QList<ClaudeTask> parseIncremental(const QString &path,
                                               ClaudeTranscript::Cursor &cursor,

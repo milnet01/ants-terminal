@@ -69,3 +69,4 @@ Record for [`../specs/ANTS-1901-master-ants-mcp-off-toggle.md`](../specs/ANTS-19
   the else-binds-nothing half to INV-3; §2.5 hard-line softening left to
   the doc-wide anchor convention). Both reviewers confirmed the § 9 log
   matches current text — no prior fix regressed.
+- **impl (2026-11-26, ANTS-6591)** — No reviewer dispatched. INV-4's test clause now anchors on the `sendModelSwitch(focused, dec.tierArg)` call, after ANTS-6591 folded every `/model` send into that helper.

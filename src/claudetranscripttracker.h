@@ -122,10 +122,7 @@ protected:
         QList<Task> next;
         const QString &path = transcriptPath();
         if (!path.isEmpty()) {
-            if (!ClaudeTranscript::canResume(path, m_cursor)) {
-                m_cursor = {};
-                m_acc = {};
-            }
+            ClaudeTranscript::resetIfStale(path, m_cursor, m_acc);
             next = parse(path, m_cursor, m_acc);
             walkCache().store(path, m_cursor, m_acc);  // INV-9
         }

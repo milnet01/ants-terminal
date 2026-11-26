@@ -1,4 +1,5 @@
 #include "claudetranscript.h"
+#include "claudecontent.h"
 #include "claudeintegration.h"
 #include "dialogchrome.h"
 
@@ -130,18 +131,8 @@ QString ClaudeTranscriptDialog::formatEntry(const QJsonObject &entry) const {
 
     if (type == "user") {
         QJsonObject msg = entry.value("message").toObject();
-        QString content;
-        QJsonArray contentArr = msg.value("content").toArray();
-        if (!contentArr.isEmpty()) {
-            for (const QJsonValue &c : contentArr) {
-                QJsonObject block = c.toObject();
-                if (block.value("type").toString() == "text")
-                    content += block.value("text").toString();
-            }
-        }
-        // Fall back to string content
-        if (content.isEmpty())
-            content = msg.value("content").toString();
+        const QString content = ClaudeContent::toText(msg.value("content"));
+        const QJsonArray contentArr = msg.value("content").toArray();
 
         // ANTS-5092 — a user entry carrying only tool results rendered an
         // empty "User:" line for every tool call. Show it as a tool result.
