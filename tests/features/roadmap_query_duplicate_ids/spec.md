@@ -27,15 +27,16 @@ one entry per ID seen on more than one bullet. Each entry carries
 
 ### INV-2 — recompute on every cache fill
 
-The detector runs at every call site that assigns
-`m_roadmapCacheBullets`:
+The detector runs after every fill of `m_roadmapCacheBullets`. Both
+fill paths go through one loader, `loadBulletCache`:
 
 1. Full-file refresh after stale-cache wipe (`refillCache`).
 2. The cold-cache fill every whole-roadmap mode shares
    (`fillBulletsIfCold`).
 
-Each populates `m_roadmapCacheDuplicateIds` from
-`rcComputeDuplicateIds(m_roadmapCacheBullets)`.
+The loader populates `m_roadmapCacheDuplicateIds` from
+`rcComputeDuplicateIds(m_roadmapCacheBullets)` right after the fill, and
+the source holds one recompute per fill.
 
 ### INV-3 — cache wipe clears descriptors
 

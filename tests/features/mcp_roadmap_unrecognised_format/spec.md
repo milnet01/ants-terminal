@@ -19,7 +19,8 @@ rather than the legitimate-but-misleading silent-empty shape.
   `remotecontrol.h` next to `kRoadmapCacheTtlMs`.
 - **INV-3.** `cmdRoadmapLog`'s append path carries the same anchor and
   calls `RemoteControl::rlUnrecognisedFormat`, the write gate the append,
-  append_batch and create_section paths share. That gate holds the
+  append_batch, create_section and flip paths share (flip with its own
+  error text). That gate holds the
   `"unrecognised_format"` literal AND assigns both `env["path"]` and
   `env["bytes"]` alongside it — envelope shape parity with the read-side
   gate.

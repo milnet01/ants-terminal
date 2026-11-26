@@ -981,7 +981,9 @@ struct RemoteControl::RoadmapQueryCall {
     void openTextAndCheckSync();
     auto readFailed() -> QJsonDocument;
     auto refillCache() -> std::optional<QJsonDocument>;
+    auto loadBulletCache() -> std::optional<QJsonDocument>;
     auto fillBulletsIfCold() -> std::optional<QJsonDocument>;
+    auto fillIndexIfCold() -> std::optional<QJsonDocument>;
     auto refuseUnrecognisedFormat() -> std::optional<QJsonDocument>;
 
     QString path;
@@ -2613,21 +2615,7 @@ auto RemoteControl::RoadmapQueryCall::refillCache() -> std::optional<QJsonDocume
     stampRoadmapSource();
 
     if (section.isEmpty()) {  // ANTS-1287-INV-6 — full-file path
-        // ANTS-3793 — the store when this project is migrated, `markdown`
-        // when it is not.
-        RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
-        QString srcErr;
-        const auto bullets = rc.roadmapBullets(callerCanonical, text,
-                                            /*includeArchive=*/false,
-                                            &srcWhy, &srcErr);
-        if (srcWhy != RoadmapSource::ReadError::None)
-            return refuseRoadmapSource(srcWhy, srcErr);
-        rc.m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
-        // ANTS-1646 — recompute duplicate-ID descriptors against
-        // the freshly-populated cache. Stays empty on a clean
-        // roadmap; emission gate suppresses the field then.
-        rc.m_roadmapCacheDuplicateIds =
-            rcComputeDuplicateIds(rc.m_roadmapCacheBullets);
+        if (auto r = loadBulletCache()) return r;
     } else {
         // ANTS-1287-INV-9 — section mode does not pre-fill the
         // full bullets cache; that path is taken lazily on the
@@ -2637,6 +2625,27 @@ auto RemoteControl::RoadmapQueryCall::refillCache() -> std::optional<QJsonDocume
         // the branch the dispatch above did NOT take (ANTS-3863 § 2.4).
         rc.m_roadmapIndex = RoadmapIndex::buildIndex(text.full());
     }
+    return std::nullopt;
+}
+
+// The one fill of the whole-roadmap bullet cache, for refillCache and
+// fillBulletsIfCold. ANTS-3793 — the store when this project is migrated,
+// `markdown` when it is not.
+auto RemoteControl::RoadmapQueryCall::loadBulletCache() -> std::optional<QJsonDocument> {
+    auto &text = loadedText();
+    RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
+    QString srcErr;
+    const auto bullets = rc.roadmapBullets(callerCanonical, text,
+                                        /*includeArchive=*/false,
+                                        &srcWhy, &srcErr);
+    if (srcWhy != RoadmapSource::ReadError::None)
+        return refuseRoadmapSource(srcWhy, srcErr);
+    rc.m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
+    // ANTS-1646 — recompute duplicate-ID descriptors against
+    // the freshly-populated cache. Stays empty on a clean
+    // roadmap; emission gate suppresses the field then.
+    rc.m_roadmapCacheDuplicateIds =
+        rcComputeDuplicateIds(rc.m_roadmapCacheBullets);
     return std::nullopt;
 }
 
@@ -2650,19 +2659,22 @@ auto RemoteControl::RoadmapQueryCall::fillBulletsIfCold() -> std::optional<QJson
         (rc.m_roadmapCacheMtimeMs == mtime)) {
         // ANTS-3863 — a pure dispatch site; no body read on the store path.
         // ANTS-4431 — the call's shared provider.
-        if (!text.openFailed()) {
-            RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
-            QString srcErr;
-            const auto bullets = rc.roadmapBullets(callerCanonical, text,
-                                                /*includeArchive=*/false,
-                                                &srcWhy, &srcErr);
-            if (srcWhy != RoadmapSource::ReadError::None)
-                return refuseRoadmapSource(srcWhy, srcErr);
-            rc.m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
-            // ANTS-1646 — duplicate-id descriptors follow the cache.
-            rc.m_roadmapCacheDuplicateIds =
-                rcComputeDuplicateIds(rc.m_roadmapCacheBullets);
-        }
+        if (!text.openFailed())
+            return loadBulletCache();
+    }
+    return std::nullopt;
+}
+
+// The heading index can be empty on a cache hit taken in the other mode
+// (ANTS-1287-INV-9). ANTS-4433 — through the shared provider, so a call that
+// already read the body takes the memo instead of a second whole-file read.
+auto RemoteControl::RoadmapQueryCall::fillIndexIfCold() -> std::optional<QJsonDocument> {
+    auto &text = loadedText();
+    if (rc.m_roadmapIndex.isEmpty()) {
+        const QString &markdown = text.full();
+        if (markdown.isEmpty() && text.openFailed())
+            return readFailed();
+        rc.m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
     }
     return std::nullopt;
 }
@@ -2675,46 +2687,13 @@ auto RemoteControl::RoadmapQueryCall::sectionIndex() -> QJsonDocument {
     auto &text = loadedText();
     if (auto r = fillBulletsIfCold()) return *r;
     // Lazy-fill the index — same shape as the section-mode branch.
-    // ANTS-4433 — through the shared provider, so a call that already
-    // read the body takes the memo instead of a second whole-file read.
-    if (rc.m_roadmapIndex.isEmpty()) {
-        const QString &markdown = text.full();
-        if (markdown.isEmpty() && text.openFailed())
-            return readFailed();
-        rc.m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
-    }
+    if (auto r = fillIndexIfCold()) return *r;
 
     // ANTS-1437-INV-8 — `unrecognised_format` gate applies before
-    // emission, mirroring the bullet-mode gate below. ANTS-1462
-    // adds a header-inventory fallback when buildIndex finds
-    // sections; the truly-opaque "no bullets + no headings" case
-    // still refuses with the typed error. ANTS-1463 adds the
-    // shared hint + expected_format envelope fields.
-    // ANTS-4861 — a store that answered with zero items is a complete
-    // answer, not a parse failure, so the fallback is for markdown only.
-    if (rc.m_roadmapCacheBullets.isEmpty() &&
-        rc.m_roadmapCacheSource != QLatin1String("store") &&
-        fi.size() > kRoadmapMinParseableSize) {
-        // section_index mode populated m_roadmapIndex upstream
-        // (the `if (!fresh)` block's section arm); reuse it here.
-        if (!rc.m_roadmapIndex.isEmpty()) {
-            return QJsonDocument(buildHeaderInventoryEnvelope(
-                rc.m_roadmapIndex, path, fi.size(),
-                req.value(QStringLiteral("check_sync")).toBool()));
-        }
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = QStringLiteral("unrecognised_format");
-        env["error"] = QStringLiteral(
-            "roadmap_query: \"%1\" parsed zero bullets from %2 "
-            "bytes — format not recognised")
-                .arg(path, QString::number(fi.size()));
-        env["path"]            = path;
-        env["bytes"]           = fi.size();
-        env["hint"]            = kUnrecognisedFormatHint();
-        env["expected_format"] = kUnrecognisedFormatExpected();
-        return QJsonDocument(env);
-    }
+    // emission: the bullet-mode gate itself, with its ANTS-1462
+    // header-inventory fallback and ANTS-4861 store exemption. The index
+    // is built above, so the gate's own lazy build finds nothing new.
+    if (auto r = refuseUnrecognisedFormat()) return *r;
 
     // Tally counts per slug. parseBullets sets sectionSlug on every
     // record (RoadmapParse::parseBullets). Empty headline + empty id is
@@ -3274,12 +3253,7 @@ auto RemoteControl::RoadmapQueryCall::sectionOrVersion() -> QJsonDocument {
     auto &text = loadedText();
     // INV-9: ensure we have an index even on a cache HIT taken
     // earlier in section-less mode (and vice versa).
-    if (rc.m_roadmapIndex.isEmpty()) {
-        const QString &markdown = text.full();   // ANTS-4433
-        if (markdown.isEmpty() && text.openFailed())
-            return readFailed();
-        rc.m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
-    }
+    if (auto r = fillIndexIfCold()) return *r;
     const auto *sec = versionArg.isEmpty()
         ? RoadmapIndex::findBySlug(rc.m_roadmapIndex, section)
         : RoadmapIndex::findByVersion(rc.m_roadmapIndex, versionArg);

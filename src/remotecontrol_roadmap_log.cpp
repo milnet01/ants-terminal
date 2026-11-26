@@ -58,14 +58,15 @@ void rcdetail::rlAddScrubWarning(QJsonObject &env, const QStringList &names,
 }
 
 std::optional<QJsonDocument> RemoteControl::rlUnrecognisedFormat(
-    const QString &roadmapPath, const QString &markdown, bool parsedNothing) {
+    const QString &roadmapPath, const QString &markdown, bool parsedNothing,
+    const QString &error) {
     const qint64 markdownBytes = markdown.toUtf8().size();
     if (!parsedNothing || markdownBytes <= kRoadmapMinParseableSize)
         return std::nullopt;
     QJsonObject env;
     env["ok"]    = false;
     env["code"]  = QStringLiteral("unrecognised_format");
-    env["error"] = QStringLiteral(
+    env["error"] = !error.isEmpty() ? error : QStringLiteral(
         "roadmap_log: \"%1\" parsed zero bullets from %2 "
         "bytes — format not recognised; cannot safely splice")
             .arg(roadmapPath).arg(markdownBytes);
@@ -228,13 +229,6 @@ QJsonDocument rlAppendToStore(const RlAppendInput &in, RoadmapStore &store,
                               qint64 projectId,
                               RoadmapSource::RoadmapText &storeText,
                               const QJsonObject &storeRebuilt) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
     const QJsonObject &req = in.req;
     const QString &section = in.section;
     const QString &status = in.status;
@@ -600,10 +594,7 @@ QJsonDocument rlAppendToStore(const RlAppendInput &in, RoadmapStore &store,
 QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                                                  int replaceNarrationAt) {
     auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
+        QJsonObject env = mcp::refusal(code, message);
         if (code == QStringLiteral("missing_field") ||
             code == QStringLiteral("no_roadmap")) {
             QJsonObject ex;
@@ -1265,18 +1256,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
     }
 
     // Write ROADMAP.md atomically via QSaveFile.
-    QSaveFile rw(roadmapPath);
-    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: could not open \"%1\" for "
-                           "writing").arg(roadmapPath));
-    }
-    const QByteArray utf8 = updated.toUtf8();
-    if (rw.write(utf8) != utf8.size() || !rw.commit()) {
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: atomic write of \"%1\" "
-                           "failed").arg(roadmapPath));
-    }
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
 
     // ANTS-1424-INV-8 — success envelope: id (full ANTS-NNNN
     // string), file (basename), line (1-based insertion point),
@@ -1436,6 +1417,25 @@ QJsonDocument rcdetail::rcPassStoreWriteUnsupported(const QString &op) {
 // two-step locate), and the dialect-specific envelope values as fields.
 namespace {
 
+// One item's body write, inside a mutate: the column, its history row, the
+// re-derived trailer columns (§ 2.6: all five, as the caller supplies none)
+// and the modified stamp (ANTS-4501 § 2.2), in that order. set_body,
+// amend_body, flip/annotate and rlCommitBodyEdits all write a body through it.
+// `kept` and `deriveCode` are rlDeriveTrailerColumns's.
+bool rlWriteItemBody(RoadmapStore &store, qint64 itemPk,
+                     const RoadmapStore::ItemWrite &before, const QString &newBody,
+                     HistoryContext &hist, QString *err,
+                     QStringList *kept, QString *deriveCode) {
+    if (!store.setItemField(itemPk, QStringLiteral("body"), newBody,
+                            QStringLiteral("asserted"), err))
+        return false;
+    hist.record(itemPk, QStringLiteral("body"), before.body, newBody);
+    if (!rlDeriveTrailerColumns(store, itemPk, before, newBody, {}, &hist, err,
+                                kept, deriveCode))
+        return false;
+    return rlStampModified(store, itemPk, err);
+}
+
 struct RlStoreFlipCall {
     const QJsonObject *req = nullptr;
     RoadmapStore *store = nullptr;
@@ -1456,13 +1456,6 @@ struct RlStoreFlipCall {
 };
 
 QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
     const QJsonObject &req = *c.req;
     RoadmapStore &store = *c.store;
     const qint64 projectId = c.projectId;
@@ -1594,21 +1587,13 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
                 return false;
             return rlFlushHistory(store, hist, err);
         }
-        if (!store.setItemField(*itemPk, QStringLiteral("body"),
-                                newBody, QStringLiteral("asserted"), err))
-            return false;
-        hist.record(*itemPk, QStringLiteral("body"), before->body, newBody);
         // § 2.6 — a body write re-derives every trailer column the
         // request did not supply, which for flip/annotate is all
         // five. This is what keeps `Layman:` from being a body line
-        // the render's gate can never see.
-        if (!rlDeriveTrailerColumns(store, *itemPk, *before,
-                                    newBody, {}, &hist, err,
-                                    nullptr, &deriveCode))
-            return false;
-        // ANTS-4501 § 2.2 — after every column this op writes,
-        // including the trailer columns above.
-        if (!rlStampModified(store, *itemPk, err))
+        // the render's gate can never see. ANTS-4501 § 2.2 — the
+        // modified stamp comes after every column this op writes.
+        if (!rlWriteItemBody(store, *itemPk, *before, newBody, hist, err,
+                             nullptr, &deriveCode))
             return false;
         // ANTS-3822 — flushed here, after every column this op
         // writes has been recorded, because the cap is asked once
@@ -1692,11 +1677,7 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
         if (alreadyPresent)
             env[QStringLiteral("note_already_present")] = true;
     }
-    if (!noteScrubbedNames.isEmpty()) {
-        QJsonArray dropped;
-        for (const QString &n : noteScrubbedNames) dropped.append(n);
-        env[QStringLiteral("note_scrubbed_params")] = dropped;
-    }
+    rcPutScrubbed(env, QStringLiteral("note_scrubbed_params"), noteScrubbedNames);
     // ANTS-4464 — name the path that ran. The two paths declare
     // different field sets on purpose (ANTS-3793 INV-2: a store has
     // no lines, so `line` / `note_line` / `bytes_written` cannot be
@@ -1738,13 +1719,6 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
 // content. Counter consumes only on anchor injection. See
 // docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md § Tier 2.
 QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
     auto rlSugErr = [](const QString &code, const QString &message,
                        const QJsonArray &suggestions, int matched) {
         QJsonObject env;
@@ -2153,48 +2127,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                                       &noteAlreadyPresent);
         }
         const QString updated = lines.join(QChar('\n'));
-        // ANTS-2136 — dry_run preview (ants-v1 path): the locator
-        // resolved and the surgery is computed in-memory; return the
-        // would-be edit WITHOUT writing ROADMAP.md.
-        if (dryRun) {
-            const QByteArray previewUtf8 = updated.toUtf8();
-            QJsonObject out;
-            out["ok"]              = true;
-            out["op"]              = annotateMode
-                                       ? QStringLiteral("annotate")
-                                       : QStringLiteral("flip");
-            out["dry_run"]         = true;
-            out["format"]          = QStringLiteral("ants-v1");
-            out["from_status"]     = fromStatus;
-            out["to_status"]       = annotateMode ? fromStatus
-                                                  : targetEmoji;
-            out["file"]            = QStringLiteral("ROADMAP.md");
-            out["line"]            = v1target.firstLine + 1;
-            out["bytes"]           = static_cast<qint64>(previewUtf8.size());
-            out["anchor_injected"] = false;
-            out["write_path"]      = QStringLiteral("patch");   // ANTS-4464
-            out["id"]              = v1target.id;
-            if (!note.isEmpty()) {
-                out["note_appended"] = !noteAlreadyPresent;
-                out["note_line"]     = noteLine + 1;
-                if (noteAlreadyPresent)
-                    out["note_already_present"] = true;
-            }
-            return QJsonDocument(out);
-        }
-        const qint64 sizeBefore = QFileInfo(roadmapPath).size();  // ANTS-3702
-        QSaveFile rw(roadmapPath);
-        if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            return rlErr(QStringLiteral("roadmap_write_failed"),
-                QStringLiteral("roadmap_log: could not open \"%1\" "
-                               "for writing").arg(roadmapPath));
-        }
-        const QByteArray utf8 = updated.toUtf8();
-        if (rw.write(utf8) != utf8.size() || !rw.commit()) {
-            return rlErr(QStringLiteral("roadmap_write_failed"),
-                QStringLiteral("roadmap_log: atomic write of \"%1\" "
-                               "failed").arg(roadmapPath));
-        }
+        // The dry run and the write share these keys; each adds its own below.
         QJsonObject out;
         out["ok"]              = true;
         out["op"]              = annotateMode
@@ -2206,7 +2139,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                                               : targetEmoji;
         out["file"]            = QStringLiteral("ROADMAP.md");
         out["line"]            = v1target.firstLine + 1;
-        rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(utf8.size()));
         out["anchor_injected"] = false;
         out["write_path"]      = QStringLiteral("patch");   // ANTS-4464
         out["id"]              = v1target.id;
@@ -2216,11 +2148,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             if (noteAlreadyPresent)
                 out["note_already_present"] = true;
         }
-        if (!noteScrubbedNames.isEmpty()) {
-            QJsonArray dropped;
-            for (const QString &n : noteScrubbedNames) dropped.append(n);
-            out["note_scrubbed_params"] = dropped;
+        // ANTS-2136 — dry_run preview (ants-v1 path): the locator
+        // resolved and the surgery is computed in-memory; return the
+        // would-be edit WITHOUT writing ROADMAP.md.
+        if (dryRun) {
+            out["dry_run"]         = true;
+            out["bytes"]           = static_cast<qint64>(updated.toUtf8().size());
+            return QJsonDocument(out);
         }
+        const qint64 sizeBefore = QFileInfo(roadmapPath).size();  // ANTS-3702
+        if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+            return rlErr(QStringLiteral("roadmap_write_failed"), err);
+        rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(updated.toUtf8().size()));
+        rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), noteScrubbedNames);
         // ANTS-2089 — confirm-after compact echo (ants-v1 flip).
         if (rcReturnHeadlineOnly(req)) {
             out["post_bullets"] = QJsonArray{ rcCompactBullet(
@@ -2319,22 +2259,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         // Neither GFM nor ants-v1 — genuinely unrecognised.
         // (A pass-headings roadmap never gets here: it is routed to its
         // own writer before the file read — the ANTS-2126 route above.)
-        // ANTS-1463 — the same path, bytes, hint and expected_format fields
-        // as append's gate (rlUnrecognisedFormat). amend_body's two
-        // unrecognised_format refusals carry code and error only.
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = QStringLiteral("unrecognised_format");
-        env["error"] = QStringLiteral(
-            "roadmap_log: \"%1\" parsed zero bullets from %2 bytes "
-            "(neither GFM-task-list nor ants-v1 native format "
-            "recognised) — cannot safely flip")
-                .arg(roadmapPath).arg(markdownBytes);
-        env["path"]            = roadmapPath;
-        env["bytes"]           = markdownBytes;
-        env["hint"]            = kUnrecognisedFormatHint();
-        env["expected_format"] = kUnrecognisedFormatExpected();
-        return QJsonDocument(env);
+        // ANTS-1463 — append's gate (rlUnrecognisedFormat), with flip's own
+        // error text. This branch's condition is the gate's, so it always
+        // refuses. amend_body's two unrecognised_format refusals carry code
+        // and error only.
+        if (auto refusal = rlUnrecognisedFormat(roadmapPath, markdown, true,
+                QStringLiteral(
+                    "roadmap_log: \"%1\" parsed zero bullets from %2 bytes "
+                    "(neither GFM-task-list nor ants-v1 native format "
+                    "recognised) — cannot safely flip")
+                        .arg(roadmapPath).arg(markdownBytes)))
+            return *refusal;
     }
 
     // 7. Locator. id > anchor > headline.
@@ -2597,37 +2532,39 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     }
     const QString updated = lines.join(QChar('\n'));
 
+    // The dry run and the write share these keys; each adds its own below.
+    QJsonObject out;
+    out["ok"]              = true;
+    out["op"]              = annotateMode ? QStringLiteral("annotate")
+                                          : QStringLiteral("flip");
+    out["from_status"]     = target.status;
+    out["to_status"]       = annotateMode ? target.status : targetEmoji;
+    out["file"]            = QStringLiteral("ROADMAP.md");
+    out["line"]            = target.firstLine + 1;  // 1-based
+    out["anchor_injected"] = !anchorToInject.isEmpty();
+    // ANTS-4464 — GFM is reachable only on a file-backed project (a
+    // migrated project's ROADMAP.md is the render's own ants-v1 output), so
+    // this arm is always the patch path. Declared anyway: the field is
+    // useful precisely because a caller can read it unconditionally.
+    out["write_path"]      = QStringLiteral("patch");
+    if (!anchorToInject.isEmpty()) out["anchor"] = anchorToInject;
+    if (!target.boldId.isEmpty()) out["id"]      = target.boldId;
+    if (needInjection && newCounter >= 0)
+        out["counter"] = newCounter;
+    if (!note.isEmpty()) {
+        out["note_appended"] = !noteAlreadyPresent;
+        out["note_line"]     = noteLine + 1;
+        if (noteAlreadyPresent) out["note_already_present"] = true;
+    }
+
     // ANTS-2136 — dry_run preview: the locator resolved, the surgery is
     // computed in-memory (status emoji / appended note / would-be anchor),
     // and we return the preview WITHOUT writing ROADMAP.md or bumping
-    // .roadmap-counter. Mirrors the success envelope below but carries
-    // dry_run:true and `bytes` (would-be) instead of bytes_written.
+    // .roadmap-counter. It carries dry_run:true and `bytes` (would-be)
+    // instead of bytes_written.
     if (dryRun) {
-        const QByteArray previewUtf8 = updated.toUtf8();
-        QJsonObject out;
-        out["ok"]              = true;
-        out["op"]              = annotateMode ? QStringLiteral("annotate")
-                                              : QStringLiteral("flip");
         out["dry_run"]         = true;
-        out["from_status"]     = target.status;
-        out["to_status"]       = annotateMode ? target.status : targetEmoji;
-        out["file"]            = QStringLiteral("ROADMAP.md");
-        out["line"]            = target.firstLine + 1;
-        out["bytes"]           = static_cast<qint64>(previewUtf8.size());
-        out["anchor_injected"] = !anchorToInject.isEmpty();
-        // ANTS-4464 — GFM is reachable only on a file-backed project (a
-        // migrated project's ROADMAP.md is the render's own ants-v1 output), so
-        // this arm is always the patch path. Declared anyway: the field is
-        // useful precisely because a caller can read it unconditionally.
-        out["write_path"]      = QStringLiteral("patch");
-        if (!anchorToInject.isEmpty()) out["anchor"] = anchorToInject;
-        if (!target.boldId.isEmpty()) out["id"] = target.boldId;
-        if (needInjection && newCounter >= 0) out["counter"] = newCounter;
-        if (!note.isEmpty()) {
-            out["note_appended"] = !noteAlreadyPresent;
-            out["note_line"]     = noteLine + 1;
-            if (noteAlreadyPresent) out["note_already_present"] = true;
-        }
+        out["bytes"]           = static_cast<qint64>(updated.toUtf8().size());
         return QJsonDocument(out);
     }
 
@@ -2642,45 +2579,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
 
     // 13. Write ROADMAP.md atomically.
     const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
-    QSaveFile rw(roadmapPath);
-    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: could not open \"%1\" for "
-                           "writing").arg(roadmapPath));
-    }
-    const QByteArray utf8 = updated.toUtf8();
-    if (rw.write(utf8) != utf8.size() || !rw.commit()) {
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: atomic write of \"%1\" "
-                           "failed").arg(roadmapPath));
-    }
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
 
-    // 14. Success envelope.
-    QJsonObject out;
-    out["ok"]              = true;
-    out["op"]              = annotateMode ? QStringLiteral("annotate")
-                                          : QStringLiteral("flip");
-    out["from_status"]     = target.status;
-    out["to_status"]       = annotateMode ? target.status : targetEmoji;
-    out["file"]            = QStringLiteral("ROADMAP.md");
-    out["line"]            = target.firstLine + 1;  // 1-based
-    rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(utf8.size()));
-    out["anchor_injected"] = !anchorToInject.isEmpty();
-    out["write_path"]      = QStringLiteral("patch");   // ANTS-4464
-    if (!anchorToInject.isEmpty()) out["anchor"] = anchorToInject;
-    if (!target.boldId.isEmpty()) out["id"]      = target.boldId;
-    if (needInjection && newCounter >= 0)
-        out["counter"] = newCounter;
-    if (!note.isEmpty()) {
-        out["note_appended"] = !noteAlreadyPresent;
-        out["note_line"]     = noteLine + 1;
-        if (noteAlreadyPresent) out["note_already_present"] = true;
-    }
-    if (!noteScrubbedNames.isEmpty()) {
-        QJsonArray dropped;
-        for (const QString &n : noteScrubbedNames) dropped.append(n);
-        out["note_scrubbed_params"] = dropped;
-    }
+    // 14. The write's own keys.
+    rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(updated.toUtf8().size()));
+    rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), noteScrubbedNames);
     // ANTS-2089 — confirm-after compact echo (GFM flip).
     if (rcReturnHeadlineOnly(req)) {
         out["post_bullets"] = QJsonArray{ rcCompactBullet(
@@ -2762,10 +2666,10 @@ static QString rcAmendedParagraph(const QStringList &lines, int editedIdx) {
     return out;
 }
 
-// ANTS-4808 — op:"set_body"'s store write. Deliberately amend_body's own
-// mutate with the match removed, so the two cannot come to disagree about what
-// writing a body entails: the column, the re-derived trailers, the modified
-// stamp and the history row are all the same steps in the same order.
+// ANTS-4808 — op:"set_body"'s store write. Its mutate is amend_body's with the
+// match and the rlItemUnchanged check removed. Both write the body through
+// rlWriteItemBody, as flip/annotate and rlCommitBodyEdits do, so none can come
+// to disagree about what writing a body entails. The reply is set_body's own.
 //
 // Why the op exists at all. amend_body patches a MATCHED span, so a body whose
 // text cannot be expressed as a match has no route back — and one project has
@@ -2794,18 +2698,12 @@ QJsonDocument rlSetBodyStore(
     QStringList keptColumns;
 
     const auto mutate = [&](QString *err) -> bool {
-        if (!store.setItemField(itemPk, QStringLiteral("body"), newBody,
-                                QStringLiteral("asserted"), err))
-            return false;
-        hist.record(itemPk, QStringLiteral("body"), before.body, newBody);
         // The same re-derivation amend_body runs. Skipping it would let a
         // replacement silently change what the render emits: a body that
         // declared `Kind:` and no longer does hands the column back, and one
         // that newly declares it takes the column over.
-        if (!rlDeriveTrailerColumns(store, itemPk, before, newBody, {}, &hist,
-                                    err, &keptColumns, &deriveCode))
-            return false;
-        if (!rlStampModified(store, itemPk, err))
+        if (!rlWriteItemBody(store, itemPk, before, newBody, hist, err,
+                             &keptColumns, &deriveCode))
             return false;
         return rlFlushHistory(store, hist, err);
     };
@@ -2840,11 +2738,7 @@ QJsonDocument rlSetBodyStore(
     if (!matchedId.isEmpty())
         env[QStringLiteral("id")] = matchedId;
     rcRoadmapWriteFields(env, outcome, dryRun);
-    if (!newTextScrubbedNames.isEmpty()) {
-        QJsonArray dropped;
-        for (const QString &n : newTextScrubbedNames) dropped.append(n);
-        env[QStringLiteral("note_scrubbed_params")] = dropped;
-    }
+    rcPutScrubbed(env, QStringLiteral("note_scrubbed_params"), newTextScrubbedNames);
     if (dryRun)
         env[QStringLiteral("dry_run")] = true;
     return QJsonDocument(env);
@@ -2871,13 +2765,6 @@ std::optional<QJsonDocument> rlLocateInFile(
         const QStringList &lines, bool bigEnough, const QString &roadmapPath,
         const QString &callerCanonical, const QString &locId,
         const QString &locAnchor, const QString &locHeadline, RlFileLocate &out) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
     auto rlSugErr = [](const QString &code, const QString &message,
                        int matched) {
         QJsonObject env;
@@ -3058,13 +2945,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     const QString opName = setBodyMode  ? QStringLiteral("set_body")
                          : headlineMode ? QStringLiteral("amend_headline")
                                         : QStringLiteral("amend_body");
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
     auto rlSugErr = [](const QString &code, const QString &message,
                        int matched) {
         QJsonObject env;
@@ -3466,12 +3346,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                 if (!matchedId.isEmpty())
                     env[QStringLiteral("id")] = matchedId;
                 rcRoadmapWriteFields(env, hOutcome, dryRun);   // ANTS-4463
-                if (!newTextScrubbedNames.isEmpty()) {
-                    QJsonArray dropped;
-                    for (const QString &n : newTextScrubbedNames)
-                        dropped.append(n);
-                    env[QStringLiteral("note_scrubbed_params")] = dropped;
-                }
+                rcPutScrubbed(env, QStringLiteral("note_scrubbed_params"), newTextScrubbedNames);
                 if (dryRun)
                     env[QStringLiteral("dry_run")] = true;
                 return QJsonDocument(env);
@@ -3615,21 +3490,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             const auto mutate = [&](QString *err) -> bool {
                 if (!rlItemUnchanged(store, *itemPk, *before, err, &deriveCode))
                     return false;
-                if (!store.setItemField(*itemPk, QStringLiteral("body"), newBody,
-                                        QStringLiteral("asserted"), err))
-                    return false;
-                hist.record(*itemPk, QStringLiteral("body"), before->body, newBody);
                 // § 2.6 — all five keys, since amend_body supplies none.
                 // `kept` (ANTS-4576): amend_body is the only op that can
                 // REMOVE a declaration, so it is the only one with a kept
                 // column to report.
-                if (!rlDeriveTrailerColumns(store, *itemPk, *before, newBody,
-                                            {}, &hist, err, &keptColumns,
-                                            &deriveCode))
-                    return false;
                 // ANTS-4501 § 2.2 — a body edit is a modification. No
                 // `shipped` stamp: amend_body cannot move the status.
-                if (!rlStampModified(store, *itemPk, err))
+                if (!rlWriteItemBody(store, *itemPk, *before, newBody, hist, err,
+                                     &keptColumns, &deriveCode))
                     return false;
                 return rlFlushHistory(store, hist, err);
             };
@@ -3675,11 +3543,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             // No `line` / `body_line` / `bytes` — a store has no lines
             // (ANTS-3793 INV-2), and `body_line` was an index into the file.
             rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
-            if (!newTextScrubbedNames.isEmpty()) {
-                QJsonArray dropped;
-                for (const QString &n : newTextScrubbedNames) dropped.append(n);
-                env[QStringLiteral("note_scrubbed_params")] = dropped;
-            }
+            rcPutScrubbed(env, QStringLiteral("note_scrubbed_params"), newTextScrubbedNames);
             if (dryRun)
                 env[QStringLiteral("dry_run")] = true;
             return QJsonDocument(env);
@@ -3808,11 +3672,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
         if (preview) { out["dry_run"] = true; out["bytes"] = byteCount; }
         else         { rcSetWriteBytes(out, sizeBefore, byteCount); }
         if (!matchedId.isEmpty()) out["id"] = matchedId;
-        if (!newTextScrubbedNames.isEmpty()) {
-            QJsonArray dropped;
-            for (const QString &n : newTextScrubbedNames) dropped.append(n);
-            out["note_scrubbed_params"] = dropped;
-        }
+        rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), newTextScrubbedNames);
         return QJsonDocument(out);
     };
 
@@ -3820,19 +3680,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
         return buildEnvelope(true,
             static_cast<qint64>(updated.toUtf8().size()));
     }
-    QSaveFile rw(roadmapPath);
-    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: could not open \"%1\" for writing")
-                .arg(roadmapPath));
-    }
-    const QByteArray utf8 = updated.toUtf8();
-    if (rw.write(utf8) != utf8.size() || !rw.commit()) {
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: atomic write of \"%1\" failed")
-                .arg(roadmapPath));
-    }
-    return buildEnvelope(false, static_cast<qint64>(utf8.size()));
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
+    return buildEnvelope(false, static_cast<qint64>(updated.toUtf8().size()));
 }
 
 namespace {
@@ -4041,6 +3891,20 @@ QJsonObject rlLocateFieldChange(RoadmapStore &store, qint64 projectId,
     return {};
 }
 
+// A store-only op's refusal from roadmapSectionOpTarget. Remapped for
+// cmdRoadmapLogRender's reason: the shared prologue says `op_unsupported`, and
+// a caller branching on `code` should get one this op's contract promises —
+// with `error` naming the route that DOES work on a markdown project.
+QJsonDocument rlStoreOnlyRefusal(const QJsonDocument &refusal, const QString &error) {
+    QJsonObject env = refusal.object();
+    if (env.value(QStringLiteral("code")).toString()
+            == QLatin1String("op_unsupported")) {
+        env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
+        env[QStringLiteral("error")] = error;
+    }
+    return QJsonDocument(env);
+}
+
 }  // namespace
 
 // ANTS-4667 — op:"amend_field": write one TRAILER COLUMN after creation.
@@ -4094,21 +3958,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
     QJsonDocument refusal;
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
     if (!target) {
-        // Remapped for cmdRoadmapLogRender's reason: the shared prologue says
-        // `op_unsupported`, and a caller branching on `code` should get one
-        // this op's contract promises — with the route that DOES work named,
-        // since on a markdown project the trailer line is body text.
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString()
-                == QLatin1String("op_unsupported")) {
-            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
-            env[QStringLiteral("error")] = QStringLiteral(
-                "roadmap_log: op:\"amend_field\" writes a STORE column, so it "
-                "needs a store-migrated project. On a markdown-backed project "
-                "the trailer line is body text — use op:\"amend_body\" on the "
-                "`%1:` line itself.").arg(field);
-        }
-        return QJsonDocument(env);
+        // On a markdown project the trailer line is body text.
+        return rlStoreOnlyRefusal(refusal, QStringLiteral(
+            "roadmap_log: op:\"amend_field\" writes a STORE column, so it "
+            "needs a store-migrated project. On a markdown-backed project "
+            "the trailer line is body text — use op:\"amend_body\" on the "
+            "`%1:` line itself.").arg(field));
     }
 
     RoadmapStore &store = *target->store;
@@ -4190,16 +4045,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req
     QJsonDocument refusal;
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
     if (!target) {
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString()
-                == QLatin1String("op_unsupported")) {
-            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
-            env[QStringLiteral("error")] = QStringLiteral(
-                "roadmap_log: op:\"amend_field_batch\" writes STORE columns, so "
-                "it needs a store-migrated project. On a markdown-backed "
-                "project the trailer lines are body text — use op:\"amend_body\".");
-        }
-        return QJsonDocument(env);
+        return rlStoreOnlyRefusal(refusal, QStringLiteral(
+            "roadmap_log: op:\"amend_field_batch\" writes STORE columns, so "
+            "it needs a store-migrated project. On a markdown-backed "
+            "project the trailer lines are body text — use op:\"amend_body\"."));
     }
     RoadmapStore &store = *target->store;
 
@@ -4349,14 +4198,8 @@ bool rlCommitBodyEdits(RoadmapStore &store, qint64 projectId, const QString &roo
             if (ed.body == ed.before.body) continue;
             if (!rlItemUnchanged(store, ed.pk, ed.before, e, &deriveCode))
                 return false;
-            if (!store.setItemField(ed.pk, QStringLiteral("body"), ed.body,
-                                    QStringLiteral("asserted"), e))
-                return false;
-            hist.record(ed.pk, QStringLiteral("body"), ed.before.body, ed.body);
-            if (!rlDeriveTrailerColumns(store, ed.pk, ed.before, ed.body, {}, &hist,
-                                        e, nullptr, &deriveCode))
-                return false;
-            if (!rlStampModified(store, ed.pk, e))
+            if (!rlWriteItemBody(store, ed.pk, ed.before, ed.body, hist, e,
+                                 nullptr, &deriveCode))
                 return false;
         }
         return rlFlushHistory(store, hist, e);
@@ -4430,16 +4273,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
     QJsonDocument refusal;
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
     if (!target) {
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString()
-                == QLatin1String("op_unsupported")) {
-            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
-            env[QStringLiteral("error")] = QStringLiteral(
-                "roadmap_log: op:\"amend_batch\" edits STORED bodies, so it needs "
-                "a store-served project. On a markdown-backed project use "
-                "op:\"amend_body\", once per bullet.");
-        }
-        return QJsonDocument(env);
+        return rlStoreOnlyRefusal(refusal, QStringLiteral(
+            "roadmap_log: op:\"amend_batch\" edits STORED bodies, so it needs "
+            "a store-served project. On a markdown-backed project use "
+            "op:\"amend_body\", once per bullet."));
     }
     RoadmapStore &store = *target->store;
 
@@ -4592,16 +4429,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
     QJsonDocument refusal;
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
     if (!target) {
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString()
-                == QLatin1String("op_unsupported")) {
-            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
-            env[QStringLiteral("error")] = QStringLiteral(
-                "roadmap_log: op:\"replace_text\" edits STORED bodies, so it "
-                "needs a store-served project. On a markdown-backed project use "
-                "op:\"amend_body\", once per bullet.");
-        }
-        return QJsonDocument(env);
+        return rlStoreOnlyRefusal(refusal, QStringLiteral(
+            "roadmap_log: op:\"replace_text\" edits STORED bodies, so it "
+            "needs a store-served project. On a markdown-backed project use "
+            "op:\"amend_body\", once per bullet."));
     }
     RoadmapStore &store = *target->store;
     QString err;
@@ -4701,14 +4532,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
 // `id` moves one item; `locators[]` of {id} moves several in one render. Every
 // id resolves before anything is written, so one bad id moves nothing.
 QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
-    auto rlErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env[QStringLiteral("ok")]    = false;
-        env[QStringLiteral("code")]  = code;
-        env[QStringLiteral("error")] = message;
-        return QJsonDocument(env);
-    };
-
     QStringList ids;
     const QString oneId = req.value(QStringLiteral("id")).toString().trimmed();
     if (req.contains(QStringLiteral("locators"))) {
@@ -4751,16 +4574,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
     QJsonDocument refusal;
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
     if (!target) {
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString()
-                == QLatin1String("op_unsupported")) {
-            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
-            env[QStringLiteral("error")] = QStringLiteral(
-                "roadmap_log: moving an item to another section needs a "
-                "store-migrated project. On a markdown-backed project, move the "
-                "bullet in ROADMAP.md itself.");
-        }
-        return QJsonDocument(env);
+        return rlStoreOnlyRefusal(refusal, QStringLiteral(
+            "roadmap_log: moving an item to another section needs a "
+            "store-migrated project. On a markdown-backed project, move the "
+            "bullet in ROADMAP.md itself."));
     }
     RoadmapStore &store = *target->store;
     QString err;

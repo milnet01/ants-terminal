@@ -185,9 +185,11 @@ TEST(mcp_roadmap_unrecognised_format, Inv4bFallbackAnswersCheckSync) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// ANTS-1463 — every unrecognised_format envelope across the four
-// refusal sites carries the shared kUnrecognisedFormatHint +
-// expected_format[] fields. Wording regression-locks the hint
+// ANTS-1463 — every unrecognised_format envelope carries the shared
+// kUnrecognisedFormatHint + expected_format[] fields. The refusal
+// sites build it through two shared builders (ANTS-6604): the write
+// gate rlUnrecognisedFormat and roadmap_query's
+// refuseUnrecognisedFormat. Wording regression-locks the hint
 // to mention both GFM-task-list and Ants-v1 signatures (and the
 // 📋 emoji byte sequence) so a rewording drops the right tests.
 TEST(mcp_roadmap_unrecognised_format, Inv5ExpectedFormatField) {
@@ -213,9 +215,23 @@ TEST(mcp_roadmap_unrecognised_format, Inv5ExpectedFormatField) {
            "EF-2 wording: ants-v1 planned-bullet emoji (📋) "
            "byte sequence present");
 
-    // Four refusal sites all set env["expected_format"] via the
-    // shared accessor — count 4 + 1 emitter call inside
-    // buildHeaderInventoryEnvelope = 5 occurrences total.
+    // Both shared builders set env["expected_format"] via the shared
+    // accessor.
+    const std::string gate = ants_test::slurpFunctionBody(
+        cpp, "RemoteControl::rlUnrecognisedFormat(");
+    const std::string query = ants_test::slurpFunctionBody(
+        cpp, "RemoteControl::RoadmapQueryCall::refuseUnrecognisedFormat(");
+    expect(contains(gate, "env[\"expected_format\"]"),
+           "EF-1: the write gate rlUnrecognisedFormat sets "
+           "env[\"expected_format\"]");
+    expect(contains(query, "env[\"expected_format\"]"),
+           "EF-1: roadmap_query's refuseUnrecognisedFormat sets "
+           "env[\"expected_format\"]");
+
+    // No other site hand-builds the envelope without the field: every
+    // env["code"] = "unrecognised_format" assignment is matched by an
+    // env["expected_format"] one, plus the emitter call inside
+    // buildHeaderInventoryEnvelope.
     auto countOccurrences = [&](const std::string &needle) {
         size_t n = 0;
         size_t p = cpp.find(needle);
@@ -227,8 +243,10 @@ TEST(mcp_roadmap_unrecognised_format, Inv5ExpectedFormatField) {
     };
     const size_t hits =
         countOccurrences("env[\"expected_format\"]");
-    expect(hits >= 4,
-           "EF-1: env[\"expected_format\"] assigned at "
-           "≥ 4 sites");
+    const size_t builds = countOccurrences(
+        "env[\"code\"]  = QStringLiteral(\"unrecognised_format\")");
+    expect(builds >= 2 && hits == builds + 1,
+           "EF-1: each hand-built unrecognised_format envelope sets "
+           "env[\"expected_format\"]");
     EXPECT_EQ(0, expect_failures());
 }

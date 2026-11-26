@@ -108,8 +108,11 @@ void rlExplainCounterFloor(QJsonObject &out, qint64 counterFileValue,
             .arg(counterFileValue).arg(corpusMax);
 }
 
-// Write `text` over the roadmap at `path` in one QSaveFile commit. Empty on
-// success; otherwise the roadmap_write_failed message.
+}  // namespace
+
+namespace rcdetail {
+
+// Shared with remotecontrol_roadmap_log.cpp (declared in remotecontrol_internal.h).
 QString rlAtomicWrite(const QString &path, const QString &text) {
     QSaveFile rw(path);
     if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -119,6 +122,10 @@ QString rlAtomicWrite(const QString &path, const QString &text) {
         return QStringLiteral("roadmap_log: atomic write of \"%1\" failed").arg(path);
     return {};
 }
+
+}  // namespace rcdetail
+
+namespace {
 
 // The first free element position in a section: one past the highest in use.
 int rlNextElementPosition(const QVector<RoadmapStore::ElementRow> &elements) {

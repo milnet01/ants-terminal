@@ -97,15 +97,6 @@ struct PassAppendItem {
 };
 }  // namespace
 
-// ANTS-6391 — name what the leaked-tool-XML scrub removed, in the GFM path's
-// key and shape (note_scrubbed_params / body_scrubbed_params).
-static void rcPutScrubbed(QJsonObject &o, const QString &key,
-                          const QStringList &names) {
-    if (names.isEmpty()) return;
-    QJsonArray dropped;
-    for (const QString &n : names) dropped.append(n);
-    o[key] = dropped;
-}
 // ANTS-4354 — `fallbackPass` is the CALL-level `pass`, used when a bullet
 // carries none. On the single-append path the bullet object IS the request,
 // so nothing changed there. On `append_batch` the bullet is one `bullets[]`
@@ -328,35 +319,16 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     const QString updated =
         rcSplicePassBlock(markdown, *sec, spliced, &headingIdx0);
 
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
-        QJsonObject out;
-        out["ok"]      = true;
-        out["dry_run"] = true;
-        out["id"]      = it.synthId;
-        // ANTS-4116 — echo the roadmap file actually resolved, not a canonical
-        // display name. RetroDB's roadmap is lowercase `roadmap.md`, so
-        // echoing "ROADMAP.md" named a file that does not exist in that repo:
-        // on a case-sensitive filesystem that reads as "the verb is about to
-        // create a second, wrong roadmap", and it cost them the verb.
-        out["file"]    = QFileInfo(roadmapPath).fileName();
-        out["line"]    = headingIdx0 + 1;
-        out["bullet"]  = block;
-        out["bytes"]   = static_cast<qint64>(block.toUtf8().size());
-        out["format"]  = QStringLiteral("pass-headings");
-        const QJsonArray ignored = rcPassIgnoredFields(req);
-        if (!ignored.isEmpty()) out["ignored_fields"] = ignored;  // ANTS-4357
-        rcPutScrubbed(out, QStringLiteral("body_scrubbed_params"), it.bodyScrubbed);
-        return QJsonDocument(out);
-    }
-    if (!rcAtomicWriteRoadmap(roadmapPath, updated))
-        return err(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
-
+    // The preview and the write share every key but the byte count.
     QJsonObject out;
     out["ok"]            = true;
-    rcPutScrubbed(out, QStringLiteral("body_scrubbed_params"), it.bodyScrubbed);
     out["id"]            = it.synthId;
-    out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
+    // ANTS-4116 — echo the roadmap file actually resolved, not a canonical
+    // display name. RetroDB's roadmap is lowercase `roadmap.md`, so
+    // echoing "ROADMAP.md" named a file that does not exist in that repo:
+    // on a case-sensitive filesystem that reads as "the verb is about to
+    // create a second, wrong roadmap", and it cost them the verb.
+    out["file"]          = QFileInfo(roadmapPath).fileName();
     out["line"]          = headingIdx0 + 1;
     out["format"]        = QStringLiteral("pass-headings");
     // ANTS-4117 — echo what was actually rendered, not only its size. The
@@ -365,9 +337,20 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     // from some projects' house style; a caller who did not dry_run first had
     // no way to see that until they re-read the file.
     out["bullet"]        = block;
-    out["bytes_written"] = static_cast<qint64>(block.toUtf8().size());
     const QJsonArray ignored = rcPassIgnoredFields(req);
     if (!ignored.isEmpty()) out["ignored_fields"] = ignored;  // ANTS-4357
+    rcPutScrubbed(out, QStringLiteral("body_scrubbed_params"), it.bodyScrubbed);
+    const qint64 blockBytes = block.toUtf8().size();
+
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        out["dry_run"] = true;
+        out["bytes"]   = blockBytes;
+        return QJsonDocument(out);
+    }
+    if (!rcAtomicWriteRoadmap(roadmapPath, updated))
+        return err(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
+    out["bytes_written"] = blockBytes;
     return QJsonDocument(out);
 }
 
@@ -743,30 +726,8 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
     // would-be bytes) WITHOUT writing ROADMAP.md. A dry_run that returns
     // ok:true proves the locator resolves on a pass-headings roadmap —
     // the exact verification gap RetroDB flagged for flip/annotate.
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
-        QJsonObject out;
-        out["ok"]      = true;
-        out["op"]      = annotateMode ? QStringLiteral("annotate")
-                                       : QStringLiteral("flip");
-        out["dry_run"] = true;
-        out["id"]      = r.matchedId;
-        out["file"]    = QFileInfo(roadmapPath).fileName();   // ANTS-4116
-        out["line"]    = r.headingLine + 1;
-        out["format"]  = QStringLiteral("pass-headings");
-        out["bytes"]   = static_cast<qint64>(r.markdown.toUtf8().size());
-        if (annotateMode) {
-            out["note_appended"] = true;
-            out["note_line"]     = r.changedLine + 1;
-        }
-        rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), scrubbed);
-        return QJsonDocument(out);
-    }
-
-    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
-    if (!rcAtomicWriteRoadmap(roadmapPath, r.markdown))
-        return err(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
-
+    // The preview and the write share every key but the byte counts and
+    // `to_status`, which only the write carries.
     QJsonObject out;
     out["ok"]            = true;
     out["op"]            = annotateMode ? QStringLiteral("annotate")
@@ -775,15 +736,26 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
     out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
     out["line"]          = r.headingLine + 1;
     out["format"]        = QStringLiteral("pass-headings");
-    rcSetWriteBytes(out, sizeBefore,
-                    static_cast<qint64>(r.markdown.toUtf8().size()));
     if (annotateMode) {
         out["note_appended"] = true;
         out["note_line"]     = r.changedLine + 1;
-    } else {
-        out["to_status"] = toKeyword;
     }
     rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), scrubbed);
+    const qint64 newBytes = r.markdown.toUtf8().size();
+
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        out["dry_run"] = true;
+        out["bytes"]   = newBytes;
+        return QJsonDocument(out);
+    }
+
+    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
+    if (!rcAtomicWriteRoadmap(roadmapPath, r.markdown))
+        return err(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
+    rcSetWriteBytes(out, sizeBefore, newBytes);
+    if (!annotateMode)
+        out["to_status"] = toKeyword;
     return QJsonDocument(out);
 }
 

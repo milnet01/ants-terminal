@@ -1768,10 +1768,12 @@ private:
     // that would splice into `markdown` although it parsed to no bullets. Runs
     // before any index is built, so a foreign dialect gets this typed error
     // instead of a misleading bad_section. Empty when the file parsed or is too
-    // small to judge.
+    // small to judge. A non-empty `error` replaces the splice wording with the
+    // caller op's own.
     static std::optional<QJsonDocument> rlUnrecognisedFormat(const QString &roadmapPath,
                                                               const QString &markdown,
-                                                              bool parsedNothing);
+                                                              bool parsedNothing,
+                                                              const QString &error = {});
 
     // ANTS-1319 — mtime-cached partition result (INV-12). Single-entry
     // cache keyed on (path, scope, stamp). TTL = 5 s, picked to cover

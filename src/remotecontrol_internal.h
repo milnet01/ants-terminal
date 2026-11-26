@@ -565,6 +565,15 @@ RlReleasePlace rlReleasePlacement(const QStringList &versions, const QString &wa
 inline QJsonDocument rlErr(const QString &code, const QString &message) {
     return QJsonDocument(mcp::refusal(code, message));
 }
+// Write `text` over the roadmap at `path` in one QSaveFile commit. Empty on
+// success; otherwise the roadmap_write_failed message.
+QString rlAtomicWrite(const QString &path, const QString &text);
+// ANTS-6391 — `names` (what the leaked-tool-XML scrub removed) under `key`;
+// nothing when the scrub removed nothing.
+inline void rcPutScrubbed(QJsonObject &o, const QString &key,
+                          const QStringList &names) {
+    if (!names.isEmpty()) o[key] = QJsonArray::fromStringList(names);
+}
 // ANTS-4884 — resolves a path to the project root the store keys on, so a
 // caller in a subdirectory is not read as an unmigrated project of its own.
 QString rcProjectRootFor(const QString &path);

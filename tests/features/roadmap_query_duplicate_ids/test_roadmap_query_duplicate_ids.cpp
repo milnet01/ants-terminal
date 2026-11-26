@@ -56,26 +56,45 @@ TEST(roadmap_query_duplicate_ids, Inv1HelperComputesOccurrences) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-2 — recompute on every cache-fill path. Two call sites assign
-// m_roadmapCacheBullets (the refill and the shared cold fill); each
-// must call the detector.
+// INV-2 — recompute on every cache-fill path. Both paths (the refill
+// and the shared cold fill) fill m_roadmapCacheBullets through one
+// loader, loadBulletCache, which must call the detector after the fill.
 TEST(roadmap_query_duplicate_ids, Inv2RecomputeOnCacheFill) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    // The recompute callsite signature is the helper invocation
-    // immediately under each `m_roadmapCacheBullets = arr;` assignment.
     // ANTS-2067 — normalise whitespace so the single needle matches at
-    // every indent depth, instead of enumerating three indent variants
-    // (which silently miss a fourth indentation).
+    // every indent depth, instead of enumerating indent variants
+    // (which silently miss a new indentation).
     const std::string squashed = ants_test::squashWhitespace(cpp);
-    const int total = static_cast<int>(ants_test::countOccurrences(
-        squashed,
+    const std::string fill =
+        "m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);";
+    const std::string recompute =
         "m_roadmapCacheDuplicateIds = "
-        "rcComputeDuplicateIds(rc.m_roadmapCacheBullets);"));
-    expect(total >= 2,
-           ("INV-2: recompute call site expected at both "
-            "cache-fill paths; found " +
-            std::to_string(total)).c_str());
+        "rcComputeDuplicateIds(rc.m_roadmapCacheBullets);";
+    // Every whole-roadmap fill is followed by a recompute.
+    const int fills = static_cast<int>(
+        ants_test::countOccurrences(squashed, fill));
+    const int total = static_cast<int>(
+        ants_test::countOccurrences(squashed, recompute));
+    expect(fills >= 1 && total == fills,
+           ("INV-2: one recompute per cache fill expected; found " +
+            std::to_string(fills) + " fills and " +
+            std::to_string(total) + " recomputes").c_str());
+    // The loader holds that pair, and both fill paths go through it.
+    const std::string loader = ants_test::slurpFunctionBody(
+        cpp, "RemoteControl::RoadmapQueryCall::loadBulletCache(");
+    const std::string sqLoader = ants_test::squashWhitespace(loader);
+    const auto f = sqLoader.find(fill);
+    expect(f != std::string::npos &&
+               sqLoader.find(recompute, f) != std::string::npos,
+           "INV-2: loadBulletCache recomputes after it fills the cache");
+    for (const char *path : {"RemoteControl::RoadmapQueryCall::refillCache(",
+                             "RemoteControl::RoadmapQueryCall::fillBulletsIfCold("}) {
+        const std::string body = ants_test::slurpFunctionBody(cpp, path);
+        expect(body.find("loadBulletCache()") != std::string::npos,
+               (std::string("INV-2: ") + path +
+                " fills the cache through loadBulletCache").c_str());
+    }
     EXPECT_EQ(0, expect_failures());
 }
 
