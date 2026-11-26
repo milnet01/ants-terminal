@@ -29,14 +29,20 @@ namespace DocCitations {
 
 namespace {
 
-// Document order — ascending docLine, then ascending column. Every row list
-// this file pages over is sorted by it: paging is only meaningful against one
-// defined order, and two citations on one line must not swap between runs.
+// Document order — ascending line, then ascending column. Spans never
+// overlap, so this totally orders them and a monotone cursor over
+// document-ordered citations is exact.
+bool posBefore(int l1, int c1, int l2, int c2) {
+    return l1 != l2 ? l1 < l2 : c1 < c2;
+}
+
+// Every row list this file pages over is sorted by posBefore: paging is only
+// meaningful against one defined order, and two citations on one line must
+// not swap between runs.
 struct ByDocPosition {
     template <typename T>
     bool operator()(const T &a, const T &b) const {
-        return a.docLine != b.docLine ? a.docLine < b.docLine
-                                      : a.docCol < b.docCol;
+        return posBefore(a.docLine, a.docCol, b.docLine, b.docCol);
     }
 };
 
@@ -448,12 +454,6 @@ struct Anchor {
     QString symbol;   // the span's content, VERBATIM — what anchor_symbol carries
     QString needle;   // the text after its last "::" — what the search looks for
 };
-
-// Position order over (line, col). Spans never overlap, so this totally orders
-// them and a monotone cursor over document-ordered citations is exact.
-bool posBefore(int l1, int c1, int l2, int c2) {
-    return l1 != l2 ? l1 < l2 : c1 < c2;
-}
 
 // The immediately preceding code span, when it is an identifier within reach.
 // `cursor` walks forward across calls; citations arrive in document order and
