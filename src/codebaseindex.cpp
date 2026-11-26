@@ -325,37 +325,7 @@ static StaleSet staleFilesWith(const Index &prev, const QString &rootCanonical,
                                const QStringList &cands) {
     StaleSet ss;
     ss.mapSourceChanged = currentMapSourceMtimeMs != prev.mapSourceMtimeMs;
-
-    QSet<QString> prevPaths;
-    QMap<QString, qint64> prevMtime;
-    for (const FileEntry &fe : prev.files) {
-        prevPaths.insert(fe.path);
-        prevMtime.insert(fe.path, fe.mtimeMs);
-    }
-
-    // ANTS-5103 — a capped index holds a PREFIX of the candidate walk. Files
-    // past its last entry were never cached, so counting them as added made
-    // every call refresh and rewrite the cache, and never answer 304. Compare
-    // against the prefix (it also spares the tail a stat); a removed prefix
-    // file still triggers the refresh that lets the tail shift in.
-    qsizetype prefixEnd = cands.size();
-    if (prev.filesTruncated && !prev.files.isEmpty()) {
-        const qsizetype last = cands.indexOf(prev.files.constLast().path);
-        if (last >= 0) prefixEnd = last + 1;
-    }
-
-    QSet<QString> curSet;
-    for (qsizetype i = 0; i < cands.size(); ++i) {
-        const QString &rel = cands.at(i);
-        curSet.insert(rel);
-        if (i >= prefixEnd) continue;
-        const qint64 m = QFileInfo(rootCanonical + QLatin1Char('/') + rel)
-                             .lastModified().toMSecsSinceEpoch();
-        if (!prevPaths.contains(rel)) ss.added << rel;
-        else if (prevMtime.value(rel) != m) ss.changed << rel;
-    }
-    for (const QString &p : prevPaths)
-        if (!curSet.contains(p)) ss.removed << p;
+    IndexCache::diffAgainstWalk(prev.files, prev.filesTruncated, rootCanonical, cands, ss);
     return ss;
 }
 
