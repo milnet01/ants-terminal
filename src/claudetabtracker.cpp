@@ -202,7 +202,21 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
     }
 
     if (entry.claudePid != found) {
-        if (entry.claudePid == 0) entry.state.state = ClaudeState::Idle;
+        if (entry.claudePid == 0) {
+            entry.state.state = ClaudeState::Idle;
+        } else if (entry.claudePid > 0 && !entry.transcriptPath.isEmpty()) {
+            // ANTS-6627 — Claude restarted between two polls. The bound
+            // transcript and what was read from it belong to the old
+            // process; drop them so the new one is resolved below. The
+            // test seam's -1 sentinel names no process, so it keeps its path.
+            releaseWatch(entry.transcriptPath);
+            entry.transcriptPath.clear();
+            entry.state.state = ClaudeState::Idle;
+            entry.state.tool.clear();
+            entry.state.contextTokens = -1;
+            entry.state.contextEstimated = false;
+            entry.state.planMode = false;
+        }
         entry.claudePid = found;
         // ANTS-5773 § 2.3 — a new Claude PID starts a new count, and its
         // start time retires tasks an earlier process left behind.

@@ -180,7 +180,7 @@ void ClaudeAllowlistDialog::setSettingsPath(const QString &path) {
     // to a fresh project's allowlist. Cleared BEFORE loading, so a load
     // error reported below survives (ANTS-5092).
     if (m_ruleInput)        m_ruleInput->clear();
-    if (m_validationLabel)  m_validationLabel->clear();
+    if (m_validationLabel)  showValidationHint({});  // ANTS-6627 — hides the row too
     loadSettings();
 }
 
@@ -220,7 +220,7 @@ void ClaudeAllowlistDialog::prefillRule(const QString &rule) {
     addRuleWithCompanion(m_allowList, finalRule);
     if (m_allowList->count() > preCount) {
         showValidationHint(
-            QStringLiteral("Added to Allow list. Click Save to persist."),
+            QStringLiteral("Added to Allow list. Click OK or Apply to save it."),
             false);
     }
 }

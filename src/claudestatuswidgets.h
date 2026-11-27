@@ -311,7 +311,8 @@ private:
                     // MainWindow::applyClaudeStatusLabel)
 
     // ANTS-6227 — the focused tab's Claude transcript, or empty. The tab
-    // tracker's per-shell path comes first; the cwd walk is the fallback.
+    // tracker's per-shell path comes first; the cwd walk is the fallback,
+    // used only while the tracker does not report the tab NotRunning.
     QString focusedSessionPath(TerminalWidget *focused) const;
 
     // Every model-switch path (chip, deferred chip, auto, undo) switches
@@ -449,9 +450,11 @@ private:
     // sit unsubmitted until the user presses Escape (interrupting the turn).
     // Instead we record the requested tier + owning shell PID here and fire the
     // switch when that shell next transitions to Idle (turn complete). Empty
-    // tier = nothing deferred. Cleared on fire, or dropped if the tab closes.
+    // tier = nothing deferred. Cleared on fire, or dropped if the tab closes
+    // or the Claude it was queued for ends (ANTS-6627: its start time).
     QString m_deferredChipTier;
     pid_t   m_deferredChipShellPid = 0;
+    qint64  m_deferredChipClaudeStartMs = 0;
     // ANTS-1735 §8 OQ-3 — per-process latch so the first-run nudge fires
     // at most once even before MainWindow gets a chance to flip the
     // persistent claude.auto_model_nudge_shown flag.

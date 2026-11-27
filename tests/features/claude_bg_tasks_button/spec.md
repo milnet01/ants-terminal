@@ -146,7 +146,8 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   resolves its transcript with `focusedSessionPath()` (ANTS-6227).
   That helper returns the tab tracker's transcript for the focused
   shell first, and falls back to `activeSessionPath` on the focused
-  terminal's `shellCwd()`. Nothing else in `claudestatuswidgets.cpp`
+  terminal's `shellCwd()`, except for a tab the tracker reports
+  `NotRunning`, which gets no transcript (ANTS-6627). Nothing else in `claudestatuswidgets.cpp`
   calls `activeSessionPath`. Without all three pieces, the dialog
   shows the system-wide newest `.jsonl` regardless of the active
   tab's project — visible to the user as "background tasks from
@@ -236,6 +237,20 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   still wired to a dead tracker is itself the failure this invariant
   reports, and the test clicks it anyway as a best-effort probe.
   Behavioral (link-based): `RefreshAfterTrackerDestroyedDoesNotCrash`.
+
+- **INV-18** (a partial helper line is not a move, ANTS-6627):
+  `walkHelperTranscripts` returns true only when it folds in an event
+  or a helper's meta flag changes. A helper whose last line is still
+  being written leaves the file longer than the cursor on every poll;
+  that alone MUST NOT read as a move, or `poll()` rescans every 2 s.
+  Behavioral: `Ants6627PartialHelperLineIsNotAMove`.
+
+- **INV-19** (a foreground helper's result ends no task, ANTS-6627):
+  the completion fallback that scans a result's text for running ids
+  MUST skip the result of an `Agent` or `Task` call. Such a result has
+  status `completed` and its text can name a running background id.
+  A completion result of any other call still ends the task it names.
+  Behavioral: `Ants6627ForegroundAgentResultEndsNothing`.
 
 ## How to verify pre-fix code fails
 

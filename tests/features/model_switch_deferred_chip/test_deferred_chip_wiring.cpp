@@ -88,3 +88,27 @@ TEST(DeferredChipSwitch, Inv345FireHelperContract) {
     EXPECT_LT(noTermPos, sendPos)
         << "INV-5: the tab-closed drop must precede the send";
 }
+
+// INV-6 (ANTS-6627) — the deferral is dropped, not kept, once the Claude it
+// was queued for ends: NotRunning, or a different Claude start time. The
+// click records that start time.
+TEST(DeferredChipSwitch, Inv6DeferralEndsWithItsSession) {
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    EXPECT_NE(src.find("m_deferredChipClaudeStartMs = focusedState.claudeStartMs;"),
+              std::string::npos)
+        << "INV-6: the click must record the owning Claude's start time";
+    const std::string body = functionBody(
+        src, "void ClaudeStatusBarController::maybeFireDeferredChipSwitch");
+    ASSERT_FALSE(body.empty()) << "maybeFireDeferredChipSwitch body not found";
+    const auto endedPos = body.find("ss.state == ClaudeState::NotRunning");
+    ASSERT_NE(endedPos, std::string::npos) << "INV-6: must drop on NotRunning";
+    EXPECT_NE(body.find("ss.claudeStartMs != m_deferredChipClaudeStartMs"),
+              std::string::npos)
+        << "INV-6: must drop when another Claude replaced the one it was queued for";
+    const auto dropPos = body.find("m_deferredChipTier.clear();", endedPos);
+    const auto waitPos = body.find("ss.state != ClaudeState::Idle");
+    ASSERT_NE(dropPos, std::string::npos);
+    ASSERT_NE(waitPos, std::string::npos);
+    EXPECT_LT(dropPos, waitPos)
+        << "INV-6: the drop must come before the keep-waiting return";
+}

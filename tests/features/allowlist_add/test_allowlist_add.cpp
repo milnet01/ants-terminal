@@ -26,10 +26,14 @@
 #include <QApplication>
 #include <QDialog>
 #include <QFile>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
+#include <QPushButton>
+#include <QRegularExpression>
 #include <QString>
+#include <QTemporaryDir>
 
 #include <cstdio>
 
@@ -540,6 +544,32 @@ int checkEnvValueWildcard() {
 
 TEST(AllowlistAdd, EnvValueWildcard) {
     if (checkEnvValueWildcard()) FAIL();
+}
+
+// ANTS-6627 — the hint after a prefilled add names a button the dialog has,
+// and opening the dialog on another settings file hides the hint row.
+TEST(AllowlistAdd, AddedHintNamesRealButtonAndHidesOnReopen) {
+    ClaudeAllowlistDialog dlg;
+    dlg.prefillRule(QStringLiteral("Bash(ls -la)"));
+    QLabel *hint = nullptr;
+    for (QLabel *l : dlg.findChildren<QLabel *>())
+        if (l->text().startsWith(QLatin1String("Added to Allow list"))) hint = l;
+    ASSERT_NE(hint, nullptr) << "a prefilled add shows the added hint";
+    EXPECT_FALSE(hint->isHidden());
+
+    const QString named = QRegularExpression(QStringLiteral("Click (\\w+)"))
+                              .match(hint->text()).captured(1);
+    ASSERT_FALSE(named.isEmpty()) << qPrintable(hint->text());
+    bool exists = false;
+    for (const QPushButton *b : dlg.findChildren<QPushButton *>())
+        if (b->text().remove(QLatin1Char('&')) == named) exists = true;
+    EXPECT_TRUE(exists) << "the hint names a \"" << qPrintable(named)
+                        << "\" button the dialog does not have";
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    dlg.setSettingsPath(dir.filePath(QStringLiteral("settings.local.json")));
+    EXPECT_TRUE(hint->isHidden()) << "a reopened dialog shows an empty hint row";
 }
 
 TEST(AllowlistAdd, Main) {

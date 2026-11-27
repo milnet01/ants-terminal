@@ -139,6 +139,14 @@ wildcard, never as the literal character.
 - A `*` after the assignments, in the command's own arguments, is
   unaffected.
 
+### G. The hint row (ANTS-6627)
+
+- After a prefilled rule is added, the hint names a button the dialog
+  has (it has OK, Apply and Cancel; there is no Save button).
+- `setSettingsPath` hides the hint row, so a dialog reopened on another
+  settings file shows no empty row. A load error reported after that
+  still shows.
+
 ## Rationale
 
 - The allowlist is security-sensitive user policy. A rule that looks

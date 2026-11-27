@@ -197,6 +197,19 @@ tracker class) rather than pixel-level painting:
     transcript reads `Idle`, a sessions file names a second transcript
     carrying a tool call, and the state MUST reach `ToolUse`.
 
+12. **INV-12 A restarted Claude drops the old transcript**
+    *(ANTS-6627)*. When a poll finds a different Claude PID than the real
+    one it tracked (not `forceRefreshForTest`'s `-1` sentinel), with no
+    poll in between that saw no Claude, the bound
+    transcript belongs to the old process. `detectClaudeChild` MUST
+    release its watch, clear the path, and reset the state read from it
+    (state `Idle`, no tool, no context reading, plan mode off) before it
+    resolves the new process's transcript. Tested in
+    `checkRestartDropsOldTranscript`: a fake `claude` child bound to a
+    transcript mid tool call is replaced by a second one without the
+    event loop running, and the next detection MUST leave no path bound
+    and the state `Idle`.
+
 ## Rationale
 
 The existing single-global `ClaudeIntegration` design assumes one

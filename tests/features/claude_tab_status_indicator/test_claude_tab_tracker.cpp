@@ -51,6 +51,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 
 #include <cstdio>
 #include <unistd.h>
@@ -698,6 +699,96 @@ int checkTranscriptBindsAfterClaudeStarts() {
     return 0;
 }
 
+// Start a `claude`-named child (a symlink to sleep) and wait, without running
+// the event loop, until its argv[0] is the fake claude. Before execve the
+// child still carries this binary's argv, which also contains "claude".
+// Returns its pid, or 0.
+pid_t startFakeClaude(QProcess &proc, const QString &fakeClaude, const QString &cwd) {
+    proc.setProgram(fakeClaude);
+    proc.setArguments({QStringLiteral("30")});
+    proc.setWorkingDirectory(cwd);
+    proc.start();
+    if (!proc.waitForStarted(3000)) return 0;
+    const pid_t child = static_cast<pid_t>(proc.processId());
+    for (int i = 0; i < 300; ++i) {
+        QFile f(QStringLiteral("/proc/%1/cmdline").arg(child));
+        if (f.open(QIODevice::ReadOnly)
+                && QFileInfo(QString::fromLocal8Bit(f.readAll().split('\0').value(0)))
+                           .fileName() == QFileInfo(fakeClaude).fileName())
+            return child;
+        QThread::msleep(10);
+    }
+    return 0;
+}
+
+// INV-12 (ANTS-6627) — Claude exits and a new Claude starts in the same shell
+// between two polls. The old process's transcript must be dropped, not kept
+// for the new session. The event loop never runs between the two processes,
+// so no poll can see the gap and clear the path the other way.
+int checkRestartDropsOldTranscript() {
+    const QString sleepBin = QStandardPaths::findExecutable(QStringLiteral("sleep"));
+    if (sleepBin.isEmpty()) {
+        std::fprintf(stderr, "[INV-12] no 'sleep' on PATH — skipping\n");
+        return 0;
+    }
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) { std::fprintf(stderr, "[INV-12] tmpdir fail\n"); return 1; }
+    // An empty ~/.claude, so the new process resolves no transcript.
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("HOME", tmp.path().toUtf8());
+    const QString cwd = tmp.path() + "/work/proj";
+    QDir().mkpath(cwd);
+    QDir().mkpath(tmp.path() + "/bin");
+    const QString fakeClaude = tmp.path() + "/bin/claude";
+    if (!QFile::link(sleepBin, fakeClaude)) {
+        std::fprintf(stderr, "[INV-12] FAIL could not symlink the fake claude\n");
+        return 1;
+    }
+
+    QProcess first;
+    auto stopFirst = qScopeGuard([&]() { first.kill(); first.waitForFinished(3000); });
+    if (startFakeClaude(first, fakeClaude, cwd) == 0) {
+        std::fprintf(stderr, "[INV-12] FAIL first fake claude did not start\n");
+        return 1;
+    }
+    ClaudeTabTracker tracker;
+    const pid_t shell = ::getpid();
+    tracker.trackShell(shell);
+    // The old session's transcript, mid tool call.
+    const QString oldPath = tmp.path() + "/oldsession.jsonl";
+    write_file(oldPath,
+        R"({"type":"assistant","message":{"stop_reason":"tool_use","content":[{"type":"tool_use","name":"Bash","input":{}}]}}
+)");
+    tracker.forceRefreshForTest(shell, oldPath);
+    if (tracker.shellState(shell).state != ClaudeState::ToolUse) {
+        std::fprintf(stderr, "[INV-12] FAIL setup: state=%d want ToolUse\n",
+                     int(tracker.shellState(shell).state));
+        return 1;
+    }
+
+    first.kill();
+    first.waitForFinished(3000);
+    QProcess second;
+    auto stopSecond = qScopeGuard([&]() { second.kill(); second.waitForFinished(3000); });
+    if (startFakeClaude(second, fakeClaude, cwd) == 0) {
+        std::fprintf(stderr, "[INV-12] FAIL second fake claude did not start\n");
+        return 1;
+    }
+    tracker.trackShell(shell);   // the next poll's detection
+
+    const ClaudeTabTracker::ShellState s = tracker.shellState(shell);
+    if (!tracker.transcriptPath(shell).isEmpty() || s.state != ClaudeState::Idle
+            || tracker.shellForSessionId(QStringLiteral("oldsession")) != 0) {
+        std::fprintf(stderr, "[INV-12] FAIL the new Claude kept the old transcript: "
+                             "path=%s state=%d want empty, Idle\n",
+                     qUtf8Printable(tracker.transcriptPath(shell)), int(s.state));
+        return 1;
+    }
+    std::printf("[%-32s] old transcript dropped on restart  PASS\n",
+                "INV-12-restart-drops-transcript");
+    return 0;
+}
+
 } // namespace
 
 TEST(ClaudeTabStatusIndicator, Main) {
@@ -747,6 +838,7 @@ TEST(ClaudeTabStatusIndicator, Main) {
     failures += checkProjectCwdScopedTranscript();
     failures += checkOrphanScanCadence();
     failures += checkTranscriptBindsAfterClaudeStarts();
+    failures += checkRestartDropsOldTranscript();
 
     if (failures) {
         std::fprintf(stderr, "\n%d check(s) failed\n", failures);

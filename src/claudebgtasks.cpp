@@ -371,9 +371,13 @@ void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
                 QString idHint = tur.value(QStringLiteral("shellId")).toString();
                 if (idHint.isEmpty())
                     idHint = tur.value(QStringLiteral("bash_id")).toString();
+                // ANTS-6627 — a foreground helper's own result is not a
+                // task's end, though its text may name a running id.
+                const bool helperResult = call.name == QLatin1String("Agent")
+                                       || call.name == QLatin1String("Task");
                 if (!idHint.isEmpty()) {
                     finishById(acc, idHint);
-                } else {
+                } else if (!helperResult) {
                     // Fallback: scan result text for any tracked id.
                     // ANTS-1669 — match on a word boundary so a short id
                     // ("abc") isn't falsely flipped finished by a result
@@ -481,10 +485,11 @@ bool ClaudeBgTaskTracker::walkHelperTranscripts(const QString &path, ClaudeBgTas
         ClaudeTranscript::Cursor &cursor = acc.helperCursors[helper.filePath()];
         if (cursor.primed && helper.size() == cursor.offset) continue;
         if (!ClaudeTranscript::canResume(helper.filePath(), cursor)) cursor = {};
+        // ANTS-6627 — moved only when an event was folded in: a last line
+        // still being written leaves the size ahead of the cursor every poll.
         ClaudeTranscript::walkFrom(helper.filePath(), cursor,
-            [&acc](const QJsonObject &ev, qint64) { applyBgEvent(acc, ev); },
+            [&acc, &read](const QJsonObject &ev, qint64) { applyBgEvent(acc, ev); read = true; },
             ClaudeTranscript::Sidechains::Keep);
-        read = true;
     }
     // ANTS-6322, ANTS-6326 — a helper's last notice can be a pause, so its meta
     // file is read too. Claude Code sets the flag at a pause as well as at the

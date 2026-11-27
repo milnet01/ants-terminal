@@ -413,9 +413,11 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         // gives the user a "switch without interrupting" path through Ants's
         // own UI — the typed-`/model`-in-composer case stays blocked on
         // Claude Code exposing composer state (tracked on the roadmap).
-        if (busyForModelSwitch(shellStateOf(m_tracker, focused))) {
+        const ClaudeTabTracker::ShellState focusedState = shellStateOf(m_tracker, focused);
+        if (busyForModelSwitch(focusedState)) {
             m_deferredChipTier     = tier;
             m_deferredChipShellPid = focused->shellPid();
+            m_deferredChipClaudeStartMs = focusedState.claudeStartMs;
             m_modelBtn->setToolTip(
                 tr("Switch to %1 queued — applies when Claude finishes this turn")
                     .arg(tier));
@@ -1149,6 +1151,10 @@ QString ClaudeStatusBarController::focusedSessionPath(TerminalWidget *focused) c
     if (m_tracker) {
         const QString own = m_tracker->transcriptPath(focused->shellPid());
         if (!own.isEmpty()) return own;
+        // ANTS-6627 — no Claude in this tab: the walk below would show
+        // another tab's session, so the chips show nothing.
+        if (m_tracker->shellState(focused->shellPid()).state == ClaudeState::NotRunning)
+            return {};
     }
     // Not bound yet: the newest session under the shell's project tree
     // (INV-11), which can be another tab's in the same tree (ANTS-5773).
@@ -2482,6 +2488,14 @@ void ClaudeStatusBarController::maybeFireDeferredChipSwitch(pid_t shellPid) {
         const ClaudeTabTracker::ShellState ss =
             m_tracker ? m_tracker->shellState(shellPid)
                       : ClaudeTabTracker::ShellState{};
+        // ANTS-6627 — the Claude the switch was queued for has ended, or
+        // another one replaced it; a later Claude must not receive it.
+        if (ss.state == ClaudeState::NotRunning
+                || ss.claudeStartMs != m_deferredChipClaudeStartMs) {
+            m_deferredChipTier.clear();
+            m_deferredChipShellPid = 0;
+            return;
+        }
         // Keep waiting while non-Idle OR a permission prompt is pending
         // (awaitingInput) — firing into the prompt would answer it instead of
         // switching (indie-review loop-2 2026-06-04).

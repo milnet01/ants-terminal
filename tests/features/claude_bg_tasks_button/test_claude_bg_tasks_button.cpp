@@ -340,6 +340,14 @@ TEST(ClaudeBgTasksButton, Main) {
                  "first, then fall back to activeSessionPath() on its "
                  "shellCwd()");
         }
+        // ANTS-6627 — and never for a tab the tracker reports NotRunning:
+        // the walk would then show another tab's session.
+        const auto notRunning = helper.find("ClaudeState::NotRunning");
+        if (notRunning == std::string::npos || notRunning > walk) {
+            fail("INV-11(c): focusedSessionPath() must return empty for a "
+                 "tab the tracker reports NotRunning, before the "
+                 "activeSessionPath() fallback");
+        }
         if (ants_test::countOccurrences(ants_test::stripComments(csw),
                                         "activeSessionPath(") != 1) {
             fail("INV-11(c): claudestatuswidgets.cpp must call "
@@ -1481,4 +1489,64 @@ TEST(ClaudeBgTasksButton, Ants6404ExpiredMonitorEnds) {
     ASSERT_EQ(expired.size(), 1);
     EXPECT_TRUE(expired[0].finished) << "the expiry notice ends the monitor";
     EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(expired).monitors, 0);
+}
+
+// ANTS-6627 — a helper's last line still being written is not a move, so a
+// poll does not rescan for it; the finished line is.
+TEST(ClaudeBgTasksButton, Ants6627PartialHelperLineIsNotAMove) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("b.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, {});
+    const QString helper = helperFile(dir, "s", "ahelper");
+    writeLines(helper, helperShell("2026-10-30T18:09:02.000Z", "b", out));
+    const QByteArray end = jsonLine(helperLine(
+        userNotification("2026-10-30T18:31:02.000Z", "b", "failed"))).toUtf8();
+    const auto appendRaw = [&](const QByteArray &bytes) {
+        QFile f(helper);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Append));
+        f.write(bytes);
+    };
+    appendRaw(end.left(end.size() / 2));
+
+    ClaudeTranscript::Cursor cursor;
+    ClaudeBgTaskAccum acc;
+    ClaudeBgTaskTracker::parseIncremental(tp, cursor, acc);
+    EXPECT_FALSE(ClaudeBgTaskTracker::walkHelperTranscripts(tp, acc))
+        << "an unfinished last line is not a move";
+
+    appendRaw(end.mid(end.size() / 2));
+    EXPECT_TRUE(ClaudeBgTaskTracker::walkHelperTranscripts(tp, acc))
+        << "the finished line is read";
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 0);
+}
+
+// ANTS-6627 — a foreground helper's result with a completion status ends no
+// task, though its text names a running one; a BashOutput-style result does.
+TEST(ClaudeBgTasksButton, Ants6627ForegroundAgentResultEndsNothing) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("bwmysc2h1.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    QList<QJsonObject> ev = timedOutShell(out);
+    ev << assistantToolUse("2026-10-19T10:45:00.000Z", "Agent", "toolu_fg",
+                           QJsonObject{{"description", "Review"}})
+       << userToolResult("2026-10-19T10:50:00.000Z", "toolu_fg",
+                         QJsonObject{{"status", "completed"}},
+                         QStringLiteral("Reviewed. The build bwmysc2h1 is still running."));
+    writeLines(tp, ev);
+    auto tasks = ClaudeBgTaskTracker::parseTranscript(tp);
+    ASSERT_EQ(tasks.size(), 1);
+    EXPECT_FALSE(tasks[0].finished) << "a helper's result is not the shell's end";
+
+    ev << userToolResult("2026-10-19T10:55:00.000Z", "toolu_out",
+                         QJsonObject{{"status", "completed"}},
+                         QStringLiteral("bwmysc2h1 exited with code 0"));
+    writeLines(tp, ev);
+    tasks = ClaudeBgTaskTracker::parseTranscript(tp);
+    ASSERT_EQ(tasks.size(), 1);
+    EXPECT_TRUE(tasks[0].finished) << "a completion result naming the id still ends it";
 }

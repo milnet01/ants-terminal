@@ -21,7 +21,7 @@ Ants-owned chip-click path, where Ants knows both the intent and the state.
   pre-1915 behaviour).
 - On `shellStateChanged(pid)` → `maybeFireDeferredChipSwitch(pid)` fires the
   deferred switch iff a deferral is pending for that pid AND the shell is now
-  Idle AND its terminal still exists. The terminal is resolved by shellPid
+  Idle AND its terminal still exists AND the same Claude still runs there. The terminal is resolved by shellPid
   (not focus), so the switch lands on the correct PTY even if the user moved
   to another tab.
 
@@ -39,6 +39,11 @@ Ants-owned chip-click path, where Ants knows both the intent and the state.
   switcher does not immediately undo the user-initiated switch.
 - **INV-5** — If no terminal owns the pid at fire time (tab closed), the
   deferral is dropped without sending `/model`.
+- **INV-6** (ANTS-6627) — The click records the owning Claude's start time
+  (`ShellState::claudeStartMs`). When the shell's state is `NotRunning`, or
+  its Claude start time differs from the recorded one, the deferral is
+  dropped without sending `/model`, before the keep-waiting check: a later
+  Claude in that shell never receives a switch queued for an earlier one.
 
 ## Test files
 - `test_deferred_chip_wiring.cpp` → `test_claude` (source-grep wiring guard,
