@@ -124,6 +124,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The build caps compile jobs at 2 when CMake cannot count the host's cores, instead of running unlimited** (ANTS-6623)
+
+- **changelog_log normalize, amend and release, changelog_query's lint, and feedback-file writing and reading handle mixed sections, placeholder notes, unclosed fences, dashes in titles and unreadable files correctly** (ANTS-6624)
+
+- **Window titles show markup as plain text; an unanswered global-hotkey bind reports after 30 s; quick repeat centre-window clicks both work; the command palette's suggestion never covers typed text; Claude state dots stay visible on mid-dark tab bars** (ANTS-6625)
+
 - **Project Audit: reading a damaged false-positive ledger stops instead of hanging; the trend line hides under filtered views; TODO scan reads comments; Defer all files exactly what it showed; stale blame, non-ASCII recent paths, top-level tests/ paths and multi-line fold-in messages are handled** (ANTS-6982)
 
 - **roadmap_log's delete_section, move_section and create_section find a section's subsections past a section stored in another roadmap file** (ANTS-6951)
