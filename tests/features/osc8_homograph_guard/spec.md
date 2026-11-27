@@ -46,9 +46,15 @@ Split the policy out of the modal dialog into a pure, unit-testable
   warning dialog runs a nested event loop, during which output can clear the
   span cache. A span held by reference into that cache would then be freed
   before the URL is opened.
+- **INV-8 (ANTS-6967)** — URL quick-select opens an OSC 8 link through
+  `openHyperlink`, as a click does. Picking a link whose verdict is not `None`
+  shows the warning; Cancel leaves it closed, Open opens it once.
 
 ## Test
 
 INV-1 to INV-6 are pure calls to the static `classifyHyperlink` — no widget
 instance, no modal dialog. Label + URL in, verdict out. INV-7 is a source
-scrape of `terminalwidget.h`, because the dialog path needs a modal.
+scrape of `terminalwidget.h`. INV-8 drives a `TerminalWidget` headless: it
+feeds an OSC 8 link ("click here" over a raw public IP), enters quick-select,
+presses the label key, and answers the warning from a timer inside its event
+loop. A `QDesktopServices` URL handler records what opens, so no browser runs.

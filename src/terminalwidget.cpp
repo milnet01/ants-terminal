@@ -1995,13 +1995,19 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         if (!ch.isEmpty() && ch[0].isLetter()) {
             m_quickSelectInput += ch;
             // Check for matching label
-            for (const auto &ql : m_quickSelectLabels) {
-                if (ql.label == m_quickSelectInput) {
+            for (const auto &match : m_quickSelectLabels) {
+                if (match.label == m_quickSelectInput) {
+                    // A copy: exitUrlQuickSelect clears the vector `match` is in.
+                    const QuickSelectLabel ql = match;
                     exitUrlQuickSelect();
                     if (ql.isFilePath) {
                         openFileAtPath(ql.url);
                     } else if (ql.url.startsWith("http://") || ql.url.startsWith("https://")) {
-                        QDesktopServices::openUrl(QUrl(ql.url));
+                        // ANTS-6967 — the click's route, so an OSC 8 link gets
+                        // the same lookalike-link check.
+                        openHyperlink(UrlSpan{ql.startCol, ql.endCol, ql.url,
+                                              false, ql.isOsc8},
+                                      ql.globalLine);
                     } else {
                         // Non-URL match (SHA, IP, email) — copy to clipboard
                         clipboardguard::writeText(ql.url,
@@ -5363,6 +5369,7 @@ void TerminalWidget::enterUrlQuickSelect() {
             ql.endCol = s.endCol;
             ql.url = s.url;
             ql.isFilePath = s.isFilePath;
+            ql.isOsc8 = s.isOsc8;
             ql.label = labels.mid(labelIdx, 1);
             m_quickSelectLabels.push_back(ql);
             ++labelIdx;

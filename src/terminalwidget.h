@@ -1203,7 +1203,7 @@ private:
 
     // URL quick-select mode
     bool m_urlQuickSelectActive = false;
-    struct QuickSelectLabel { int globalLine = 0; int startCol = 0; int endCol = 0; QString url; QString label; bool isFilePath = false; };
+    struct QuickSelectLabel { int globalLine = 0; int startCol = 0; int endCol = 0; QString url; QString label; bool isFilePath = false; bool isOsc8 = false; };
     std::vector<QuickSelectLabel> m_quickSelectLabels;
     QString m_quickSelectInput;
 

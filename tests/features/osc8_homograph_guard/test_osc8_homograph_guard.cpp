@@ -1,13 +1,38 @@
 // Feature-conformance test for spec.md (ANTS-2119 terminalwidget M2).
 //
-// Pure classification of the OSC 8 phishing guard — no widget, no modal dialog.
-// classifyHyperlink is a static policy function split out of openHyperlink.
+// INV-1..6: pure classification of the OSC 8 phishing guard — no widget, no
+// modal dialog. classifyHyperlink is a static policy function split out of
+// openHyperlink. INV-8 drives a widget headless and answers the dialog.
 
 #include <gtest/gtest.h>
 #include "terminalwidget.h"
 #include "../../_support/srcgrep.h"
 
+#include "terminalgrid.h"
+#include "vtparser.h"
+
+#include <QAbstractButton>
+#include <QApplication>
+#include <QCoreApplication>
+#include <QDesktopServices>
+#include <QKeyEvent>
+#include <QMessageBox>
 #include <QString>
+#include <QTimer>
+#include <QUrl>
+
+#include <string>
+#include <vector>
+
+// INV-8 — stands in for the desktop's browser launcher, so no test run opens
+// a real browser. QDesktopServices calls a handler by slot name.
+class Osc8UrlRecorder : public QObject {
+    Q_OBJECT
+public:
+    std::vector<QUrl> opened;
+public slots:
+    void open(const QUrl &url) { opened.push_back(url); }
+};
 
 namespace {
 using HW = TerminalWidget::HyperlinkWarning;
@@ -77,3 +102,76 @@ TEST(Osc8HomographGuard, Inv7OpenHyperlinkTakesSpanByValue) {
               std::string::npos)
         << "openHyperlink must take its UrlSpan by value";
 }
+
+// INV-8 (ANTS-6967) — URL quick-select opens an OSC 8 link through the same
+// check a click gets. Drives the widget: an OSC 8 link whose text ("click
+// here") hides a raw public IP, quick-select on, then the label key.
+namespace {
+
+constexpr const char *kHiddenUrl = "http://203.0.113.7/payload";
+
+struct QuickSelectHarness {
+    TerminalWidget w;
+    VtParser parser{[this](const VtAction &a) { w.grid()->processAction(a); }};
+    Osc8UrlRecorder recorder;
+    QString dialogTitle;   // the warning's title, empty when none was shown
+
+    QuickSelectHarness() {
+        w.grid()->resize(6, 60);
+        QDesktopServices::setUrlHandler(QStringLiteral("http"), &recorder, "open");
+        QDesktopServices::setUrlHandler(QStringLiteral("https"), &recorder, "open");
+        const std::string link = std::string("\x1B]8;;") + kHiddenUrl +
+                                 "\x07" "click here" "\x1B]8;;\x07\r\n";
+        parser.feed(link.data(), static_cast<int>(link.size()));
+    }
+    ~QuickSelectHarness() {
+        QDesktopServices::unsetUrlHandler(QStringLiteral("http"));
+        QDesktopServices::unsetUrlHandler(QStringLiteral("https"));
+    }
+
+    // Quick-select, press the only label ("a"), and answer any warning with
+    // `answer`. The warning runs a nested event loop; the timer fires inside it.
+    void pickOnlyLabel(QMessageBox::StandardButton answer) {
+        QTimer answerer;
+        answerer.setInterval(10);
+        QObject::connect(&answerer, &QTimer::timeout, [&] {
+            for (QWidget *top : QApplication::topLevelWidgets()) {
+                auto *box = qobject_cast<QMessageBox *>(top);
+                if (!box || !box->isVisible()) continue;
+                dialogTitle = box->windowTitle();
+                answerer.stop();
+                if (QAbstractButton *b = box->button(answer)) b->click();
+                else box->reject();
+                return;
+            }
+        });
+        answerer.start();
+        w.enterUrlQuickSelect();
+        QKeyEvent key(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+        QCoreApplication::sendEvent(&w, &key);
+        answerer.stop();
+    }
+};
+
+}  // namespace
+
+TEST(Osc8HomographGuard, Inv8QuickSelectWarnsAndCancelKeepsLinkClosed) {
+    QuickSelectHarness h;
+    h.pickOnlyLabel(QMessageBox::Cancel);
+    EXPECT_EQ(h.dialogTitle.toStdString(), "Suspicious hyperlink")
+        << "quick-select opened the OSC 8 link without the lookalike-link check";
+    EXPECT_TRUE(h.recorder.opened.empty())
+        << "the link opened although the warning was cancelled";
+}
+
+TEST(Osc8HomographGuard, Inv8QuickSelectOpensAfterConfirm) {
+    QuickSelectHarness h;
+    h.pickOnlyLabel(QMessageBox::Open);
+    EXPECT_EQ(h.dialogTitle.toStdString(), "Suspicious hyperlink")
+        << "quick-select opened the OSC 8 link without the lookalike-link check";
+    ASSERT_EQ(h.recorder.opened.size(), 1u);
+    EXPECT_EQ(h.recorder.opened.front().toString().toStdString(), kHiddenUrl);
+}
+
+// AUTOMOC: Osc8UrlRecorder is a QObject declared in this file.
+#include "test_osc8_homograph_guard.moc"
