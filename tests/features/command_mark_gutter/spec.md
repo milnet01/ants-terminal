@@ -42,8 +42,9 @@ Per tick:
 - `commandEndMs > 0 && exitCode != 0` → red
 - `commandEndMs == 0` (in-progress) → gray
 
-Hex values match the Catppuccin-ish palette used elsewhere; what we
-enforce is the three-state branch exists in code.
+Green and red are the prompt-line status stripe's pair, 9ECE6A and
+F7768E (ANTS-6971): both read `kCommandSuccessRgb` and
+`kCommandFailureRgb` in `terminalwidget.cpp`.
 
 ### (6) MainWindow propagates config to new + existing terminals
 

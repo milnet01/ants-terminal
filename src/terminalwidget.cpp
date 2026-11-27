@@ -63,6 +63,11 @@
 
 namespace {
 
+// ANTS-6971 — a finished command's success and failure colours, shared by
+// the prompt-line status stripe and the command-mark gutter.
+constexpr QRgb kCommandSuccessRgb = 0x9ECE6A;  // green
+constexpr QRgb kCommandFailureRgb = 0xF7768E;  // red
+
 // ANTS-1148 — pre-scan a VtBatch for `CSI ?2026h` (BSU). Returns
 // true iff the batch contains a CsiDispatch with intermediate "?",
 // finalChar 'h', and 2026 in params. ESU (`?2026l`, finalChar 'l')
@@ -1559,8 +1564,8 @@ void TerminalWidget::paintPromptChrome(QPainter &p, const PaintFrame &f) const {
         // successor region to compute anything.
         if (pr.commandEndMs > 0) {
             QColor statusColor = (pr.exitCode == 0)
-                ? QColor(0x9E, 0xCE, 0x6A)   // green (success)
-                : QColor(0xF7, 0x76, 0x8E);  // red (failure)
+                ? QColor(kCommandSuccessRgb)
+                : QColor(kCommandFailureRgb);
             statusColor.setAlpha(200);
             p.fillRect(0, py, 2, m_cellHeight, statusColor);
         }
@@ -1932,8 +1937,8 @@ void TerminalWidget::paintCommandMarkGutter(QPainter &p, const PaintFrame &f) co
         if (y < 0 || y >= height()) continue;
         QColor c;
         if (pr.commandEndMs > 0)
-            c = (pr.exitCode == 0) ? QColor(0x9F, 0xE0, 0x64)   // success green
-                                   : QColor(0xE0, 0x64, 0x64); // failure red
+            c = (pr.exitCode == 0) ? QColor(kCommandSuccessRgb)
+                                   : QColor(kCommandFailureRgb);
         else
             c = QColor(0x80, 0x80, 0x80);                      // in-progress gray
         c.setAlpha(180);

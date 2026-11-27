@@ -112,6 +112,23 @@ TEST(CommandMarkGutter, Main) {
             if (count < 3)
                 fail("gutter color logic must use at least 3 QColor states (success/failure/in-progress)");
         }
+        // (5b) ANTS-6971 — the gutter and the prompt-line status stripe show
+        //      one success/failure pair, the stripe's 9ECE6A / F7768E.
+        if (!std::regex_search(twImp, std::regex(
+                R"(constexpr\s+QRgb\s+kCommandSuccessRgb\s*=\s*0x9ECE6A\s*;)")) ||
+            !std::regex_search(twImp, std::regex(
+                R"(constexpr\s+QRgb\s+kCommandFailureRgb\s*=\s*0xF7768E\s*;)")))
+            fail("terminalwidget.cpp must define kCommandSuccessRgb = 0x9ECE6A and kCommandFailureRgb = 0xF7768E");
+        if (paintBody.find("QColor(kCommandSuccessRgb)") == std::string::npos ||
+            paintBody.find("QColor(kCommandFailureRgb)") == std::string::npos)
+            fail("the gutter must colour ticks with kCommandSuccessRgb / kCommandFailureRgb");
+        // The stripe's ternary, up to its closing `;`.
+        const size_t stripe = twImp.find("QColor statusColor = (pr.exitCode == 0)");
+        const std::string stripeExpr = stripe == std::string::npos
+            ? std::string() : twImp.substr(stripe, twImp.find(';', stripe) - stripe);
+        if (stripeExpr.find("QColor(kCommandSuccessRgb)") == std::string::npos ||
+            stripeExpr.find("QColor(kCommandFailureRgb)") == std::string::npos)
+            fail("the status stripe must colour with kCommandSuccessRgb / kCommandFailureRgb");
     }
 
     // (6) MainWindow propagates config to terminals via applyConfigToTerminal.
