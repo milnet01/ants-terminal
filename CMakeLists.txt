@@ -306,7 +306,11 @@ set(CMAKE_OPTIMIZE_DEPENDENCIES ON)
 
 include(ProcessorCount)
 ProcessorCount(_ANTS_NPROC)
-if(_ANTS_NPROC LESS 4)
+# ProcessorCount gives 0 when it cannot count the cores, and Ninja reads a
+# pool depth of 0 as unlimited; fall back to the formula's floor of 2.
+if(_ANTS_NPROC EQUAL 0)
+    set(_ANTS_COMPILE_CAP 2)
+elseif(_ANTS_NPROC LESS 4)
     set(_ANTS_COMPILE_CAP ${_ANTS_NPROC})
 else()
     math(EXPR _ANTS_COMPILE_CAP "${_ANTS_NPROC} / 4")
@@ -2813,7 +2817,7 @@ if(ANTS_TESTS)
                 tests/features/socket_readyread_uaf_guard/test_socket_readyread_uaf_guard.cpp
                 # ANTS-2131 — blocking MCP verbs dispatch off the main thread.
                 tests/features/mcp_verb_offthread_guard/test_mcp_verb_offthread_guard.cpp
-    tests/features/mcp_async_dispatch/test_mcp_async_dispatch.cpp
+                tests/features/mcp_async_dispatch/test_mcp_async_dispatch.cpp
                 # ANTS-5208 — the idle shared lane frees the parse caches.
                 tests/features/mcp_idle_cache_release/test_mcp_idle_cache_release.cpp
                 # ANTS-1677 INV-6 — the live tools/list reply, for ANTS-4919.
