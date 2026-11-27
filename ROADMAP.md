@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6984 -->
+<!-- ants-roadmap-id-high-water: ANTS=6985 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98730,6 +98730,23 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6948/6956/6971/6981 helpers 2026-11-27.
   Lanes: audit-engine, mcp-state-workspace, terminal-grid.
 
+- 📋 [ANTS-6985] **Fix the bugs the ANTS-6624 and ANTS-6625 helpers found.**
+  - Command palette: Tab still inserts the suggestion while the caret is
+    mid-text, where the suggestion is now hidden (ANTS-6625).
+  - globalshortcutsportal: onBindShortcutsResponse with a non-zero code
+    can call failPermanently after another path already failed, so
+    sessionFailed fires twice.
+  - feedback_log: a note whose first line is a fence or a heading still
+    breaks the file; the first line stays flush-left.
+  - feedback_log: a failed final chmod leaves the new text in the file
+    while the store rolls back; the next write refuses export_drift.
+  - docs/specs/ANTS-3443-feedback-log-op-compact-resolved.md quotes the
+    old Proposed ID regex.
+  **Layman:** Small bugs in the command palette, global hotkeys and feedback files, found while fixing others.
+  Kind: fix.
+  Source: ANTS-6624/6625 helpers 2026-11-27.
+  Lanes: chrome-widgets, changelog-feedback.
+
 ### Other bugs (2026-11-06 review)
 
 - ✅ [ANTS-6620] **Fix the smaller bugs the 2026-11-06 reviews found in app-entry-dialogs.**
@@ -98811,18 +98828,21 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6623] **Fix the smaller bugs the 2026-11-06 reviews found in build-system.**
+- ✅ [ANTS-6623] **Fix the smaller bugs the 2026-11-06 reviews found in build-system.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1468 `CMakeLists.txt:305` (Info)
   - row 1469 `CMakeLists.txt:2088` (Info)
   - row 1470 `CMakeLists.txt:2150` (Info)
   - row 1471 `CMakeLists.txt:2716` (Info)
+  Shipped 2026-11-27 (086b6f34): rows 1468, 1471 fixed; 1469 not a bug
+  (CI builds the bench green); 1470 already fixed
+  (ANTS_FULL_STACK_LIBS).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: build-system.
 
-- 📋 [ANTS-6624] **Fix the smaller bugs the 2026-11-06 reviews found in changelog-feedback.**
+- ✅ [ANTS-6624] **Fix the smaller bugs the 2026-11-06 reviews found in changelog-feedback.**
   12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 416 `changeloglog.cpp:946–947` (Medium)
   - row 417 `feedbackfile.cpp:490` (Medium)
@@ -98836,12 +98856,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 428 `feedbackstore.cpp:95,108` (Low)
   - row 1458 `src/changeloglog.cpp:541-548` (Info)
   - row 1459 `src/changelogquery.cpp:506` (Info)
+  Shipped 2026-11-27 (c52b5574): 11 rows fixed; 1458 already fixed
+  (ANTS-6588). Row 422's placeholder rule: a paragraph wrapped whole in
+  parentheses.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: changelog-feedback.
 
-- 📋 [ANTS-6625] **Fix the smaller bugs the 2026-11-06 reviews found in chrome-widgets.**
+- 🚧 [ANTS-6625] **Fix the smaller bugs the 2026-11-06 reviews found in chrome-widgets.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 284 `titlebar.cpp:101` (Medium)
   - row 285 `coloredtabbar.cpp:319` (Medium)
@@ -98851,6 +98874,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1314 `src/titlebar.cpp:38` (Info)
   - row 1315 `src/toggleswitch.cpp:79` (Info)
   - row 1316 `src/coloredtabbar.cpp:118` (Info)
+  2026-11-27 (5fdd88d6): rows 284, 286, 287, 288, 1316 fixed; 285
+  already fixed (ANTS-5775); 1315 not a bug (Qt skips checkStateSet
+  inside nextCheckState). Row 1314 waits on the user: (a) the title bar
+  shows the elided title's tooltip itself, or (b) no tooltip and the
+  comments say so (as ANTS-5840 row 569). Recommended (b): the
+  2026-04-20 note in titlebar.cpp says title-bar tooltips caused a 60 Hz
+  flicker on KWin/Wayland.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
