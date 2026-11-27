@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6976 -->
+<!-- ants-roadmap-id-high-water: ANTS=6977 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98480,13 +98480,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6611/6612 helpers 2026-11-27.
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6967] **URL quick-select opens an OSC 8 link only after the same lookalike-link check a click gets.**
+- ✅ [ANTS-6967] **URL quick-select opens an OSC 8 link only after the same lookalike-link check a click gets.**
   keyPressEvent's quick-select branch opens the URL directly, so an OSC 8
   link whose visible text differs from its target skips openHyperlink's
   phishing dialog. Fix: QuickSelectLabel carries isOsc8 (set from the
   span in enterUrlQuickSelect) and the branch calls
   openHyperlink(UrlSpan{...}, globalLine). Row 506 of the 2026-11-06
   review; left out of ANTS-6615 because it changes behaviour.
+  Shipped 579c07bf; INV-8 tests seen red then green. Left: quick-select
+  still copies an OSC 8 mailto: link to the clipboard where a click
+  opens it (ANTS-6977).
   **Layman:** Opening a link with the keyboard link-picker skips the warning a click shows when a link's text hides a different address.
   Kind: security.
   Source: ANTS-6613–6617 helpers 2026-11-27.
@@ -98588,6 +98591,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: doc-fix.
   Source: ANTS-6613–6617 helpers 2026-11-27.
   Lanes: terminal-grid, vt-parser-pty.
+
+- 📋 [ANTS-6977] **URL quick-select treats every non-file link as a click does.**
+  keyPressEvent's quick-select branch routes only http/https to
+  openHyperlink; an OSC 8 mailto: (or other scheme) link is copied to the
+  clipboard, where a click sends every non-file span to openHyperlink.
+  Found by the ANTS-6967 helper.
+  **Layman:** Picking an email link with the keyboard copies it, while clicking it opens it.
+  Kind: fix.
+  Source: ANTS-6967 helper 2026-11-27.
+  Lanes: terminal-widget.
 
 ### Other bugs (2026-11-06 review)
 

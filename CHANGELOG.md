@@ -169,6 +169,8 @@ for security-relevant changes.
 
 ### Security
 
+- **Opening a link with the keyboard link-picker shows the same lookalike-link warning a click does** (ANTS-6967)
+
 - **The mutation journal and test-audit reports are private from the first byte written** (ANTS-6616)
 
 ## [0.7.116] - 2026-11-24
