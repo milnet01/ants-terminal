@@ -30,6 +30,8 @@ void AuditDialog::populateChecks() {
                  "Find TODO, FIXME, HACK, XXX annotations", "General",
                  "'(TODO|FIXME|HACK|XXX)(\\(|:|\\s)'",
                  CheckType::Info, Severity::Info, true);
+    // ANTS-6982 — an annotation lives in a comment.
+    m_checks.last().codeLinesOnly = false;
 
     addFindCheck("large_files", "Large File Finder",
                  "Files larger than 500 KB", "General",

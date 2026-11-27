@@ -149,6 +149,25 @@ TEST(AuditRecentScopeAsync, UserDiffConfigKeepsTheChangedLines) {
         << "the user's diff config changed the headers, so no changed line was read";
 }
 
+// INV-7 — ANTS-6982
+TEST(AuditRecentScopeAsync, NonAsciiPathIsKept) {
+    if (!haveGit()) GTEST_SKIP() << "git not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(makeTwoCommitRepo(tmp.path()));
+    // Repository config, so the dialog's own git run would quote the path.
+    ASSERT_TRUE(runGit(tmp.path(), {QStringLiteral("config"), QStringLiteral("core.quotePath"),
+                                    QStringLiteral("true")}));
+    const QString name = QString::fromUtf8("caf\xc3\xa9.txt");
+    ASSERT_TRUE(writeFile(tmp.path() + QLatin1Char('/') + name, "one\n"));
+    ASSERT_TRUE(commitAll(tmp.path(), "add"));
+
+    const auto sets = AuditDialog::readRecentChangeSets(tmp.path(), 1, false);
+    EXPECT_TRUE(sets.error.isEmpty()) << sets.error.toStdString();
+    EXPECT_EQ(sets.files, QStringList{name})
+        << "git log quoted the non-ASCII path, so it matched no file on disk";
+}
+
 // INV-5
 TEST(AuditRecentScopeAsync, NoGitOnTheGuiThread) {
     const QString src = QString::fromStdString(ants_test::slurpAuditDialog());

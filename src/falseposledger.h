@@ -18,6 +18,8 @@
 #include <QList>
 #include <QString>
 
+class QIODevice;
+
 namespace ants {
 namespace falsepos {
 
@@ -43,6 +45,12 @@ struct FormatOptions {
 // (per-line skip), or any I/O error. Emits one qWarning when
 // file > 1 MiB; parses full file regardless. Never throws.
 QList<LedgerEntry> loadEntries(const QString &projectPath);
+
+// The line loop loadEntries reads the file with, over an open device:
+// one JSON record per line, malformed or over-cap lines skipped. A read
+// error (readLine returning nothing before atEnd) returns an empty list
+// and sets *ok false.
+QList<LedgerEntry> parseEntries(QIODevice &device, bool *ok = nullptr);
 
 // AND-match with bidirectional empty=match-anything: entry-side
 // empty matches any filter value; filter-side empty matches any

@@ -425,7 +425,9 @@ int computeConfidence(const Finding &f) {
 
     // Path-based penalties
     const QString lp = f.file.toLower();
+    // ANTS-6982 — a relative path starts with its first segment, no slash.
     const bool inTests = lp.contains("/tests/") || lp.contains("/test/") ||
+                         lp.startsWith("tests/") || lp.startsWith("test/") ||
                          // ANTS-6622 — `test_` at a segment start only, so
                          // `latest_x.cpp` / `contest_y` are not test paths.
                          lp.startsWith("test_") || lp.contains("/test_") || lp.endsWith("_test.py") ||
@@ -1432,10 +1434,16 @@ QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
     // ANTS-2003 — finding text is interpolated into ROADMAP.md markdown. Escape
     // the inline actives so a `**`/backtick/bracket in a message can't break the
     // **bold** bullet or the [ANTS-NNNN] link (or inject a new list item).
+    // ANTS-6982 — a line break becomes a space, so it cannot start a line
+    // of its own.
     auto mdInline = [](const QString &s) -> QString {
         QString out;
         out.reserve(s.size() + 8);
         for (const QChar c : s) {
+            if (c == '\n' || c == '\r') {
+                out += QChar(' ');
+                continue;
+            }
             if (c == '\\' || c == '`' || c == '*' || c == '_' ||
                 c == '[' || c == ']')
                 out += QChar('\\');

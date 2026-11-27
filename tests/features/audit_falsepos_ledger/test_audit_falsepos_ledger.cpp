@@ -9,9 +9,11 @@
 #include "indiereviewengine.h"
 #include "testauditengine.h"
 
+#include <QByteArray>
 #include <QChar>
 #include <QDir>
 #include <QFile>
+#include <QIODevice>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -20,7 +22,10 @@
 #include <QTemporaryDir>
 #include <QTextStream>
 
+#include <algorithm>
+#include <cstring>
 #include <string>
+#include <utility>
 
 #ifndef SRC_FALSEPOS_H_PATH
 #error "SRC_FALSEPOS_H_PATH compile definition required"
@@ -266,6 +271,61 @@ TEST(FalseposLedger, G4bOversizeLineTailNotParsed) {
     const auto entries = ants::falsepos::loadEntries(dir.path());
     ASSERT_EQ(entries.size(), 1);
     EXPECT_EQ(entries.at(0).claim, QStringLiteral("real"));
+}
+
+namespace {
+
+// ANTS-6982 — serves `data`, then fails every read while size() still
+// claims bytes are left, so atEnd() stays false. After kReadBudget failed
+// reads it reports the end, so a reader that loops on the error stops and
+// the test fails instead of hanging.
+class FailingDevice : public QIODevice {
+public:
+    static constexpr int kReadBudget = 10000;
+    explicit FailingDevice(QByteArray data) : m_data(std::move(data)) {}
+    int failedReads() const { return m_failed; }
+    qint64 size() const override {
+        return m_failed >= kReadBudget ? m_data.size() : m_data.size() + 1024;
+    }
+
+protected:
+    qint64 readData(char *out, qint64 maxSize) override {
+        if (m_offset < m_data.size()) {
+            const qint64 n = std::min<qint64>(maxSize, m_data.size() - m_offset);
+            std::memcpy(out, m_data.constData() + m_offset, static_cast<size_t>(n));
+            m_offset += n;
+            return n;
+        }
+        if (m_failed >= kReadBudget) return 0;
+        ++m_failed;
+        return -1;
+    }
+    qint64 writeData(const char *, qint64) override { return -1; }
+
+private:
+    QByteArray m_data;
+    qint64 m_offset = 0;
+    int m_failed = 0;
+};
+
+}  // namespace
+
+// ANTS-6982 — a read error before the end stops the read, whether it comes
+// at a line start or while draining an over-long line.
+TEST(FalseposLedger, G4cReadErrorEndsTheRead) {
+    const QByteArray record =
+        validRecord("indie-review", "", "real", "rationale").toUtf8() + '\n';
+    const QByteArray longLine(16 * 1024 + 108, 'x');
+    for (const QByteArray &data : {record, longLine}) {
+        FailingDevice dev(data);
+        ASSERT_TRUE(dev.open(QIODevice::ReadOnly));
+        bool ok = true;
+        const auto entries = ants::falsepos::parseEntries(dev, &ok);
+        EXPECT_LT(dev.failedReads(), FailingDevice::kReadBudget)
+            << "the read loop kept reading after a read error";
+        EXPECT_FALSE(ok) << "a read error was reported as a clean read";
+        EXPECT_TRUE(entries.isEmpty());
+    }
 }
 
 // ---------- G-10 / G-21 — fence-escape on both fields --------------

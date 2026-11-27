@@ -7,6 +7,8 @@ and AuditEngine::templateRoadmapFoldInBlock.
 
 - INV-5: `templateRoadmapFoldInBlock` emits `### 🔍 Audit fold-in (DATE)`
   as the first line; first bullet starts with `- 📋 [ANTS-<id>]`.
+- INV-5b (ANTS-6982): a line break in a finding's message becomes a
+  space in its bullet's headline, so it cannot start a line of its own.
 - INV-6: `RoadmapFoldIn::allocateIds(path, n)` returns N consecutive
   ints starting from current+1; bumps `.roadmap-counter` atomically.
   Concurrent calls under flock get disjoint ranges (single-process

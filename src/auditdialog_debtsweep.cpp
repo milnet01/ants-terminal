@@ -160,6 +160,9 @@ void AuditDialog::buildDebtSweepTab() {
         "Fold every listed finding into ROADMAP.md as a dated debt-sweep block.");
     connect(m_debtDeferAllBtn, &QPushButton::clicked, this, [this]() {
         if (m_debtFindings.isEmpty()) return;
+        // ANTS-6982 — the list the prompts show, kept: a background re-scan
+        // can replace m_debtFindings while they are open (row 295).
+        const QList<DebtSweepEngine::Finding> deferred = m_debtFindings;
         // ANTS-3346 — a raw scan is a mix of real, FP-prone, and mechanical
         // findings; folding the whole lot into ROADMAP writes every one as a
         // tracked item (this is how 1106 false positives once landed there).
@@ -167,7 +170,7 @@ void AuditDialog::buildDebtSweepTab() {
         // that points at Triage with AI. Shares the pure verdict with the MCP
         // verb; the total-count threshold naturally exempts a single [defer].
         const auto verdict = DebtSweepEngine::evaluateTriageGate(
-            m_debtFindings, /*triaged=*/false);
+            deferred, /*triaged=*/false);
         if (!verdict.allowed) {
             const auto reply = QMessageBox::warning(this,
                 "Defer all to ROADMAP",
@@ -186,14 +189,15 @@ void AuditDialog::buildDebtSweepTab() {
         heading = QInputDialog::getText(this, "Defer all to ROADMAP",
             QString("Fold all %1 finding%2 into ROADMAP.md after this heading "
                     "(edit if wrong):")
-                .arg(m_debtFindings.size())
-                .arg(m_debtFindings.size() == 1 ? "" : "s"),
+                .arg(deferred.size())
+                .arg(deferred.size() == 1 ? "" : "s"),
             QLineEdit::Normal, heading, &ok);
         if (!ok || heading.trimmed().isEmpty()) return;
-        if (debtDeferToRoadmap(m_debtFindings, heading.trimmed())) {
+        if (debtDeferToRoadmap(deferred, heading.trimmed())) {
             if (m_debtStatus)
                 m_debtStatus->setFullText("Deferred all findings into ROADMAP.md");
-            m_debtFindings.clear();
+            for (const DebtSweepEngine::Finding &d : deferred)
+                dropDebtFinding(m_debtFindings, d);
             renderDebtResults();
         } else {
             QMessageBox::warning(this, "Defer to ROADMAP", m_foldBusy

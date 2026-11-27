@@ -70,6 +70,23 @@ TEST(RoadmapFoldIn, Inv5TemplateShape) {
     EXPECT_TRUE(out.contains("`src/foo.cpp:42`"));
 }
 
+// INV-5b (ANTS-6982) — a line break in a message cannot start a line of
+// its own.
+TEST(RoadmapFoldIn, Inv5bTemplateKeepsMessageOnOneLine) {
+    Finding f;
+    f.checkId = "rule-x";
+    f.file = "src/foo.cpp";
+    f.line = 42;
+    f.message = "First line\n- injected. Rest.";
+    const QString out = AuditEngine::templateRoadmapFoldInBlock(
+        {f}, {1501}, "2026-05-13", "ANTS");
+    int bullets = 0;
+    for (const QString &ln : out.split(QChar('\n')))
+        if (ln.startsWith(QStringLiteral("- "))) ++bullets;
+    EXPECT_EQ(bullets, 1) << out.toStdString();
+    EXPECT_TRUE(out.contains("**First line - injected.**")) << out.toStdString();
+}
+
 TEST(RoadmapFoldIn, TemplateEmptyOnSizeMismatch) {
     Finding f;
     QList<Finding> findings = {f, f};

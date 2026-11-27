@@ -1515,7 +1515,13 @@ QString templateIndieReviewFoldInBlock(
                                   "(cited by ");
             out += QString::number(f.citingLanes.size());
             out += QStringLiteral(" lanes at `");
-            out += f.file;
+            // ANTS-6982 — a backtick cannot be escaped inside a code span, and
+            // a line break would end the bullet: swap each for a safe stand-in.
+            QString file = f.file;
+            file.replace(QChar('`'), QChar('\''));
+            file.replace(QChar('\n'), QChar(' '));
+            file.replace(QChar('\r'), QChar(' '));
+            out += file;
             if (f.line > 0) {
                 out += QChar(':');
                 out += QString::number(f.line);

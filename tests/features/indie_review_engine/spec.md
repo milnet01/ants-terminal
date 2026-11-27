@@ -36,7 +36,8 @@ Locks the six pure helpers in src/indiereviewengine.{h,cpp}.
   `**TODO: describe this finding (cited by N lanes at \`file:line\`).**`
   placeholder so a caller cannot accidentally ship a stub bullet,
   followed by the same `Cited-by:` / `Kind:` / `Source:` / `Lanes:`
-  metadata as before.
+  metadata as before. In that placeholder's code span, a backtick in
+  `file` becomes `'` and a line break a space (ANTS-6982).
 - INV-9 (ANTS-1445): synthesisPrompt wraps each per-lane report in a
   `<lane_report lane="…">…</lane_report>` fence; the threat-model
   block (when non-empty) wraps in `<threat_model>…</threat_model>`.

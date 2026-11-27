@@ -44,10 +44,13 @@ repository froze the whole window, and every terminal in it, for that long.
 - **INV-6 — the user's diff config does not hide changed lines** (ANTS-6621).
   With `diff.noprefix`, `diff.mnemonicPrefix`, `color.ui` and `color.diff`
   set in the repository, INV-1 still holds.
+- **INV-7 — a non-ASCII path is kept** (ANTS-6982). With `core.quotePath`
+  true in the repository, a last commit adding `café.txt` gives `files` =
+  {`café.txt`}.
 
 ## Test surface
 
-INV-1 to INV-4 and INV-6 build scratch repositories with `git`, with the global and
+INV-1 to INV-4, INV-6 and INV-7 build scratch repositories with `git`, with the global and
 system git config pointed at `/dev/null`. They skip when `git` is absent.
 INV-5 reads the source text.
 
@@ -58,3 +61,5 @@ INV-5 reads the source text.
 - **ANTS-6621:** a user's diff prefix or colour config left no header the
   hunk parser matched, so both filters hid every filed finding. Locked by
   INV-6.
+- **ANTS-6982:** `git log` quoted a non-ASCII path, which then matched no file
+  on disk and left the recent set. Locked by INV-7.

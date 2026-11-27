@@ -112,7 +112,8 @@ public:
     // records on the same project survive.
     void save();
 
-    // Reload from disk — used by the unit tests, not production.
+    // Replace the in-memory history with the file's. Records not yet saved
+    // stay queued for the next save() but drop out of the counts until then.
     void reload();
 
     ~RuleQualityTracker() { save(); }

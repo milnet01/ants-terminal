@@ -33,6 +33,8 @@ detector-expansion addendum.
   (`[DOOM-0007]` from prefix `DOOM` + id `7`). The message and file
   are markdown-escaped (`\`, backtick, `*`, `_`, `[`, `]`), as the
   audit fold-in's are (ANTS-6622; `Inv10TemplateEscapesMarkdown`).
+  A line break in them becomes a space, so the bullet stays one line
+  (ANTS-6982; `Inv10TemplateKeepsMessageOnOneLine`).
 - **INV-11.** `triagePrompt` emits a prompt containing one
   `[<category> / <detector_id>] <file>:<line>` block per input
   Finding.

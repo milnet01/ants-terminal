@@ -449,6 +449,26 @@ TEST(DebtSweepEngine, Inv10TemplateEscapesMarkdown) {
         << block.toStdString();
 }
 
+// ANTS-6982 — a line break in a message cannot start a list item of its own.
+TEST(DebtSweepEngine, Inv10TemplateKeepsMessageOnOneLine) {
+    DebtSweepEngine::Finding f;
+    f.category   = "code_drift";
+    f.detectorId = "added_todo";
+    f.file       = "src/z.cpp";
+    f.line       = 3;
+    f.message    = "TODO: a\n- injected";
+
+    const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
+        {f}, {1302}, "2026-05-13", "ANTS");
+
+    int bullets = 0;
+    for (const QString &ln : block.split(QChar('\n')))
+        if (ln.startsWith(QStringLiteral("- "))) ++bullets;
+    EXPECT_EQ(bullets, 1) << block.toStdString();
+    EXPECT_TRUE(block.contains("**TODO: a - injected** at src/z.cpp:3."))
+        << block.toStdString();
+}
+
 TEST(DebtSweepEngine, Inv13bTemplateEmptyOnMismatch) {
     DebtSweepEngine::Finding f;
     f.file = "x";

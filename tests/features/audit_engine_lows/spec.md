@@ -21,6 +21,10 @@ never matches the finding pattern.
 **INV-5 — the sibling HTML report is derived only from a `.sarif` name.**
 `summariseSarif` on a file not ending `.sarif` does not take `<dir>/.html`.
 
+**INV-6 — a relative path under `tests/` or `test/` is a test path.**
+`computeConfidence` takes the test-path penalty for `tests/x.cpp` and
+`test/x.cpp`, as it does for `src/tests/x.cpp`.
+
 ## Rationale
 
 The ANTS-5085 performance pass found both. `lineIsCode` already caps its read;
@@ -30,10 +34,11 @@ since ANTS-2132 verbs run on the MCP worker.
 ## Test surface
 
 `test_audit_engine_lows.cpp` reads both sources (located from the test's own
-path) and checks the two function bodies for INV-1 and INV-2. INV-3 to INV-5
+path) and checks the two function bodies for INV-1 and INV-2. INV-3 to INV-6
 call the engine functions on temporary files.
 
 ## Regression history
 
 - **ANTS-5085:** the two defects above. Locked by this spec.
 - **ANTS-6622:** INV-3 to INV-5, from the 2026-11-06 reviews.
+- **ANTS-6982:** INV-6, `/tests/` matched only with a leading slash.

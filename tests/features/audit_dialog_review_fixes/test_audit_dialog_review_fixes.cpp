@@ -181,3 +181,61 @@ TEST(AuditDialogReviewFixes, BatchTriageTakesOnlyItsOwnKeysAndSaysWhenOff) {
     EXPECT_TRUE(off.contains(QStringLiteral("setFullText(")))
         << "a queued batch with AI turned off returns with no status line";
 }
+
+// INV-12 — ANTS-6982
+TEST(AuditDialogReviewFixes, FilteredViewShowsNoTrendLine) {
+    const QString trend = functionText(auditSource(),
+        "QString AuditDialog::trendLineHtml(const SummaryCounts &c) const {");
+    ASSERT_FALSE(trend.isEmpty()) << "trendLineHtml not found";
+    const qsizetype ret = trend.indexOf(QStringLiteral("return QString();"));
+    ASSERT_GE(ret, 0) << "trendLineHtml has no early return";
+    const QString gate = trend.left(ret);
+    for (const char *flag : {"m_showNewOnly", "m_sinceBaseline", "m_recentOnly"})
+        EXPECT_TRUE(gate.contains(QLatin1String(flag)))
+            << "the trend line compares a filtered count with a full run's; "
+               "its early return lacks " << flag;
+}
+
+// INV-13 — ANTS-6982
+TEST(AuditDialogReviewFixes, TodoScanKeepsCommentLines) {
+    const QString reg = between(auditSource(),
+        QStringLiteral("addGrepCheck(\"todo_scan\""), QStringLiteral("addFindCheck("));
+    ASSERT_FALSE(reg.isEmpty()) << "todo_scan not found";
+    EXPECT_TRUE(reg.contains(QStringLiteral("m_checks.last().codeLinesOnly = false;")))
+        << "todo_scan drops every annotation written in a comment";
+}
+
+// INV-14 — ANTS-6982, row 295's race on the Defer all path
+TEST(AuditDialogReviewFixes, DeferAllFilesWhatItPrompted) {
+    const QString tab = functionText(auditSource(), "void AuditDialog::buildDebtSweepTab() {");
+    ASSERT_FALSE(tab.isEmpty()) << "buildDebtSweepTab not found";
+    const QString handler = between(tab, QStringLiteral("connect(m_debtDeferAllBtn"),
+                                    QStringLiteral("btnRow->addWidget(m_debtDeferAllBtn);"));
+    ASSERT_FALSE(handler.isEmpty()) << "the Defer all handler not found";
+    const qsizetype prompt = handler.indexOf(QStringLiteral("QInputDialog::getText("));
+    ASSERT_GE(prompt, 0) << "the heading prompt not found";
+    const QString after = handler.mid(prompt);
+    EXPECT_FALSE(after.contains(QStringLiteral("debtDeferToRoadmap(m_debtFindings")))
+        << "Defer all files whatever list a re-scan put there during the prompt";
+    EXPECT_FALSE(after.contains(QStringLiteral("m_debtFindings.clear()")))
+        << "Defer all clears findings a re-scan added during the prompt";
+    EXPECT_TRUE(after.contains(QStringLiteral("dropDebtFinding(m_debtFindings, ")))
+        << "Defer all does not drop what it filed by content";
+}
+
+// INV-15 — ANTS-6982
+TEST(AuditDialogReviewFixes, EarlierRunsBlameIsDropped) {
+    const QString src = auditSource();
+    const QString run = functionText(src, "void AuditDialog::runAudit() {");
+    ASSERT_FALSE(run.isEmpty()) << "runAudit not found";
+    ASSERT_TRUE(run.contains(QStringLiteral("m_blameCache.clear();")));
+    EXPECT_TRUE(run.contains(QStringLiteral("++m_blameGeneration;")))
+        << "a new run does not mark the blame jobs still running as stale";
+    const QString blame = functionText(src, "void AuditDialog::startQueuedBlame() {");
+    ASSERT_FALSE(blame.isEmpty()) << "startQueuedBlame not found";
+    const qsizetype insert = blame.indexOf(QStringLiteral("m_blameCache.insert("));
+    ASSERT_GE(insert, 0) << "the blame result is not cached";
+    const qsizetype check = blame.indexOf(QStringLiteral("generation == m_blameGeneration"));
+    ASSERT_GE(check, 0) << "a blame job from the last run refills the cleared cache";
+    EXPECT_LT(check, insert);
+}

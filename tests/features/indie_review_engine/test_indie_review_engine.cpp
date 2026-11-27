@@ -489,6 +489,19 @@ TEST(IndieReviewEngine, Inv13TemplateFoldInLoudTodoOnAbsent) {
         << "Kind: defaults to review-fix when not supplied";
 }
 
+// INV-13 (ANTS-6982) — the placeholder's code span stays closed and on one
+// line whatever the file name holds.
+TEST(IndieReviewEngine, Inv13TemplateFoldInTodoEscapesFile) {
+    IndieReviewEngine::CorroboratedFinding f;
+    f.file = "src/a`b\nc.cpp";
+    f.line = 42;
+    f.citingLanes = {"lane-a", "lane-b"};
+    const QString out = IndieReviewEngine::templateIndieReviewFoldInBlock(
+        {f}, {1500}, "2026-05-13");
+    EXPECT_TRUE(out.contains("cited by 2 lanes at `src/a'b c.cpp:42`).**\n"))
+        << out.toStdString();
+}
+
 TEST(IndieReviewEngine, TemplateEmptyOnSizeMismatch) {
     IndieReviewEngine::CorroboratedFinding empty;
     QList<IndieReviewEngine::CorroboratedFinding> findings;

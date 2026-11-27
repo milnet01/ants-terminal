@@ -201,26 +201,43 @@ QList<LedgerEntry> loadEntries(const QString &projectPath) {
                  "consider pruning",
                  static_cast<long long>(f.size()));
     }
+    bool readOk = true;
+    const QList<LedgerEntry> out = parseEntries(f, &readOk);
+    if (!readOk) {
+        qWarning("falseposLedger: read(%s) failed", qUtf8Printable(path));
+        return {};
+    }
+    s_cache.insert(path, {mtime_s, mtime_ns, size, out});
+    return out;
+}
+
+QList<LedgerEntry> parseEntries(QIODevice &device, bool *ok) {
+    if (ok) *ok = true;
     QList<LedgerEntry> out;
-    while (!f.atEnd()) {
+    while (!device.atEnd()) {
         // A read holds up to kPerLineCap + 7 bytes (room for a BOM and CR;
         // parseLine enforces the cap). ANTS-6622 — a longer line is skipped
         // whole: its tail is drained, never parsed as records of its own.
-        const QByteArray rawLine = f.readLine(kPerLineCap + 8);
-        if (!rawLine.endsWith('\n') && !f.atEnd()) {
-            while (!f.atEnd()) {
-                const QByteArray more = f.readLine(kPerLineCap + 8);
+        const QByteArray rawLine = device.readLine(kPerLineCap + 8);
+        // ANTS-6982 — nothing read before the end is a read error; looping
+        // on it never ends.
+        if (rawLine.isEmpty()) {
+            if (ok) *ok = false;
+            return {};
+        }
+        if (!rawLine.endsWith('\n') && !device.atEnd()) {
+            while (!device.atEnd()) {
+                const QByteArray more = device.readLine(kPerLineCap + 8);
                 if (more.isEmpty() || more.endsWith('\n')) break;
             }
             continue;
         }
         QByteArray line = rawLine;
         while (line.endsWith('\n')) line.chop(1);
-        bool ok = false;
-        LedgerEntry e = parseLine(line, &ok);
-        if (ok) out.push_back(std::move(e));
+        bool parsed = false;
+        LedgerEntry e = parseLine(line, &parsed);
+        if (parsed) out.push_back(std::move(e));
     }
-    s_cache.insert(path, {mtime_s, mtime_ns, size, out});
     return out;
 }
 

@@ -69,6 +69,19 @@ TEST(AuditEngineLows, TestPathPenaltyNeedsSegmentStart) {
     EXPECT_EQ(AuditEngine::computeConfidence(f), test);
 }
 
+// INV-6 (ANTS-6982) — a relative path under tests/ or test/ is a test path.
+TEST(AuditEngineLows, TestDirPenaltyNeedsNoLeadingSlash) {
+    Finding f;
+    f.source = QStringLiteral("cppcheck");
+    f.file = QStringLiteral("src/foo.cpp");
+    const int plain = AuditEngine::computeConfidence(f);
+    for (const char *path : {"tests/foo.cpp", "test/foo.cpp"}) {
+        f.file = QString::fromLatin1(path);
+        EXPECT_EQ(plain - AuditEngine::computeConfidence(f), 20)
+            << path << " was not scored as a test path";
+    }
+}
+
 namespace {
 bool writeText(const QString &path, const QByteArray &body) {
     QFile f(path);

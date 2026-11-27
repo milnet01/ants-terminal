@@ -33,6 +33,18 @@ ANTS-6621. Each invariant names its row in
 - **INV-10 — a batch verdict lands only on a key the batch sent** (row 306).
 - **INV-11 — batch triage with AI off says so** (row 1322). The AI-off return
   in `requestAiTriageBatch` sets the status line first.
+- **INV-12 — a filtered view shows no trend line** (ANTS-6982).
+  `trendLineHtml` returns nothing while New-only, Since baseline or
+  Recent-only is on, as INV-1 saves no snapshot then.
+- **INV-13 — `todo_scan` reads comments** (ANTS-6982). Its registration sets
+  `codeLinesOnly` false.
+- **INV-14 — Defer all files what it prompted for** (ANTS-6982, INV-3's race).
+  After the heading prompt, the handler defers the list it took before the
+  prompts and drops each of those findings by content; it never defers or
+  clears `m_debtFindings` itself.
+- **INV-15 — an earlier run's blame is dropped** (ANTS-6982). `runAudit` bumps
+  `m_blameGeneration` with the cache clear, and a blame job caches its result
+  only when the generation it started under is current.
 
 ## Test surface
 
@@ -41,4 +53,5 @@ read the AuditDialog sources with comments stripped.
 
 ## Regression history
 
-- **ANTS-6621:** the eleven defects above. Locked by this spec.
+- **ANTS-6621:** INV-1 to INV-11. Locked by this spec.
+- **ANTS-6982:** INV-12 to INV-15, found by the ANTS-6621 helpers.

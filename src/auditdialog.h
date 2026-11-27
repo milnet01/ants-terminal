@@ -547,6 +547,9 @@ private:
     mutable QHash<QString, BlameEntry> m_blameCache;
     QHash<QString, QSet<int>> m_blameQueue;    // relPath -> lines to blame
     int m_blameInFlight = 0;
+    // ANTS-6982 — bumped where runAudit clears m_blameCache; a blame job
+    // started before that drops its result.
+    quint64 m_blameGeneration = 0;
     bool m_blameEnabled = true;   // auto-disabled if not a git repo
 
     // Confidence score (0-100) computed from severity, multi-tool agreement,

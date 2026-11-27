@@ -780,13 +780,15 @@ void AuditDialog::startQueuedBlame() {
         auto *git = new QProcess(this);
         git->setWorkingDirectory(m_projectPath);
         ++m_blameInFlight;
-        auto done = [this, git, file, lines](bool ok) {
+        const quint64 generation = m_blameGeneration;
+        auto done = [this, git, file, lines, generation](bool ok) {
             const QHash<int, BlameEntry> parsed =
                 ok ? GitBlame::parseLinePorcelain(git->readAllStandardOutput())
                    : QHash<int, BlameEntry>{};
-            for (int line : lines)
-                m_blameCache.insert(file + QLatin1Char(':') + QString::number(line),
-                                    parsed.value(line));
+            if (generation == m_blameGeneration)   // ANTS-6982
+                for (int line : lines)
+                    m_blameCache.insert(file + QLatin1Char(':') + QString::number(line),
+                                        parsed.value(line));
             git->deleteLater();
             --m_blameInFlight;
             startQueuedBlame();
@@ -2424,7 +2426,9 @@ AuditDialog::RecentChangeSets AuditDialog::readRecentChangeSets(
     };
 
     QByteArray logOut;
-    out.error = runGit({QStringLiteral("log"),
+    // ANTS-6982 — unquoted, so a non-ASCII path matches the file on disk.
+    out.error = runGit({QStringLiteral("-c"), QStringLiteral("core.quotePath=false"),
+                        QStringLiteral("log"),
                         QString("-n%1").arg(commits),
                         QStringLiteral("--name-only"),
                         QStringLiteral("--format="),
@@ -2560,6 +2564,7 @@ void AuditDialog::runAudit() {
     m_snapshotPersisted = false;  // see m_snapshotPersisted in auditdialog.h
     // ANTS-6621 — blame is keyed by file:line, and lines move between runs.
     m_blameCache.clear();
+    ++m_blameGeneration;  // ANTS-6982 — a blame job still running fills nothing
     // Cancel becomes the primary action while a run is in-flight; Run
     // button stays visible but disabled so the button-row geometry
     // doesn't jump.
@@ -3224,10 +3229,12 @@ QString AuditDialog::summaryBannerHtml(const SummaryCounts &c, qsizetype checkCo
 }
 
 // "Trend vs <date>": these counts against the previous run's snapshot,
-// which finishRun read before saving this run's.
+// which finishRun read before saving this run's. ANTS-6982 — not under a
+// filtered view: its counts are not a full run's, as the snapshot's are.
 QString AuditDialog::trendLineHtml(const SummaryCounts &c) const {
     const TrendSnapshot &prev = m_trendPrev;
-    if (prev.timestamp.isEmpty() || m_showNewOnly) return QString();
+    if (prev.timestamp.isEmpty() || m_showNewOnly || m_sinceBaseline || m_recentOnly)
+        return QString();
     auto delta = [](int cur, int was) {
         if (cur == was) return QString("±0");
         const int d = cur - was;
