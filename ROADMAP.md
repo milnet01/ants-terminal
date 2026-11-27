@@ -98935,6 +98935,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   comments say so (as ANTS-5840 row 569). Recommended (b): the
   2026-04-20 note in titlebar.cpp says title-bar tooltips caused a 60 Hz
   flicker on KWin/Wayland.
+  Decision (user, 2026-11-27): row 1314 option (b): no title tooltip;
+  correct the comments to say so.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -98973,6 +98975,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Recommended (A): those fields come from hook events and transcripts
   another process can influence, and an unwrapped reply has no frame for
   a scrub to protect.
+  Decision (user, 2026-11-27): row 85 option A: wrap get_session_info in
+  <ants_mcp_data>, update the ANTS-1294 exempt set, its test and the
+  mcp_output_sanitisation spec.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99061,6 +99066,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   release with a recorded sha256 checked by sha256sum -c (recommended;
   costs a manual bump per upstream change, and fetching the sha256 needs
   a download), or keep the continuous channel unpinned.
+  Decision (user, 2026-11-27): row 456: pin both linuxdeploy AppImages
+  to a fixed release with a recorded sha256 checked by sha256sum -c.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99107,6 +99114,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   categories out unless asked for), row 1464 (after a failed rotation
   every write reopens the log; recommended: stop file logging and say so
   on stderr).
+  Decision (user, 2026-11-27): row 441: read_log leaves input and pty
+  lines out of its default read; a caller can still ask for them. Rows
+  438 and 1464 still open.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
