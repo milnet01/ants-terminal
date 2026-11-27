@@ -100,7 +100,7 @@ QVector<Section> buildIndex(const QString &markdown) {
     for (int i = 0; i < lines.size(); ++i) {
         QString headingText;
         const int level = headingLevel(lines[i], &headingText);
-        if (level != 2 && level != 3) continue;  // INV-3
+        if (!isSectionLevel(level)) continue;  // INV-3
         Section s;
         s.slug        = uniqueSlug(seen, headingText);
         s.headingText = headingText;

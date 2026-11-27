@@ -64,6 +64,9 @@ QStringList descendantSlugs(const QVector<Section> &index,
 int     headingLevel(const QString &raw, QString *text = nullptr);
 QString slugifyHeading(const QString &heading);
 QString uniqueSlug(QSet<QString> &seen, const QString &heading);
+// INV-3 — the heading levels that open a section: H2 and H3. Every walk that
+// slugs sections in document order asks this, so they number them alike.
+inline bool isSectionLevel(int level) { return level == 2 || level == 3; }
 
 // ANTS-1688 — shared canonical-ID predicate. True iff the whole of `id`
 // matches RoadmapParse::idTokenPattern() (e.g. ANTS-1688, VEST-0042,

@@ -325,11 +325,12 @@ QString counterFilePath(const QString &projectPath) {
 // off strays like "[UTF-8]"). Returns `fallback` when none is found.
 static QString sniffPrefixFromText(const QString &roadmap,
                                    const QString &fallback) {
+    // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042), from
+    // the parser's prefix grammar. Uncapped, unlike isIdPrefix(): this only
+    // counts what the file already writes.
     static const QRegularExpression sniffRe(
-        // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
-        QStringLiteral(
-            "\\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*)"
-            "-[0-9]{1,8}\\]"));
+        QStringLiteral("\\[(") + RoadmapParse::idPrefixPattern()
+        + QStringLiteral(")-[0-9]{1,8}\\]"));
     QHash<QString, int> counts;
     int best = 0;
     QString pfx;

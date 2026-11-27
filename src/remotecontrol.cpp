@@ -1937,14 +1937,6 @@ QJsonArray rcComputePossibleDuplicates(
     return out;
 }
 
-static QString rcExtractCaretAnchor(const QString &line) {
-    static const QRegularExpression rx(QStringLiteral(
-        "\\^([a-z0-9_-]+)\\s*$"));
-    const auto m = rx.match(line);
-    if (!m.hasMatch()) return QString();
-    return m.captured(1);
-}
-
 // ANTS-3378 — the single canonical headline a GFM bullet is reported by.
 // The write-path walker (walkGfmBullets) stores the RAW post-checkbox
 // head: `**AX11. Audio device hot-swap** — automatically re-route audio`,
@@ -2127,7 +2119,7 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
             }
         }
         b.headline = head;
-        b.anchor   = rcExtractCaretAnchor(ln);
+        b.anchor   = RoadmapParse::extractCaretAnchor(ln);
 
         // Walk continuation lines (2-space indent, non-metadata) to
         // find the last headline-content line. Stops at blank, next
@@ -2147,7 +2139,7 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
             // anchor on a continuation line wins over the checkbox
             // line (per spec § Anchor placement, anchor goes on the
             // *last* line of the headline content).
-            const QString contAnchor = rcExtractCaretAnchor(cont);
+            const QString contAnchor = RoadmapParse::extractCaretAnchor(cont);
             if (!contAnchor.isEmpty()) b.anchor = contAnchor;
         }
         out.append(b);

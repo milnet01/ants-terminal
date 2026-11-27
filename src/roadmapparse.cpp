@@ -27,6 +27,7 @@
 // moved bodies were written against. See docs/specs/ANTS-1287-roadmap-query-indexed-parser-cache.md § 7.
 using RoadmapIndex::headingLevel;
 using RoadmapIndex::uniqueSlug;
+using RoadmapIndex::isSectionLevel;
 
 namespace RoadmapParse {
 
@@ -227,13 +228,15 @@ const QRegularExpression &caretAnchorAtEnd() {
     return rx;
 }
 
-// Try to extract a caret anchor at line end (`^vest-0042`).
-// Returns the anchor body (without the caret) on match.
+}  // namespace
+
 QString extractCaretAnchor(const QString &line) {
     const auto m = caretAnchorAtEnd().match(line);
     if (!m.hasMatch()) return QString();
     return m.captured(1);
 }
+
+namespace {
 
 // `(COMPLETE)` / `(DONE)` heading-completion marker. Whole-word,
 // case-insensitive. Returns true on match.
@@ -863,7 +866,7 @@ parsePassHeadingBullets(const QStringList &lines) {
         const QString &raw = lines[i];
         QString headingText;
         const int level = headingLevel(raw, &headingText);
-        if (level == 2 || level == 3) {
+        if (isSectionLevel(level)) {
             currentSectionHeading = headingText;
             currentSectionLevel   = level;
             currentSectionSlug    = uniqueSlug(seenSlugs, headingText);
@@ -883,7 +886,8 @@ parsePassHeadingBullets(const QStringList &lines) {
         // and RetroDB's PASS-57-1 carries its only Status line 61 lines down,
         // so a shipped item migrated as open. The heading stop already bounds
         // the scan: each block is read once, so the whole pass stays linear.
-        // PassHeadingWrite::flipPassStatus scans the same span and must.
+        // passBlockEnd() bounds it, as it bounds PassHeadingWrite's writers.
+        const int blockEnd = passBlockEnd(lines, i);
         QString statusWord;
         // ANTS-3764 — the author's Status value, verbatim. The reader
         // classifies on a lowercased keyword and throws the rest away;
@@ -894,9 +898,8 @@ parsePassHeadingBullets(const QStringList &lines) {
         // STORAGE strips nothing, so `**un-gated (2026-07-05).**` keeps its
         // asterisks.
         QString statusValue;
-        for (int j = i + 1; j < lines.size(); ++j) {
+        for (int j = i + 1; j < blockEnd; ++j) {
             const QString &peek = lines[j];
-            if (isPassBlockEnd(peek)) break;
             const QRegularExpressionMatch pm = passStatusLinePattern().match(peek);
             if (pm.hasMatch()) {
                 const QString value = pm.captured(2);
@@ -925,9 +928,8 @@ parsePassHeadingBullets(const QStringList &lines) {
         // span ends: the trailing blanks trimmed below are outside it, so
         // two records never overlap (ANTS-3757 INV-11 partitions on this).
         int lastIdx = i;
-        for (int j = i + 1; j < lines.size(); ++j) {
+        for (int j = i + 1; j < blockEnd; ++j) {
             const QString &peek = lines[j];
-            if (isPassBlockEnd(peek)) break;
             bodyLines.append(peek);
             if (!peek.trimmed().isEmpty()) lastIdx = j;
         }
@@ -1725,6 +1727,12 @@ bool isPassBlockEnd(const QString &line) {
     return line.startsWith(QChar('#')) && !line.startsWith(QStringLiteral("#####"));
 }
 
+int passBlockEnd(const QStringList &lines, int head) {
+    for (int j = head + 1; j < lines.size(); ++j)
+        if (isPassBlockEnd(lines.at(j))) return j;
+    return int(lines.size());
+}
+
 QString passId(int major, int minor, const QString &sub) {
     return sub.isEmpty()
         ? QStringLiteral("PASS-%1-%2").arg(major).arg(minor)
@@ -1893,13 +1901,12 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
         + QString::fromUtf8(kEmojiInProgress) + QLatin1Char('|')
         + QString::fromUtf8(kEmojiConsidered) + QLatin1Char('|')
         + QString::fromUtf8(kEmojiDropped) + QLatin1Char(')'));
+    // Deliberately looser than passHeadingPattern(): a dotless `#### Pass 2`
+    // counts as evidence of the dialect even though no record is read from it.
     static const QRegularExpression rxPassHeading(
         QStringLiteral("^####\\s+Pass\\s+\\d"));
-    static const QRegularExpression rxStatusMarker(
-        QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:"),
-        QRegularExpression::CaseInsensitiveOption);
     for (const auto &ln : lines) {
-        if (ln.contains(QStringLiteral("<!-- ants-roadmap-format: 1 -->"))) {
+        if (ln.contains(kFormatMarker)) {
             // An explicit declaration, matched before any bullet is examined —
             // so this is evidence, and the strongest kind.
             signalled();
@@ -1920,7 +1927,7 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
             ++passHeadings;
             signalled();
         }
-        if (rxStatusMarker.match(ln).hasMatch()) {
+        if (passStatusLinePattern().match(ln).hasMatch()) {
             ++statusMarkers;
             signalled();
         }
@@ -2511,7 +2518,7 @@ parseBulletLines(const QStringList &lines, const IdFormat &fmt) {
         // a second walk.
         QString headingText;
         const int level = headingLevel(raw, &headingText);
-        if (level == 2 || level == 3) {
+        if (isSectionLevel(level)) {
             currentSectionHeading = headingText;
             currentSectionLevel = level;
             currentSectionSlug = uniqueSlug(seenSlugs, headingText);

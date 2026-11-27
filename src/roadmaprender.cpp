@@ -342,7 +342,7 @@ QString renderLegend(const QJsonObject &legend) {
 // only a file with no root section of its own is given this constant (see the
 // per-file assembly below).
 QString formatMarker() {
-    return QStringLiteral("<!-- ants-roadmap-format: 1 -->");
+    return QString(RoadmapParse::kFormatMarker);
 }
 
 // ANTS-5501 — `atTop` is the pass-headings case: that dialect carries no
@@ -355,7 +355,7 @@ QString withGeneratedNotice(const QString &text, bool atTop = false) {
     for (int i = 0; i < n; ++i) {
         if (lines.at(i).contains(RoadmapParse::kGeneratedNoticeTag))
             return text;
-        if (markerAt < 0 && lines.at(i).contains(QLatin1String("ants-roadmap-format")))
+        if (markerAt < 0 && lines.at(i).contains(RoadmapParse::kFormatMarkerName))
             markerAt = i;
     }
     if (markerAt < 0) {
@@ -395,7 +395,7 @@ bool hasMarkerInHead(const QString &text) {
     const QStringList lines = text.split(QLatin1Char('\n'));
     const int n = std::min(RoadmapParse::kGeneratedNoticeWindow, int(lines.size()));
     for (int i = 0; i < n; ++i)
-        if (lines.at(i).contains(QLatin1String("ants-roadmap-format")))
+        if (lines.at(i).contains(RoadmapParse::kFormatMarkerName))
             return true;
     return false;
 }

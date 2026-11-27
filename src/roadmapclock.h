@@ -1,6 +1,6 @@
 // ANTS-4501 § 2.2 — the one seam the roadmap stamping paths and the report read
-// "today" through. The pass-heading dates (PassHeadingWrite::flipPassStatus and
-// annotatePass) read QDate::currentDate() directly and do not follow it.
+// "today" through, the pass-heading dates (PassHeadingWrite::flipPassStatus and
+// annotatePass) included.
 // Spec: docs/specs/ANTS-4501-roadmap-report.md
 //
 // This exists because two of that spec's invariants cannot fail without it.

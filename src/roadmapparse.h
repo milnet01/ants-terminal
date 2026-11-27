@@ -350,6 +350,11 @@ inline QString nonAsciiIdError(const QString &id) {
 // the markdown path cut the head at the same place.
 inline constexpr int kDetectorLineBudget = 300;
 QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal = nullptr);
+// The ants-v1 format marker detectRoadmapFormat() looks for, and the one the
+// render writes. kFormatMarkerName is its name alone: the render's head scans
+// match it, so they count a marker of any version as present.
+inline constexpr QLatin1String kFormatMarker("<!-- ants-roadmap-format: 1 -->");
+inline constexpr QLatin1String kFormatMarkerName("ants-roadmap-format");
 
 // ANTS-5638 — roadmap-format.md § 3.5.1's header id high-water mark. Here, in
 // the reader's library, because both halves need it and neither can see the
@@ -471,6 +476,9 @@ bool declaresLinkLine(const QString &text);
 // `s` without a trailing caret anchor (`^vest-0042`) and the whitespace
 // around it. The parser's one statement of the anchor grammar.
 QString stripTrailingCaretAnchor(QString s);
+// The body of a trailing caret anchor (`^vest-0042` gives `vest-0042`), or
+// an empty string when the line ends in none. Same grammar as above.
+QString extractCaretAnchor(const QString &line);
 
 // The four link types in the order the render writes them, and each one's
 // line key (`blocked-by` -> `Blocked-by`).
@@ -550,6 +558,10 @@ QString passStatusKeywordIn(const QString &statusValue);
 QString passKeywordStatus(const QString &keyword);
 // A heading of level 1-4 closes a pass block; `#####` does not.
 bool isPassBlockEnd(const QString &line);
+// The index of the line that closes the pass block headed at `head`: the next
+// isPassBlockEnd() line, or lines.size(). The reader and PassHeadingWrite
+// both bound a block with this, so they read the same span.
+int passBlockEnd(const QStringList &lines, int head);
 // `PASS-<major>-<minor>[-<sub>]`, the id a pass heading synthesises.
 QString passId(int major, int minor, const QString &sub);
 

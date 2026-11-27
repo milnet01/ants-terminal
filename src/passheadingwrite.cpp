@@ -4,6 +4,7 @@
 #include "passheadingwrite.h"
 
 #include "roadmapparse.h"   // ANTS-3768 — the format's status vocabulary
+#include "roadmapclock.h"   // the "today" seam the store route reads
 
 #include <QDate>
 #include <QHash>
@@ -20,7 +21,7 @@ namespace {
 // ANTS-3768 — the format's status glyphs, and its heading, Status-line and
 // block-boundary grammar, come from RoadmapParse, the reader, so the writer
 // cannot drift from it.
-using RoadmapParse::isPassBlockEnd;
+using RoadmapParse::passBlockEnd;
 using RoadmapParse::passHeadingPattern;
 using RoadmapParse::passStatusLinePattern;
 using RoadmapParse::passStatusValuePattern;
@@ -229,10 +230,9 @@ WriteResult flipPassStatus(const QString &markdown,
     // both were capped at 50 lines, which missed a late line and inserted a
     // second one here.
     int statusLine = -1;
-    int blockEnd = int(lines.size());
-    for (int j = head + 1; j < lines.size(); ++j) {
-        if (isPassBlockEnd(lines.at(j))) { blockEnd = j; break; }
-        if (statusLine < 0 && passStatusLinePattern().match(lines.at(j)).hasMatch())
+    const int blockEnd = passBlockEnd(lines, head);
+    for (int j = head + 1; j < blockEnd && statusLine < 0; ++j) {
+        if (passStatusLinePattern().match(lines.at(j)).hasMatch())
             statusLine = j;
     }
 
@@ -251,7 +251,7 @@ WriteResult flipPassStatus(const QString &markdown,
         while (j < lines.size() && lines.at(j) == before.at(j)) ++j;
         if (j < lines.size()) {
             lines[j] = redatePassStatus(lines.at(j),
-                QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")));
+                RoadmapClock::today().toString(QStringLiteral("yyyy-MM-dd")));
             r.changedLine = j;
         } else {
             r.changedLine = statusLine;   // already this status: unchanged
@@ -303,17 +303,14 @@ WriteResult annotatePass(const QString &markdown,
     }
 
     // Block end = the next heading (level ≤ 4) or EOF.
-    int blockEnd = lines.size();
-    for (int j = head + 1; j < lines.size(); ++j) {
-        if (isPassBlockEnd(lines.at(j))) { blockEnd = j; break; }
-    }
+    const int blockEnd = passBlockEnd(lines, head);
     // Append after the block's last non-blank content line, so the note
     // lands inside the block rather than after its trailing blank lines.
     // ANTS-5395 — and above a trailing `---` rule, which separates passes.
     // ANTS-5404 — as a bullet, never a bare line.
     const QStringList noteLines =
         formatPassNote(note, PassNoteKind::Progress,
-                       QDate::currentDate().toString(Qt::ISODate))
+                       RoadmapClock::today().toString(Qt::ISODate))
             .split(QChar('\n'));
     const int insertAt = noteInsertionPoint(lines, head + 1, blockEnd, head + 1);
     for (int k = noteLines.size() - 1; k >= 0; --k) {
