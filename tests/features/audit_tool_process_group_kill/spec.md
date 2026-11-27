@@ -39,7 +39,9 @@ tool's helpers behind stacks their memory onto the next check.
   by the time the run returns — not merely the tool's own QProcess. Test
   surface: `test_auditrunner_group_kill.cpp` (a fake tool forks a long
   sleeper, records its pid, and outlives a 5 s per-tool cap; the test polls
-  for the sleeper to be gone after `runAudit` returns).
+  for the sleeper to be gone after `runAudit` returns). This holds too when
+  the leader exits on SIGTERM and a helper ignores it (ANTS-6622): the run's
+  reap kills every recorded group, not only a running leader's.
 
 - **INV-3 — `AuditDialog` starts every check's process in its own group,
   and every site that stops one signals the group first.**

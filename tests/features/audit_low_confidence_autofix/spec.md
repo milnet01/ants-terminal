@@ -50,8 +50,9 @@ contract. These findings are surfaced for manual review only.
 - **INV-2 — unsafe findings are never auto-fixed.** A future-version TODO,
   any cppcheck-`unusedInclude` finding (ANTS-2006 — Qt false-positive risk,
   never auto-removed), a `Q_UNUSED` finding on a non-`Q_UNUSED` line, a
-  `//word` line whose finding does not mention "comment", and an out-of-range
-  line all return `nullopt`.
+  `//word` line whose finding does not mention "comment", an out-of-range
+  line, and a line that starts inside a string or block comment (a
+  multi-line raw string, ANTS-6622) all return `nullopt`.
 - **INV-3 — applyRepair refuses a stale plan.** If the target line no
   longer equals `Repair.original`, `applyRepair` returns false and leaves
   the file unchanged.

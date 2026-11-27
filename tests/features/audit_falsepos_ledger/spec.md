@@ -17,6 +17,8 @@ standard at
 | G-10 / G-21     | INV-13 — fence escape on both claim and rationale |
 | G-11            | INV-14 — 50-entry cap, oldest dropped |
 | G-12            | INV-15 — 64 KiB block-size cap + sentinel |
+| G-12b           | INV-15 — the block, preamble and sentinel included, never exceeds the cap (ANTS-6622) |
+| G-4b            | INV-4 — an oversize line is skipped whole; its tail is not parsed (ANTS-6622) |
 | G-13            | INV-16, INV-17 — JSON array shape + cap |
 | G-14 / G-15     | INV-18, INV-19 — IndieReview brief / dispatch include block |
 | G-16            | INV-20 — Cold-eyes manifest brief includes block |

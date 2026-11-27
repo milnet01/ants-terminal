@@ -234,6 +234,40 @@ TEST(FalseposLedger, G12BlockSizeCapAppendsSentinel) {
     EXPECT_TRUE(out.contains(".ants_review_falsepos.jsonl"));
 }
 
+// ANTS-6622 — the cap is a ceiling: the sentinel and the preamble count.
+TEST(FalseposLedger, G12bBlockNeverExceedsCap) {
+    QList<ants::falsepos::LedgerEntry> entries;
+    for (int i = 0; i < 20; ++i) {
+        ants::falsepos::LedgerEntry e;
+        e.reviewKind = "indie-review";
+        e.claim = QStringLiteral("claim-%1").arg(i);
+        e.rationale = QString(200, QChar('R'));
+        e.timestamp = "2026-05-17";
+        entries.push_back(e);
+    }
+    for (int cap = 64; cap <= 6000; cap += 7) {
+        ants::falsepos::FormatOptions opts;
+        opts.maxBlockBytes = cap;
+        const QString out = ants::falsepos::formatForBrief(entries, opts);
+        ASSERT_LE(out.toUtf8().size(), cap) << "cap " << cap;
+    }
+}
+
+// ANTS-6622 — a line over the per-line cap is skipped whole; its tail is
+// not read as a record of its own.
+TEST(FalseposLedger, G4bOversizeLineTailNotParsed) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString padding(16 * 1024, QChar('x'));
+    ASSERT_TRUE(writeLedger(dir.path(), {
+        padding + validRecord("indie-review", "", "smuggled", "tail"),
+        validRecord("indie-review", "", "real", "rationale"),
+    }));
+    const auto entries = ants::falsepos::loadEntries(dir.path());
+    ASSERT_EQ(entries.size(), 1);
+    EXPECT_EQ(entries.at(0).claim, QStringLiteral("real"));
+}
+
 // ---------- G-10 / G-21 — fence-escape on both fields --------------
 
 TEST(FalseposLedger, G10FenceEscapeRationale) {

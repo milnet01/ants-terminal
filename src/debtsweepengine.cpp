@@ -1557,6 +1557,21 @@ QString templateDebtSweepFoldInBlock(
         return {};
     }
 
+    // ANTS-6622 — finding text is interpolated into ROADMAP.md markdown, as
+    // the audit fold-in's is (ANTS-2003): escape the inline actives so a
+    // `**`, backtick or bracket cannot break the bold or the [ID] link.
+    auto mdInline = [](const QString &s) -> QString {
+        QString esc;
+        esc.reserve(s.size() + 8);
+        for (const QChar c : s) {
+            if (c == '\\' || c == '`' || c == '*' || c == '_' ||
+                c == '[' || c == ']')
+                esc += QChar('\\');
+            esc += c;
+        }
+        return esc;
+    };
+
     QString out;
     out.reserve(256 + deferred.size() * 200);
     out += QStringLiteral("### 🧹 Debt-sweep fold-in (");
@@ -1569,9 +1584,9 @@ QString templateDebtSweepFoldInBlock(
         out += QStringLiteral("- 📋 [");
         out += RoadmapFoldIn::renderId(idPrefix, id);
         out += QStringLiteral("] **");
-        out += f.message;
+        out += mdInline(f.message);
         out += QStringLiteral("** at ");
-        out += f.file;
+        out += mdInline(f.file);
         if (f.line > 0) {
             out += QChar(':');
             out += QString::number(f.line);

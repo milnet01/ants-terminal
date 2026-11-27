@@ -232,7 +232,11 @@ Resolution resolveChangedFiles(const QString &canonProject,
     bool statusOk = !includeWorkTree;
     const QString status = includeWorkTree
         ? runGitRaw(canonProject, {QStringLiteral("status"),
-                                   QStringLiteral("--porcelain")}, &statusOk)
+                                   QStringLiteral("--porcelain"),
+                                   // ANTS-6622 — list each file in a new
+                                   // directory, not just "newdir/".
+                                   QStringLiteral("--untracked-files=all")},
+                     &statusOk)
         : QString();
     if (!diffOk || !statusOk) {
         res.anchorCommit.clear();

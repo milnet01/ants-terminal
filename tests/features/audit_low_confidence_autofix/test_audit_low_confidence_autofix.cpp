@@ -148,6 +148,28 @@ TEST(AuditAutofix, Inv2UnsafeNeverFixed) {
     }
 }
 
+// INV-2 (ANTS-6622) — a line inside a multi-line raw string is program
+// data; no safe-list rule edits it, though its text has the right shape.
+TEST(AuditAutofix, Inv2LineInsideRawStringNeverFixed) {
+    QTemporaryDir dir;
+    const QString body = QStringLiteral(
+        "const char *k = R\"(\n"
+        "// TODO: remove after 0.7.0\n"
+        "    Q_UNUSED(x);\n"
+        "//tight\n"
+        ")\";\n");
+    const QString p = writeTmp(dir, "r.cpp", body);
+    EXPECT_FALSE(ants::autofix::planRepair(
+        mk("grep", "stale TODO marker", 2), p, body, kVer).has_value())
+        << "stale_todo removed a line of a raw string";
+    EXPECT_FALSE(ants::autofix::planRepair(
+        mk("clazy", "dead Q_UNUSED(x)", 3), p, body, kVer).has_value())
+        << "dead_q_unused removed a line of a raw string";
+    EXPECT_FALSE(ants::autofix::planRepair(
+        mk("lint", "comment", 4), p, body, kVer).has_value())
+        << "comment_space rewrote a line of a raw string";
+}
+
 // INV-3 — applyRepair refuses a stale plan and leaves the file untouched.
 TEST(AuditAutofix, Inv3StalePlanRefused) {
     QTemporaryDir dir;

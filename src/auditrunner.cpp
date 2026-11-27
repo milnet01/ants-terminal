@@ -1007,10 +1007,10 @@ ParsedOutput parseToolOutput(const QString &tool,
             }
             // ANTS-3590 — exclude the dropped placeholder entries from the raw
             // total so a clean scan reports 0, not 1.
+            // ANTS-6622 — not capped at kSarifFindingsMax: suppressedCount is
+            // not, so `raw - suppressed` came out too low past the cap. The
+            // SARIF's own cap is flagged by findingsTruncated.
             out.rawCount = arr.size() - emptyEntries;
-            // Honour SARIF cap.
-            if (out.rawCount > kSarifFindingsMax)
-                out.rawCount = kSarifFindingsMax;
             return out;
         }
         // ANTS-3395 — a JSON tool with no parseable findings doc. Do NOT fall
@@ -2640,6 +2640,9 @@ RunResult runAudit(const RunRequest &req) {
     QHash<QString, QString>            rawByTool;
     QHash<QString, std::shared_ptr<QProcess>> procs;
     QHash<QString, QElapsedTimer>      perToolTimer;
+    // ANTS-6622 — each tool's process-group id, recorded at start, so the
+    // reap below reaches helpers that outlive their leader.
+    QHash<QString, qint64>             groupIds;
     // ANTS-5044 — tools the per-tool cap signalled. Their SIGTERM surfaces as
     // CrashExit, so the handlers consult this before calling it a crash.
     QSet<QString>                      timedOut;
@@ -2808,6 +2811,9 @@ RunResult runAudit(const RunRequest &req) {
                 finish(tool, QStringLiteral("timed_out"), QString(), ms);
             });
         });
+        QProcess::connect(proc, &QProcess::started, [tool, proc, &groupIds]() {
+            groupIds[tool] = proc->processId();
+        });
 
         procs[tool] = owned;
         perToolTimer[tool].start();
@@ -2846,6 +2852,12 @@ RunResult runAudit(const RunRequest &req) {
     // are alive. Disconnect so a late exit cannot call finish() again, then
     // kill and wait out anything still running. `procs` frees each process
     // on return, which cancels the timers it is the context of.
+    // ANTS-6622 — every recorded group is killed, not only a running
+    // leader's: a leader that exited on SIGTERM inside the grace period
+    // leaves behind helpers that ignored it, and their grace timer dies
+    // with `procs`.
+    for (const qint64 pgid : std::as_const(groupIds))
+        ProcessGroup::signalGroup(pgid, SIGKILL);
     for (const auto &p : std::as_const(procs)) {
         p->disconnect();
         if (p->state() != QProcess::NotRunning) {
@@ -2959,7 +2971,8 @@ RunResult runAudit(const RunRequest &req) {
             // or one that failed re-checked nothing; its prior findings stay.
             const AuditDelta::DeltaResult d = AuditDelta::computeDelta(
                 currentFindings, prior.findings,
-                scope.sinceLastRunChangedFiles, internal::toolsRanOk(r.byTool));
+                scope.sinceLastRunChangedFiles, internal::toolsRanOk(r.byTool),
+                canonProject);
             recorded.mergedForRecord = d.merged;
             // carriedForward ∖ current = priorOnUntouched ∖ current (the
             // current ∩ prior half is already emitted by the per-tool SARIF

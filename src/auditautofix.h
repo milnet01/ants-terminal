@@ -1,10 +1,11 @@
 // ANTS-1719 — native auto-fix for mechanically-safe, behaviour-neutral
 // audit findings. "Fix the fixable; surface the rest." Pure (Qt6::Core)
 // so the AuditDialog opt-in action and the feature test share one
-// implementation. Every repair is single-line, behaviour-neutral, and
-// gated on BOTH a finding signal and the exact source-line shape — a
-// finding that is not provably one of the safe-list cases is never
-// touched (the caller surfaces it instead).
+// implementation. Every repair is single-line and behaviour-neutral, and
+// is gated on the exact source-line shape and, except the self-verifying
+// stale-TODO rule, on a finding signal; a line that starts inside a string
+// or block comment is never touched. A finding that is not provably one of
+// the safe-list cases is left alone (the caller surfaces it instead).
 
 #pragma once
 

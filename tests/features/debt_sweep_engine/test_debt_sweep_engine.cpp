@@ -431,6 +431,24 @@ TEST(DebtSweepEngine, Inv10DateIsoByteIdentical) {
     EXPECT_EQ(h.captured(1), s.captured(1));
 }
 
+// ANTS-6622 — finding text is escaped like the audit fold-in's (ANTS-2003),
+// so a `**` or bracket in a message cannot close the bold or fake an [ID].
+TEST(DebtSweepEngine, Inv10TemplateEscapesMarkdown) {
+    DebtSweepEngine::Finding f;
+    f.category   = "code_drift";
+    f.detectorId = "added_todo";
+    f.file       = "src/my_file.cpp";
+    f.line       = 5;
+    f.message    = "TODO: fix **now** [ANTS-1]";
+
+    const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
+        {f}, {1301}, "2026-05-13", "ANTS");
+
+    EXPECT_TRUE(block.contains(
+        "- 📋 [ANTS-1301] **TODO: fix \\*\\*now\\*\\* \\[ANTS-1\\]** at src/my\\_file.cpp:5."))
+        << block.toStdString();
+}
+
 TEST(DebtSweepEngine, Inv13bTemplateEmptyOnMismatch) {
     DebtSweepEngine::Finding f;
     f.file = "x";

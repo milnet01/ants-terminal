@@ -98,7 +98,7 @@ Manifest loadManifest(const QString &canonProject);
 // non-defaulted one.
 struct RecordedRun {
     QString iso;          // canonical, with colons
-    QString sha;          // 7-char short OR "nogit"
+    QString sha;          // `rev-parse --short` (7+ chars) OR "nogit"
     QString sarifPath;    // absolute
     QString htmlPath;     // empty when no html
     bool    ok = false;

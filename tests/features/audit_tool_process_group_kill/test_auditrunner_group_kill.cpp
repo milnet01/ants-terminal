@@ -166,3 +166,51 @@ TEST(AuditRunnerGroupKill, CrashedToolKeepsBothOutputChannels) {
         << " finding(s); expected 2, one from each channel. The crash "
            "handler kept stderr only.";
 }
+
+// ANTS-6622 — the leader exits on the cap's SIGTERM inside the grace period,
+// but the helper it forked ignores SIGTERM. The run ends as the leader goes,
+// which cancelled the SIGKILL grace timer, and the reap's group kill was
+// skipped because the leader was no longer running, so the helper survived.
+TEST(AuditRunnerGroupKill, HelperIgnoringSigtermDiesWhenLeaderExitsFirst) {
+    const QTemporaryDir &toolDir = sharedToolDir();
+    QTemporaryDir projectDir;
+    ASSERT_TRUE(toolDir.isValid());
+    ASSERT_TRUE(projectDir.isValid());
+
+    const QString pidFile = toolDir.path() + QStringLiteral("/mypy-term.pid");
+    QFile::remove(pidFile);
+    const QString script = QStringLiteral(
+        "#!/bin/sh\n"
+        "sh -c \"trap '' TERM; exec sleep 300\" >/dev/null 2>&1 &\n"
+        "echo $! > \"%1\"\n"
+        "wait\n").arg(pidFile);
+    ASSERT_TRUE(writeExecutable(toolDir.path() + QStringLiteral("/mypy"), script))
+        << "test setup: could not write the fake mypy script";
+
+    ScopedPathPrepend pathGuard(toolDir.path());
+
+    AuditRunner::RunRequest req;
+    req.projectRoot       = projectDir.path();
+    req.tools             = {QStringLiteral("mypy")};
+    req.capPerToolSeconds = 5;  // AuditRunner::internal::kCapPerToolMin
+
+    const AuditRunner::RunResult r = AuditRunner::runAudit(req);
+    ASSERT_TRUE(r.byTool.contains(QStringLiteral("mypy")))
+        << "test setup: the fake mypy never resolved/ran — code: "
+        << r.code.toStdString() << " error: " << r.error.toStdString();
+
+    QFile pf(pidFile);
+    ASSERT_TRUE(pf.open(QIODevice::ReadOnly))
+        << "test setup: fake mypy never wrote its helper's pid";
+    bool ok = false;
+    const qint64 helperPid =
+        QString::fromUtf8(pf.readAll()).trimmed().toLongLong(&ok);
+    ASSERT_TRUE(ok) << "test setup: pid file did not contain a number";
+
+    const bool gone = ants_test::pollProcessGone(static_cast<pid_t>(helperPid));
+    ::kill(static_cast<pid_t>(helperPid), SIGKILL);   // never leak it
+    EXPECT_TRUE(gone)
+        << "ANTS-6622: helper pid " << helperPid << " ignored SIGTERM and "
+           "outlived the run; the reap killed only a group whose leader was "
+           "still running.";
+}

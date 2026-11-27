@@ -186,6 +186,16 @@ extend-ignore = ["S311", "S324"]
     expectList("bandit.extendIgnore", got, {"B311", "B324"});
 }
 
+// ANTS-6622 — `ignore` and `extend-ignore` in one section both count.
+void testBanditIgnoreAndExtendIgnore() {
+    const QString toml = R"([tool.ruff.lint]
+ignore = ["S101"]
+extend-ignore = ["S311"]
+)";
+    const QStringList got = AuditHygiene::parseBanditSkipCodes(toml);
+    expectList("bandit.ignoreAndExtendIgnore", got, {"B101", "B311"});
+}
+
 #define HYGIENE_TEST(NAME) \
     TEST(AuditHygieneFeature, NAME) { \
         int before = failures; \
@@ -205,5 +215,6 @@ HYGIENE_TEST(BanditPrefersLint)
 HYGIENE_TEST(BanditPrefersLintReversedOrder)
 HYGIENE_TEST(BanditStopsAtNextSection)
 HYGIENE_TEST(BanditExtendIgnore)
+HYGIENE_TEST(BanditIgnoreAndExtendIgnore)
 
 } // namespace

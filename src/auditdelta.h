@@ -36,10 +36,13 @@ struct DeltaResult {
 //                  finding whose `tool` is not among them (skipped, failed,
 //                  timed out, or untagged) was not re-checked, so it too is
 //                  carried forward rather than counted as removed.
+// `projectRoot`  — ANTS-6622: a finding `file` under it is matched against
+//                  `changedFiles` project-relative.
 DeltaResult computeDelta(const QJsonArray &current,
                          const QJsonArray &prior,
                          const QSet<QString> &changedFiles,
-                         const QSet<QString> &toolsRanOk);
+                         const QSet<QString> &toolsRanOk,
+                         const QString &projectRoot = QString());
 
 // ANTS-5085 — bound the set the recorded sidecar persists to `maxEntries`,
 // keeping the head. `merged` lists current findings before carried-forward

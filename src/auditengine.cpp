@@ -426,7 +426,9 @@ int computeConfidence(const Finding &f) {
     // Path-based penalties
     const QString lp = f.file.toLower();
     const bool inTests = lp.contains("/tests/") || lp.contains("/test/") ||
-                         lp.contains("test_") || lp.endsWith("_test.py") ||
+                         // ANTS-6622 — `test_` at a segment start only, so
+                         // `latest_x.cpp` / `contest_y` are not test paths.
+                         lp.startsWith("test_") || lp.contains("/test_") || lp.endsWith("_test.py") ||
                          lp.endsWith("_test.go") || lp.endsWith(".test.js") ||
                          lp.endsWith(".spec.js");
     if (inTests) score -= 20;
@@ -1054,7 +1056,9 @@ std::optional<AuditSummary> summariseSarif(
     // Spec § 3.1 step 8 — derive htmlPath.
     QFileInfo sarifInfo(sarifPath);
     QString htmlCandidate = sarifInfo.absoluteFilePath();
-    htmlCandidate.chop(6);  // strip ".sarif"
+    // ANTS-6622 — strip ".sarif" only when the path has it.
+    if (htmlCandidate.endsWith(QStringLiteral(".sarif"), Qt::CaseInsensitive))
+        htmlCandidate.chop(6);
     htmlCandidate.append(QStringLiteral(".html"));
     if (QFile::exists(htmlCandidate)) {
         s.htmlPath = std::move(htmlCandidate);
@@ -1236,8 +1240,9 @@ std::optional<AuditSummary> summariseClangTidyText(
         const QString msg     = m.captured(5);
         const QString ruleId  = m.captured(6);  // may be empty
 
-        // Skip clang-tidy "<N> warnings/errors generated." trailers.
-        if (file.contains(QLatin1Char(' '))) continue;
+        // ANTS-6622 — no space filter: the "<N> warnings generated."
+        // trailer has no `:<line>:<col>:` and never matches `rx`, and a
+        // filter keyed on spaces dropped every finding in a spaced path.
 
         const QString &sarifLevel = sev;          // warning/error/note → SARIF 1:1
         const QString sevTier =

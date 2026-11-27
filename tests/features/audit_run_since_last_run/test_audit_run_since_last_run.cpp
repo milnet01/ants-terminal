@@ -245,6 +245,30 @@ TEST(AuditScopeSinceLastRun, Inv1ResolveDiffAndInv7NoChanges) {
     EXPECT_TRUE(r.files.contains(QStringLiteral("c.py")));
 }
 
+// ── INV-1 — an untracked file in a new directory is listed by name ────
+// ANTS-6622: plain `status --porcelain` printed "newdir/", which no
+// per-tool language filter keeps, so the new source was never scanned.
+
+TEST(AuditScopeSinceLastRun, Inv1UntrackedFileInNewDirListed) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not on PATH";
+    QTemporaryDir repo;
+    ASSERT_TRUE(repo.isValid());
+    ASSERT_TRUE(initRepo(repo.path()));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x;\n")));
+    ASSERT_TRUE(commitAll(repo.path(), QStringLiteral("A")));
+    const QString anchor = gitOut(repo.path(),
+        {QStringLiteral("rev-parse"), QStringLiteral("--short"),
+         QStringLiteral("HEAD")});
+    ASSERT_FALSE(anchor.isEmpty());
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("newdir/d.cpp"),
+                          QStringLiteral("int d;\n")));
+
+    const auto r = AuditScope::resolveChangedFiles(repo.path(),
+        QStringLiteral("since-last-run"), anchor);
+    EXPECT_TRUE(r.files.contains(QStringLiteral("newdir/d.cpp"))) << describe(r);
+    EXPECT_FALSE(r.files.contains(QStringLiteral("newdir/"))) << describe(r);
+}
+
 // ── INV-9 — pure/impure split (source-scrape) ─────────────────────────
 
 TEST(AuditScopeSinceLastRun, Inv9PureHelpersDoNotSpawnGit) {

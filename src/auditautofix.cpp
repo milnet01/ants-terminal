@@ -2,6 +2,7 @@
 
 #include "auditautofix.h"
 
+#include "audithygiene.h"
 #include "secureio.h"
 
 #include <QDateTime>
@@ -38,6 +39,18 @@ std::optional<Repair> planRepair(const Finding &f,
     const QStringList lines = fileContents.split('\n');
     if (f.line > lines.size()) return std::nullopt;
     const QString &line = lines.at(f.line - 1);
+
+    // ANTS-6622 — a line that starts inside a string (a multi-line raw
+    // string) or a block comment is program data, not a standalone
+    // statement or comment: editing it is not behaviour-neutral. Lex the
+    // file with that line replaced by a bare token; the token is code only
+    // when the line starts in code.
+    {
+        QStringList probe = lines;
+        probe[f.line - 1] = QStringLiteral("x");
+        if (!AuditHygiene::lineHasCode(probe.join(QLatin1Char('\n')), absPath, f.line))
+            return std::nullopt;
+    }
 
     auto make = [&](const QString &rule, const QString &fixed,
                     bool remove) -> std::optional<Repair> {

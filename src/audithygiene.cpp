@@ -98,10 +98,11 @@ QStringList parseBanditSkipCodes(const QString &text) {
     static const QRegularExpression ignoreRe(
         R"((?:^|\n)\s*(?:extend-)?ignore\s*=\s*\[([^\]]*)\])",
         QRegularExpression::DotMatchesEverythingOption);
-    const QRegularExpressionMatch im = ignoreRe.match(body);
-    if (!im.hasMatch()) return {};
-
-    const QString arrayBody = im.captured(1);
+    // Both `ignore` and `extend-ignore` count, so collect every array.
+    QString arrayBody;
+    QRegularExpressionMatchIterator iit = ignoreRe.globalMatch(body);
+    if (!iit.hasNext()) return {};
+    while (iit.hasNext()) arrayBody += iit.next().captured(1) + QLatin1Char('\n');
     // Extract S-codes (quoted string literals starting with S followed by
     // digits). Bandit uses B-codes; the mapping is S<nnn> ↔ B<nnn>.
     static const QRegularExpression sCodeRe(

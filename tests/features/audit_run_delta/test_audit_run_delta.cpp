@@ -191,6 +191,44 @@ TEST(AuditRunDelta, Ants6540FindingOfAToolThatDidNotRunIsKept) {
     EXPECT_EQ(d.merged.size(), 2) << "the recorded baseline dropped it";
 }
 
+// ANTS-6622 — ruff reports an absolute `filename`; `changedFiles` is
+// project-relative. A fixed finding on a changed file must count as removed.
+TEST(AuditRunDelta, Ants6622AbsoluteFindingPathMatchesChangedFile) {
+    const QString root = QStringLiteral("/proj");
+    const QJsonObject fixed = mk(root + QStringLiteral("/a.py"), 1,
+                                 QStringLiteral("cppcheck"), QStringLiteral("gone"));
+    const auto d = AuditDelta::computeDelta({}, QJsonArray{fixed},
+                                            {QStringLiteral("a.py")}, kRanOk, root);
+    EXPECT_EQ(d.removedCount, 1) << "an absolute path never matched a changed file";
+    EXPECT_EQ(d.carriedForwardCount, 0);
+}
+
+// ANTS-6622 — a JSON tool past kSarifFindingsMax (10 000): the raw count was
+// capped but the suppressed count was not, so raw − suppressed came out low.
+TEST(AuditRunDelta, Ants6622AfterFilterCountPastTheFindingsCap) {
+    const int total = 10005;
+    QJsonArray arr;
+    QSet<QString> learned;
+    for (int i = 0; i < total; ++i) {
+        const QString msg = QStringLiteral("leak %1").arg(i);
+        QJsonObject e;
+        e["path"] = QStringLiteral("a.py");
+        e["message"] = msg;
+        e["check_id"] = QStringLiteral("r1");
+        arr.append(e);
+        if (i < 10)
+            learned.insert(ants::auditfp::computeFingerprint(
+                QStringLiteral("a.py"), QStringLiteral("r1"), msg));
+    }
+    const QString raw = QString::fromUtf8(
+        QJsonDocument(arr).toJson(QJsonDocument::Compact));
+    const auto c = AuditRunner::internal::parseWithSuppression(
+        QStringLiteral("semgrep"), raw, 10, learned);
+    EXPECT_EQ(c.rawCount, total);
+    EXPECT_EQ(c.afterFilterCount, total - 10)
+        << "raw capped at 10000 minus an uncapped suppressed count";
+}
+
 // ANTS-6540 — the runner's half: findings name their tool, from the JSON and
 // the line-based parsers alike, and only tools that finished ok count as run.
 TEST(AuditRunDelta, Ants6540RunnerTagsFindingsAndCountsOnlyOkTools) {

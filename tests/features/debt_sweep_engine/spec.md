@@ -30,7 +30,9 @@ detector-expansion addendum.
   sniffed scheme), and `<id>` is zero-padded to the op:append min-4
   width via `RoadmapFoldIn::renderId` — NOT a hardcoded, un-padded
   `ANTS-<n>`. Verified by `Inv10ProjectPrefixAndPadding`
-  (`[DOOM-0007]` from prefix `DOOM` + id `7`).
+  (`[DOOM-0007]` from prefix `DOOM` + id `7`). The message and file
+  are markdown-escaped (`\`, backtick, `*`, `_`, `[`, `]`), as the
+  audit fold-in's are (ANTS-6622; `Inv10TemplateEscapesMarkdown`).
 - **INV-11.** `triagePrompt` emits a prompt containing one
   `[<category> / <detector_id>] <file>:<line>` block per input
   Finding.

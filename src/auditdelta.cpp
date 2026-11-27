@@ -12,8 +12,13 @@ namespace {
 QString fpOf(const QJsonValue &v) {
     return v.toObject().value(QStringLiteral("fp")).toString();
 }
-QString fileOf(const QJsonValue &v) {
-    return v.toObject().value(QStringLiteral("file")).toString();
+// ANTS-6622 — some tools (ruff) report an absolute path; `changedFiles`
+// is project-relative, as git prints it.
+QString fileOf(const QJsonValue &v, const QString &projectRoot) {
+    const QString f = v.toObject().value(QStringLiteral("file")).toString();
+    if (!projectRoot.isEmpty() && f.startsWith(projectRoot + QLatin1Char('/')))
+        return f.mid(projectRoot.size() + 1);
+    return f;
 }
 QSet<QString> fpSet(const QJsonArray &a) {
     QSet<QString> s;
@@ -30,7 +35,8 @@ QSet<QString> fpSet(const QJsonArray &a) {
 DeltaResult computeDelta(const QJsonArray &current,
                          const QJsonArray &prior,
                          const QSet<QString> &changedFiles,
-                         const QSet<QString> &toolsRanOk) {
+                         const QSet<QString> &toolsRanOk,
+                         const QString &projectRoot) {
     DeltaResult d;
 
     // 1. Partition prior by whether it was re-checked this run: its file was
@@ -39,7 +45,7 @@ DeltaResult computeDelta(const QJsonArray &current,
     QJsonArray priorOnChanged;
     QJsonArray priorOnUntouched;
     for (const QJsonValue &v : prior) {
-        const bool rechecked = changedFiles.contains(fileOf(v))
+        const bool rechecked = changedFiles.contains(fileOf(v, projectRoot))
             && toolsRanOk.contains(v.toObject().value(QStringLiteral("tool")).toString());
         if (rechecked) priorOnChanged.append(v);
         else           priorOnUntouched.append(v);
