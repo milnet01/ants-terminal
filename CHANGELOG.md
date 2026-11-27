@@ -27,6 +27,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The terminal grid, VT parser, terminal widget, spec tools, test audit and hook installer each keep one copy of logic they used to repeat**
+  ANTS-6613, ANTS-6614, ANTS-6615, ANTS-6616, ANTS-6617, ANTS-6619.
+
 - **Model switching, Lua plugins, the review engines, the Roadmap window and the roadmap reader and store each keep one copy of logic they used to repeat**
   ANTS-6607, ANTS-6608, ANTS-6609, ANTS-6610, ANTS-6611, ANTS-6612.
 
@@ -115,6 +118,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Spec tools keep an escaped `\|` inside its table cell instead of splitting there, and find an `## INVARIANTS` heading in any case** (ANTS-6613)
+
 - **Bash and fish complete a folder for `--import-roadmap`'s project root, and the Debian and Arch recipes test as the openSUSE one does** (ANTS-6599)
   The Debian and Arch test steps now run without a display, in a UTF-8
   locale, and skip the timing-sensitive perf tests. The Flathub manifest
@@ -161,6 +166,10 @@ for security-relevant changes.
   moves there, records intact, the next time the audit opens.
 
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
+
+### Security
+
+- **The mutation journal and test-audit reports are private from the first byte written** (ANTS-6616)
 
 ## [0.7.116] - 2026-11-24
 

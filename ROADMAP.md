@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6966 -->
+<!-- ants-roadmap-id-high-water: ANTS=6976 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98255,7 +98255,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6613] **Fold the duplicated logic the 2026-11-06 reviews found in spec-engines.**
+- ✅ [ANTS-6613] **Fold the duplicated logic the 2026-11-06 reviews found in spec-engines.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 374 `specconformance.cpp:45-52` (Medium)
   - row 376 `speclog.cpp:626` (Low)
@@ -98265,21 +98265,24 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 984 `src/speclint.cpp:641` (Medium)
   - row 1429 `src/speclog.cpp:319` (Info)
   - row 1432 `src/specparse.cpp:107` (Info)
+  Shipped f7ee238e: rows 374, 381, 982, 983 (part), 984 (comment), 1429,
+  1432. Row 376 left; follow-up filed.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: spec-engines.
 
-- 📋 [ANTS-6614] **Fold the duplicated logic the 2026-11-06 reviews found in terminal-grid.**
+- ✅ [ANTS-6614] **Fold the duplicated logic the 2026-11-06 reviews found in terminal-grid.**
   2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 486 `src/terminalgrid.cpp:477` (Medium)
   - row 487 `src/terminalgrid.cpp:2993` (Medium)
+  Shipped 4fbd3c1b: rows 486, 487. Perf preset green.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: terminal-grid.
 
-- 📋 [ANTS-6615] **Fold the duplicated logic the 2026-11-06 reviews found in terminal-widget.**
+- ✅ [ANTS-6615] **Fold the duplicated logic the 2026-11-06 reviews found in terminal-widget.**
   12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 506 `src/terminalwidget.cpp:1913-1916` (Medium)
   - row 507 `src/terminalwidget.cpp:1472-1474` (Low)
@@ -98293,29 +98296,35 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 524 `src/terminalaccessible.cpp:92` (Medium)
   - row 525 `src/terminalwidget.cpp:6409` (Low)
   - row 526 `src/terminalwidget.cpp:4595` (Low)
+  Shipped 1da0c48c: rows 508, 509, 513, 514 (part), 515, 517 (part), 518
+  (part), 525, 526. Rows 506 (security), 507 (colour choice), 524 left;
+  follow-ups filed. Perf preset green.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6616] **Fold the duplicated logic the 2026-11-06 reviews found in test-audit-verify.**
+- ✅ [ANTS-6616] **Fold the duplicated logic the 2026-11-06 reviews found in test-audit-verify.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1024 `src/testauditdialog.cpp:56` (Medium)
   - row 1027 `src/testrunners.cpp:658` (Medium)
   - row 1030 `src/testauditengine.cpp:1188` (Low)
   - row 1031 `src/testauditengine.cpp:2218` (Low)
   - row 1041 `src/testauditdialog.cpp:304` (Low)
+  Shipped 61b7d091: rows 1024, 1027 (comment), 1030, 1031; 1041 was
+  already fixed.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: test-audit-verify.
 
-- 📋 [ANTS-6617] **Fold the duplicated logic the 2026-11-06 reviews found in tools-ci-gate.**
+- ✅ [ANTS-6617] **Fold the duplicated logic the 2026-11-06 reviews found in tools-ci-gate.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1235 `tools/install-hooks.sh:125` (Medium)
   2026-11-19, ANTS-6156 (9ebd6918) folded the file half: one
   pack_files array. pack_hook_regex is still hand-kept beside
   hook_entries; spec ANTS-6310 § 4.4 names both.
+  Shipped f80580db: row 1235.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -98334,9 +98343,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: tools-roadmap-surveys.
 
-- 📋 [ANTS-6619] **Fold the duplicated logic the 2026-11-06 reviews found in vt-parser-pty.**
+- ✅ [ANTS-6619] **Fold the duplicated logic the 2026-11-06 reviews found in vt-parser-pty.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 473 `src/vtparser.cpp:240-241` (Medium)
+  Shipped 850c1d33: row 473. Perf preset green.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -98469,6 +98479,115 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: doc-fix.
   Source: ANTS-6611/6612 helpers 2026-11-27.
   Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6967] **URL quick-select opens an OSC 8 link only after the same lookalike-link check a click gets.**
+  keyPressEvent's quick-select branch opens the URL directly, so an OSC 8
+  link whose visible text differs from its target skips openHyperlink's
+  phishing dialog. Fix: QuickSelectLabel carries isOsc8 (set from the
+  span in enterUrlQuickSelect) and the branch calls
+  openHyperlink(UrlSpan{...}, globalLine). Row 506 of the 2026-11-06
+  review; left out of ANTS-6615 because it changes behaviour.
+  **Layman:** Opening a link with the keyboard link-picker skips the warning a click shows when a link's text hides a different address.
+  Kind: security.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6968] **Rich copy keeps combining marks, as plain copy does.**
+  copySelectionRich's HTML half drops combining marks (accents, ZWJ
+  sequences) that the plain-text half keeps. Share selectedText's cell
+  text. Found by the ANTS-6615 helper (row 514's other half).
+  **Layman:** Copying with formatting can lose accents that a plain copy keeps.
+  Kind: fix.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6969] **Fold Output is offered only where a fold triangle is drawn.**
+  The context menu and toggleFoldAt offer a fold on the newest finished
+  block, but paint draws no triangle there (it also needs a following
+  region). Pick one rule for canFold's callers. Found by the ANTS-6615
+  helper (row 517).
+  **Layman:** The right-click menu can fold the last command's output even though no fold arrow is shown for it.
+  Kind: fix.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6970] **Screen-reader text before a word start returns the word just before it.**
+  terminalaccessible.cpp textBeforeOffset skips the unit just before an
+  offset that sits on a boundary and returns the one before that;
+  textAtOffset handles the case with isAtBoundary. Row 524 of the
+  2026-11-06 review: define Before/After from one unit lookup.
+  **Layman:** A screen reader asking for the previous word can get the one before it.
+  Kind: accessibility.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6971] **Pick one pair of success and failure colours for the command stripe and gutter.**
+  The status stripe uses 9ECE6A / F7768E and the command-mark gutter
+  9FE064 / E06464. Needs the user's colour choice; then share the pair
+  (command_mark_gutter counts QColor literals, so update it too). Row
+  507 of the 2026-11-06 review.
+  **Layman:** Two places show a command's success or failure in slightly different greens and reds; you choose which.
+  Kind: ux.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6972] **Spec tools find the Invariants section the same fence-aware way everywhere.**
+  SpecParse::invariantsSection does not skip fenced code, while
+  spec_log's findSectionHeading does: a fenced `## Invariants` example
+  before the real section is taken as the section by spec_query and
+  spec_lint, and append_inv's duplicate guard reads a different section
+  from where it inserts (row 376). Also speclint checkHeaderBlock and
+  SpecParse::headerField disagree on a wrapped value starting `**bold**`
+  or `#tag` (row 984).
+  **Layman:** The spec tools can misread an example in a code block as the real list of rules.
+  Kind: fix.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-6973] **Fold the leftover copies the ANTS-6613–6617 helpers found.**
+  - docintegrity.cpp isDelimiterRow and roadmapmigrate.cpp /
+    runtraceverb.cpp cell splitters: use MarkdownScan::tableCells /
+    isTableDelimiterRow where the rules agree.
+  - install-hooks.sh: pack_files copies every hooks/ants-*.sh, so a
+    script missing from hook_entries is copied but never registered.
+  - testauditengine foldIn's bad_path message leaves out the caller_cwd
+    path the other three verbs include (an error-string change).
+  **Layman:** A few more places repeat small pieces of logic; this tidies them.
+  Kind: refactor.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: spec-engines, tools-ci-gate, test-audit-verify.
+
+- 📋 [ANTS-6974] **Hook install escapes its hooks path and uninstall matches the folder too.**
+  tools/install-hooks.sh hook_entries puts $hooks_dir into JSON
+  unescaped, so a --hooks-dir with `"` or `\` breaks install. The
+  uninstall regex matches only the file name, so it would remove a
+  user's own /elsewhere/ants-bash-veto.sh entry. test_hooks.sh lists 5
+  of the 7 hooks by hand (inbox-notice, know-how-notice missing); check
+  whether that is meant.
+  **Layman:** The hook installer can break on unusual folder names and could remove a same-named hook of your own.
+  Kind: fix.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: tools-ci-gate.
+
+- 📋 [ANTS-6975] **The mutation journal clears temp files a crash leaves behind.**
+  MutationJournal::write now writes <sha>.json.tmp then renames
+  (ANTS-6616). A crash mid-write leaves the .tmp; recover() ignores it
+  but nothing removes it.
+  **Layman:** A crash while saving can leave a small leftover file that is never cleaned up.
+  Kind: fix.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6976] **Two specs describe the grid print path and the parser re-arm as they were before ANTS-6614/6619.**
+  tests/features/wide_char_overwrite_mate/spec.md says handlePrint and
+  handleAsciiPrintRun call breakWidePairsAround directly (now through
+  prepareCellWrite). docs/specs/ANTS-1777-safe-re-arm-string-introducers.md
+  quotes reArmStringIntroducer's old body and cites vtparser.cpp line
+  numbers.
+  **Layman:** Two design notes describe code that has since been tidied.
+  Kind: doc-fix.
+  Source: ANTS-6613–6617 helpers 2026-11-27.
+  Lanes: terminal-grid, vt-parser-pty.
 
 ### Other bugs (2026-11-06 review)
 
