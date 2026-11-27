@@ -149,3 +149,11 @@ wording. Convergence pattern is healthy: severity drops each
 loop, fixes get more local. Stopping at loop 3 is justified.
 
 Final status: ship-ready after 3-loop convergence (2026-05-13).
+
+### amend (2026-11-27)
+
+Not a review loop; no reviewer was dispatched. ANTS-6980:
+§ 2.1 and § 3.2 now describe the shipped heading text box (the whole
+actionable set folds under a confirmed release heading); the
+per-finding checkbox modal stays a v2 idea. Rule chosen 2026-11-27
+(user delegated). § 12's line citations dropped.

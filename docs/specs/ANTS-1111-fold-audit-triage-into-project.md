@@ -76,11 +76,9 @@ diff: ~600-900 LoC across `auditengine`, `audithygiene`,
 - **"Fold actionable into ROADMAP"** — appears in the dialog
   footer, next to `m_batchTriageBtn`. Enabled iff at least one
   visible finding has `aiVerdict == TRUE_POSITIVE` OR
-  `confidence >= 70`. Clicking pops a confirmation modal listing
-  the actionable findings and the IDs that will be allocated
-  (`[ANTS-NNNN]` … `[ANTS-NNNN+K-1]`); on confirm, atomic-writes
-  the templated block into `ROADMAP.md` and bumps
-  `.roadmap-counter`.
+  `confidence >= 70`. Clicking asks for the release heading to
+  insert under (§ 3.2); on confirm, atomic-writes the templated
+  block into `ROADMAP.md` and bumps `.roadmap-counter`.
 
 ### 2.2 New AuditDialog filter pill
 
@@ -218,8 +216,8 @@ QList<int> allocateIds(const QString &projectPath, int n);
 // any trailing newline the caller may have included) and inserts
 // `block` on the line directly following.
 //
-// Caller picks the heading. The dialog's "Fold actionable" modal
-// pre-fills `releaseBlockHeading` via `findActiveReleaseHeading()`
+// Caller picks the heading. The dialog's "Fold actionable" heading
+// text box pre-fills `releaseBlockHeading` via `findActiveReleaseHeading()`
 // (INV-8b: roadmap-format.md § 3.5.4's active release) and
 // the user can edit before confirm. If the named heading does NOT
 // exist in the file, `insertBlock` returns false WITHOUT writing —
@@ -342,21 +340,25 @@ between enrichment and trend.
 
 ### 3.2 Fold-into-roadmap workflow
 
-1. User clicks **"Fold actionable into ROADMAP"** button.
-2. Dialog computes the actionable set:
-   `[f for f in m_findingsByKey.values() if f.aiVerdict == TRUE_POSITIVE or f.confidence >= 70]`,
-   filtered by current visibility.
-3. Modal opens with N rows (one per finding), each with a
-   checkbox (default checked), the rule, file:line, and message.
-4. User confirms (or unchecks specific rows and confirms).
-5. Dialog calls `RoadmapFoldIn::allocateIds(projectPath, K)`
-   where K is the confirmed count.
-6. Dialog calls `AuditEngine::templateRoadmapFoldInBlock(confirmed,
-   allocatedIds, todayIso)` — pure templating, no IO.
-7. Dialog calls `RoadmapFoldIn::insertBlock(projectPath, block)`.
-8. On success, a status-bar message: *"Folded K findings into ROADMAP
-   (allocated [ANTS-N] … [ANTS-N+K-1])."* The actionable findings
-   are NOT auto-suppressed — the user can still see + triage them.
+1. User clicks the **"🌳 Fold actionable"** footer button.
+2. Dialog computes the actionable set: every visible finding whose
+   `aiVerdict` is `TRUE_POSITIVE` or whose confidence is at least
+   `kActionableConfidence`.
+3. A text box shows the release heading `findActiveReleaseHeading`
+   found, for the user to confirm or edit. The whole set is folded;
+   there is no per-finding choice (a per-finding checkbox modal is a
+   v2 idea). Cancel or an empty heading stops here.
+4. Dialog checks the heading exists in ROADMAP.md before allocating
+   ids, so a wrong heading reserves none.
+5. Dialog calls `RoadmapFoldIn::allocateIds` for the set's size.
+6. Dialog calls `AuditEngine::templateRoadmapFoldInBlock(actionable,
+   allocatedIds, todayIso, idPrefix)` — pure templating, no IO.
+7. Dialog calls `RoadmapFoldIn::insertBlock(projectPath, heading,
+   block)`.
+8. On success, the status line reads *"Folded K findings into
+   ROADMAP.md"*; on failure, a message box says the counter lock was
+   busy or the heading was not found. The actionable findings are NOT
+   auto-suppressed — the user can still see + triage them.
 
 ### 3.3 Allow-this-finding workflow
 
@@ -640,8 +642,8 @@ affordances to v2.**
 - `RuleQualityTracker::noisyRuleIds` accessor (full)
 - `// audit: drop[=rule]` inline-suppress alias
 - Widened-allowlist documentation (the call site was already
-  widened — `auditdialog.cpp:3991`; the v1 ship is the doc-comment
-  update at `auditdialog.h:101-110`)
+  widened in `auditdialog.cpp`; the v1 ship is the doc-comment
+  update in `auditdialog.h`)
 - 4 feature tests: `tests/features/roadmap_fold_in/`,
   `audit_corroboration_shift/`, `audit_drop_alias/`,
   `audit_framework_detect/` (~33 new test cases, all green)
