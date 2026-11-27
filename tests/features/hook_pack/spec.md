@@ -246,6 +246,7 @@ Taken over from claude-config's `bash-veto-roadmap-target` test on
 | V11 | `grep -v ROADMAP.md` (ANTS-2169's exclusion) does not block. |
 | V12–V17 | Naming the file without reading it (`stat`, `ls -l`, `git add`) and a path-scoped `git diff` do not block. |
 | V18 | `git diff --stat -- a.sh` blocks. |
+| V19 | `git diff --stat` written as text (an echo) does not stop a grep of `ROADMAP.md` in the same command from blocking (ANTS-6635). |
 
 Every allow is paired with a block: allows alone pass against a hook
 that blocks nothing.

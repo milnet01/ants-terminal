@@ -279,6 +279,8 @@ if [ "$have_jq" -eq 1 ]; then
     rt_check V16 pass 'git diff ROADMAP.md'
     rt_check V17 pass 'git diff HEAD -- a.sh b.sh'
     rt_check V18 block 'git diff --stat -- a.sh'
+    # ANTS-6635: the diff phrase as text must not hide a ROADMAP read.
+    rt_check V19 block 'echo "see git diff --stat"; grep foo ROADMAP.md'
     rm -rf "$rt_work"
 
     # A --stat diff asks for CHANGED LINES. get_git_status has no field for

@@ -128,17 +128,19 @@ SCAN
 
 # Block branches — precise, low false-positive routing kept as hard vetoes.
 reason=""
-case "$cmd" in
-    # A diff asks for CHANGED LINES. A status-only verb cannot answer that
-    # and roadmap_query is not a git verb, so the old shared reason sent the
-    # caller to a dead end and then to `# ants-bypass` — the raw command the
-    # veto exists to prevent. git_state op:diff is the verb that answers it
-    # (ANTS-2074 working-tree, ANTS-3377 hunks); ANTS-2169 Part 2 identified it
-    # but the message kept naming the wrong two.
-    *"git diff --stat"*)
-        [ "$git_diff_stat" -eq 1 ] && \
-            reason='use mcp__ants__git_state op:"diff" — per-file added/removed counts (hunks:true for @@ headers)'
-        ;;
+# A diff asks for CHANGED LINES. A status-only verb cannot answer that
+# and roadmap_query is not a git verb, so the old shared reason sent the
+# caller to a dead end and then to `# ants-bypass` — the raw command the
+# veto exists to prevent. git_state op:diff is the verb that answers it
+# (ANTS-2074 working-tree, ANTS-3377 hunks); ANTS-2169 Part 2 identified it
+# but the message kept naming the wrong two.
+#
+# It is tested before the case, not as an arm of it: a case stops at its
+# first matching arm, so the phrase as mere text (an echo) would end it
+# there with no reason and skip the ROADMAP arm below.
+if [ "$git_diff_stat" -eq 1 ]; then
+    reason='use mcp__ants__git_state op:"diff" — per-file added/removed counts (hunks:true for @@ headers)'
+else case "$cmd" in
     "git status"|"git status "*|"git log --oneline"*|"git log -n"*"--oneline"*)
         reason='use mcp__ants__git_state (op:"status": branch, ahead/behind, files; op:"log") — paginated git facts cost ~30 tokens vs raw stdout'
         ;;
@@ -146,7 +148,7 @@ case "$cmd" in
         [ "$roadmap_read" -eq 1 ] && \
             reason='use mcp__ants__roadmap_query (status=active returns ~10x fewer tokens than full ROADMAP)'
         ;;
-esac
+esac; fi
 
 [ -z "$reason" ] && exit 0
 

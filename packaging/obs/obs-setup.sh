@@ -16,7 +16,7 @@ set -eu
 API="${OBS_API:-https://api.opensuse.org}"
 PROJ="${OBS_PROJECT:-home:milnet:ants-terminal}"
 PKG="${OBS_PACKAGE:-ants-terminal}"
-USER="${OBS_USER:-milnet}"
+obs_user="${OBS_USER:-milnet}"
 
 command -v osc >/dev/null 2>&1 || { echo "obs-setup: osc not installed" >&2; exit 1; }
 
@@ -103,7 +103,7 @@ cat > "$tmp/prj.xml" <<EOF
 <project name="$PROJ">
   <title>Ants Terminal</title>
   <description>Qt6/C++20 terminal emulator with a VT100/xterm parser (Kitty keyboard and graphics, Sixel, OSC 8 hyperlinks, OSC 133 shell integration), an optional OpenGL glyph-atlas renderer, a Lua 5.4 plugin system with a sandboxed ants.* API, and a built-in Project Audit dialog with SARIF export.</description>
-  <person userid="$USER" role="maintainer"/>
+  <person userid="$obs_user" role="maintainer"/>
   <debuginfo>
     <enable/>
     <disable repository="Mageia_10"/>
@@ -157,7 +157,7 @@ cat > "$tmp/pkg.xml" <<EOF
 <package name="$PKG" project="$PROJ">
   <title>Qt6 terminal emulator with Lua plugins and a project-audit dialog</title>
   <description>Ants Terminal, built from the upstream release tag via obs_scm.</description>
-  <person userid="$USER" role="maintainer"/>
+  <person userid="$obs_user" role="maintainer"/>
 </package>
 EOF
 echo ">>> applying package meta: $PROJ/$PKG"

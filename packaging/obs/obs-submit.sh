@@ -139,7 +139,7 @@ if command -v rpmspec >/dev/null 2>&1; then
         if ! printf '%s\n' "$body" | bash -n 2>/dev/null; then
             echo "obs-submit: %$sect is not valid shell after macro expansion." >&2
             echo "            A macro reference in a comment there likely needs" >&2
-            echo "            doubling (write %%${sect}-style refs as %%%%...)." >&2
+            echo "            doubling (write %${sect}-style refs as %%${sect})." >&2
             exit 1
         fi
     done
