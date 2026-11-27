@@ -214,10 +214,11 @@ constexpr int kCountColumns = 5;
 constexpr int kColLabel = kColFirstCount + kCountColumns;
 // A card's kind cell spans the count columns and the label column.
 constexpr int kKindSpan = kColLabel - kColFirstCount + 1;
-constexpr int kColSummary = 7;
-constexpr int kColDateKind = 8;
-constexpr int kColDate = 9;
-constexpr int kGridColumns = 11;
+constexpr int kColSummary = kColLabel + 1;
+constexpr int kColDateKind = kColSummary + 1;
+constexpr int kColDate = kColDateKind + 1;
+// The last column, kGridColumns - 1, holds #id + toggle.
+constexpr int kGridColumns = kColDate + 2;
 constexpr DensityTier kDensityTable[3] = {
     // Compact: -2 px tier; label + meta groups floored at 11 px (ANTS-2211,
     // raised from 9 px for readability).
