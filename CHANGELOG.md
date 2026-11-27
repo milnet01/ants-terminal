@@ -124,6 +124,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **MCP verbs check their input more strictly: whole-number tab and max_cases, a 200-entry batch cap, an unreadable CHANGELOG refused; ci_report, run_trace, doc_lint, version_check and changelog_log report their results more accurately** (ANTS-6637)
+
 - **build_status measures staleness from the build's start; read_log keeps exact-size lines, holds its time budget and redacts PGP private keys; Clear Log File removes the rotated log; two instances no longer rotate the debug log at once** (ANTS-6632)
 
 - **A stalled update download gives up after 30 s; dialogs reopen at the size and place you left them; the trust prompt shows hidden characters as <U+XXXX>; update offers and theme errors show plain, accurate text** (ANTS-6633)

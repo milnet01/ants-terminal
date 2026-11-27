@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6988 -->
+<!-- ants-roadmap-id-high-water: ANTS=6989 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98801,6 +98801,27 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6632–6635 helpers 2026-11-27.
   Lanes: diagnostics-logging, doc-engines, dialog-chrome-theme, hooks-packaging.
 
+- 📋 [ANTS-6989] **Fix the bugs the ANTS-6636 to ANTS-6638 helpers found.**
+  - select-window, get-text, set-title, recent_errors and last_selection
+    read `tab` with toInt(), as send-text did (ANTS-6637 row 132); so do
+    lines, max_bytes and max_results arguments. Use wholeIntArg.
+  - changelog_query ignores a failed open in its parse cache for modes
+    other than lint, so an unreadable file reads as empty.
+  - spec_conformance_verb's test header and spec.md say the handler needs
+    a live MainWindow; a bare RemoteControl is enough.
+  - quotation_check: stop the occurrence walk once an occurrence passes
+    the cited line, with a bench (row 147).
+  - Turning on automatic light/dark switching waits for the next system
+    change instead of switching at once; decide whether it overrides a
+    theme picked in Settings.
+  - MainWindow's constructor comment (ANTS-5090) says creation order
+    alone sets teardown order; ~MainWindow now has a backstop.
+  - ai_context_redaction spec table's PEM row omits " BLOCK".
+  **Layman:** Small bugs in MCP argument checks, the main window and specs, found while fixing others.
+  Kind: fix.
+  Source: ANTS-6636–6638 helpers 2026-11-27.
+  Lanes: mcp-content-verbs, mainwindow, mcp-infra.
+
 ### Other bugs (2026-11-06 review)
 
 - ✅ [ANTS-6620] **Fix the smaller bugs the 2026-11-06 reviews found in app-entry-dialogs.**
@@ -98937,6 +98958,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   flicker on KWin/Wayland.
   Decision (user, 2026-11-27): row 1314 option (b): no title tooltip;
   correct the comments to say so.
+  2026-11-27: row 1314's comment fix is in
+  /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/DEC-pin-tooltip.diff,
+  not yet applied; it also closes ANTS-5840 row 569.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99068,6 +99092,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   a download), or keep the continuous channel unpinned.
   Decision (user, 2026-11-27): row 456: pin both linuxdeploy AppImages
   to a fixed release with a recorded sha256 checked by sha256sum -c.
+  2026-11-27: the pin is built in
+  /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/DEC-pin-tooltip.diff
+  (linuxdeploy 1-alpha-20251107-1, plugin-qt 1-alpha-20250213-1,
+  sha256-checked; dependency_pins INV-9), not yet applied.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99192,12 +99220,22 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1310 `src/mainwindow.cpp:1119-1125` (Info)
   - row 1311 `src/mainwindow.cpp:2893-3010` (Info)
   - row 1313 `src/mainwindow_menus.cpp:1023` (Info)
+  2026-11-27: a helper diff is ready at
+  /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/ANTS-6636.diff (13
+  rows fixed; 1311 already fixed; 1313 not a bug), not yet applied. Row
+  62 too big: keep claimed ants-mcpd usage snapshots when the config
+  save fails (Config::save() reports success, the fold is undone on
+  failure, ANTS-5311 § 5 amended). Row 69 waits on the user: add
+  Q_OBJECT to StayOpenOnToggleFilter (needs mainwindow_internal.h in the
+  target's sources), keep the in-place deletes, and ask claude-config
+  for a qt.md carve-out (recommended). Row 70 (tr() retrofit):
+  recommended to fold into ANTS-1080.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6637] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-content-verbs.**
+- ✅ [ANTS-6637] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-content-verbs.**
   21 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 132 `remotecontrol_terminal.cpp:522-524` (Medium)
   - row 134 `remotecontrol_changelog.cpp:633-636` (Low)
@@ -99220,6 +99258,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1422 `src/runtraceverb.cpp:557-559` (Info)
   - row 1423 `src/remotecontrol_run_trace.cpp:97` (Info)
   - row 1424 `src/remotecontrol_session_message.cpp:146-150` (Info)
+  Shipped 2026-11-27 (44bacd7f): 15 rows fixed; 137, 141, 142 (depth),
+  1421 already fixed; 147, 148 not bugs.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99234,6 +99274,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 190 `src/tokenusageengine.cpp:520-526` (Low)
   - row 192 `src/secretredact.h:80` (Low)
   - row 1448 `src/mcpspill.cpp:427` (Info)
+  2026-11-27: a helper diff is ready at
+  /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/ANTS-6638.diff (184,
+  185, 190 fixed; 186, 192, 1448 already fixed), not yet applied. Row
+  188 too big: write the undeclared-argument ledger off the GUI thread
+  (buffer, flush on a timer and at shutdown).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
