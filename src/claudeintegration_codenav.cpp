@@ -21,7 +21,7 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                         "workspace_search or find_definition. Returns {ok, "
                         "files:[{path, score, role, evidence}], files_count, "
                         "unmatched_terms, files_scanned, truncated}; role is "
-                        "impl|header|test. Required: topic, caller_cwd. Optional "
+                        "impl|header|test. Required: topic (or symbol), caller_cwd. Optional "
                         "max_results (default 20, cap 100).");
                     t["detail"] = QStringLiteral(
                         "Map a free-text topic (\"audit cache "
@@ -36,7 +36,7 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                         "truncated}. `role` ∈ impl|header|test; "
                         "`evidence` carries up to 3 short \"matched "
                         "filename …\" / \"\\\"…\\\" × N in body\" "
-                        "explanations. Required: `topic`, `caller_cwd`. "
+                        "explanations. Required: `topic` (or its alias `symbol`), `caller_cwd`. "
                         "Optional `max_results` (default 20, server "
                         "hard-cap 100). Compared to workspace_search: "
                         "this tool expects a topic, not an exact "
@@ -101,7 +101,10 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["encoding"] = makeEncodingProp();      // ANTS-2090
                     schema["properties"] = props;
-                    QJsonArray req; req.append(QStringLiteral("topic"));
+                    // ANTS-6626 — `topic` or its alias `symbol` is an
+                    // either-or required[] cannot express; the handler
+                    // refuses bad_args when both are missing.
+                    QJsonArray req; req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
                     t["inputSchema"] = schema;
                     tools.append(t);
@@ -551,10 +554,10 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                         "on dense bundle sweeps (ANTS-1876).");
                     // ANTS-2041 — `query` alias for `pattern`. Declared
                     // so the schema advertises it. `pattern` stays the
-                    // canonical (required) arg; both together refuse.
+                    // canonical arg; both together refuse.
                     QJsonObject queryProp;  queryProp["type"] = "string";
                     queryProp["description"] = QStringLiteral(
-                        "Alias for `pattern`, the canonical, required arg. "
+                        "Alias for `pattern`, the canonical arg; one of the two is required. "
                         "Sending both refuses bad_op_combo.");
                     // ANTS-2220 — enclosing_symbol: annotate each match
                     // with the function/method it lives inside.
@@ -757,9 +760,11 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     props["caller_cwd"]  = makeCallerCwdReadProp();
                     props["encoding"]    = makeEncodingProp();   // ANTS-2090
                     schema["properties"] = props;
-                    QJsonArray required;
-                    required.append("pattern");
-                    schema["required"] = required;
+                    // ANTS-6626 — `pattern` or its alias `query` is an
+                    // either-or required[] cannot express (as on
+                    // apply_edits); the handler refuses bad_pattern when
+                    // both are missing.
+                    schema["required"] = QJsonArray{};
                     wsTool["inputSchema"] = schema;
                 }
                 tools.append(wsTool);

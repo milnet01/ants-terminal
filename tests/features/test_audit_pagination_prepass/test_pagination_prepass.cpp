@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
 #include <QTemporaryDir>
@@ -275,4 +276,39 @@ TEST(TestAuditPaginationPrePass, Ants6543EarlierPageStillBriefsAfterALaterOne) {
     EXPECT_TRUE(b.ok) << "page 1's chunk is gone after fetching page 2: "
                       << b.error.toStdString();
     EXPECT_FALSE(b.prePassFindings.isEmpty()) << "page 1's pre-pass findings were lost";
+}
+
+// ANTS-6626 — brief's byte count measures every field the test_audit_brief
+// reply carries but byte_count itself, ok and framework_context included.
+TEST(TestAuditPaginationPrePass, Ants6626BriefByteCountCoversTheReply) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = scaffoldPytestSuite(tmp.path());
+    TestAuditEngine::PartitionRequest preq;
+    preq.callerCwd  = root;
+    preq.scope      = QStringLiteral("auto");
+    preq.dimensions = QStringLiteral("auto");
+    preq.chunkSize  = 4;
+    const TestAuditEngine::PartitionResult p = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(p.ok) << p.error.toStdString();
+    ASSERT_FALSE(p.chunks.isEmpty());
+
+    TestAuditEngine::BriefRequest breq;
+    breq.callerCwd      = root;
+    breq.partitionToken = p.partitionToken;
+    breq.chunkId        = p.chunks.first().id;
+    const TestAuditEngine::BriefResult b = TestAuditEngine::brief(breq);
+    ASSERT_TRUE(b.ok) << b.error.toStdString();
+    ASSERT_FALSE(b.frameworkContext.isEmpty());
+
+    // The keys the test_audit_brief handler (src/mcptoolregistry.cpp) writes.
+    QJsonObject reply;
+    reply["ok"]                    = true;
+    reply["chunk_id"]              = b.chunkId;
+    reply["source_paths"]          = QJsonArray::fromStringList(b.sourcePaths);
+    reply["dimensions"]            = QJsonArray::fromStringList(b.dimensions);
+    reply["framework_context"]     = b.frameworkContext;
+    reply["pre_pass_findings"]     = b.prePassFindings;
+    reply["prior_false_positives"] = b.priorFalsePositives;
+    EXPECT_EQ(b.byteCount, QJsonDocument(reply).toJson(QJsonDocument::Compact).size());
 }

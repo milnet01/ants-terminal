@@ -962,7 +962,7 @@ void appendToolSchemasReports(QJsonArray &tools) {
                             "when a project ships a SECOND changelog for a "
                             "separately-versioned bundled component "
                             "(tools/audit/CHANGELOG.md), which discovery "
-                            "cannot reach \\u2014 a nested caller_cwd resolves "
+                            "cannot reach — a nested caller_cwd resolves "
                             "back to the root file, so that file's only route "
                             "was a raw edit, losing the atomic write, category "
                             "routing, format validation and the [Unreleased] "

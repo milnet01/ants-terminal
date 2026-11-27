@@ -31,3 +31,7 @@ closing one admitted client lets a new client connect and stay connected.
 
 **INV-4 — the remote-control socket refuses past the cap.** The same,
 against the socket `RemoteControl::start` binds.
+
+**INV-5 — an over-cap MCP request is answered (ANTS-6626).** A client
+that sends more than 256 KiB with no newline reads a JSON-RPC `-32600`
+error naming the 256 KiB cap before the server closes the connection.

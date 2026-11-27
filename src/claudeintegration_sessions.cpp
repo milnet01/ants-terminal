@@ -274,6 +274,7 @@ void ClaudeIntegration::pollClaudeProcess() {
         // shell, clear m_claudePid + m_transcriptPath and announce
         // NotRunning. This branch coexists with INV-1 — the != gate
         // below does NOT subsume the not-found case.
+        const bool trackedClaudeExited = m_claudePid != 0;
         m_claudePid = 0;
         m_transcriptPath.clear();
         // Unwatch the exited Claude's transcript too, so a later write to it
@@ -289,6 +290,17 @@ void ClaudeIntegration::pollClaudeProcess() {
         m_planModeByPid.remove(m_shellPid);
         if (m_state != ClaudeState::NotRunning) {
             m_state = ClaudeState::NotRunning;
+            m_currentTool.clear();   // ANTS-6626 — the next hook sets it again
+            // ANTS-6626 — a tracked Claude's exit takes its session id and
+            // files with it, as a tab switch does (setShellPid). Not before
+            // one is tracked: an orphaned Claude is found only on the orphan
+            // scan's polls, and SessionStart, the one setter of the id, does
+            // not come again.
+            if (trackedClaudeExited) {
+                m_activeSessionId.clear();
+                m_touchedFiles.clear();
+                m_editedFiles.clear();
+            }
             emit stateChanged(m_state, m_currentTool);
         }
         return;
@@ -858,9 +870,11 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
         }
         return out;
     };
-    const QList<QJsonObject> events = parseEvents(tail);
+    QList<QJsonObject> events = parseEvents(tail);
     // The window `events` came from. The context reading below widens
-    // `window` for itself; the state search widens its own copy.
+    // `window` for itself; the state search widens its own copy, and
+    // `events` with it, so the /compact, /audit and plan-mode walks read
+    // the window the state was found in (ANTS-6626).
     qint64 stateWindow = window;
 
     if (events.isEmpty()) return snap;
@@ -981,7 +995,8 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
         const std::optional<QByteArray> wider =
             readTailWindow(file, size, stateWindow);
         if (!wider) break;
-        stateEvent = findStateEvent(parseEvents(*wider));
+        events = parseEvents(*wider);
+        stateEvent = findStateEvent(events);
     }
     if (!stateEvent.isEmpty()) {
         const QString type = stateEvent.value("type").toString();
@@ -1228,11 +1243,6 @@ void ClaudeIntegration::updateTouchedFiles(const QString &toolName,
         // Can't reliably extract file paths from bash commands
         return;
     }
-
-    // ANTS-5169 — every read of a secrets file warns, so this sits ahead
-    // of the once-per-path check below.
-    if (toolName == "Read" && isSecretFileName(filePath))
-        emit sensitiveFileRead(filePath);
 
     if (filePath.isEmpty()) return;
     // ANTS-6914 — once per path, and once more when an Edit or Write first

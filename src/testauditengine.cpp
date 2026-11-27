@@ -1631,11 +1631,14 @@ BriefResult brief(const BriefRequest &req) {
             QStringLiteral("test-audit"), QString());
         r.priorFalsePositives = ants::falsepos::formatForJsonArray(fpEntries);
     }
-    // Byte count (informational).
+    // Byte count (informational): every field the test_audit_brief reply
+    // carries but byte_count itself (ANTS-6626).
     QJsonObject env;
+    env["ok"]          = true;
     env["chunk_id"]    = r.chunkId;
     env["source_paths"] = QJsonArray::fromStringList(r.sourcePaths);
     env["dimensions"]   = QJsonArray::fromStringList(r.dimensions);
+    env["framework_context"] = r.frameworkContext;
     env["pre_pass_findings"] = r.prePassFindings;
     env["prior_false_positives"] = r.priorFalsePositives;
     r.byteCount = QJsonDocument(env).toJson(QJsonDocument::Compact).size();

@@ -65,6 +65,15 @@ For every hook event arriving on the singleton's UDS:
   read" or "Claude edited". It fires once per path for a read, and
   once more when an Edit or Write first changes a path already read.
   Test: `ClaudeStatusBarPerTab.Ants6914ReadIsNotAnEdit`.
+- **I9 — Claude's exit clears its session (ANTS-6626).** When the poll
+  no longer finds the Claude it was tracking, the session id, current tool
+  and touched files are cleared, as on a tab switch. `stateChanged` sends
+  `NotRunning` with no tool name, and `get_session_info` returns an empty
+  `session_id`, `current_tool` and `changed_files`. Before any Claude is
+  tracked, a poll that finds none clears only the tool: SessionStart, the
+  id's one setter, does not come again.
+  Tests: `ClaudeStatusBarPerTab.Ants6626ExitClearsTheSession`,
+  `ClaudeStatusBarPerTab.Ants6626UntrackedPollKeepsTheSession`.
 
 ## Out of scope
 

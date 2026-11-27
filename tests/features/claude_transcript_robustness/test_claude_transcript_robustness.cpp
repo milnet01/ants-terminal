@@ -845,3 +845,30 @@ TEST(ClaudeTranscriptRobustness, Main) {
     if (failures) FAIL();
 }
 
+// INV-20 (ANTS-6626) — when the state search widens past the first window,
+// the /compact and plan-mode walks read the wider window too.
+TEST(ClaudeTranscriptRobustness, Inv20WidenedWindowFeedsCompactAndPlanMode) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + "/compact-under-bookkeeping.jsonl";
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(R"({"type":"user","message":{"content":"go"}})" "\n");
+    f.write(R"({"type":"permission-mode","permissionMode":"plan"})" "\n");
+    f.write(R"({"type":"user","message":{"content":"<command-name>/compact</command-name>"}})" "\n");
+    // About 300 KB of records that decide no state, each small enough that
+    // the first 32 KiB window holds several: the state search widens, the
+    // first window does not grow.
+    const QByteArray pad(1500, 'p');
+    for (int i = 0; i < 200; ++i)
+        f.write(R"({"type":"attachment","attachment":{"type":"note","text":")" + pad +
+                R"("}})" "\n");
+    f.close();
+
+    const ClaudeTranscriptSnapshot snap = ClaudeIntegration::parseTranscriptTail(path, false);
+    ASSERT_TRUE(snap.stateDetermined) << "precondition: the widened search finds the /compact";
+    EXPECT_EQ(snap.state, ClaudeState::Compacting)
+        << "the /compact walk read only the first window";
+    EXPECT_TRUE(snap.planMode) << "the plan-mode walk read only the first window";
+}
+

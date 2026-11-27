@@ -211,8 +211,8 @@ void appendToolSchemasTerminal(QJsonArray &tools) {
                 // by tool_info {name:"roadmap_query"}.
                 roadmapTool["detail"] = QStringLiteral(
                     "ANTS-4611 — `no_roadmap_loaded` IS AN ANSWER, not a "
-                    "failed call: this project keeps no ROADMAP.md, which is "
-                    "true of 9 of the 24 projects on this machine. Branch on "
+                    "failed call: this project keeps no ROADMAP.md, as many "
+                    "projects do not. Branch on "
                     "it rather than retrying or switching tab. Where you "
                     "passed caller_cwd the envelope carries `resolved_root` "
                     "and the message names it, so a project that keeps no "
@@ -280,7 +280,7 @@ void appendToolSchemasTerminal(QJsonArray &tools) {
                     "two bullets sharing a lead-in silently collide; "
                     "ANTS-3771 (declare the project's id format) is the "
                     "fix for that, and this flag is only the warning. "
-                    "Query the active tab's ROADMAP.md as structured "
+                    "Query caller_cwd's project ROADMAP.md as structured "
                     "bullets. ANTS-5703 — a list row is {id, status, "
                     "headline_oneline, section_slug}; `include_body` or "
                     "`bullet_fields` gives the wide row {id, status, "
@@ -476,9 +476,9 @@ void appendToolSchemasTerminal(QJsonArray &tools) {
                     // ANTS-3698 — `filter` alias. Declared so the arg is not
                     // reported in ignored_args now that it is honoured, and so
                     // the echo field's name resolves to a real parameter.
+                    // ANTS-6626 — the same one-value-or-array shape.
                     QJsonObject filterAliasProp;
-                    filterAliasProp["type"] = "string";
-                    filterAliasProp["enum"] = statusEnum;
+                    filterAliasProp["anyOf"] = statusProp.value("anyOf");
                     filterAliasProp["description"] = QStringLiteral(
                         "Alias for `status` (ANTS-3698) — same accepted "
                         "values. Exists because the response echoes the "
@@ -1556,10 +1556,11 @@ void appendToolSchemasTerminal(QJsonArray &tools) {
                 QJsonObject getTextTool;
                 getTextTool["name"] = "get_text";
                 getTextTool["description"] = QStringLiteral(
-                    "Read trailing scrollback lines from a tab. Optional "
-                    "`tab` (explicit index), `caller_cwd` (your $PWD — "
+                    "Read trailing scrollback lines from a tab. Pass "
+                    "`tab` (explicit index) or `caller_cwd` (your $PWD — "
                     "ANTS-1392, anchors to your tab when `tab` is "
-                    "omitted), and `lines` (default 100, capped at "
+                    "omitted); with neither it refuses "
+                    "tab_or_cwd_required. Optional `lines` (default 100, capped at "
                     "10000). Returns {ok, text, lines, bytes} or "
                     "{ok:false, error} when the tab index is out of "
                     "range.");

@@ -496,6 +496,31 @@ TEST_F(RateLimitTestFixture, Inv18BriefAssemblyOverride) {
     }
 }
 
+// INV-20 (ANTS-6626) — a cap of 0 refuses every call, the first of a window
+// included, and leaves no bucket behind.
+TEST_F(RateLimitTestFixture, Inv20CapOfZeroRefusesTheFirstCall) {
+    ClaudeIntegration::setRateLimitCapsForTest(/*cheap=*/0, /*briefAssembly=*/0,
+                                               /*expensive=*/0);
+    ClaudeIntegration ci;
+    for (const char *tool : {"roadmap_query", "cold_eyes_brief", "audit_run"}) {
+        EXPECT_GT(ci.rateLimitCheck(QString::fromLatin1(tool), kCwdA, /*nowMs=*/1000), 0)
+            << tool << ": the first call under a cap of 0 was accepted";
+    }
+    EXPECT_EQ(ci.rateLimitBucketCountForTest(), 0);
+}
+
+// INV-21 (ANTS-6626) — the two-argument override clears an earlier
+// BriefAssembly override, so a test never inherits another test's cap.
+TEST_F(RateLimitTestFixture, Inv21TwoArgOverrideClearsBriefAssembly) {
+    ClaudeIntegration::setRateLimitCapsForTest(/*cheap=*/5, /*briefAssembly=*/1,
+                                               /*expensive=*/5);
+    ClaudeIntegration::setRateLimitCapsForTest(/*cheap=*/5, /*expensive=*/5);
+    EXPECT_EQ(ClaudeIntegration::rateLimitTierFor(
+                  ClaudeIntegration::RateLimitClass::BriefAssembly).capPerWindow,
+              30)
+        << "the BriefAssembly cap of 1 survived the two-argument override";
+}
+
 // ANTS-5090 INV-19 — the canonical bucket key is memoised per raw
 // caller_cwd for 30 s, so repeat calls skip the stat on the GUI thread.
 // Observed through a symlink retargeted between calls: inside the memo

@@ -292,8 +292,7 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "which section was meant is how a composed body lands "
                         "in the wrong one. A pure case mismatch still wins as "
                         "bad_case with `canonical_slug`. Get valid slugs from "
-                        "`roadmap_query` mode:\"section_index\" (or its alias "
-                        "mode:\"sections\"). New "
+                        "`roadmap_query` mode:\"section_index\". New "
                         "bullet appends at the end of this section. Under "
                         "op:\"replace_text\" it limits the edit to this "
                         "section and its sub-sections (ANTS-5760).");

@@ -61,3 +61,9 @@ is full. See `docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md` for the full desi
   or past it resolves again. Each raw value still maps to exactly one
   canonical key, so INV-8's synonym collapse (ANTS-1771) holds. The
   memo is keyed on the raw string, capped, and cleared when full.
+- **INV-20 / a cap of 0 refuses (ANTS-6626).** With a tier's cap at 0,
+  `rateLimitCheck` refuses every call, the first of a window included,
+  and adds no bucket.
+- **INV-21 / the two-argument override is whole (ANTS-6626).**
+  `setRateLimitCapsForTest(cheap, expensive)` clears an earlier
+  BriefAssembly override, so that tier is back at its default of 30.

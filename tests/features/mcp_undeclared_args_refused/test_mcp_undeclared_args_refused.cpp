@@ -46,9 +46,14 @@ struct Server {
     QJsonObject call(const QString &verb, QJsonObject args) {
         if (!args.contains("caller_cwd"))
             args["caller_cwd"] = QStringLiteral(ANTS_SOURCE_DIR);
+        return callRaw(verb, args);
+    }
+
+    // The same, with `arguments` sent exactly as given.
+    QJsonObject callRaw(const QString &verb, const QJsonValue &arguments) {
         const QByteArray line = send(
             {{"jsonrpc", "2.0"}, {"id", 2}, {"method", "tools/call"},
-             {"params", QJsonObject{{"name", verb}, {"arguments", args}}}});
+             {"params", QJsonObject{{"name", verb}, {"arguments", arguments}}}});
         const QString text = QJsonDocument::fromJson(line).object()
             .value("result").toObject().value("content").toArray().at(0)
             .toObject().value("text").toString();
@@ -182,4 +187,25 @@ TEST(McpUndeclaredArgsRefused, Inv7VerbWithoutAKnownSchemaIsNotRefused) {
     Server neverListed;
     expectRan(neverListed.call(kVerb, {{"anything", 1}}));
     EXPECT_EQ(neverListed.handlerRuns, 1);
+}
+
+// INV-9 (ANTS-6626)
+TEST(McpUndeclaredArgsRefused, Inv9NonObjectArgumentsRefuseNamingTheirType) {
+    Server s;
+    s.listTools();
+    const struct { QJsonValue arguments; const char *type; } rows[] = {
+        {QJsonValue(QStringLiteral("{\"caller_cwd\":\"/x\"}")), "a string"},
+        {QJsonValue(QJsonArray{1, 2}), "an array"},
+        {QJsonValue(7), "a number"},
+        {QJsonValue(true), "a boolean"},
+    };
+    for (const auto &row : rows) {
+        const QJsonObject env = s.callRaw(kVerb, row.arguments);
+        const std::string shown = QJsonDocument(env).toJson().toStdString();
+        EXPECT_EQ(env.value("code").toString(), QStringLiteral("bad_args")) << shown;
+        EXPECT_TRUE(env.value("error").toString().contains(QLatin1String(row.type)))
+            << "error must name " << row.type << ": " << shown;
+        EXPECT_FALSE(env.contains("arguments_empty")) << shown;
+    }
+    EXPECT_EQ(s.handlerRuns, 0) << "the verb ran on a non-object `arguments`";
 }

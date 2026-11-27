@@ -70,6 +70,20 @@ deferred: most sessions call them rarely.
   hiding reaches the saved list, or if a kept argument is dropped.
   *Test:* `Ants5725RareArgumentsLeaveTheWire`.
 
+- **ANTS-6626** — on the wire, the `caller_cwd` of `get_text`,
+  `recent_errors` and `last_selection` names `tab` as the alternative and
+  does not call itself required. *Test:*
+  `Ants6626TabVerbsCallerCwdNamesTheTab`.
+
+- **ANTS-6626** — the full schemas `tool_info {name}` serves say what each
+  verb accepts. `workspace_search` does not require `pattern` and
+  `find_sources` does not require `topic`, since each has a declared alias.
+  `find_sources` and `cold_eyes_brief` require `caller_cwd`.
+  `roadmap_query`'s `filter` takes the same shapes as `status`. Every
+  argument of `test_audit_partition` and `test_audit_brief` has a
+  description. `changelog_log` and `indie_review_corroborate` carry no
+  literal `—`. *Test:* `Ants6626SchemasMatchWhatTheVerbAccepts`.
+
 ## Pre-fix check
 
 Against pre-fix code the `anthropic/alwaysLoad` field and `kEagerVerbs`

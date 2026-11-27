@@ -14,8 +14,9 @@ Contract: [`docs/specs/ANTS-5464-mcpd-trust-prompt.md`](../../../docs/specs/ANTS
 | `Inv7MethodIsNotATool` | INV-7 |
 | `Inv8McpdAnswersWhileAPromptIsPending` | INV-8 |
 | `Inv9TerminalAnswersWhileItsHandlerIsOpen` | INV-9 |
+| `Ants6626HandlerThrowRepliesInternalError` | regression (ANTS-6626): a throw from the handler is answered JSON-RPC `-32603`, never left to end the process |
 
 The ants-mcpd cases run the built binary as a child process against
 `StubTerminal` (`../standalone_mcp_server/stub_terminal.h`), with
 `XDG_CONFIG_HOME` pointed at a fresh directory so the trust file starts
-empty. INV-1, INV-6 and INV-9 run in-process.
+empty. INV-1, INV-6, INV-9 and the ANTS-6626 regression run in-process.

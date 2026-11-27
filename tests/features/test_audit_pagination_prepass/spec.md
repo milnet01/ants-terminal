@@ -36,6 +36,11 @@ for `brief` (required).
   seeds it on open; it must not displace, because replacing a full entry
   with a lean one empties every brief — INV-1's failure reached by another
   route.
+- **ANTS-6626** — `brief()`'s `byteCount` is the compact size of every
+  field the `test_audit_brief` reply carries but `byte_count` itself:
+  `ok`, `chunk_id`, `source_paths`, `dimensions`, `framework_context`,
+  `pre_pass_findings` and `prior_false_positives`. *Test:*
+  `Ants6626BriefByteCountCoversTheReply`.
 
 ## Tests
 

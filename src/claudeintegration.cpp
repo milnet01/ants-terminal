@@ -342,6 +342,13 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
         m_state = ClaudeState::Thinking;
         emit toolFinished(toolName, true);
         emit stateChanged(m_state, "thinking");
+        // ANTS-5169 — every read of a secrets file warns. Here and only
+        // here (ANTS-6626): the hook fires once per read, while a transcript
+        // re-parse sees the same tool_use again on every write.
+        if (toolName == "Read") {
+            const QString filePath = toolInput.value("file_path").toString();
+            if (isSecretFileName(filePath)) emit sensitiveFileRead(filePath);
+        }
         // Hook dialect: already extracted from tool_name/tool_input above.
         updateTouchedFiles(toolName, toolInput);
     } else if (hookName == "PostToolUseFailure") {
@@ -1283,9 +1290,19 @@ void ClaudeIntegration::sendMcpResponse(const QPointer<McpReplyChannel> &socket,
 
 // ANTS-5089 — the JSON-RPC error for a complete request line the MCP socket
 // cannot dispatch: -32700 when it does not parse, -32600 when it parses but is
-// not an object. Written here, not through sendMcpResponse, which sends nothing
-// for a null id. Same terminator (ANTS-1769).
+// not an object; and (ANTS-6626) -32600 for a request over the byte cap.
+// Written here, not through sendMcpResponse, which sends nothing for a null
+// id. Same terminator (ANTS-1769).
 namespace {
+void writeMcpNullIdError(McpReplyChannel *socket, const QJsonObject &rpcError) {
+    QJsonObject envelope;
+    envelope["jsonrpc"] = "2.0";
+    envelope["id"]      = QJsonValue(QJsonValue::Null);
+    envelope["error"]   = rpcError;
+    if (!socket || !socket->isOpen()) return;
+    socket->reply(QJsonDocument(envelope).toJson(QJsonDocument::Compact) + '\n');
+}
+
 void writeMcpRequestError(McpReplyChannel *socket,
                           const QJsonParseError &parseError) {
     QJsonObject rpcError;
@@ -1298,12 +1315,15 @@ void writeMcpRequestError(McpReplyChannel *socket,
         rpcError["message"] =
             QStringLiteral("Invalid Request: expected a JSON object");
     }
-    QJsonObject envelope;
-    envelope["jsonrpc"] = "2.0";
-    envelope["id"]      = QJsonValue(QJsonValue::Null);
-    envelope["error"]   = rpcError;
-    if (!socket || !socket->isOpen()) return;
-    socket->reply(QJsonDocument(envelope).toJson(QJsonDocument::Compact) + '\n');
+    writeMcpNullIdError(socket, rpcError);
+}
+
+void writeMcpOverCapError(McpReplyChannel *socket) {
+    QJsonObject rpcError;
+    rpcError["code"]    = -32600;
+    rpcError["message"] = QStringLiteral("Invalid Request: request exceeds %1 KiB")
+                              .arg(kMaxSocketRequestBytes / 1024);
+    writeMcpNullIdError(socket, rpcError);
 }
 }  // namespace
 
@@ -1346,7 +1366,14 @@ void ClaudeIntegration::onMcpConnection() {
             if (socket->property("_handled").toBool()) return;
             const qsizetype scanFrom = buf->size();
             *buf += socket->readAll();
-            if (buf->size() > kMaxSocketRequestBytes) { socket->disconnectFromServer(); return; }
+            // ANTS-6626 — answer, then close; and latch as the hook path does,
+            // so bytes still arriving are never scanned for a newline and run.
+            if (buf->size() > kMaxSocketRequestBytes) {
+                buf->clear();
+                socket->setProperty("_handled", true);
+                writeMcpOverCapError(channel);
+                return;
+            }
             const qsizetype newline = buf->indexOf('\n', scanFrom);
             if (newline < 0) return;
             // ANTS-4932 — a complete request is in hand. Mark it handled and
@@ -2694,7 +2721,12 @@ QJsonObject ClaudeIntegration::mcpToolsList(const QJsonObject &request) {
                                   .contains(QLatin1String("Required by the dispatcher"))
                             : kSharedArgs.contains(arg);
                     if (!generic) continue;
-                    applySummary(p, kArgSummary.value(arg));
+                    // ANTS-6626 — these verbs take a `tab` index instead,
+                    // so "(required)" would be wrong on them.
+                    applySummary(p,
+                        arg == QLatin1String("caller_cwd") && tabSpecificAcceptsTabIndex(name)
+                            ? QStringLiteral("Your $PWD; picks your tab. Or pass `tab`; one of the two is required.")
+                            : kArgSummary.value(arg));
                     pit.value() = p;
                 }
             }
@@ -2880,6 +2912,29 @@ void ClaudeIntegration::mcpToolsCall(const QJsonObject &request,
         toolName == QStringLiteral("tool_info") ||
         m_toolProviders.find(toolName) != m_toolProviders.end() ||
         m_forwardedTools.contains(toolName);  // ANTS-4932 § 2.5
+    // ANTS-6626 — an `arguments` that is a string, array, number or boolean
+    // refuses, naming its type. It used to read as `{}`, so the call ran with
+    // no arguments or was told its payload was dropped in transit. A null
+    // `arguments` still reads as absent.
+    if (const QJsonValue rawArgs = params.value(QStringLiteral("arguments"));
+        !toolHandled && toolKnown && !rawArgs.isObject() &&
+        !rawArgs.isUndefined() && !rawArgs.isNull()) {
+        const QString type =
+            rawArgs.isArray()  ? QStringLiteral("an array")
+          : rawArgs.isString() ? QStringLiteral("a string")
+          : rawArgs.isDouble() ? QStringLiteral("a number")
+                               : QStringLiteral("a boolean");
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = QStringLiteral("bad_args");
+        env["error"] = QStringLiteral(
+            "%1: `arguments` must be a JSON object, not %2; nothing ran.")
+            .arg(toolName, type);
+        responseText = QString::fromUtf8(
+            QJsonDocument(env).toJson(QJsonDocument::Compact));
+        toolHandled    = true;
+        dispatchResult = QStringLiteral("bad_args");
+    }
     if (!toolHandled && toolKnown &&
         contract == CallerCwdContract::Required &&
         callerCwd.isEmpty()) {
@@ -3391,9 +3446,25 @@ void ClaudeIntegration::mcpVerifyTrustPrompt(const QJsonObject &request,
     const QJsonObject params = request.value("params").toObject();
     if (postWorkerJob([this, guard, reqId, params,
                        handler = m_verifyTrustPromptHandler]() {
-            const QJsonObject r = handler(params);
-            QMetaObject::invokeMethod(this, [guard, reqId, r]() {
-                sendMcpResponse(guard, reqId, &r, nullptr);
+            // ANTS-6626 — the exception boundary registerToolProvider gives
+            // every verb: a throw escaping a worker job ends the process.
+            QJsonObject r;
+            QJsonObject error;
+            try {
+                r = handler(params);
+            } catch (const std::exception &e) {
+                error["message"] = QString::fromUtf8(e.what());
+            } catch (...) {
+                error["message"] = QStringLiteral("unknown exception");
+            }
+            if (!error.isEmpty()) {
+                qWarning("%s threw: %s", VerifyTrust::kPromptMethod,
+                         qUtf8Printable(error.value("message").toString()));
+                error["code"] = -32603;
+            }
+            QMetaObject::invokeMethod(this, [guard, reqId, r, error]() {
+                if (error.isEmpty()) sendMcpResponse(guard, reqId, &r, nullptr);
+                else                 sendMcpResponse(guard, reqId, nullptr, &error);
             }, Qt::QueuedConnection);
         }, DispatchLane::Bulk))
         return;

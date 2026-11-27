@@ -8,6 +8,8 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocalSocket>
 #include <QTemporaryDir>
 
@@ -107,4 +109,29 @@ TEST(LocalSocketConnectionCap, Inv4RemoteControlRefusesPastCap) {
     auto clients = fillPastCap(path);
     EXPECT_TRUE(connected(*clients.front())) << "INV-4: an admitted client was dropped";
     EXPECT_FALSE(connected(*clients.back())) << "INV-4: the client past the cap was admitted";
+}
+
+// INV-5 (ANTS-6626)
+TEST(LocalSocketConnectionCap, Inv5McpOverCapRequestIsAnswered) {
+    QTemporaryDir dir;
+    ClaudeIntegration ci;
+    const QString path = dir.path() + QStringLiteral("/mcp.sock");
+    ASSERT_TRUE(ci.startMcpServer(path));
+    auto client = connectIdle(path);
+    ASSERT_TRUE(connected(*client));
+    // 300 KiB with no newline: past the 256 KiB cap before a request ends.
+    client->write(QByteArray(300 * 1024, 'x'));
+    QByteArray reply;
+    QElapsedTimer clock;
+    clock.start();
+    while (!reply.endsWith('\n') && clock.elapsed() < 5000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+        reply += client->readAll();
+        if (!connected(*client) && client->bytesAvailable() == 0) break;
+    }
+    const QJsonObject error = QJsonDocument::fromJson(reply).object()
+                                  .value(QStringLiteral("error")).toObject();
+    EXPECT_EQ(error.value(QStringLiteral("code")).toInt(), -32600)
+        << "INV-5: no JSON-RPC error before the close: " << reply.left(200).toStdString();
+    EXPECT_TRUE(error.value(QStringLiteral("message")).toString().contains(QStringLiteral("256 KiB")));
 }

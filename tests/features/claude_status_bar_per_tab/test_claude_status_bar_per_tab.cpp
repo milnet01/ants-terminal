@@ -17,6 +17,8 @@
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
 #include <QSignalSpy>
@@ -265,6 +267,67 @@ TEST(ClaudeStatusBarPerTab, Ants6914ReadIsNotAnEdit) {
         EXPECT_EQ(spy.at(i).at(0).toString(), want[i].first) << i;
         EXPECT_EQ(spy.at(i).at(1).toBool(), want[i].second) << i;
     }
+}
+
+// I9 (ANTS-6626) — when Claude exits, its session id, tool and files go too.
+// get_session_info's reply, unwrapped from its JSON-RPC envelope.
+static QJsonObject sessionInfo(ClaudeIntegration &ci) {
+    QByteArray line;
+    McpReplyChannel out([&line](const QByteArray &l) { line = l; }, [] {},
+                        [] { return true; });
+    ci.handleMcpLine(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",)"
+                     R"("params":{"name":"get_session_info","arguments":{}}})", &out);
+    return QJsonDocument::fromJson(
+        QJsonDocument::fromJson(line).object().value("result").toObject()
+            .value("content").toArray().at(0).toObject().value("text").toString()
+            .toUtf8()).object();
+}
+
+TEST(ClaudeStatusBarPerTab, Ants6626ExitClearsTheSession) {
+    ClaudeIntegration ci;
+    ci.setShellPid(getpid());   // the test process runs no Claude child
+    ci.setTranscriptPathForTest(QStringLiteral("/tmp/projects/dummy/") +
+                                QString::fromLatin1(kFocusedSession) +
+                                QStringLiteral(".jsonl"));
+    ci.processHookEventForTest(sessionStart(kFocusedSession));
+    ci.processHookEventForTest(postToolUse(kFocusedSession, "Read", "/p/a.cpp"));
+    ci.processHookEventForTest(preToolUse(kFocusedSession, "Edit"));
+    ASSERT_EQ(ci.currentTool(), QStringLiteral("Edit"));
+    // A Claude the poll was tracking; the test process has no such child,
+    // so the next poll finds it gone.
+    ci.setClaudePidForTest(0x7ffffff0);
+
+    QSignalSpy stateSpy(&ci, &ClaudeIntegration::stateChanged);
+    ASSERT_TRUE(QMetaObject::invokeMethod(&ci, "pollClaudeProcess", Qt::DirectConnection));
+    EXPECT_EQ(ci.currentState(), ClaudeState::NotRunning);
+    EXPECT_TRUE(ci.currentTool().isEmpty());
+    ASSERT_EQ(stateSpy.count(), 1);
+    EXPECT_TRUE(stateSpy.at(0).at(1).toString().isEmpty())
+        << "NotRunning sent with the exited tool's name";
+
+    const QJsonObject info = sessionInfo(ci);
+    ASSERT_TRUE(info.contains("session_id"));
+    EXPECT_TRUE(info.value("session_id").toString().isEmpty());
+    EXPECT_TRUE(info.value("changed_files").toArray().isEmpty());
+    EXPECT_TRUE(info.value("current_tool").toString().isEmpty());
+}
+
+// ANTS-6626 — before a Claude is tracked, a poll that finds none (an orphaned
+// Claude is looked for only on some polls) keeps the session id: SessionStart
+// will not set it again.
+TEST(ClaudeStatusBarPerTab, Ants6626UntrackedPollKeepsTheSession) {
+    ClaudeIntegration ci;
+    ci.setShellPid(getpid());
+    ci.setTranscriptPathForTest(QStringLiteral("/tmp/projects/dummy/") +
+                                QString::fromLatin1(kFocusedSession) +
+                                QStringLiteral(".jsonl"));
+    ci.processHookEventForTest(sessionStart(kFocusedSession));
+    ci.processHookEventForTest(postToolUse(kFocusedSession, "Read", "/p/a.cpp"));
+    ASSERT_TRUE(QMetaObject::invokeMethod(&ci, "pollClaudeProcess", Qt::DirectConnection));
+    EXPECT_EQ(ci.currentState(), ClaudeState::NotRunning);
+    const QJsonObject info = sessionInfo(ci);
+    EXPECT_EQ(info.value("session_id").toString(), QString::fromLatin1(kFocusedSession));
+    EXPECT_FALSE(info.value("changed_files").toArray().isEmpty());
 }
 
 TEST(ClaudeStatusBarPerTab, ForeignSessionIsDropped) {

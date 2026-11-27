@@ -161,6 +161,12 @@ record before them decides. After `end_turn` the state is `Idle`, with a
 around a 17 MiB one, the last of which has no newline, and the tail loader
 counts three in total.
 
+**INV-20** — When the state search widens past the first window, the
+`/compact`, `/audit` and plan-mode walks read the widened window (ANTS-6626).
+A `permission-mode` of `plan` and a `/compact` command followed by about
+300 KB of attachments return `Compacting` with plan mode on. Before the fix
+they returned `Thinking` with plan mode off.
+
 ## Out of scope
 
 - Rendering/presentation of `thinking` blocks in the transcript

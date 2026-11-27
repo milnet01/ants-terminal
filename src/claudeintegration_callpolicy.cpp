@@ -812,6 +812,9 @@ qint64 ClaudeIntegration::rateLimitCheck(
     const RateLimitClass cls = rateLimitClassFor(toolName);
     if (cls == RateLimitClass::ControlPlane) return 0;
     const RateLimitTier tier = rateLimitTierFor(cls);
+    // ANTS-6626 — a cap of 0 refuses every call. The empty-bucket accept
+    // below would otherwise let the first call of each window through.
+    if (tier.capPerWindow <= 0) return tier.windowMs;
 
     // indie-review-2026-05-19 claudeintegration H1 + ANTS-1771 —
     // canonicalise the bucket key. Raw callerCwd values (`/foo`,
@@ -901,9 +904,12 @@ qint64 ClaudeIntegration::rateLimitCheck(
     return retryAfter > 0 ? retryAfter : 1;
 }
 
+// ANTS-6626 — also clears a BriefAssembly override, so a test never
+// inherits another test's cap.
 void ClaudeIntegration::setRateLimitCapsForTest(int cheap, int expensive) {
-    g_rateLimitCheapCapOverride     = cheap;
-    g_rateLimitExpensiveCapOverride = expensive;
+    g_rateLimitCheapCapOverride         = cheap;
+    g_rateLimitBriefAssemblyCapOverride = -1;
+    g_rateLimitExpensiveCapOverride     = expensive;
 }
 
 // ANTS-1629 — additive overload so tests can drive the new

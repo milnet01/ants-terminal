@@ -28,6 +28,7 @@
 
 #include <atomic>
 #include <memory>
+#include <stdexcept>
 
 using ants_test::McpdSession;
 using ants_test::StubTerminal;
@@ -444,4 +445,18 @@ TEST(McpdTrustPrompt, Inv9TerminalAnswersWhileItsHandlerIsOpen) {
 
     latch->release();
     EXPECT_TRUE(pumpUntil([&] { return prompt.answered(); }, 10000));
+}
+
+// ANTS-6626 — a throw from the handler is answered -32603. It runs on the Bulk
+// worker, where an escaping exception would end the whole process.
+TEST(McpdTrustPrompt, Ants6626HandlerThrowRepliesInternalError) {
+    ClaudeIntegration ci;
+    ci.setVerifyTrustPromptHandler([](const QJsonObject &) -> QJsonObject {
+        throw std::runtime_error("prompt broke");
+    });
+    InProcessCall prompt(ci, promptRequest(1, QJsonObject{{"root", "/nowhere"}}));
+    ASSERT_TRUE(pumpUntil([&] { return prompt.answered(); }, 10000));
+    const QJsonObject error = prompt.reply().value(QStringLiteral("error")).toObject();
+    EXPECT_EQ(error.value(QStringLiteral("code")).toInt(), -32603) << prompt.line->toStdString();
+    EXPECT_TRUE(error.value(QStringLiteral("message")).toString().contains(QStringLiteral("prompt broke")));
 }

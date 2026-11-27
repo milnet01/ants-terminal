@@ -347,3 +347,101 @@ TEST(McpEagerLoad, Ants5725RareArgumentsLeaveTheWire) {
             EXPECT_TRUE(accepted.value(QString::fromLatin1(row.verb)).contains(a))
                 << row.verb << "/" << a.toStdString() << " would raise ignored_args";
 }
+
+namespace {
+// tool_info {name}'s reply text: the verb's full descriptor as JSON.
+QString toolInfoText(ClaudeIntegration &ci, const QString &verb) {
+    return mcpCall(ci, QStringLiteral(
+        R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tool_info","arguments":{"name":"%1"}}})")
+        .arg(verb).toUtf8())
+        .value(QStringLiteral("content")).toArray()
+        .at(0).toObject().value(QStringLiteral("text")).toString();
+}
+QJsonObject toolInfoSchema(ClaudeIntegration &ci, const QString &verb) {
+    return QJsonDocument::fromJson(toolInfoText(ci, verb).toUtf8()).object()
+        .value(QStringLiteral("inputSchema")).toObject();
+}
+}  // namespace
+
+// ANTS-6626 — get_text, recent_errors and last_selection take a `tab` index
+// in place of caller_cwd, so their wire caller_cwd does not call it required
+// alone.
+TEST(McpEagerLoad, Ants6626TabVerbsCallerCwdNamesTheTab) {
+    ClaudeIntegration ci;
+    const QJsonArray tools =
+        mcpCall(ci, R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})")
+            .value(QStringLiteral("tools")).toArray();
+    int seen = 0;
+    for (const auto &v : tools) {
+        const QJsonObject t = v.toObject();
+        const QString name = t.value(QStringLiteral("name")).toString();
+        if (name != QLatin1String("get_text") && name != QLatin1String("recent_errors")
+            && name != QLatin1String("last_selection"))
+            continue;
+        ++seen;
+        const QString desc = t.value(QStringLiteral("inputSchema")).toObject()
+            .value(QStringLiteral("properties")).toObject()
+            .value(QStringLiteral("caller_cwd")).toObject()
+            .value(QStringLiteral("description")).toString();
+        EXPECT_TRUE(desc.contains(QStringLiteral("`tab`")))
+            << name.toStdString() << "/caller_cwd: " << desc.toStdString();
+        EXPECT_FALSE(desc.contains(QStringLiteral("(required)")))
+            << name.toStdString() << "/caller_cwd: " << desc.toStdString();
+    }
+    EXPECT_EQ(seen, 3);
+}
+
+// ANTS-6626 — each schema says what its verb accepts: an argument with a
+// declared alias is not in required[]; caller_cwd is, where the dispatcher
+// refuses without it; an alias takes the same shapes as its argument; every
+// argument is described; and an em dash is an em dash.
+TEST(McpEagerLoad, Ants6626SchemasMatchWhatTheVerbAccepts) {
+    ClaudeIntegration ci;
+    ASSERT_FALSE(mcpCall(ci, R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})")
+                     .value(QStringLiteral("tools")).toArray().isEmpty());
+    const auto required = [&](const QString &verb) {
+        QStringList out;
+        for (const auto &v : toolInfoSchema(ci, verb).value(QStringLiteral("required")).toArray())
+            out << v.toString();
+        return out;
+    };
+
+    const QJsonObject ws = toolInfoSchema(ci, QStringLiteral("workspace_search"));
+    ASSERT_TRUE(ws.value(QStringLiteral("properties")).toObject().contains(QStringLiteral("query")));
+    EXPECT_FALSE(required(QStringLiteral("workspace_search")).contains(QStringLiteral("pattern")))
+        << "a call sending only the alias `query` fails a strict schema check";
+
+    ASSERT_TRUE(toolInfoSchema(ci, QStringLiteral("find_sources"))
+                    .value(QStringLiteral("properties")).toObject()
+                    .contains(QStringLiteral("symbol")));
+    EXPECT_FALSE(required(QStringLiteral("find_sources")).contains(QStringLiteral("topic")));
+    EXPECT_TRUE(required(QStringLiteral("find_sources")).contains(QStringLiteral("caller_cwd")));
+    EXPECT_TRUE(required(QStringLiteral("cold_eyes_brief")).contains(QStringLiteral("caller_cwd")));
+    EXPECT_TRUE(required(QStringLiteral("cold_eyes_brief")).contains(QStringLiteral("lane")));
+
+    const QJsonObject rq = toolInfoSchema(ci, QStringLiteral("roadmap_query"))
+                               .value(QStringLiteral("properties")).toObject();
+    ASSERT_TRUE(rq.value(QStringLiteral("status")).toObject().value(QStringLiteral("anyOf")).isArray());
+    EXPECT_EQ(rq.value(QStringLiteral("filter")).toObject().value(QStringLiteral("anyOf")),
+              rq.value(QStringLiteral("status")).toObject().value(QStringLiteral("anyOf")))
+        << "`filter` must take an array of lifecycles, as `status` does";
+
+    for (const char *verb : {"test_audit_partition", "test_audit_brief"}) {
+        const QJsonObject props = toolInfoSchema(ci, QString::fromLatin1(verb))
+                                      .value(QStringLiteral("properties")).toObject();
+        ASSERT_FALSE(props.isEmpty()) << verb;
+        for (auto it = props.constBegin(); it != props.constEnd(); ++it)
+            EXPECT_FALSE(it.value().toObject().value(QStringLiteral("description"))
+                             .toString().isEmpty())
+                << verb << "/" << it.key().toStdString() << " has no description";
+    }
+
+    // The reply is JSON text: a real em dash is the character itself, a
+    // literal backslash-u sequence shows as `\\u2014`.
+    for (const char *verb : {"changelog_log", "indie_review_corroborate"}) {
+        const QString text = toolInfoText(ci, QString::fromLatin1(verb));
+        ASSERT_TRUE(text.contains(QChar(0x2014))) << verb;
+        EXPECT_FALSE(text.contains(QStringLiteral("\\\\u2014")))
+            << verb << " sends the six characters \\u2014 for an em dash";
+    }
+}

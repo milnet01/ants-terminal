@@ -39,6 +39,9 @@ name opens with its number.
 - **INV-8** — Every schema in `tools/list` sets `additionalProperties:false`,
   so it says what INV-1 enforces. `mcpToolsList` sets it once, for every tool
   (ANTS-6934); no descriptor sets it by hand.
+- **INV-9** — An `arguments` that is a string, array, number or boolean
+  replies `ok:false`, `code:"bad_args"`, and `error` names its JSON type. The
+  verb does not run (ANTS-6626). A null or absent `arguments` reads as `{}`.
 
 ## Tests
 

@@ -31,9 +31,10 @@ marks it as a secrets file.
 - **INV-5** — `ClaudeIntegration::isSecretFileName(path)` is true when the
   file name starts with `.env`, ends with `.pem`, or starts with `id_`;
   false otherwise. It looks at the name only, never the directory.
-- **INV-6** — On every `Read` of such a file, `updateTouchedFiles` emits
-  `sensitiveFileRead(path)`, ahead of the once-per-path de-duplication
-  that `fileChanged` uses, so a second read warns again.
+- **INV-6** — On every `Read` of such a file that a `PostToolUse` hook
+  reports, `ClaudeIntegration` emits `sensitiveFileRead(path)`, so a second
+  read warns again. A transcript re-parse never emits it: it sees the same
+  `tool_use` again on every write (ANTS-6626).
   `claudestatuswidgets.cpp` turns it into a status-bar message naming the
   file.
 

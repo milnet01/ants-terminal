@@ -7,6 +7,11 @@
 
 #include <gtest/gtest.h>
 
+#include <QFile>
+#include <QJsonObject>
+#include <QSignalSpy>
+#include <QTemporaryDir>
+
 #include <string>
 
 #ifndef ANTS_MAINWINDOW_SOURCES
@@ -201,13 +206,35 @@ TEST(McpSecretRedaction, Inv5SecretFileNames) {
 
 // INV-6
 TEST(McpSecretRedaction, Inv6ReadOfSecretFileWarns) {
-    const std::string ci = ants_test::stripComments(
-        ants_test::slurpClaudeIntegration());
-    const std::string body = between(ci, "void ClaudeIntegration::updateTouchedFiles(",
-                                     "\n}\n");
-    ASSERT_FALSE(body.empty());
-    EXPECT_TRUE(before(body, "emit sensitiveFileRead(", "firstTime(m_touchedFiles)"));
-    EXPECT_TRUE(has(body, "isSecretFileName("));
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString session = QStringLiteral("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    const QString secret = QStringLiteral("/proj/.env");
+    ClaudeIntegration ci;
+    // A focused tab, so the hook passes its session gate.
+    ci.setTranscriptPathForTest(tmp.path() + QLatin1Char('/') + session +
+                                QStringLiteral(".jsonl"));
+    QSignalSpy spy(&ci, &ClaudeIntegration::sensitiveFileRead);
+
+    const QJsonObject postRead{
+        {"hook_event_name", "PostToolUse"}, {"session_id", session},
+        {"tool_name", "Read"}, {"tool_input", QJsonObject{{"file_path", secret}}}};
+    ci.processHookEventForTest(postRead);
+    ci.processHookEventForTest(postRead);
+    ASSERT_EQ(spy.count(), 2) << "each hook-reported read warns, a second one too";
+    EXPECT_EQ(spy.at(0).at(0).toString(), secret);
+
+    // ANTS-6626 — a transcript re-parse sees that read's tool_use again on
+    // every write, so it never warns.
+    const QString transcript = tmp.path() + QStringLiteral("/read.jsonl");
+    QFile f(transcript);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(R"({"type":"assistant","message":{"stop_reason":"tool_use","content":)"
+            R"([{"type":"tool_use","name":"Read","input":{"file_path":"/proj/.env"}}]}})" "\n");
+    f.close();
+    ci.parseTranscriptForState(transcript);
+    ci.parseTranscriptForState(transcript);
+    EXPECT_EQ(spy.count(), 2) << "a transcript re-parse warned about a read already reported";
 
     const std::string sw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/claudestatuswidgets.cpp");
     EXPECT_TRUE(has(sw, "&ClaudeIntegration::sensitiveFileRead"));

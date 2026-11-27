@@ -149,42 +149,18 @@ TEST(McpWorkspaceSearch, WiringContract) {
                       p);
         expect(contains(ciCpp, p), label, d);
     }
-    // pattern must be in the required array (literal `"required"`
-    // referencing `"pattern"`). Loose check: both literals appear in
-    // proximity in the source. A strict regex over JSON construction
-    // would be brittle. Window widened to 8000 after ANTS-1452 added
-    // two new props (respect_gitignore + include_hidden) with their
-    // own description blurbs, pushing the schema past the original
-    // 4 KiB anchor. Widened to 10000 again after ANTS-1565 added
-    // timeout_sec with its own description blurb. Widened to 16000
-    // after ANTS-2041 added the `query` alias prop (its own blurb
-    // pushed `required.append("pattern")` to ~14.6 KiB past the anchor).
-    // Widened to 18000 after ANTS-2220 added the `enclosing_symbol` prop +
-    // its description blurb and a detail-field paragraph.
-    // Widened to 20000 after ANTS-3537 added the `count_only` prop + its
-    // description blurb and a detail-field mention.
-    // Widened to 22000 after ANTS-3549 added the `files_only` prop + its
-    // description blurb and a detail-field mention.
-    // Widened to 24000 after ANTS-3547 added the `offset` prop (wsOffsetProp)
-    // + its description blurb and a detail-field mention (required.append at
-    // offset ~22774).
+    // `pattern` is declared on the descriptor. ANTS-6626 took it out of
+    // required[], since its alias `query` may replace it: the either-or is
+    // the handler's, and McpEagerLoad.Ants6626SchemasMatchWhatTheVerbAccepts
+    // checks the live schema.
     {
-        // Anchor at the tools/list registration (literal "workspace_search"
-        // with quotes), not the first incidental occurrence in a setter
-        // comment.
-        // ANTS-3720 — the descriptor block bounds itself. This was a
-        // fixed-byte window whose last widening (24000 → 32000, ANTS-3704)
-        // reddened the row with a message about `pattern` that had nothing to
-        // do with the change that broke it — the failure mode the idiom keeps
-        // producing.
+        // ANTS-3720 — the descriptor block bounds itself, not a byte window.
         const std::string window =
             ants_test::mcpToolDescriptor(ciCpp, "workspace_search");
         const bool ok = !window.empty() &&
-                        contains(window, "\"required\"") &&
-                        contains(window, "\"pattern\"");
-        expect(ok, "INV-5 required",
-               "workspace_search inputSchema does not declare "
-               "[\"pattern\"] as required");
+                        contains(window, "props[\"pattern\"]");
+        expect(ok, "INV-5 pattern",
+               "workspace_search inputSchema does not declare `pattern`");
     }
 
     // INV-6 — tools/list schema declares the workspace_search tool.

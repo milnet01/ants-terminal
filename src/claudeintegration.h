@@ -711,8 +711,9 @@ signals:
     // `edited` is true for an Edit or Write. m_touchedFiles holds the recent
     // paths, m_editedFiles the recent edited ones.
     void fileTouched(const QString &filePath, bool edited);
-    // ANTS-5169 — Claude read a file isSecretFileName() matches. Fires on
-    // every read, not once per path like fileTouched.
+    // ANTS-5169 — Claude read a file isSecretFileName() matches. Fires once
+    // per read the PostToolUse hook reports, not once per path like
+    // fileTouched; a transcript re-parse never fires it.
     void sensitiveFileRead(const QString &filePath);
     void contextUpdated(int percent);
     // ANTS-3572 — MCP tokens-saved surfacing. tokensSavedUpdated drives the

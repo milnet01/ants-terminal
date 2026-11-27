@@ -1745,7 +1745,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "multi-line call, a decorator or a docstring puts the "
                         "quotable line somewhere different for each), so "
                         "exact matching makes the highest-value agreements "
-                        "the least likely to be reported \\u2014 two "
+                        "the least likely to be reported — two "
                         "independent reports measured runs where EVERY real "
                         "agreement was missed. These are ADVISORY: they are "
                         "not findings, are not counted in `total_findings`, "
@@ -1756,7 +1756,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "when > 0, citations in one file within that many "
                         "lines are GROUPED and a group with enough distinct "
                         "lanes becomes one finding carrying `line_to` (the "
-                        "span's end). The default stays 0 deliberately \\u2014 "
+                        "span's end). The default stays 0 deliberately — "
                         "corroboration is a claim about agreement, and a "
                         "tolerance that shipped on would redefine what every "
                         "existing report means for callers who never asked. A "
@@ -1810,7 +1810,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "of each other, so two lanes quoting one defect at "
                         "different lines count as agreeing. A grouped finding "
                         "carries `line_to` (the span's end). Default 0 = "
-                        "exact (file, line) matching, unchanged \\u2014 and it "
+                        "exact (file, line) matching, unchanged — and it "
                         "stays the default deliberately, because a tolerance "
                         "that shipped on would change what every existing "
                         "report means for callers who never asked for it. "
@@ -2503,7 +2503,11 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject scopeProp; scopeProp["type"] = "string";
+                    scopeProp["description"] = QStringLiteral(
+                        "Which test files: auto (default), path:<sub> or files:<csv>.");
                     QJsonObject dimensionsProp; dimensionsProp["type"] = "string";
+                    dimensionsProp["description"] = QStringLiteral(
+                        "Review dimensions: auto (default) or csv:<d1,d2>.");
                     // ANTS-1519 — chunk_size default + bounds surfaced on
                     // the property itself so a session reading the JSON
                     // schema (not the prose description) still knows the
@@ -2542,7 +2546,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "Cap on chunks[] length. Default -1 (no caller "
                         "limit; server may still auto-truncate large "
                         "envelopes).");
-                    QJsonObject callerCwdProp; callerCwdProp["type"] = "string";
+                    const QJsonObject callerCwdProp = makeCallerCwdReadProp();  // ANTS-6626
                     QJsonObject props;
                     props["scope"] = scopeProp; props["dimensions"] = dimensionsProp;
                     props["chunk_size"] = chunkSizeProp;
@@ -2580,8 +2584,12 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "run after test_audit_partition.");
                     QJsonObject schema; schema["type"] = "object";
                     QJsonObject chunkIdProp; chunkIdProp["type"] = "string";
+                    chunkIdProp["description"] = QStringLiteral(
+                        "A chunks[].id from test_audit_partition, e.g. \"c-001\".");
                     QJsonObject partitionTokenProp; partitionTokenProp["type"] = "string";
-                    QJsonObject callerCwdProp; callerCwdProp["type"] = "string";
+                    partitionTokenProp["description"] = QStringLiteral(
+                        "The partition_token that test_audit_partition returned.");
+                    const QJsonObject callerCwdProp = makeCallerCwdReadProp();  // ANTS-6626
                     QJsonObject props;
                     props["chunk_id"] = chunkIdProp;
                     props["partition_token"] = partitionTokenProp;
@@ -2751,7 +2759,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "doc_paths, cross_reference_docs, cited_code_paths, "
                         "cited_code_regions, stale_citations, doc_integrity, input_hash "
                         "and section_index. Doc bodies are not inlined. input_hash lets "
-                        "a caller skip a lane whose input is unchanged. Required: lane. "
+                        "a caller skip a lane whose input is unchanged. Required: lane, caller_cwd. "
                         "Optional doc_paths[] builds the brief from those "
                         "project-relative paths; optional prior_loop_fixes[] renders a "
                         "previously-fixed block. Rate limit: BriefAssembly tier, 30 "
@@ -2810,7 +2818,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "NOT full-read\" section so a drift-check greps the "
                         "log for the specific ID/feature/version instead of "
                         "reading tens of thousands of lines. "
-                        "Required: lane (string). Optional (ANTS-1508): "
+                        "Required: lane (string), caller_cwd. Optional (ANTS-1508): "
                         "doc_paths[] — when `lane` is not in the "
                         "auto-partition, the brief is synthesised "
                         "from these caller-supplied paths instead. "
@@ -2904,6 +2912,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("lane");
+                    req.append("caller_cwd");   // ANTS-6626 — the dispatcher refuses without it
                     schema["required"] = req;
                     t["inputSchema"] = schema;
                     tools.append(t);
