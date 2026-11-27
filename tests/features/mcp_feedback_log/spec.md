@@ -32,3 +32,8 @@ Invariants exercised (docs/specs/ANTS-1962-feedback-log-mcp-tool-append.md §3 /
   convention `DOOM_Ants_MCP_Feedback.md`, NOT the doubled
   `DOOM_Ants_Ants_MCP_Feedback.md` — so a naive append can't fork the
   feedback history into a wrong-named file.
+- ANTS-6624 — continuation lines of a field value and of the note are
+  indented four spaces, so an unclosed fence in either hides no later
+  finding; the session label is folded to one line. A line indented two or
+  more spaces is never the id line. `set_title` splits the H1 at its first
+  dash, so a title holding a dash is replaced and reported whole.

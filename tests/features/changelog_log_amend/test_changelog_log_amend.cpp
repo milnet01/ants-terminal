@@ -252,3 +252,23 @@ TEST_F(ChangelogLogAmend, Inv11QuotedIndentIsNotDoubled) {
     EXPECT_TRUE(bytes().contains("  A shared phrase.\n  A second line.\n- **Third"))
         << bytes().toStdString();
 }
+
+// INV-12 / ANTS-6624 — a bullet under a dated topic that cites the same id is
+// inside the topic's entry, so text in that bullet is found once, not twice.
+TEST_F(ChangelogLogAmend, Inv12TopicAndBulletCitingOneIdCountOnce) {
+    write("# Changelog\n\n"
+          "## [Unreleased]\n\n"
+          "### 2026-11-01 Added — A topic (ANTS-0004)\n\n"
+          "- **A bullet** (ANTS-0004)\n"
+          "  Only here.\n\n"
+          "## [0.1.0] - 2026-01-01\n\n"
+          "- **Frozen record** (ANTS-0009)\n");
+    QJsonObject byId;
+    byId[QStringLiteral("id")] = QStringLiteral("ANTS-0004");
+    const QJsonObject r = amend(QStringLiteral("Only here."),
+                                QStringLiteral("Changed here."), byId);
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << code(r).toStdString() << " "
+        << r.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(bytes().contains("  Changed here.\n")) << bytes().toStdString();
+}

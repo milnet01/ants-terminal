@@ -203,6 +203,26 @@ TEST(changelog_log_normalize, Inv5Refusals) {
     EXPECT_EQ(fg.code, QStringLiteral("feature_grouped_section"));
 }
 
+// INV-5 / ANTS-6624 — a MIXED section (dated topics and flat categories)
+// refuses mixed_section: the sort would move the dated topics below the
+// categories.
+TEST(changelog_log_normalize, Inv5MixedSectionRefuses) {
+    const char *mixedDatedLeads =
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### 2026-11-01 Added — Newest topic\n\n"
+        "- **A topic bullet.** (ANTS-0001)\n\n"
+        "### Fixed\n\n"
+        "- **An old flat fix.**\n\n"
+        "## [0.1.0]\n\n"
+        "- old.\n";
+    const auto r = ChangelogLog::normalizeUnreleased(
+        QString::fromUtf8(mixedDatedLeads));
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.code, QStringLiteral("mixed_section"));
+    EXPECT_TRUE(r.markdown.isEmpty());
+}
+
 // INV-6 — prose a fold cannot reach is left in place and surfaced. A
 // heading between the prose and the nearest bullet is a barrier: indenting
 // the line would not put it under that bullet, so ANTS-3381 declines the

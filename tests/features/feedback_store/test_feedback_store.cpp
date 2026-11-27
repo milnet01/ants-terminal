@@ -470,3 +470,63 @@ TEST(FeedbackStore, Inv10RetiredOpsWriteNothing) {
         EXPECT_EQ(live.row(p)->content, row->content) << op;
     }
 }
+
+// ANTS-6624 — a dry run, or a write that changes nothing, rolls back the
+// import it made, so it reports imported:false and leaves no row.
+TEST(FeedbackStore, Ants6624RolledBackImportIsNotReported) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    RoadmapStore store(dir.path() + "/s.sqlite");
+    ASSERT_TRUE(store.open());
+    const QString p = copyIn(dir, "corpus_mixed.md");
+    ASSERT_FALSE(p.isEmpty());
+    for (const bool dryRun : {true, false}) {
+        const FeedbackStore::Result r = FeedbackStore::write(
+            store, p, QString(), dryRun, [&](const QString &in, bool, QString *out) {
+                *out = dryRun ? in + QStringLiteral("\nA preview.\n") : in;
+                return true;
+            });
+        EXPECT_TRUE(r.code.isEmpty()) << r.code.toStdString();
+        EXPECT_FALSE(r.imported) << "dryRun=" << dryRun;
+        EXPECT_FALSE(store.feedbackReporter(FeedbackStore::exportKey(p)))
+            << "dryRun=" << dryRun;
+    }
+}
+
+// ANTS-6624 — a write that cannot open the file refuses read_failed, not
+// export_drift, which would say it was edited.
+TEST(FeedbackStore, Ants6624UnreadableFileIsNotDrift) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    RoadmapStore store(dir.path() + "/s.sqlite");
+    ASSERT_TRUE(store.open());
+    const QString p = copyIn(dir, "corpus_mixed.md");
+    ASSERT_FALSE(p.isEmpty());
+    ASSERT_TRUE(FeedbackStore::load(store, p).imported);
+    ASSERT_TRUE(QFile::setPermissions(p, QFileDevice::Permissions()));
+    if (QFile f(p); f.open(QIODevice::ReadOnly))
+        GTEST_SKIP() << "a mode-0 file is still readable here (running as root?)";
+    const FeedbackStore::Result r = FeedbackStore::write(
+        store, p, QString(), false, [](const QString &in, bool, QString *out) {
+            *out = in + QStringLiteral("\nAn edit.\n");
+            return true;
+        });
+    QFile::setPermissions(p, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    EXPECT_EQ(r.code, QStringLiteral("read_failed")) << r.message.toStdString();
+}
+
+// ANTS-6624 — a stray H1 above a finding, such as a pasted shell comment in a
+// file written before ANTS-3695, is not its entry heading.
+TEST(FeedbackStore, Ants6624StrayH1IsNotTheEntryHeading) {
+    const auto rows = FeedbackStore::rowsFor(QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback \xE2\x80\x94 Fx\n\n"
+        "## 2026-11-01 \xE2\x80\x94 a session\n\n"
+        "A note with a pasted\n"
+        "# shell comment\n\n"
+        "### A finding\n\n"
+        "- **What:** w\n"
+        "- **Proposed ID:** _(maintainer to assign)_\n"));
+    ASSERT_EQ(rows.size(), 1);
+    EXPECT_EQ(rows.at(0).entryHeading,
+              QString::fromUtf8("## 2026-11-01 \xE2\x80\x94 a session"));
+    EXPECT_EQ(rows.at(0).filedOn, QStringLiteral("2026-11-01"));
+}

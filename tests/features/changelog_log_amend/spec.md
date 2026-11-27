@@ -38,3 +38,6 @@ reach them. There is no force switch: a released section is corrected by hand.
   `new_text` is written as given. Otherwise each continuation line of a
   multi-line `new_text` takes that indent. A reply for a multi-line write
   carries `line_texts`, every line written.
+- **INV-12 / one occurrence counts once (ANTS-6624).** With `id`, a bullet
+  inside a dated topic that cites the same id is part of the topic's entry,
+  not a second entry, so text in it is found once, not `text_ambiguous`.

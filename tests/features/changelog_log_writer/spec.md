@@ -210,3 +210,10 @@ the item's kind maps to Fixed (`ChangelogLog::inheritsLaymanBody`). The
 reply hands the line back as `layman_body_omitted`. An explicit `body`
 still wins, and any other item keeps inheriting its Layman line.
 *Test:* `Ants5673FixedEntryDropsTheDefectLayman`.
+
+### ANTS-6624 — a placeholder note releases nothing
+
+Both release paths refuse `nothing_to_release` when `[Unreleased]` holds only
+headings, comments and paragraphs wrapped whole in parentheses, such as the
+skeleton's `(Nothing yet. …)`. An entry beside such a note still releases.
+*Test:* `Ants6624PlaceholderNoteIsNothingToRelease`.

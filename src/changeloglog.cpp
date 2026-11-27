@@ -678,13 +678,35 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
 
 // ANTS-5108 — a line that is a release ENTRY: not blank, not a heading
 // (`### Added` alone releases nothing) and not a one-line HTML comment (a
-// placeholder). Shared by both release paths.
+// placeholder). Read by hasReleasableEntry, which both release paths call.
 static bool isReleasableLine(const QString &line) {
     const QString t = line.trimmed();
     if (t.isEmpty() || t.startsWith(QLatin1Char('#'))) return false;
     if (t.startsWith(QStringLiteral("<!--")) && t.endsWith(QStringLiteral("-->")))
         return false;
     return true;
+}
+
+// ANTS-6624 — whether `body` holds a release entry: a releasable line outside
+// a paragraph wrapped whole in parentheses. That paragraph is a placeholder
+// note, such as the skeleton's "(Nothing yet. …)".
+static bool hasReleasableEntry(const QStringList &body) {
+    int para = -1;   // first line of the paragraph being read
+    for (int i = 0; i <= body.size(); ++i) {
+        if (i < body.size() && !body.at(i).trimmed().isEmpty()) {
+            if (para < 0) para = i;
+            continue;
+        }
+        if (para < 0) continue;
+        const bool placeholder =
+            body.at(para).trimmed().startsWith(QLatin1Char('(')) &&
+            body.at(i - 1).trimmed().endsWith(QLatin1Char(')'));
+        if (!placeholder && std::any_of(body.cbegin() + para,
+                                        body.cbegin() + i, isReleasableLine))
+            return true;
+        para = -1;
+    }
+    return false;
 }
 
 // ANTS-5388 — the separator the newest `## [version] <sep> date` heading
@@ -754,11 +776,7 @@ ReleaseResult closeUnreleased(const QString &markdown,
 
     // Refuse an empty section: a version block with no entries is worse than
     // no release, and it is silently produced by cutting twice.
-    bool hasContent = false;
-    for (int i = unrel + 1; i < sectionEnd && i < lines.size(); ++i) {
-        if (isReleasableLine(lines.at(i))) { hasContent = true; break; }
-    }
-    if (!hasContent) {
+    if (!hasReleasableEntry(lines.mid(unrel + 1, sectionEnd - unrel - 1))) {
         r.code  = QStringLiteral("nothing_to_release");
         r.error = QStringLiteral(
             "changelog_log: `## [Unreleased]` is empty — there is nothing to "
@@ -846,7 +864,7 @@ ReleaseResult closeUnreleasedDated(const QString &markdown,
     QStringList body = lines.mid(unrel + 1, sectionEnd - unrel - 1);
     while (!body.isEmpty() && body.first().trimmed().isEmpty()) body.removeFirst();
     while (!body.isEmpty() && body.last().trimmed().isEmpty())  body.removeLast();
-    if (std::none_of(body.cbegin(), body.cend(), isReleasableLine)) {
+    if (!hasReleasableEntry(body)) {
         r.code  = QStringLiteral("nothing_to_release");
         r.error = QStringLiteral(
             "changelog_log: `## [Unreleased]` is empty — there is nothing to "
@@ -1075,6 +1093,23 @@ NormalizeResult normalizeUnreleased(const QString &markdown) {
         return r;
     }
 
+    // 3b. ANTS-6624 — refuse a MIXED section too. The test above returns -1
+    //     once any heading is a category word, and the sort below would then
+    //     move every dated topic after the flat categories.
+    if (const UnreleasedShape shape =
+            classifyUnreleased(lines, unrel + 1, sectionEnd);
+        shape.mixed) {
+        r.code = QStringLiteral("mixed_section");
+        r.error = QStringLiteral(
+            "changelog_log: `## [Unreleased]` is MIXED — %1 dated topic(s) "
+            "(first at line %2) and %3 flat category heading(s) (first at "
+            "line %4); op:normalize only reorders a section of flat "
+            "`### <category>` blocks.")
+            .arg(shape.datedCount).arg(shape.datedTopicLine)
+            .arg(shape.flatCount).arg(shape.flatCategoryLine);
+        return r;
+    }
+
     // 4. Find the first `### ` heading. Everything from [unrel+1, firstCat)
     //    is preamble (kept untouched); no heading ⇒ nothing to reorder.
     int firstCat = -1;
@@ -1178,6 +1213,8 @@ struct LineRange { int from = 0; int to = 0; };  // [from, to)
 
 // The entries under [Unreleased] whose head cites `id`: a `- ` bullet up to the
 // next bullet or heading, or a dated `### ` topic up to the next heading.
+// ANTS-6624 — a bullet inside a citing topic's range is not a second range,
+// or one occurrence of the old text would count twice.
 QVector<LineRange> entriesCiting(const QStringList &lines,
                                  const UnreleasedBounds &bounds,
                                  const QString &id) {
@@ -1185,6 +1222,7 @@ QVector<LineRange> entriesCiting(const QStringList &lines,
         QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(id)));
     QVector<LineRange> ranges;
     for (int i = bounds.heading + 1; i < bounds.end; ++i) {
+        if (!ranges.isEmpty() && i < ranges.last().to) continue;
         const QString &line = lines.at(i);
         const bool isBullet = line.startsWith(QStringLiteral("- "));
         if (!isBullet && !line.startsWith(QStringLiteral("### "))) continue;

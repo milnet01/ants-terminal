@@ -49,6 +49,15 @@ bool isMaintainerHeading(const QString &line) {
     return maintainerAnchorRe().match(line).hasMatch();
 }
 
+// ANTS-3695 — the H1s this format emits: a `# <ISO date>` session heading or
+// the `# Ants MCP Feedback` title. Any other `# ` line is body text to the v2
+// readers (enumerateFindingBlocks, findingRecord).
+const QRegularExpression &h1BoundaryRe() {
+    static const QRegularExpression re(QStringLiteral(
+        "^# (?:\\d{4}-\\d{2}-\\d{2}|Ants MCP Feedback\\b)"));
+    return re;
+}
+
 // ANTS-6145 — true for each line inside a fenced block, opener and closer
 // included. The one fence walk every scanner in this file reads, so a fence
 // fix lands once. The rule is mcp-feedback-files.md's: a fence opens at up to
@@ -300,6 +309,11 @@ FindingRecord findingRecord(const FindingBlock &fb, const QString &triage,
     rec.entryHeading = QStringLiteral("");
     for (const Boundary &b : boundaries) {
         if (b.line0 >= fb.headingLine0) break;
+        // ANTS-6624 — a stray H1, such as a pasted shell comment, is body text
+        // here as in enumerateFindingBlocks, not the entry heading.
+        if (b.text.startsWith(QStringLiteral("# "))
+            && !h1BoundaryRe().match(b.text).hasMatch())
+            continue;
         rec.entryHeading = b.text;
     }
     const auto dm = dateRe.match(rec.entryHeading);
@@ -478,15 +492,16 @@ ParseResult parse(const QString &fileContent) {
 // ordinary thing in one. Rendered flush-left it reads as an H1, which ends
 // the enclosing `###` finding block — taking the `- **Proposed ID:**` line
 // the verb itself just wrote outside the finding, so feedback_query drops
-// the whole thing from the delta. Indenting every continuation line by two
-// spaces keeps it inside the list item and neutralises the entire class
-// (hash, pipe, hyphen, fence, setext underline) while rendering
-// identically. The first line needs nothing — it already sits after the
-// `- **Field:** ` label.
+// the whole thing from the delta. Indenting every continuation line keeps it
+// inside the list item and neutralises the entire class (hash, pipe, hyphen,
+// fence, setext underline) while rendering identically. ANTS-6624 — by four
+// spaces, not two: a fence opens at up to three, so an unclosed one in a
+// value hid every later finding. The first line needs nothing — it already
+// sits after the `- **Field:** ` label.
 static QString indentContinuation(const QString &value) {
     QString v = value;
     v.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    return v.replace(QStringLiteral("\n"), QStringLiteral("\n  "));
+    return v.replace(QStringLiteral("\n"), QStringLiteral("\n    "));
 }
 
 QString renderFindingBlock(const QString &date, const QString &sessionLabel,
@@ -496,12 +511,16 @@ QString renderFindingBlock(const QString &date, const QString &sessionLabel,
     const QString hashes = h1Heading ? QStringLiteral("# ")
                                      : QStringLiteral("## ");
     out += hashes + date;
+    // ANTS-6624 — the heading is one line, as a title's is below; the note's
+    // later lines are indented as a field value's are.
     if (!sessionLabel.isEmpty())
-        out += QStringLiteral(" — ") + sessionLabel;
+        out += QStringLiteral(" — ") + QString(sessionLabel)
+                   .replace(QStringLiteral("\r\n"), QStringLiteral(" "))
+                   .replace(QLatin1Char('\n'), QLatin1Char(' '));
     out += QStringLiteral("\n");
 
     if (!note.isEmpty())
-        out += QStringLiteral("\n") + note + QStringLiteral("\n");
+        out += QStringLiteral("\n") + indentContinuation(note) + QStringLiteral("\n");
 
     for (const Finding &f : findings) {
         // ANTS-3695 — a heading is one line by definition; a newline in the
@@ -563,8 +582,10 @@ QString skeleton(const QString &projectTitle) {
 QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
     // Canonical id-line regex — mcp-feedback-files.md § "Maintainer triage".
     // The `[ *:]+` run swallows the `:**`/`**:` separator in either order.
+    // ANTS-6624 — at most one leading space: a line indented two or more is a
+    // field value's continuation, not the finding's id line.
     static const QRegularExpression idLineRe(
-        QStringLiteral("^ *(?:[-*] +)?\\*{0,2} *proposed id[ *:]+(.*)$"),
+        QStringLiteral("^ ?(?=\\S)(?:[-*] +)?\\*{0,2} *proposed id[ *:]+(.*)$"),
         QRegularExpression::CaseInsensitiveOption);
     // 1–3 hash boundary (`# `/`## `/`### `). Two differences from the v1
     // scanBoundaries: a `### ` also terminates a block, and only a dated or
@@ -581,8 +602,7 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
     // body text. NOT "never bound at an H1" as first proposed: h1Heading mode
     // renders real session headings at that depth, and ignoring those would
     // run a block into the next session's findings. `##`/`###` are unchanged.
-    static const QRegularExpression h1BoundaryRe(QStringLiteral(
-        "^# (?:\\d{4}-\\d{2}-\\d{2}|Ants MCP Feedback\\b)"));
+    // The test is h1BoundaryRe(), above.
 
     // Pass 1 — every boundary heading outside a fence, in document order.
     struct B { int line0; bool isSub; };   // isSub ⟹ a `### ` heading
@@ -592,7 +612,7 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
         const QString &l = lines.at(i);
         if (fenced.at(i) || !boundaryRe.match(l).hasMatch()) continue;
         const bool isH1 = l.startsWith(QStringLiteral("# "));
-        if (isH1 && !h1BoundaryRe.match(l).hasMatch()) continue;  // ANTS-3695
+        if (isH1 && !h1BoundaryRe().match(l).hasMatch()) continue;  // ANTS-3695
         bounds.append({ i, l.startsWith(QStringLiteral("### ")) });
     }
 
@@ -664,7 +684,9 @@ SetTitleResult setTitle(const QString &content, const QString &projectTitle) {
 
     const QString line = lines.at(h1);
     static const QString kDash = QString::fromUtf8("\xE2\x80\x94");   // —
-    const int dash = line.lastIndexOf(kDash);
+    // ANTS-6624 — the FIRST dash: the prefix holds none, and a project title
+    // may hold its own.
+    const int dash = line.indexOf(kDash);
     const QString rebuilt = dash >= 0
         ? line.left(dash + kDash.size()) + QLatin1Char(' ') + out.newTitle
         : QStringLiteral("# Ants MCP Feedback ") + kDash + QLatin1Char(' ')

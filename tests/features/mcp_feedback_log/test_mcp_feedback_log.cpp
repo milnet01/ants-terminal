@@ -839,3 +839,67 @@ TEST(McpFeedbackLog, Ants4900FreshRootWithSubdirsStillDerives) {
     EXPECT_TRUE(QFileInfo::exists(root.path() + "/Project_Ants_MCP_Feedback.md"))
         << "no corpus anywhere — this IS the first file";
 }
+
+// ANTS-6624 — an unclosed fence in a field value, or in the note, hides no
+// later finding: continuation lines are indented past a fence's three-space
+// limit. A session label is folded to one line, as a title is.
+TEST(McpFeedbackLog, Ants6624UnclosedFenceHidesNoLaterFinding) {
+    QVector<FeedbackFile::Finding> fs;
+    FeedbackFile::Finding a;
+    a.title = "First"; a.what = "w";
+    a.repro = "run this\n```\nan example never closed";
+    FeedbackFile::Finding b;
+    b.title = "Second"; b.what = "w";
+    fs << a << b;
+    const QString out = FeedbackFile::renderFindingBlock(
+        "2026-11-01", "label\nsecond line", /*h1Heading=*/false,
+        "a note\n```\nalso never closed", fs);
+    EXPECT_TRUE(out.startsWith(QString::fromUtf8(
+        "## 2026-11-01 \xE2\x80\x94 label second line\n")))
+        << out.toStdString();
+
+    const QStringList lines =
+        (FeedbackFile::skeleton(QStringLiteral("P")) + QLatin1Char('\n') + out)
+            .split(QLatin1Char('\n'));
+    const auto blocks = FeedbackFile::enumerateFindingBlocks(lines);
+    ASSERT_EQ(blocks.size(), 2) << out.toStdString();
+    for (const auto &blk : blocks)
+        EXPECT_NE(blk.idLine0, -1) << blk.heading.toStdString();
+}
+
+// ANTS-6624 — a line indented two or more spaces is a field value's
+// continuation, so `Proposed ID` text in it is not the finding's id line.
+TEST(McpFeedbackLog, Ants6624ProposedIdInAContinuationIsNotTheIdLine) {
+    QVector<FeedbackFile::Finding> fs;
+    FeedbackFile::Finding f;
+    f.title = "T";
+    f.what  = "quoted from another file:\n- **Proposed ID:** ANTS-1234";
+    fs << f;
+    const QString out = FeedbackFile::renderFindingBlock(
+        "2026-11-01", QString(), false, QString(), fs);
+    auto blocks = FeedbackFile::enumerateFindingBlocks(out.split(QLatin1Char('\n')));
+    ASSERT_EQ(blocks.size(), 1);
+    EXPECT_EQ(blocks.at(0).idValue, QStringLiteral("_(maintainer to assign)_"));
+
+    // A file written with the old two-space continuation.
+    blocks = FeedbackFile::enumerateFindingBlocks(QStringList{
+        "### T", "", "- **What:** quoted:", "  Proposed ID: ANTS-1234",
+        "- **Proposed ID:** _(maintainer to assign)_"});
+    ASSERT_EQ(blocks.size(), 1);
+    EXPECT_EQ(blocks.at(0).idLine0, 4);
+}
+
+// ANTS-6624 — set_title splits at the FIRST dash, so a title that holds its
+// own dash is replaced whole and reported whole.
+TEST(McpFeedbackLog, Ants6624SetTitleKeepsADashInTheOldTitle) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback \xE2\x80\x94 A \xE2\x80\x94 B\n");
+    const FeedbackFile::SetTitleResult r =
+        FeedbackFile::setTitle(before, QStringLiteral("New"));
+    EXPECT_TRUE(r.changed);
+    EXPECT_EQ(r.oldTitle, QString::fromUtf8("A \xE2\x80\x94 B"));
+    EXPECT_TRUE(r.newContent.contains(
+        QString::fromUtf8("# Ants MCP Feedback \xE2\x80\x94 New\n")))
+        << r.newContent.toStdString();
+}

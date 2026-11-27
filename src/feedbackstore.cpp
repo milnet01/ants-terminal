@@ -111,9 +111,9 @@ bool writeExport(const QString &path, const QString &text) {
         if (existed) QFile::setPermissions(path, before);
         return false;
     }
-    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::ReadGroup
-                                    | QFileDevice::ReadOther);
-    return true;
+    // ANTS-6624 — INV-5's 0444 is part of the write: a failed chmod fails it.
+    return QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::ReadGroup
+                                           | QFileDevice::ReadOther);
 }
 
 bool fileDrifted(const QString &path, const QString &exportSha) {
@@ -129,6 +129,17 @@ Result driftRefusal(const QString &filePath) {
                                   "written. feedback_log op:\"reimport\" with "
                                   "confirm:true keeps the file's version; deleting "
                                   "the file keeps the store's.").arg(filePath));
+}
+
+// ANTS-6624 — the write path's drift check. A file it cannot open is refused
+// as unreadable, not as an outside edit.
+Result driftCheck(const QString &filePath, const QString &exportSha) {
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly))
+        return refusal(QStringLiteral("read_failed"),
+                       QStringLiteral("cannot open \"%1\" to check it against the "
+                                      "store. Nothing was written.").arg(filePath));
+    return sha256Hex(f.readAll()) != exportSha ? driftRefusal(filePath) : Result{};
 }
 
 }  // namespace
@@ -204,8 +215,9 @@ Result write(RoadmapStore &store, const QString &filePath,
     if (found) {
         row = *found;
         // A missing file is not drift: the write below recreates it.
-        if (fileExists && fileDrifted(filePath, row.exportSha256))
-            return abort(store, driftRefusal(filePath));
+        if (fileExists)
+            if (Result r = driftCheck(filePath, row.exportSha256); !r.code.isEmpty())
+                return abort(store, r);
     } else if (fileExists) {
         if (Result r = importRow(store, key, filePath, &row); !r.code.isEmpty())
             return abort(store, r);
@@ -228,6 +240,7 @@ Result write(RoadmapStore &store, const QString &filePath,
     out.content = text;
     if (text == row.content || dryRun) {   // today's no-op skip; a preview
         out.changed = text != row.content;
+        out.imported = false;   // ANTS-6624 — the rollback undoes the import
         store.rollback();
         return out;
     }
@@ -247,8 +260,9 @@ Result write(RoadmapStore &store, const QString &filePath,
     // An editor takes no lock, so the file write itself is the only window
     // left. A row this call imported or created carries the hash of what it
     // read, or none, so any file there now counts as drift.
-    if (QFileInfo::exists(filePath) && fileDrifted(filePath, row.exportSha256))
-        return abort(store, driftRefusal(filePath));
+    if (QFileInfo::exists(filePath))
+        if (Result r = driftCheck(filePath, row.exportSha256); !r.code.isEmpty())
+            return abort(store, r);
     // Inside the transaction, so no second writer renders between this
     // commit and this file write.
     if (!writeExport(filePath, text))

@@ -76,6 +76,9 @@ category.
   id straight after "part of" (any case, in backticks or a link) is not
   `cited_not_shipped`; the same id cited plainly, on its own line or beside
   the "part of", still is.
+- **`ChangelogQueryLint.Ants6624UnterminatedFenceEndsAtTheNextSection`** — a
+  fence left open ends at the next column-0 `## [`, as `parse` reads it, so a
+  later section's citation still counts and raises no `shipped_not_cited`.
 - **`ChangelogQueryLint.Ants6284DecisionWrappedAcrossLinesIsRecorded`** — a
   `Release note (…): no CHANGELOG entry` decision counts when line breaks
   and indentation split it. The phrase without the `Release note (` form

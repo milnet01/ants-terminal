@@ -1494,6 +1494,31 @@ TEST(changelog_log_writer, Ants5108HeadingOnlySectionIsNothingToRelease) {
     EXPECT_EQ(dated.code, QStringLiteral("nothing_to_release"));
 }
 
+// ANTS-6624 — a paragraph wrapped whole in parentheses is a placeholder note,
+// as the skeleton's empty [Unreleased] carries, so it releases nothing. An
+// entry beside it still releases.
+TEST(changelog_log_writer, Ants6624PlaceholderNoteIsNothingToRelease) {
+    const QString md = QStringLiteral(
+        "# Changelog\n\n## [Unreleased]\n\n"
+        "(Nothing yet. Scaffolding is not a release — the first dated section\n"
+        "appears once something has actually shipped.)\n\n"
+        "## [0.1.0] - 2026-01-01\n\n- old.\n");
+    const auto versioned = ChangelogLog::closeUnreleased(
+        md, QStringLiteral("0.2.0"), QStringLiteral("2026-10-02"));
+    EXPECT_FALSE(versioned.ok);
+    EXPECT_EQ(versioned.code, QStringLiteral("nothing_to_release"));
+    const auto dated = ChangelogLog::closeUnreleasedDated(
+        md, QStringLiteral("2026-10-02"));
+    EXPECT_FALSE(dated.ok);
+    EXPECT_EQ(dated.code, QStringLiteral("nothing_to_release"));
+
+    QString withEntry = md;
+    withEntry.replace(QStringLiteral("shipped.)\n"),
+                      QStringLiteral("shipped.)\n\n### Added\n\n- **A thing.**\n"));
+    EXPECT_TRUE(ChangelogLog::closeUnreleased(
+        withEntry, QStringLiteral("0.2.0"), QStringLiteral("2026-10-02")).ok);
+}
+
 // ANTS-5388 — release always wrote ` - ` before the date. A file whose
 // headings use ` — ` got a mismatched heading and a different anchor, which
 // AppStream detail links depend on. The newest dated heading sets the style;

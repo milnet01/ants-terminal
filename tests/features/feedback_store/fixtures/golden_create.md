@@ -15,7 +15,7 @@ Intro note.
 
 - **What:** what text
 - **Repro:** line one
-  # a hash line
+    # a hash line
 - **Impact:** impact text
 - **Suggested fix:** fix text
 - **Proposed ID:** _(maintainer to assign)_

@@ -288,6 +288,8 @@ struct NormalizeResult {
 //                             subsections, not flat categories (parity
 //                             with insertUnreleasedEntry; reordering
 //                             dated topics by category is meaningless)
+//   mixed_section           — dated topics and flat categories together
+//                             (ANTS-6624; the sort would move the topics)
 NormalizeResult normalizeUnreleased(const QString &markdown);
 
 struct AmendResult {

@@ -831,6 +831,27 @@ TEST(ChangelogQueryLint, Ants6831PartOfIdIsNotAShippingClaim) {
     EXPECT_EQ(want, got) << got.join(QLatin1Char(' ')).toStdString();
 }
 
+// ANTS-6624 — a fence left open in one section ends at the next `## [`, as
+// parse() reads it, so a later section's citation still counts.
+TEST(ChangelogQueryLint, Ants6624UnterminatedFenceEndsAtTheNextSection) {
+    const QString md = QStringLiteral(
+        "# Changelog\n\n## [Unreleased]\n\n### Added\n\n"
+        "- **New work.** (ANTS-1)\n\n"
+        "## [1.0.0] - 2026-01-01\n\n### Fixed\n\n"
+        "- **Old work.** (ANTS-2)\n\n"
+        "```\nan example never closed\n\n"
+        "## [0.9.0] - 2025-12-01\n\n### Fixed\n\n"
+        "- **Older work.** (ANTS-3)\n");
+    ChangelogQuery::ReleaseFacts f;
+    f.statusById = {{QStringLiteral("ANTS-1"), QStringLiteral("shipped")},
+                    {QStringLiteral("ANTS-2"), QStringLiteral("shipped")},
+                    {QStringLiteral("ANTS-3"), QStringLiteral("shipped")}};
+    f.shippedSince = {QStringLiteral("ANTS-1"), QStringLiteral("ANTS-3")};
+    const auto fs = ChangelogQuery::releaseLint(md, QStringLiteral("ANTS"),
+        QStringLiteral("CHANGELOG.md"), QString(), f);
+    EXPECT_TRUE(fs.isEmpty()) << lintShape(fs).join(QLatin1Char(' ')).toStdString();
+}
+
 // A malformed window refuses before the store is touched.
 // ANTS-6649 row 1335 — a deregistered project has no roadmap (ANTS-5366
 // § 2.3), so the release checks skip it as unregistered rather than checking

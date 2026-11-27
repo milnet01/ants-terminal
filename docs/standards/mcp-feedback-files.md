@@ -435,8 +435,9 @@ remark), not a triageable finding.
 - **Proposed ID:** _(maintainer to assign)_   ← required; leave blank, maintainer fills it
 ```
 
-**Continuation lines are indented by two spaces, and that is load-bearing,
-not cosmetic** (ANTS-3695). A Repro value is a shell transcript by nature,
+**Continuation lines are indented by four spaces, and that is load-bearing,
+not cosmetic** (ANTS-3695): a code fence still opens indented three spaces, so fewer
+would let one in a value hide every later finding. A Repro value is a shell transcript by nature,
 and a `#` comment rendered at column 0 reads as an H1 — which ends the
 enclosing `### ` finding block, taking the `**Proposed ID:**` line with it,
 so `feedback_query` reports the finding as untagged and drops it from the
@@ -613,7 +614,9 @@ appending a block. For each finding in the un-triaged tail:
    silently treated as shipped.
 
 **Parser contract for the id line.** The id line is matched (case-insensitive)
-by `^ *(?:[-*] +)?\*{0,2} *proposed id[ *:]+(.*)$`, and the **value** is capture
+by `^ ?(?=\S)(?:[-*] +)?\*{0,2} *proposed id[ *:]+(.*)$` (at most one leading space,
+so a field value's indented continuation is never the id line; ANTS-6624),
+and the **value** is capture
 group 1 trimmed of surrounding whitespace and stray `*`. The `[ *:]+` run after
 `proposed id` deliberately swallows the colon and the closing bold in **either**
 order — the canonical template writes `**Proposed ID:**` (colon *inside* the

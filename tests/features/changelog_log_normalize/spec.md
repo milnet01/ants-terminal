@@ -57,7 +57,8 @@ interleaved prose the fold could not reach.
 - **INV-4** — a non-canonical `### ` heading sorts last, and a duplicate
   category keeps its original relative order (stable sort).
 - **INV-5** — refusals: `not_unreleased` (no `## [Unreleased]`),
-  `feature_grouped_section` (dated `### ` topics, not flat categories).
+  `feature_grouped_section` (dated `### ` topics, not flat categories),
+  `mixed_section` (dated topics and flat categories together; ANTS-6624).
 - **INV-6** — prose a fold cannot reach is left in place and surfaced via
   the `advisory` (`malformed_section`). A heading of any depth between the
   prose and the nearest bullet is a barrier: a `#### ` sub-heading does not

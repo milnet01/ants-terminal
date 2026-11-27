@@ -175,6 +175,22 @@ QString topicHeadline(const QString &cat) {
     return rest;
 }
 
+// ANTS-6624 — MarkdownScan::fenceMask restarted at each column-0 `## [`, the
+// line parse() lets close a fence left open. One unterminated fence then
+// masks only the rest of its own section.
+QVector<bool> sectionFenceMask(const QStringList &lines) {
+    QVector<bool> mask(lines.size(), false);
+    int from = 0;
+    for (int i = 1; i <= lines.size(); ++i) {
+        if (i < lines.size() && !lines.at(i).startsWith(QLatin1String("## [")))
+            continue;
+        const QVector<bool> part = MarkdownScan::fenceMask(lines.mid(from, i - from));
+        std::copy(part.cbegin(), part.cend(), mask.begin() + from);
+        from = i;
+    }
+    return mask;
+}
+
 }  // namespace
 
 ParseResult parse(const QString &markdown, const QString &idPrefix) {
@@ -385,7 +401,7 @@ QList<DocFinding::Finding> lint(const QString &markdown, const QString &relPath,
     QStringList lines = markdown.split(QLatin1Char('\n'));
     for (QString &l : lines)
         if (l.endsWith(QLatin1Char('\r'))) l.chop(1);
-    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    const QVector<bool> fence = sectionFenceMask(lines);  // ANTS-6624
     const QString wanted =
         version.compare(QStringLiteral("Unreleased"), Qt::CaseInsensitive) == 0
             ? QStringLiteral("Unreleased") : version;
@@ -519,7 +535,7 @@ QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &i
     QStringList lines = markdown.split(QLatin1Char('\n'));
     for (QString &l : lines)
         if (l.endsWith(QLatin1Char('\r'))) l.chop(1);
-    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    const QVector<bool> fence = sectionFenceMask(lines);  // ANTS-6624
     const QString wanted =
         version.isEmpty() ||
                 version.compare(QStringLiteral("Unreleased"), Qt::CaseInsensitive) == 0
