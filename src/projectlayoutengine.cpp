@@ -19,6 +19,67 @@
 
 namespace ProjectLayoutEngine {
 
+// ANTS-6609 — shared with ColdEyesEngine (see header).
+// Resolve `relPath` under `cwd` case-insensitively. Returns the
+// actual on-disk relative path that matches, or QString() on miss.
+// Walks the path component-by-component so each segment can match
+// independently of the others' case. Bounded to the existing
+// candidate set — the directory listings remain O(entries-per-dir).
+QString caseInsensitiveResolve(const QString &cwd, const QString &relPath) {
+    // Fast path: exact match.
+    if (QFileInfo::exists(cwd + QLatin1Char('/') + relPath)) {
+        return relPath;
+    }
+    const QStringList parts = relPath.split(QLatin1Char('/'),
+                                            Qt::SkipEmptyParts);
+    QString cur;
+    for (const QString &p : parts) {
+        const QString parent = cur.isEmpty() ? cwd
+                                             : (cwd + QLatin1Char('/') + cur);
+        QDir d(parent);
+        if (!d.exists()) return {};
+        // Match the part case-insensitively against the directory's
+        // entries; first hit wins (stable ordering by Qt::Name).
+        const QStringList entries =
+            d.entryList(QDir::AllEntries | QDir::NoDotAndDotDot,
+                        QDir::Name);
+        QString hit;
+        for (const QString &e : entries) {
+            if (e.compare(p, Qt::CaseInsensitive) == 0) { hit = e; break; }
+        }
+        if (hit.isEmpty()) return {};
+        if (!cur.isEmpty()) cur += QLatin1Char('/');
+        cur += hit;
+    }
+    return cur;
+}
+
+const QStringList kSpecsCandidates = {
+    QStringLiteral("docs/specs"),
+    QStringLiteral("docs/private/specs"),
+    QStringLiteral("docs/internal/specs"),
+    QStringLiteral("docs/fork/specs"),
+};
+
+// Reads only until the answer is known.
+bool hasMinStandardsLines(const QString &absPath) {
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    int n = 0;
+    while (!f.atEnd()) {
+        f.readLine();
+        if (++n >= kStandardsFallbackMinLines) return true;
+    }
+    return false;
+}
+
+const QRegularExpression &standardsNameRegex() {
+    static const QRegularExpression rx(
+        QStringLiteral(".*(STANDARD|DESIGN|STYLE|GUIDE).*\\.md$"),
+        QRegularExpression::CaseInsensitiveOption);
+    return rx;
+}
+
 namespace {
 
 // The two bullet shapes, shared by detectFormat() and countBullets() so
@@ -143,40 +204,6 @@ int countBullets(const BodyScan &body, const QString &format) {
 // `caseInsensitiveResolve` so projects that ship `Readme.md` /
 // `Changelog.md` / `roadmap.md` aren't told their docs are missing.
 namespace {
-// Resolve `relPath` under `cwd` case-insensitively. Returns the
-// actual on-disk relative path that matches, or QString() on miss.
-// Walks the path component-by-component so each segment can match
-// independently of the others' case. Bounded to the existing
-// candidate set — the directory listings remain O(entries-per-dir).
-QString caseInsensitiveResolve(const QString &cwd, const QString &relPath) {
-    // Fast path: exact match.
-    if (QFileInfo::exists(cwd + QLatin1Char('/') + relPath)) {
-        return relPath;
-    }
-    const QStringList parts = relPath.split(QLatin1Char('/'),
-                                            Qt::SkipEmptyParts);
-    QString cur;
-    for (const QString &p : parts) {
-        const QString parent = cur.isEmpty() ? cwd
-                                             : (cwd + QLatin1Char('/') + cur);
-        QDir d(parent);
-        if (!d.exists()) return {};
-        // Match the part case-insensitively against the directory's
-        // entries; first hit wins (stable ordering by Qt::Name).
-        const QStringList entries =
-            d.entryList(QDir::AllEntries | QDir::NoDotAndDotDot,
-                        QDir::Name);
-        QString hit;
-        for (const QString &e : entries) {
-            if (e.compare(p, Qt::CaseInsensitive) == 0) { hit = e; break; }
-        }
-        if (hit.isEmpty()) return {};
-        if (!cur.isEmpty()) cur += QLatin1Char('/');
-        cur += hit;
-    }
-    return cur;
-}
-
 const QStringList kRoadmapCandidates = {
     QStringLiteral("ROADMAP.md"),
     QStringLiteral("docs/private/ROADMAP.md"),
@@ -201,12 +228,6 @@ const QStringList kChangelogCandidates = {
     QStringLiteral("docs/private/CHANGELOG.md"),
     QStringLiteral("docs/internal/CHANGELOG.md"),
     QStringLiteral("docs/fork/CHANGELOG.md"),
-};
-const QStringList kSpecsCandidates = {
-    QStringLiteral("docs/specs"),
-    QStringLiteral("docs/private/specs"),
-    QStringLiteral("docs/internal/specs"),
-    QStringLiteral("docs/fork/specs"),
 };
 // ANTS-1880 — per-phase design docs at `docs/phases/`. Probe order
 // mirrors kSpecsCandidates so the JSON wire shape stays uniform.
@@ -364,20 +385,6 @@ void scanFile(const QString &cwd, const QString &rel,
 // `standardsFiles[]` AND `discovered[]` so callers that scan either
 // surface pick them up uniformly. probedPaths records a glob label for the
 // scan; isStale() cannot stat it, so later additions wait for the TTL.
-constexpr int kStandardsFallbackMinLines = 100;
-
-// Reads only until the answer is known.
-bool hasMinStandardsLines(const QString &absPath) {
-    QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly)) return false;
-    int n = 0;
-    while (!f.atEnd()) {
-        f.readLine();
-        if (++n >= kStandardsFallbackMinLines) return true;
-    }
-    return false;
-}
-
 // ANTS-5106 — append `rel` while the kept paths fit
 // kMaxStandardsFilesBytes, counting each as its JSON string plus a
 // comma. Once one does not fit, nothing more is kept, so the list stays
@@ -404,9 +411,7 @@ void scanStandardsFallback(const QString &cwd, QStringList &out, int &total,
     if (docsDir.isEmpty()) return;
     QDir d(cwd + QLatin1Char('/') + docsDir);
     if (!d.exists()) return;
-    static const QRegularExpression rx(
-        QStringLiteral(".*(STANDARD|DESIGN|STYLE|GUIDE).*\\.md$"),
-        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression &rx = standardsNameRegex();
     const auto entries =
         d.entryList(QStringList{QStringLiteral("*.md")},
                     QDir::Files | QDir::NoDotAndDotDot,

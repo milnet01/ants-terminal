@@ -6,6 +6,7 @@
 #include "indiereviewengine.h"
 #include "markdownscan.h"       // ANTS-3740 — shared ATX-heading collector
 #include "pathvalidation.h"
+#include "projectlayoutengine.h"  // ANTS-6609 — shared probe set
 #include "roadmapfoldin.h"
 
 #include <QChar>
@@ -38,38 +39,10 @@ bool fileExists(const QString &projectPath, const QString &rel) {
     return QFileInfo::exists(projectPath + QChar('/') + rel);
 }
 
-// ANTS-1506 — case-insensitive contract-doc resolver. Mirrors the
-// projectlayoutengine helper: walks each path component against the
-// real on-disk entries so `Claude.md` / `readme.md` / `Roadmap.md`
-// resolve to the canonical contract-doc names instead of silently
-// missing. Returns the actual on-disk relative path that matched,
-// or QString() on miss.
-QString caseInsensitiveResolve(const QString &projectPath,
-                               const QString &relPath) {
-    if (QFileInfo::exists(projectPath + QChar('/') + relPath)) {
-        return relPath;
-    }
-    const QStringList parts = relPath.split(QChar('/'), Qt::SkipEmptyParts);
-    QString cur;
-    for (const QString &p : parts) {
-        const QString parent = cur.isEmpty()
-            ? projectPath
-            : (projectPath + QChar('/') + cur);
-        QDir d(parent);
-        if (!d.exists()) return {};
-        const QStringList entries =
-            d.entryList(QDir::AllEntries | QDir::NoDotAndDotDot,
-                        QDir::Name);
-        QString hit;
-        for (const QString &e : entries) {
-            if (e.compare(p, Qt::CaseInsensitive) == 0) { hit = e; break; }
-        }
-        if (hit.isEmpty()) return {};
-        if (!cur.isEmpty()) cur += QChar('/');
-        cur += hit;
-    }
-    return cur;
-}
+// ANTS-1506 — case-insensitive contract-doc resolver, so `Claude.md` /
+// `readme.md` / `Roadmap.md` resolve to the canonical contract-doc names.
+// ANTS-6609 — project_layout's, so the two cannot drift.
+using ProjectLayoutEngine::caseInsensitiveResolve;
 
 // ANTS-1529 — extension-tolerant contract-doc resolver. Extends the
 // case-insensitive lookup with a list of common alternate extensions
@@ -238,24 +211,9 @@ QStringList listMdInDir(const QString &projectPath, const QString &relDir) {
 // exist, projects that ship flat standards files at docs/*.md (e.g.
 // `docs/RETRODB_DESIGN_STANDARDS.md`) still get a standards lane. Filter:
 // (1) name contains STANDARD / DESIGN / STYLE / GUIDE (case-insensitive);
-// (2) ≥ kStandardsMinLines lines so stub helper notes don't get promoted.
+// (2) ≥ kStandardsFallbackMinLines lines so stub helper notes don't get
+// promoted. Both filters are project_layout's (ANTS-6609).
 // Returns project-relative paths sorted ascending for stable presentation.
-constexpr int kStandardsMinLines = 100;
-
-int countLines(const QString &absPath) {
-    QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly)) return 0;
-    int n = 0;
-    while (!f.atEnd()) {
-        f.readLine();
-        ++n;
-        // Bail past the threshold — caller only needs to know
-        // "≥ threshold" / "< threshold". Saves wall-time on large
-        // standards files.
-        if (n >= kStandardsMinLines) return n;
-    }
-    return n;
-}
 
 QStringList listStandardsByNameGlob(const QString &projectPath) {
     QStringList out;
@@ -264,9 +222,7 @@ QStringList listStandardsByNameGlob(const QString &projectPath) {
     if (docsDir.isEmpty()) return out;
     QDir d(projectPath + QChar('/') + docsDir);
     if (!d.exists()) return out;
-    static const QRegularExpression rx(
-        QStringLiteral(".*(STANDARD|DESIGN|STYLE|GUIDE).*\\.md$"),
-        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression &rx = ProjectLayoutEngine::standardsNameRegex();
     const auto entries =
         d.entryList(QStringList{QStringLiteral("*.md")},
                     QDir::Files | QDir::NoDotAndDotDot,
@@ -275,7 +231,7 @@ QStringList listStandardsByNameGlob(const QString &projectPath) {
         if (!rx.match(e).hasMatch()) continue;
         const QString abs = projectPath + QChar('/') + docsDir
                           + QChar('/') + e;
-        if (countLines(abs) < kStandardsMinLines) continue;
+        if (!ProjectLayoutEngine::hasMinStandardsLines(abs)) continue;
         out << docsDir + QChar('/') + e;
     }
     return out;
@@ -371,7 +327,7 @@ struct SpecLaneCandidate {
 // caller sorts + caps.
 //
 // ANTS-1631 — widened probe set: walks every spec-dir candidate
-// (mirrors projectlayoutengine's kSpecsCandidates) PLUS App-Build
+// (projectlayoutengine's kSpecsCandidates) PLUS App-Build
 // per-feature shapes: `docs/engine/<sub>/spec.md`, `docs/phases/*.md`,
 // and `src/<module>/spec.md`. Date-prefix `YYYY-MM-DD-*.md` is
 // accepted automatically (no special-casing — the `*.md` glob already
@@ -385,17 +341,9 @@ QList<SpecLaneCandidate> listSpecLaneCandidates(
     const QSet<int> &activeAntsIds,
     QStringList *outDirs = nullptr) {
     QList<SpecLaneCandidate> out;
-    // ANTS-1631 — every spec-dir candidate. Mirrors
-    // projectlayoutengine.cpp's kSpecsCandidates so the cold-eyes
-    // probe set tracks the project_layout probe set as ANTS-1493
-    // widens it further. Order is: canonical → private → internal →
-    // fork (matches project_layout's preference order).
-    static const QStringList kSpecDirs = {
-        QStringLiteral("docs/specs"),
-        QStringLiteral("docs/private/specs"),
-        QStringLiteral("docs/internal/specs"),
-        QStringLiteral("docs/fork/specs"),
-    };
+    // ANTS-1631 — every spec-dir candidate, in project_layout's
+    // preference order (ANTS-6609: its list, so the two cannot drift).
+    const QStringList &kSpecDirs = ProjectLayoutEngine::kSpecsCandidates;
     // The legacy Ants filter only knew `ANTS-NNNN.md`. Match strictly
     // so unrelated filename shapes are never accidentally gated.
     static const QRegularExpression rxAntsId(
@@ -746,7 +694,7 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
                 stds.summary = QStringLiteral(
                     "docs/*STANDARD*|*DESIGN*|*STYLE*|*GUIDE*.md "
                     "(>= %1 lines, name-based standards fallback)")
-                    .arg(kStandardsMinLines);
+                    .arg(ProjectLayoutEngine::kStandardsFallbackMinLines);
             }
         }
         if (!stds.docPaths.isEmpty()) result.lanes << stds;

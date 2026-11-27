@@ -16,6 +16,8 @@
 #include <QString>
 #include <QStringList>
 
+class QRegularExpression;
+
 namespace ProjectLayoutEngine {
 
 constexpr int kDefaultTtlDays   = 7;
@@ -49,6 +51,18 @@ constexpr int kProbeSetVersion  = 7;
 // and toJson announces the cut. A fallback hit is also listed in
 // discovered[], so the list can cost twice this.
 constexpr int kMaxStandardsFilesBytes = 5 * 1024;
+
+// The probe pieces ColdEyesEngine shares, so its probe set follows this one.
+// `relPath` under `cwd`, matched case-insensitively one component at a time;
+// the on-disk relative path, or empty on a miss.
+QString caseInsensitiveResolve(const QString &cwd, const QString &relPath);
+// Spec directories, in preference order: canonical, private, internal, fork.
+extern const QStringList kSpecsCandidates;
+// The name-based standards fallback: docs/*.md whose name matches
+// standardsNameRegex() and that has at least kStandardsFallbackMinLines lines.
+constexpr int kStandardsFallbackMinLines = 100;
+bool hasMinStandardsLines(const QString &absPath);
+const QRegularExpression &standardsNameRegex();
 
 // ANTS-1903 — per-branch trace of the format sniffer's decision.
 // Surfaces which branches scored a hit vs miss on each pass so a

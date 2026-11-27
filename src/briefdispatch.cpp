@@ -21,23 +21,6 @@ QString slurpUtf8(const QString &absPath) {
     return FileContentCache::slurpUtf8(absPath, /*textMode=*/true);
 }
 
-// Canonicalise `path` (project-relative OR already-absolute) under
-// `rootCanon`; empty on escape / missing. An absolute input is resolved
-// directly — joining it onto projectPath would yield "…/proj//abs/path",
-// which fails canonicalisation and silently drops the body (ANTS-1731).
-QString safeCanon(const QString &projectPath, const QString &rootCanon,
-                  const QString &path) {
-    const QString abs = QFileInfo(path).isAbsolute()
-                            ? path
-                            : projectPath + QChar('/') + path;
-    QString canon = QFileInfo(abs).canonicalFilePath();
-    // The root itself is not a file to read.
-    if (canon == rootCanon
-        || !PathValidation::isInsideProject(projectPath, canon))
-        return QString();
-    return canon;
-}
-
 // Fence-header label: a project-relative form so the brief never leaks an
 // absolute path. A relative input is used verbatim; an absolute input
 // under rootCanon is relativised against it (ANTS-1731).
@@ -69,6 +52,19 @@ QString clipToByteCap(const QString &text, qint64 capBytes) {
 }
 
 }  // namespace
+
+QString safeCanon(const QString &projectPath, const QString &rootCanon,
+                  const QString &path) {
+    const QString abs = QFileInfo(path).isAbsolute()
+                            ? path
+                            : projectPath + QChar('/') + path;
+    QString canon = QFileInfo(abs).canonicalFilePath();
+    // The root itself is not a file to read.
+    if (canon == rootCanon
+        || !PathValidation::isInsideProject(projectPath, canon))
+        return QString();
+    return canon;
+}
 
 QString fenceBody(const QString &relPath, const QString &body,
                   const QString &label) {

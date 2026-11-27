@@ -169,6 +169,24 @@ bool isFixtureData(const QString &rel) {
            || rel.contains(QStringLiteral("/tests/audit_fixtures/"));
 }
 
+// The per-file code-drift loop: list the tracked .cpp/.h files, read each
+// through the cache, run `scan` on it. `skip`, when set, drops a path before
+// it is read; a new per-file exclusion goes there.
+using FileScan = QList<Finding> (*)(const QString &relPath, const QString &body);
+QList<Finding> scanTrackedSources(const QString &projectPath, FileScan scan,
+                                  bool (*skip)(const QString &rel) = nullptr) {
+    const QStringList files = lsFiles(
+        projectPath, {QStringLiteral("*.cpp"), QStringLiteral("*.h")});
+    QList<Finding> out;
+    for (const QString &rel : files) {
+        if (skip && skip(rel)) continue;
+        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
+        if (body.isEmpty()) continue;
+        out += scan(rel, body);
+    }
+    return out;
+}
+
 }  // anonymous
 
 // ---------------------------------------------------------------------------
@@ -597,15 +615,7 @@ QList<Finding> scanDuplicateIncludes(const QString &relPath,
 
 QList<Finding> detectDuplicateIncludes(
     const QString &projectPath, const ScanOptions & /*opt*/) {
-    const QStringList files = lsFiles(
-        projectPath, {QStringLiteral("*.cpp"), QStringLiteral("*.h")});
-    QList<Finding> out;
-    for (const QString &rel : files) {
-        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
-        if (body.isEmpty()) continue;
-        out += detail::scanDuplicateIncludes(rel, body);
-    }
-    return out;
+    return scanTrackedSources(projectPath, detail::scanDuplicateIncludes);
 }
 
 // ---------------------------------------------------------------------------
@@ -684,24 +694,18 @@ QList<Finding> scanObsoleteQStringIdioms(const QString &relPath,
 
 QList<Finding> detectObsoleteQStringIdioms(
     const QString &projectPath, const ScanOptions & /*opt*/) {
-    const QStringList files = lsFiles(
-        projectPath, {QStringLiteral("*.cpp"), QStringLiteral("*.h")});
-    QList<Finding> out;
-    for (const QString &rel : files) {
-        if (isFixtureData(rel)) continue;
-        // This engine's own source *names* the obsolete idioms as data
-        // (the obsoleteQtIdioms() table + its anchored regex literals).
-        // Those are definitions, not occurrences-in-use, so excluding
-        // the engine file is the correct semantics — not a silenced
-        // finding. No other detector has this definitional self-match.
-        if (rel.endsWith(QStringLiteral("src/debtsweepengine.cpp"))
-            || rel.endsWith(QStringLiteral("src/debtsweepengine.h")))
-            continue;
-        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
-        if (body.isEmpty()) continue;
-        out += detail::scanObsoleteQStringIdioms(rel, body);
-    }
-    return out;
+    return scanTrackedSources(
+        projectPath, detail::scanObsoleteQStringIdioms,
+        [](const QString &rel) {
+            // This engine's own source *names* the obsolete idioms as data
+            // (the obsoleteQtIdioms() table + its anchored regex literals).
+            // Those are definitions, not occurrences-in-use, so excluding
+            // the engine file is the correct semantics — not a silenced
+            // finding. No other detector has this definitional self-match.
+            return isFixtureData(rel)
+                || rel.endsWith(QStringLiteral("src/debtsweepengine.cpp"))
+                || rel.endsWith(QStringLiteral("src/debtsweepengine.h"));
+        });
 }
 
 // ---------------------------------------------------------------------------
@@ -800,16 +804,8 @@ QList<Finding> scanDeadBranchAfterReturn(const QString &relPath,
 
 QList<Finding> detectDeadBranchAfterReturn(
     const QString &projectPath, const ScanOptions & /*opt*/) {
-    const QStringList files = lsFiles(
-        projectPath, {QStringLiteral("*.cpp"), QStringLiteral("*.h")});
-    QList<Finding> out;
-    for (const QString &rel : files) {
-        if (isFixtureData(rel)) continue;
-        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
-        if (body.isEmpty()) continue;
-        out += detail::scanDeadBranchAfterReturn(rel, body);
-    }
-    return out;
+    return scanTrackedSources(projectPath, detail::scanDeadBranchAfterReturn,
+                              isFixtureData);
 }
 
 // ---------------------------------------------------------------------------
@@ -1382,6 +1378,9 @@ QList<Finding> scanAll(
         if (!failuresByCategory.contains(cat)) failedCategories << cat;
         failuresByCategory[cat] += failures;
     };
+    // triagePrompt's per-category guidance names detectors by hand; a
+    // detector added here whose findings are not auto-fixable needs a
+    // guidance line there too.
     if (opt.includeCodeDrift) {
         run("code_drift", detectStaleTypeComments);
         run("code_drift", detectAddedTodos);

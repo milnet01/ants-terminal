@@ -871,19 +871,15 @@ QString assembleBriefForDispatch(const QString &projectPath,
     }
     out += QChar('\n');
 
-    const QFileInfo rootInfo(projectPath);
-    const QString rootCanon = rootInfo.canonicalFilePath();
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
 
     // INV-22 — fence each source body in 4-backticks; the
     // preamble tells the upstream LLM the wrapped content is
     // data, not instructions.
     for (const QString &sp : lane.sourcePaths) {
-        const QString abs = projectPath + QChar('/') + sp;
-        const QFileInfo fi(abs);
-        const QString canon = fi.canonicalFilePath();
-        if (canon == rootCanon
-            || !PathValidation::isInsideProject(projectPath, canon))
-            continue;
+        const QString canon =
+            BriefDispatch::safeCanon(projectPath, rootCanon, sp);
+        if (canon.isEmpty()) continue;
         // ANTS-1727 — fence-hardening extracted to BriefDispatch::fenceBody
         // (the shared kernel; byte-identical to the prior inline form).
         out += BriefDispatch::fenceBody(sp, slurpCappedUtf8(canon));
@@ -931,10 +927,9 @@ QString assembleBriefForDispatch(const QString &projectPath,
         QStringLiteral("docs/standards/documentation.md"),
     };
     for (const QString &sp : kStandardsDocs) {
-        const QString abs = projectPath + QChar('/') + sp;
-        const QFileInfo fi(abs);
-        const QString canon = fi.canonicalFilePath();
-        if (!PathValidation::isInsideProject(projectPath, canon)) continue;
+        const QString canon =
+            BriefDispatch::safeCanon(projectPath, rootCanon, sp);
+        if (canon.isEmpty()) continue;
         // ANTS-1727 — shared fence kernel; "standard" label keeps the
         // dispatch brief byte-identical to the prior inline form.
         out += BriefDispatch::fenceBody(sp, slurpCappedUtf8(canon),
