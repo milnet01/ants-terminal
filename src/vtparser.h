@@ -85,6 +85,33 @@ private:
         IgnoreStringEsc,// peek-state: just saw ESC inside SOS/PM body
     };
 
+    // The one list of the string states, peek states included: every site
+    // that asks "is this a string state?" reads it. No default case, so
+    // -Wswitch makes a new state choose a side here.
+    static constexpr bool isStringState(State s) {
+        switch (s) {
+        case OscString: case OscStringEsc:
+        case DcsString: case DcsStringEsc:
+        case ApcString: case ApcStringEsc:
+        case IgnoreString: case IgnoreStringEsc:
+            return true;
+        case Ground: case Escape: case EscapeIntermediate:
+        case CsiEntry: case CsiParam: case CsiIntermediate: case CsiIgnore:
+            return false;
+        }
+        return false;
+    }
+    // The accumulator a collecting string state appends to; null for every
+    // other state (SOS and PM drop their body).
+    std::string *stringBuffer(State s) {
+        switch (s) {
+        case OscString: return &m_oscString;
+        case DcsString: return &m_dcsString;
+        case ApcString: return &m_apcString;
+        default: return nullptr;
+        }
+    }
+
     void processChar(uint32_t ch);
     void processCsi(uint32_t ch);     // CsiEntry, CsiParam, CsiIntermediate, CsiIgnore
     void processString(uint32_t ch);  // the OSC/DCS/APC/SOS/PM states and their peek states

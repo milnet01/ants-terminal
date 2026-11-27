@@ -238,14 +238,10 @@ void VtParser::processChar(uint32_t ch) {
             // their End action, and the *Esc peek state consumes the next
             // byte so a hostile payload cannot end in a live ESC sequence
             // such as RIS. A second ESC in a peek state is that byte, so
-            // the peek states are listed too (ANTS-6440). See
+            // the peek states count too (ANTS-6440). See
             // tests/features/vt_osc_esc_discard/spec.md.
-            if (m_state == OscString || m_state == DcsString ||
-                m_state == ApcString || m_state == IgnoreString ||
-                m_state == OscStringEsc || m_state == DcsStringEsc ||
-                m_state == ApcStringEsc || m_state == IgnoreStringEsc) {
+            if (isStringState(m_state))
                 break;  // exit the C0 switch — per-state switch handles it
-            }
             transition(Escape);
             return;
         case 0x18: // CAN
@@ -253,9 +249,8 @@ void VtParser::processChar(uint32_t ch) {
             // An aborted string never reaches endString, so its accumulator
             // (up to kMaxStringBytes) is released here instead of staying
             // resident for the parser's lifetime.
-            if (m_state == OscString) releaseIfLarge(m_oscString);
-            else if (m_state == DcsString) releaseIfLarge(m_dcsString);
-            else if (m_state == ApcString) releaseIfLarge(m_apcString);
+            if (std::string *buf = stringBuffer(m_state))
+                releaseIfLarge(*buf);
             transition(Ground);
             return;
         default:
@@ -333,14 +328,7 @@ void VtParser::processChar(uint32_t ch) {
         processCsi(ch);
         break;
 
-    case OscString:
-    case OscStringEsc:
-    case DcsString:
-    case DcsStringEsc:
-    case ApcString:
-    case ApcStringEsc:
-    case IgnoreString:
-    case IgnoreStringEsc:
+    default:  // every other state is a string state (isStringState)
         processString(ch);
         break;
     }
@@ -549,16 +537,21 @@ bool VtParser::reArmStringIntroducer(uint32_t ch) {
     // Any byte not listed here is NOT a string introducer, so `c`=RIS,
     // `D`=IND, the CSI introducer `[`, intermediates and C0 never re-arm
     // from a peek state. ANTS-1777.
+    State next;
     switch (ch) {
-    case ']': m_oscString.clear(); transition(OscString); return true;
-    case 'P': m_dcsString.clear(); transition(DcsString); return true;
-    case '_': m_apcString.clear(); transition(ApcString); return true;
+    case ']': next = OscString; break;
+    case 'P': next = DcsString; break;
+    case '_': next = ApcString; break;
     case 'X':   // SOS
     case '^':   // PM
-        transition(IgnoreString); return true;
+        next = IgnoreString; break;
     default:
         return false;
     }
+    if (std::string *buf = stringBuffer(next))
+        buf->clear();
+    transition(next);
+    return true;
 }
 
 void VtParser::transition(State newState) {
@@ -572,8 +565,7 @@ void VtParser::transition(State newState) {
         m_intermediate.clear();
     } else if (newState == Escape) {
         m_intermediate.clear();
-    } else if (newState == OscString || newState == DcsString ||
-               newState == ApcString) {
+    } else if (stringBuffer(newState)) {
         // Fresh string sequence — clear the carried-over truncation flag so it
         // reflects only this payload. ANTS-1663.
         m_stringTruncated = false;
