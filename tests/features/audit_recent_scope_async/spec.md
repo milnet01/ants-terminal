@@ -41,10 +41,13 @@ repository froze the whole window, and every terminal in it, for that long.
   `onSinceBaselineToggled` call `requestRecentChangeSets`; and
   `readRecentChangeSets` is called from inside the `QThread::create` in
   `requestRecentChangeSets`.
+- **INV-6 — the user's diff config does not hide changed lines** (ANTS-6621).
+  With `diff.noprefix`, `diff.mnemonicPrefix`, `color.ui` and `color.diff`
+  set in the repository, INV-1 still holds.
 
 ## Test surface
 
-INV-1 to INV-4 build scratch repositories with `git`, with the global and
+INV-1 to INV-4 and INV-6 build scratch repositories with `git`, with the global and
 system git config pointed at `/dev/null`. They skip when `git` is absent.
 INV-5 reads the source text.
 
@@ -52,3 +55,6 @@ INV-5 reads the source text.
 
 - **ANTS-5084:** two blocking git runs, up to 13 s, sat on the GUI thread in
   `runAudit` and the pill toggle.
+- **ANTS-6621:** a user's diff prefix or colour config left no header the
+  hunk parser matched, so both filters hid every filed finding. Locked by
+  INV-6.

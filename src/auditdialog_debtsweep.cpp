@@ -25,6 +25,23 @@
 
 using namespace auditdialogdetail;
 
+namespace {
+// ANTS-6621 — a background re-scan can replace the list while a modal prompt
+// is open, so an index taken before it may name another finding after it.
+// Drops `f` by its content, or nothing when the re-scan no longer lists it.
+void dropDebtFinding(QList<DebtSweepEngine::Finding> &list,
+                     const DebtSweepEngine::Finding &f) {
+    for (qsizetype i = 0; i < list.size(); ++i) {
+        const DebtSweepEngine::Finding &d = list.at(i);
+        if (d.detectorId == f.detectorId && d.file == f.file
+            && d.line == f.line && d.message == f.message) {
+            list.removeAt(i);
+            return;
+        }
+    }
+}
+}  // namespace
+
 Finding AuditDialog::debtToAuditFinding(const DebtSweepEngine::Finding &d) {
     Finding f;
     f.checkId   = d.detectorId;
@@ -326,7 +343,7 @@ void AuditDialog::onDebtAnchorClicked(const QUrl &url) {
             if (m_debtStatus)
                 m_debtStatus->setFullText(QString("Allowlisted %1").arg(f.detectorId));
             // ANTS-5057 — drop it now; the background re-scan confirms.
-            m_debtFindings.removeAt(idx);
+            dropDebtFinding(m_debtFindings, f);
             requestDebtScan();
         }
         renderDebtResults();
@@ -341,7 +358,7 @@ void AuditDialog::onDebtAnchorClicked(const QUrl &url) {
             QLineEdit::Normal, heading, &ok);
         if (!ok || heading.trimmed().isEmpty()) return;
         if (debtDeferToRoadmap({f}, heading.trimmed())) {
-            m_debtFindings.removeAt(idx);
+            dropDebtFinding(m_debtFindings, f);
             if (m_debtStatus) m_debtStatus->setFullText("Deferred into ROADMAP.md");
             renderDebtResults();
         } else {

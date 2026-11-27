@@ -4083,6 +4083,8 @@ if(ANTS_TESTS)
                 tests/features/audit_project_code_lanes_off/test_audit_project_code_lanes_off.cpp
                 # ANTS-6855..6859 — the audit's Claude hand-off starts on real findings.
                 tests/features/audit_claude_handoff/test_audit_claude_handoff.cpp
+                # ANTS-6621 — the smaller audit-dialog bugs from the 2026-11-06 reviews.
+                tests/features/audit_dialog_review_fixes/test_audit_dialog_review_fixes.cpp
                 # ANTS-6539 — closing the audit dialog mid-check.
                 tests/features/audit_dialog_close_mid_check/test_audit_dialog_close_mid_check.cpp
                 # ANTS-5084 — git history is read off the GUI thread.

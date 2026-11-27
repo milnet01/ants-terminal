@@ -14,6 +14,8 @@
 #include <QString>
 #include <QTemporaryDir>
 
+#include <utility>
+
 namespace {
 
 bool haveGit() {
@@ -125,6 +127,26 @@ TEST(AuditRecentScopeAsync, NotARepositoryReportsAnError) {
 
     const auto sets = AuditDialog::readRecentChangeSets(tmp.path(), 1, true);
     EXPECT_FALSE(sets.error.isEmpty()) << "git failing outside a repository went unreported";
+}
+
+// INV-6 — ANTS-6621
+TEST(AuditRecentScopeAsync, UserDiffConfigKeepsTheChangedLines) {
+    if (!haveGit()) GTEST_SKIP() << "git not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(makeTwoCommitRepo(tmp.path()));
+    // Repository config, so the dialog's own git run reads it too.
+    for (const auto &[key, value] : {std::pair{"diff.noprefix", "true"},
+                                     std::pair{"diff.mnemonicPrefix", "true"},
+                                     std::pair{"color.ui", "always"},
+                                     std::pair{"color.diff", "always"}})
+        ASSERT_TRUE(runGit(tmp.path(), {QStringLiteral("config"), QString::fromLatin1(key),
+                                        QString::fromLatin1(value)}));
+
+    const auto sets = AuditDialog::readRecentChangeSets(tmp.path(), 1, true);
+    EXPECT_TRUE(sets.error.isEmpty()) << sets.error.toStdString();
+    EXPECT_EQ(sets.lines.value(QStringLiteral("a.txt")), QSet<int>{2})
+        << "the user's diff config changed the headers, so no changed line was read";
 }
 
 // INV-5

@@ -14,6 +14,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QSet>
 #include <QTextBrowser>
 #include <QUrl>
 
@@ -400,7 +401,13 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
     const QString apiKey   = cfg.aiApiKey();
     const QString model    = cfg.aiModel().isEmpty() ? QStringLiteral("gpt-4o-mini")
                                                      : cfg.aiModel();
-    if (!cfg.aiEnabled() || endpoint.isEmpty()) return;
+    // ANTS-6621 — AI turned off while batches were queued: say so, as the
+    // single-finding path does, rather than leave "dispatched…" standing.
+    if (!cfg.aiEnabled() || endpoint.isEmpty()) {
+        if (m_statusLabel)
+            m_statusLabel->setFullText("AI triage: configure AI in Settings first");
+        return;
+    }
 
     // System prompt — same classification contract as the per-finding
     // path but wrapped around an array response. Asking the model to
@@ -428,7 +435,9 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
             o["location"] = QString("%1:%2").arg(f.file, QString::number(f.line));
         o["message"]  = f.message;
         if (!f.snippet.isEmpty()) {
-            // Prompt-injection hardening matches the single-finding path.
+            // ANTS-6621 — no fence here: the snippet travels as a JSON string,
+            // and JSON escaping is what bounds it. The backtick swap below
+            // is the single-finding path's fence defence and does nothing here.
             QString safe = f.snippet;
             safe.replace(QStringLiteral("````"), QStringLiteral("'```'"));
             o["snippet"] = safe;
@@ -456,8 +465,12 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
 
     const int batchSize = batch.size();
     const int redacted = scrubbedUser.redactedCount;
+    // ANTS-6621 — a verdict lands only on a key this batch sent: a snippet
+    // can carry an injected instruction naming any other finding's key.
+    QSet<QString> sentKeys;
+    for (const Finding &f : std::as_const(batch)) sentKeys.insert(f.dedupKey);
     connect(reply, &QNetworkReply::finished, this,
-            [this, reply, batchSize, redacted]() {
+            [this, reply, batchSize, redacted, sentKeys]() {
         reply->deleteLater();
         // Free this slot and send the next queued batch on every exit path.
         const auto next = qScopeGuard([this] {
@@ -485,7 +498,7 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
         for (const QJsonValue &v : verdicts) {
             const QJsonObject o = v.toObject();
             const QString key = o.value("key").toString();
-            if (key.isEmpty()) continue;
+            if (!sentKeys.contains(key)) continue;
             const auto [verdict, conf, reasoning] = parseTriageVerdict(o);
 
             for (auto &r : m_completedResults) {

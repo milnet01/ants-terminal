@@ -773,7 +773,9 @@ void AuditDialog::startQueuedBlame() {
         QStringList args{QStringLiteral("blame"), QStringLiteral("--line-porcelain")};
         for (int line : std::as_const(lines))
             args << QStringLiteral("-L") << QStringLiteral("%1,%1").arg(line);
-        args << QStringLiteral("HEAD") << QStringLiteral("--") << file;
+        // ANTS-6621 — no revision: findings carry working-tree line numbers,
+        // so git blames the working tree.
+        args << QStringLiteral("--") << file;
 
         auto *git = new QProcess(this);
         git->setWorkingDirectory(m_projectPath);
@@ -1937,7 +1939,7 @@ void AuditDialog::buildUI() {
     root->setSpacing(8);
 
     m_pathLabel = new QLabel(this);
-    m_pathLabel->setText("<b>Project:</b> " + m_projectPath);
+    m_pathLabel->setText("<b>Project:</b> " + m_projectPath.toHtmlEscaped());  // ANTS-6621
     m_pathLabel->setTextFormat(Qt::RichText);
     root->addWidget(m_pathLabel);
 
@@ -2164,7 +2166,10 @@ void AuditDialog::buildUI() {
     m_reviewBtn->setToolTip("Save results and ask Claude Code to review and fix findings");
     m_reviewBtn->setVisible(false);
     connect(m_reviewBtn, &QPushButton::clicked, this, [this]() {
-        QString text = plainTextResults();
+        // ANTS-6621 — scrubbed as the AI-triage prompts are (ANTS-4448): the
+        // snippets are verbatim source, and for a secrets_scan or gitleaks
+        // finding the snippet is the credential.
+        const QString text = SecretRedact::scrub(plainTextResults()).text;
         if (text.isEmpty()) return;
 
         auto *tmp = new QTemporaryFile(QDir::tempPath() + "/ants-audit-XXXXXX.txt");
@@ -2399,19 +2404,21 @@ AuditDialog::RecentChangeSets AuditDialog::readRecentChangeSets(
             new QProcess, auditdialogdetail::releaseProcess);   // ANTS-5083
         p->setWorkingDirectory(projectPath);
         HostExec::start(*p, QStringLiteral("git"), args);
+        // The subcommand, past any leading `-c name=value`.
+        const QString verb = args.first() == QLatin1String("-c") ? args.value(2) : args.first();
         if (!p->waitForFinished(timeoutMs)) {
             if (p->error() == QProcess::FailedToStart)
                 return QStringLiteral("git could not start");
             p->kill();
             p->waitForFinished(1000);
-            return QStringLiteral("git %1 timed out").arg(args.first());
+            return QStringLiteral("git %1 timed out").arg(verb);
         }
         if (p->exitStatus() != QProcess::NormalExit || p->exitCode() != 0)
-            return QStringLiteral("git %1 failed").arg(args.first());
+            return QStringLiteral("git %1 failed").arg(verb);
         *output = p->readAllStandardOutput();
         if (output->size() > kMaxGitOutputBytes) {
             output->clear();
-            return QStringLiteral("git %1 output too large").arg(args.first());
+            return QStringLiteral("git %1 output too large").arg(verb);
         }
         return QString();
     };
@@ -2456,7 +2463,13 @@ AuditDialog::RecentChangeSets AuditDialog::readRecentChangeSets(
         base = QString::fromLatin1(emptyTree).trimmed();
     }
     QByteArray diffOut;
-    out.error = runGit({QStringLiteral("diff"), QStringLiteral("--unified=0"), base},
+    // ANTS-6621 — the hunk parser below needs plain `+++ b/<path>` headers,
+    // whatever the user's diff.noprefix, diff.mnemonicPrefix, color.ui,
+    // diff.external or core.quotePath says.
+    out.error = runGit({QStringLiteral("-c"), QStringLiteral("core.quotePath=false"),
+                        QStringLiteral("diff"), QStringLiteral("--no-color"),
+                        QStringLiteral("--no-ext-diff"), QStringLiteral("--src-prefix=a/"),
+                        QStringLiteral("--dst-prefix=b/"), QStringLiteral("--unified=0"), base},
                        8000, &diffOut);
     if (!out.error.isEmpty()) return out;
     const QStringList dlines =
@@ -2545,6 +2558,8 @@ void AuditDialog::runAudit() {
     m_checksRun = 0;
     m_totalSelected = 0;
     m_snapshotPersisted = false;  // see m_snapshotPersisted in auditdialog.h
+    // ANTS-6621 — blame is keyed by file:line, and lines move between runs.
+    m_blameCache.clear();
     // Cancel becomes the primary action while a run is in-flight; Run
     // button stays visible but disabled so the button-row geometry
     // doesn't jump.
@@ -2669,10 +2684,11 @@ void AuditDialog::finishRun() {
         for (const QString &id : m_qualityTracker->noisyRuleIds()) noisy.insert(id);
     AuditEngine::applyCorroborationShiftAcross(m_completedResults, noisy);
     // ANTS-6195 — the trend line's previous snapshot, read once per run and
-    // before this run's is saved. A cancelled run (ANTS-1136) or a New-only
-    // view saves nothing: neither is a full count.
+    // before this run's is saved. A cancelled run (ANTS-1136), a New-only or
+    // Since-baseline view, or a Recent-only run saves nothing: none is a full
+    // count (ANTS-6621).
     m_trendPrev = loadLastSnapshot();
-    if (!m_snapshotPersisted && !m_showNewOnly) {
+    if (!m_snapshotPersisted && !m_showNewOnly && !m_sinceBaseline && !m_recentOnly) {
         const SummaryCounts c = countFindings();
         TrendSnapshot s;
         s.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
@@ -2750,6 +2766,19 @@ void AuditDialog::runNextCheck() {  // NOLINT(misc-no-recursion): re-entered onc
     m_currentOutput.clear();
     m_currentError.clear();
     m_outputOverflowed = false;
+
+    // ANTS-6621 — a child that outlived SIGKILL (a hung mount) keeps the last
+    // process running. start() on it fails while waitForStarted() returns
+    // true, so every later check would time out unrun. Leave the stuck one to
+    // delete itself and run this check on a fresh process.
+    if (m_process->state() != QProcess::NotRunning) {
+        disconnect(m_process, nullptr, this, nullptr);
+        m_process->setParent(nullptr);
+        auditdialogdetail::releaseProcess(m_process);
+        m_process = new QProcess(this);
+        m_process->setWorkingDirectory(m_projectPath);
+        connectProcessSignals();
+    }
 
     m_timeout->start(check.timeoutMs);
     ProcessGroup::startsOwnGroup(*m_process);
@@ -3216,7 +3245,7 @@ QString AuditDialog::trendLineHtml(const SummaryCounts &c) const {
         "<span style='color:#E74856;'>CRT</span> <span style='color:%6;'>%7</span>  ·  "
         "<span style='color:#FFA500;'>MAJ</span> <span style='color:%8;'>%9</span>"
         "</span>"
-    ).arg(prev.timestamp.left(10),
+    ).arg(prev.timestamp.left(10).toHtmlEscaped(),   // ANTS-6621 — read from the project
           deltaColor(c.total, prev.total),
           delta(c.total, prev.total),
           deltaColor(c.bySev[4], prev.bySev[4]),
@@ -3370,7 +3399,7 @@ QString AuditDialog::findingRowHtml(const Finding &f) const {
                       ? QString()
                       : (f.line >= 0
                          ? QString("<span style='color:#89B4FA;'>%1:%2</span>  ")
-                             .arg(f.file.toHtmlEscaped()).arg(f.line)
+                             .arg(f.file.toHtmlEscaped(), QString::number(f.line))
                          : QString("<span style='color:#89B4FA;'>%1</span>  ")
                              .arg(f.file.toHtmlEscaped()));
 

@@ -132,7 +132,11 @@ QString AuditDialog::exportSarif() const {
             }
             QJsonObject partialFp;
             // SARIF v2.1.0 § 3.27.13 convention: <name>/<version>.
-            partialFp["primaryLocationLineHash/v1"] = f.dedupKey;
+            // ANTS-6621 — the line-independent content fingerprint, not the
+            // dedup key: that holds the line number, so an alert re-keyed
+            // whenever a line above it moved.
+            partialFp["primaryLocationLineHash/v1"] =
+                ants::auditfp::computeFingerprint(f.file, f.checkId, f.message);
             res["partialFingerprints"] = partialFp;
 
             QJsonObject props{
@@ -181,12 +185,17 @@ QString AuditDialog::exportSarif() const {
                 sup["status"] = "accepted";
                 // A learned false positive has no entry in the reason map —
                 // it was never suppressed by key — so fall back to the
-                // ledger's own note rather than exporting a suppression with
-                // no stated cause.
+                // ledger's note, which applyLearnedFpSuppressions puts in
+                // aiReasoning. ANTS-6621 — only when no verdict says
+                // otherwise: a TRUE_POSITIVE or NEEDS_REVIEW rationale is no
+                // justification for a suppression.
                 QString reason =
                     m_suppressionReasons.value(f.dedupKey,
                         m_suppressionReasons.value(f.dedupKey.left(16)));
-                if (reason.isEmpty()) reason = f.aiReasoning;
+                if (reason.isEmpty()
+                    && (f.aiVerdict.isEmpty()
+                        || f.aiVerdict == QLatin1String("FALSE_POSITIVE")))
+                    reason = f.aiReasoning;
                 if (!reason.isEmpty()) sup["justification"] = reason;
                 QJsonArray suppArr; suppArr.append(sup);
                 res["suppressions"] = suppArr;
@@ -683,13 +692,14 @@ QString AuditDialog::plainTextResults() const {
 
         body += QString("--- [%1] %2 (%3 / %4) [%5] — %6 finding(s)%7 ---\n")
                 .arg(severityLabel(r.severity), r.checkName,
-                     typeLabel(r.type), r.category, r.source)
-                .arg(shown.size() + r.omittedCount)
-                .arg(corroTag);
+                     typeLabel(r.type), r.category, r.source,
+                     QString::number(shown.size() + r.omittedCount), corroTag);
         for (const Finding &f : shown) {
             QString line;
+            // ANTS-6621 — one multi-arg call: a chained .arg would fill a
+            // `%N` inside the file name instead.
             if (!f.file.isEmpty() && f.line >= 0)
-                line = QString("%1:%2  %3").arg(f.file, QString::number(f.line)).arg(f.message);
+                line = QString("%1:%2  %3").arg(f.file, QString::number(f.line), f.message);
             else if (!f.file.isEmpty())
                 line = QString("%1  %2").arg(f.file, f.message);
             else
