@@ -98417,7 +98417,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6609 helper 2026-11-27.
   Lanes: review-engines.
 
-- 📋 [ANTS-6962] **Roadmap parsing masks a headline's code spans the same way everywhere.**
+- ✅ [ANTS-6962] **Roadmap parsing masks a headline's code spans the same way everywhere.**
   roadmapparse.cpp maskedBody pairs backticks one at a time and turns
   `*` into `x`; maskQuotedRegions uses CommonMark pairing, blanks to
   spaces and masks fences. matchBold tests isSpace() on the mask, so the
@@ -98426,12 +98426,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   a test, then fold.
   Rule set 2026-11-27 (user delegated): use maskQuotedRegions'
   CommonMark rule; lock with a test first.
+  Shipped 2026-11-27 (7735cc69): resolveHeadline masks with
+  maskQuotedRegions; matchBold's flanking check reads the original text.
   **Layman:** Two parts of the roadmap reader treat code in a headline slightly differently; this picks one rule.
   Kind: investigate.
   Source: ANTS-6611/6612 helpers 2026-11-27.
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6963] **A pass-heading roadmap finds an item by headline with the same normalising rule as other roadmaps.**
+- ✅ [ANTS-6963] **A pass-heading roadmap finds an item by headline with the same normalising rule as other roadmaps.**
   passheadingwrite.cpp's locator compares headlines without
   RoadmapParse::normaliseHeadline, which drops trailing .,;:!? . Folding
   it widens matching, so some calls now answering bullet_not_found would
@@ -98439,6 +98441,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   because it changes behaviour. Needs a rule choice.
   Rule set 2026-11-27 (user delegated): keep exact headline matching (no
   widening); document why and leave the locator as is.
+  Shipped 2026-11-27 (2232e581): exact matching kept; the reason is a
+  comment at passheadingwrite.cpp's normaliseHeadline.
   **Layman:** Finding an item by its title works a little differently on one roadmap style; this decides whether to make it match.
   Kind: investigate.
   Source: ANTS-6611/6612 helpers 2026-11-27.
@@ -98638,13 +98642,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6620–6622 helpers 2026-11-27.
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6980] **The audit's Fold-in-to-roadmap step matches what ANTS-1111 promises, or the spec says what it does.**
+- ✅ [ANTS-6980] **The audit's Fold-in-to-roadmap step matches what ANTS-1111 promises, or the spec says what it does.**
   ANTS-1111 § 3.2 promises a modal with one checkbox per finding and a
   status line naming the allocated ids; the dialog shows a heading text
   box. Choose: build that modal, or amend § 3.2 (its Status line says
   this part was deferred to v2). Row 296 of the 2026-11-06 review.
   Rule set 2026-11-27 (user delegated): amend ANTS-1111 § 3.2 to the
   heading text box; the modal stays a v2 idea.
+  Shipped 2026-11-27 (79e736a7): ANTS-1111 § 2.1 and § 3.2 describe the
+  heading text box; the checkbox modal stays a v2 idea.
   **Layman:** The audit's send-to-roadmap step is simpler than its design promised; pick which one is right.
   Kind: fix.
   Source: ANTS-6620–6622 helpers 2026-11-27.
@@ -98668,7 +98674,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6620–6622 helpers 2026-11-27.
   Lanes: audit-engine.
 
-- 📋 [ANTS-6982] **Fix the audit bugs the ANTS-6621 and ANTS-6622 helpers found.**
+- ✅ [ANTS-6982] **Fix the audit bugs the ANTS-6621 and ANTS-6622 helpers found.**
   - falseposledger.cpp loadEntries: a readLine that returns empty on a
     read error before EOF spins the loop forever.
   - trendLineHtml shows "Trend vs" under Since-baseline / Recent-only.
@@ -98683,6 +98689,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
     indie-review TODO placeholder puts f.file in a code span unescaped;
     only `file` should be escaped there (row 1333's other half).
   - RuleQualityTracker::reload's header comment is inaccurate.
+  Shipped 2026-11-27 (72005a45): all nine bullets. todo_scan now reads
+  comment lines; TODO: and FIXME: lines stay dropped by
+  kCommonNoiseExcludes, which is ANTS-5848's open question.
   **Layman:** A list of small audit-tool bugs found while fixing others, one of which can hang.
   Kind: fix.
   Source: ANTS-6620–6622 helpers 2026-11-27.
@@ -111686,6 +111695,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   readability fixes land (user, 2026-10-22).
   The 2026-11-06 reviews also found this: row 297 `auditdialog.cpp:106`.
   Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-27 (ANTS-6982): todo_scan now runs with codeLinesOnly = false,
+  so TODO(...), HACK, XXX and "FIXME " in comments are reported. TODO:
+  and FIXME: lines are still dropped by kCommonNoiseExcludes for every
+  grep check; that remains this item's question.
   **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -115728,7 +115741,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: close-findings sweep 2026-11-26 (ANTS-6603).
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6951] **roadmap_log's subtree walks disagree on a section from another file: log_batch's stop at it, release.cpp's skip it.**
+- ✅ [ANTS-6951] **roadmap_log's subtree walks disagree on a section from another file: log_batch's stop at it, release.cpp's skip it.**
   rcSubtreeEnd/rcPastDeeper (log_batch) stop; release.cpp's subtreeOf
   and pastDeeper skip, and pastDeeper also stops at level <= 2 and at
   sections made in the same run. createSectionSkipCount is not
@@ -115736,6 +115749,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   copies onto rcPastDeeper.
   Rule set 2026-11-27 (user delegated): a section stored in another file
   is skipped, not a stop (release.cpp's rule).
+  Shipped 2026-11-27 (0b3eab01): log_batch's walks skip another file's
+  sections; place_by_release's subtreeOf folded onto rcSubtreeEnd. Its
+  pastDeeper is not folded: it walks same-run sections, and folding
+  would move where those land in the store.
   **Layman:** Moving or placing roadmap sections can treat sections stored in other files differently.
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6603).

@@ -27,6 +27,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The ANTS-1111 spec describes the Fold actionable step as built: one release-heading text box for the whole actionable set** (ANTS-6980)
+
 - **The command gutter shows success and failure in the same green and red as the command stripe** (ANTS-6971)
 
 - **audit_run says when it could not save its SARIF file (sarif_error), and skips its built-in checks while an earlier run's are still busy** (ANTS-6981)
@@ -121,6 +123,12 @@ for security-relevant changes.
   The next query reads the files again.
 
 ### Fixed
+
+- **Project Audit: reading a damaged false-positive ledger stops instead of hanging; the trend line hides under filtered views; TODO scan reads comments; Defer all files exactly what it showed; stale blame, non-ASCII recent paths, top-level tests/ paths and multi-line fold-in messages are handled** (ANTS-6982)
+
+- **roadmap_log's delete_section, move_section and create_section find a section's subsections past a section stored in another roadmap file** (ANTS-6951)
+
+- **Roadmap headlines pair code-span backticks by the CommonMark rule, the same as trailers, and ignore bold inside a fenced block** (ANTS-6962)
 
 - **Settings names a Highlights or Triggers pattern with a mistake and stays open, instead of dropping the rule on save** (ANTS-6979)
 
