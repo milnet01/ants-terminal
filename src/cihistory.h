@@ -41,7 +41,8 @@ struct Result {
     QJsonObject history;           // CiReport::analyse()'s input
     QString truncatedReason;       // "", "deadline", "call_cap" or "run_limit"
     QJsonArray fetchErrors;        // [{call, exit_code, reason?}]; reason: not_started, timeout or incomplete_pages
-    // False when a jobs call failed or an attempt's pages ran out: the
+    // False when a jobs call failed, an attempt's pages ran out, or a limit
+    // stopped the jobs calls before every attempt was read: the
     // findings that need jobs may be wrong, so the report must not save.
     bool jobsComplete = true;
 };

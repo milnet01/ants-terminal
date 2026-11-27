@@ -239,7 +239,8 @@ QJsonDocument cmdGrabImage(const QJsonObject &req);
 
 Refusal envelopes follow `docs/standards/mcp-error-codes.md`. Reused codes:
 `bad_path` (grab path escapes the artifact root), `bad_args` (missing/invalid
-key/coords/dims, no artifact dir, or no live top-level). **New codes** —
+key/coords/dims, no artifact dir, or no live top-level), `write_failed` (the
+PNG save failed). **New codes** —
 `e2e_disabled` (inject verb called without `--e2e`) and `widget_not_found`
 (objectName resolves to nothing) — must be added to the taxonomy in the
 implementation commit (§8); the taxonomy is scoped to MCP refusal envelopes,

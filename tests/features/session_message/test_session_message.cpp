@@ -20,9 +20,12 @@
 #include "remotecontrol.h"
 #include <QJsonObject>
 #include "../../_support/roadmapstoreaccess.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QString>
@@ -1145,6 +1148,47 @@ TEST(SessionMessage, Ants5700SendToAListOfProjects) {
     EXPECT_FALSE(f.store->sendToMany(a, to, QString(), QString(),
                                      QString::fromLatin1(kT1), false, &got, &code, &err));
     EXPECT_EQ(code, QStringLiteral("bad_args"));
+}
+
+// ANTS-6637 — the unknown_project message names the verb on every path that
+// sends it: the send, its dry-run preview and the outbox filter. The verb
+// opens RoadmapStore::defaultPath(), so XDG_DATA_HOME points into tmp first.
+TEST(SessionMessage, Ants6637UnknownProjectNamesTheVerb) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::XdgGuard guard;
+    guard.setEnv("XDG_DATA_HOME", tmp.filePath(QStringLiteral("xdg")).toUtf8());
+    ASSERT_TRUE(RoadmapStore::defaultPath().startsWith(tmp.path()))
+        << "the store must be sandboxed: " << RoadmapStore::defaultPath().toStdString();
+    ASSERT_TRUE(QDir().mkpath(tmp.filePath(QStringLiteral("alpha"))));
+    const QString root = QFileInfo(tmp.filePath(QStringLiteral("alpha"))).canonicalFilePath();
+    {
+        RoadmapStore store(RoadmapStore::defaultPath());
+        QString err;
+        ASSERT_TRUE(store.open(&err)) << err.toStdString();
+        ASSERT_TRUE(store.registerProject(root, QStringLiteral("alpha"),
+                                          QStringLiteral("alpha"), &err).has_value())
+            << err.toStdString();
+    }
+    RemoteControl rc(nullptr);
+    const auto call = [&](QJsonObject req) {
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("to")]         = QStringLiteral("never-registered");
+        return rc.cmdSessionMessage(req).object();
+    };
+    const QJsonObject send{{QStringLiteral("op"), QStringLiteral("send")},
+                           {QStringLiteral("body"), QStringLiteral("hi")}};
+    QJsonObject preview = send;
+    preview[QStringLiteral("dry_run")] = true;
+    for (const QJsonObject &req :
+         {send, preview, QJsonObject{{QStringLiteral("op"), QStringLiteral("outbox")}}}) {
+        const QJsonObject r = call(req);
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QStringLiteral("unknown_project"))
+            << QJsonDocument(r).toJson().toStdString();
+        EXPECT_TRUE(r.value(QStringLiteral("error")).toString()
+                        .startsWith(QStringLiteral("session_message: ")))
+            << QJsonDocument(r).toJson().toStdString();
+    }
 }
 
 // ANTS-5700 — the handler routes an array `to` to sendToMany and the schema

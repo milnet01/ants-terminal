@@ -86,8 +86,12 @@ void checkListedFile(const QString &root, const QJsonObject &entry,
     const QString path = entry.value(QStringLiteral("path")).toString();
     const QString pattern = entry.value(QStringLiteral("pattern")).toString();
     QJsonObject row{{QStringLiteral("path"), path}};
+    // ANTS-6637 — the row's status is its FIRST finding; findings[] holds every
+    // one, so a later finding never hides an earlier one from the row.
     const auto report = [&](const QString &status, const QJsonObject &f) {
-        row[QStringLiteral("status")] = status;
+        const QString now = row.value(QStringLiteral("status")).toString();
+        if (now.isEmpty() || now == QLatin1String("ok"))
+            row[QStringLiteral("status")] = status;
         findings->append(f);
     };
 

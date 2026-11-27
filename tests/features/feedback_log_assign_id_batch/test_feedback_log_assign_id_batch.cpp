@@ -233,3 +233,48 @@ TEST(FeedbackAssignIdBatch, Inv6EmptyAssignmentsRefused) {
               QStringLiteral("bad_args"))
         << QJsonDocument(env).toJson().toStdString();
 }
+
+// ---------------------------------------------------------------- INV-7 -----
+
+// ANTS-6637 — a batch array over 200 entries refuses bad_args, as
+// changelog_log add_batch does; at 200 it runs. dry_run keeps the file as is.
+TEST(FeedbackAssignIdBatch, Inv7BatchArraysAreCapped) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const auto assignments = [](int n) {
+        QJsonArray a;
+        for (int i = 0; i < n; ++i) a.append(one(kH1, QStringLiteral("ANTS-1001")));
+        return a;
+    };
+    QJsonObject over = fx.req(assignments(201));
+    over[QStringLiteral("dry_run")] = true;
+    const QJsonObject refused = rc.cmdFeedbackLog(over).object();
+    EXPECT_EQ(refused.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+        << QJsonDocument(refused).toJson().toStdString();
+    QJsonObject at = fx.req(assignments(200));
+    at[QStringLiteral("dry_run")] = true;
+    const QJsonObject atCapBatch = rc.cmdFeedbackLog(at).object();
+    EXPECT_TRUE(atCapBatch.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(atCapBatch).toJson().toStdString();
+
+    const auto findings = [](int n) {
+        QJsonArray a;
+        for (int i = 0; i < n; ++i)
+            a.append(QJsonObject{{QStringLiteral("title"), QStringLiteral("t%1").arg(i)}});
+        return a;
+    };
+    const auto appendReq = [&](int n) {
+        return QJsonObject{{QStringLiteral("op"), QStringLiteral("append_finding")},
+                           {QStringLiteral("path"), fx.path},
+                           {QStringLiteral("caller_cwd"), fx.dir.path()},
+                           {QStringLiteral("dry_run"), true},
+                           {QStringLiteral("findings"), findings(n)}};
+    };
+    const QJsonObject tooMany = rc.cmdFeedbackLog(appendReq(201)).object();
+    EXPECT_EQ(tooMany.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+        << QJsonDocument(tooMany).toJson().toStdString();
+    const QJsonObject atCap = rc.cmdFeedbackLog(appendReq(200)).object();
+    EXPECT_TRUE(atCap.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(atCap).toJson().toStdString();
+    EXPECT_EQ(readStr(fx.path), QString::fromUtf8(kV2)) << "dry_run wrote the file";
+}

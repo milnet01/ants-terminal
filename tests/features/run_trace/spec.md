@@ -27,7 +27,8 @@ clock and the random source passed in.
   `^[GCVEFRAL]-\d{8}-[0-9a-f]{4}$`, and its date is the local date of the
   `now` it was given. The only file it writes is the pending record under the
   state directory. An unknown kind, or an empty or multi-line subject, refuses
-  `bad_args`.
+  `bad_args`, as does a subject holding a tab, which would add a column to the
+  `run-costs.tsv` row (ANTS-6637).
 - **INV-2 — ids do not collide.** When the random source first yields an id
   the index already carries, `start` draws again and returns a different one.
 - **INV-3 — `finish` requires `lanes`.** An absent `lanes` refuses
@@ -35,7 +36,9 @@ clock and the random source passed in.
   accepted and written as `0`, never as a blank.
 - **INV-4 — `finish` creates the index when it is absent.** The new file
   carries a `Genre:` line and the header row. The row's first field is the
-  id: `| <id> | <date> | <subject> | <lanes> | <outcome> |`.
+  id: `| <id> | <date> | <subject> | <lanes> | <outcome> |`. An existing
+  index whose header has no separator row gets one above the new row
+  (ANTS-6637), so the row is found again.
 - **INV-5 — a foreign index is refused, never rewritten.** An existing index
   whose table header is not the fixed row refuses `format_mismatch` and leaves
   every file byte-identical.
@@ -71,7 +74,9 @@ clock and the random source passed in.
 - **INV-13 — the transcript is named, never guessed.** A `session_id` resolves
   to `<folder>/<session_id>.jsonl`, where `<folder>` is the one
   `session_cost` uses: the slug of cwd or of its nearest ancestor, in the
-  first projects directory that has it (ANTS-6271). A transcript path
+  first projects directory that has it (ANTS-6271). An `agent-…` id resolves
+  to `<folder>/<session>/subagents/<session_id>.jsonl` where that file exists,
+  as `session_cost` finds it (ANTS-6637). A transcript path
   outside the projects directory refuses. No code path picks "the newest"
   transcript.
 - **INV-14 — the verb is registered with the Required contract.** Its

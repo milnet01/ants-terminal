@@ -59,6 +59,9 @@ two aimed at one finding behave exactly as two separate calls would.
   calls: the second wins. *Test:* `Inv5AssignmentsAreThreaded`.
 - **INV-6** — an empty or absent `assignments` array refuses `bad_args`.
   *Test:* `Inv6EmptyAssignmentsRefused`.
+- **INV-7** — `assignments` and `append_finding`'s `findings` each take at
+  most 200 entries per call, as `changelog_log add_batch` does (ANTS-6637).
+  201 refuses `bad_args`; 200 runs. *Test:* `Inv7BatchArraysAreCapped`.
 
 ## Out of scope
 

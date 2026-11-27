@@ -747,3 +747,29 @@ TEST(DocLintVerb, Ants6315ProjectCoverageSwitchReachesTheSpecChecker) {
     settings.close();
     EXPECT_EQ(gaps(), 0) << "the switch was not read";
 }
+
+// ANTS-6637 — project-global INV numbering reaches doc_lint as it reaches
+// spec_lint: INV-2, owned by ANTS-2.md, is no gap in ANTS-1.md.
+TEST(DocLintVerb, Ants6637SiblingInvNumbersAreNoGap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/docs/specs")));
+    const auto write = [&](const char *rel, const char *body) {
+        QFile f(root + QLatin1Char('/') + QLatin1String(rel));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    };
+    write("docs/specs/ANTS-1.md", "# ANTS-1 — one\n\n## 3. Invariants\n\n"
+                                  "- **INV-1** — a.\n- **INV-3** — c.\n");
+    write("docs/specs/ANTS-2.md", "# ANTS-2 — two\n\n## 3. Invariants\n\n"
+                                  "- **INV-2** — b.\n");
+    QJsonObject q;
+    q[QStringLiteral("checks")] = QJsonArray{QStringLiteral("spec_lint")};
+    const QJsonObject r = callDocLint(root, q);
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dumpJson(r);
+    EXPECT_EQ(r.value(QStringLiteral("counts")).toObject()
+                  .value(QStringLiteral("spec_lint")).toObject()
+                  .value(QStringLiteral("invariant_id_gap")).toInt(), 0)
+        << dumpJson(r);
+}

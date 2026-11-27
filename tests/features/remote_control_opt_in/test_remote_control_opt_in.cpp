@@ -254,3 +254,24 @@ static int runMain() {
 TEST(RemoteControlOptIn, Main) {
     ASSERT_EQ(0, runMain());
 }
+
+// Invariant 5 (ANTS-6637) — a tab index that is not a whole int is refused,
+// never read as tab 0. send-text needs a live MainWindow, so the helper is
+// called and the handler is checked to use it.
+TEST(RemoteControlOptIn, Ants6637TabMustBeAWholeNumber) {
+    EXPECT_EQ(RemoteControl::wholeIntArg(QJsonValue(3.0)).value_or(-99), 3);
+    EXPECT_EQ(RemoteControl::wholeIntArg(QJsonValue(0)).value_or(-99), 0);
+    EXPECT_EQ(RemoteControl::wholeIntArg(QJsonValue(-2)).value_or(-99), -2);
+    EXPECT_FALSE(RemoteControl::wholeIntArg(QJsonValue(1.5)).has_value());
+    EXPECT_FALSE(RemoteControl::wholeIntArg(QJsonValue(1e10)).has_value());
+    EXPECT_FALSE(RemoteControl::wholeIntArg(QJsonValue(-1e10)).has_value());
+    EXPECT_FALSE(RemoteControl::wholeIntArg(QJsonValue(QStringLiteral("3"))).has_value());
+    EXPECT_FALSE(RemoteControl::wholeIntArg(QJsonValue()).has_value());
+
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::stripComments(ants_test::slurpRemoteControl()),
+        "RemoteControl::cmdSendText");
+    ASSERT_FALSE(body.empty()) << "cmdSendText body not found";
+    EXPECT_NE(body.find("wholeIntArg(tabVal)"), std::string::npos)
+        << "send-text must read `tab` through wholeIntArg";
+}

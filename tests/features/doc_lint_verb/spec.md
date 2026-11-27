@@ -95,3 +95,9 @@ byte-compared):
 `spec_test_clause_coverage` from `.ants/project.json` is read on every `doc_lint`
 call, so it and `spec_lint` agree about one spec. *Test:*
 `DocLintVerb.Ants6315ProjectCoverageSwitchReachesTheSpecChecker`.
+
+## ANTS-6637 — the sibling INV numbers reach the spec checker
+
+On a project that numbers invariants once across its specs, an INV number a
+sibling spec owns is no `invariant_id_gap` in `doc_lint`, as in `spec_lint`.
+*Test:* `DocLintVerb.Ants6637SiblingInvNumbersAreNoGap`.

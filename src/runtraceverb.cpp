@@ -410,8 +410,10 @@ QJsonObject start(const Paths &p, const QString &kind, const QString &subject,
     if (kind.size() != 1 || !QByteArray(kKinds).contains(kind.at(0).toLatin1()))
         return refuse("bad_args", QStringLiteral("kind \"%1\" is not one letter of %2")
                                       .arg(kind, QLatin1String(kKinds)));
-    if (subject.trimmed().isEmpty() || hasNewline(subject))
-        return refuse("bad_args", QStringLiteral("subject must be one non-empty line"));
+    // ANTS-6637 — a tab would add a column to the run-costs.tsv row.
+    if (subject.trimmed().isEmpty() || hasNewline(subject) || subject.contains(QLatin1Char('\t')))
+        return refuse("bad_args",
+                      QStringLiteral("subject must be one non-empty line with no tab"));
 
     const QString date = now.toLocalTime().date().toString(QStringLiteral("yyyyMMdd"));
     const Index ix = readIndex(p);
@@ -557,6 +559,10 @@ QJsonObject finish(const Paths &p, const FinishRequest &req) {
                                QString()};
         rowLine = int(ix.lines.indexOf(row));
     } else {
+        // ANTS-6637 — a header with no separator row gets one, so the table
+        // renders and rowFor, which starts below the separator, finds the row.
+        if (ix.lastRow == ix.headerAt)
+            ix.lines.insert(++ix.lastRow, QStringLiteral("|---|---|---|---|---|"));
         rowLine = ix.lastRow + 1;
         ix.lines.insert(rowLine, row);
     }
@@ -645,7 +651,18 @@ QString transcriptForSession(const QStringList &projectsDirs, const QString &cwd
     QString folder = SessionCost::folderFor(projectsDirs, cwd);
     if (folder.isEmpty())
         folder = QDir(projectsDirs.constLast()).filePath(SessionCost::folderNameFor(cwd));
-    return QDir(folder).filePath(sessionId + QStringLiteral(".jsonl"));
+    const QString leaf = sessionId + QStringLiteral(".jsonl");
+    // ANTS-6637 — a helper agent's transcript sits in its session's subagents
+    // folder, where session_cost looks for it (ANTS-6189).
+    if (sessionId.startsWith(QLatin1String("agent-"))) {
+        const QDir dir(folder);
+        for (const QString &s : dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            const QString cand = dir.filePath(s + QStringLiteral("/subagents/") + leaf);
+            if (QFileInfo(cand).isFile())
+                return cand;
+        }
+    }
+    return QDir(folder).filePath(leaf);
 }
 
 bool transcriptAllowed(const QString &path, const QStringList &projectsDirs) {

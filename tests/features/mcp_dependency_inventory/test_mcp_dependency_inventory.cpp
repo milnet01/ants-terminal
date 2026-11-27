@@ -219,3 +219,13 @@ TEST(McpDependencyInventory, Ants6450SymlinkOutOfRootIsNotRead) {
     p.tracked.append(".nvmrc");
     EXPECT_TRUE(ofKind(p.run(), "runtime").isEmpty()) << dump(p.run());
 }
+
+// ANTS-6637 — a CMakeLists.txt yields two runtimes from one read, so
+// files_read counts it once.
+TEST(McpDependencyInventory, Ants6637CMakeListsIsReadOnce) {
+    Project p;
+    p.add("CMakeLists.txt", "cmake_minimum_required(VERSION 3.21)\nfind_package(Qt6 6.2 REQUIRED)\n");
+    const QJsonObject env = p.run();
+    EXPECT_EQ(env.value("files_read").toInt(), 1) << dump(env);
+    EXPECT_EQ(ofKind(env, "runtime").size(), 2) << dump(env);
+}

@@ -48,6 +48,10 @@ sleeping or faking a clock.
 - **INV-1** — A well-formed but **unregistered** recipient slug refuses
   `unknown_project` and writes no row. The slug is syntactically valid, so the
   `export_slug` CHECK cannot be what rejects it; only the resolution step can.
+  The verb's `unknown_project` message starts `session_message:` on the send,
+  preview and outbox paths alike (ANTS-6637). *Test:*
+  `SessionMessage.Ants6637UnknownProjectNamesTheVerb`, against the verb with a
+  sandboxed store.
 - **INV-2** — `inbox` returns only the calling project's mail. Both fixture
   messages are unacked and recent, so neither the ack filter nor retention can
   account for the exclusion — only the recipient predicate can.

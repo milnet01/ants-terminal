@@ -558,6 +558,20 @@ void checkQueueWait(const QList<Matched> &jobs, QList<Finding> &out) {
 
 // annotation: a warning on a workflow's newest run that names a deprecation
 // or a retiring runner image. Quotes GitHub's text; keeps no list of its own.
+// ANTS-6637 — any run's own `::warning::` writes this text, so it is quoted
+// as data: capped, and with its quotes escaped so it cannot close the quote
+// and read as Ants's own words.
+QString quotedAnnotation(const QString &text) {
+    constexpr qsizetype kMaxChars = 300;
+    QString q = text;
+    if (q.size() > kMaxChars) {
+        qsizetype n = kMaxChars;
+        if (q.at(n - 1).isHighSurrogate()) --n;
+        q = q.left(n) + QChar(0x2026);
+    }
+    return q.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+}
+
 void checkAnnotations(const QList<RunRec> &runs, const QJsonObject &annotations,
                       QList<Finding> &out) {
     static const QRegularExpression words(
@@ -583,7 +597,7 @@ void checkAnnotations(const QList<RunRec> &runs, const QJsonObject &annotations,
                 f.workflow = r.workflow;
                 f.job = j.name;
                 f.evidence.append(evidenceOf(r));
-                f.message = QStringLiteral("GitHub warns: \"%1\"").arg(text);
+                f.message = QStringLiteral("GitHub warns: \"%1\"").arg(quotedAnnotation(text));
                 out.append(f);
             }
     }

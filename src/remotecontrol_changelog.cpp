@@ -651,10 +651,13 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
     // lines this reports. `findings` is always present, empty when clean,
     // because `ants-mcpd --call --exit-code` keys on it.
     if (mode == QLatin1String("lint")) {
-        QString md;
         QFile f(clPath);
-        if (f.open(QIODevice::ReadOnly | QIODevice::Text))
-            md = QString::fromUtf8(f.readAll());
+        // ANTS-6637 — an unreadable file would lint as empty: a clean pass.
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+            return clErr(QStringLiteral("changelog_read_failed"),
+                         QStringLiteral("changelog_query: could not read \"%1\"")
+                             .arg(clPath));
+        const QString md = QString::fromUtf8(f.readAll());
         const QString relPath = QDir(callerCanonical).relativeFilePath(clPath);
         QList<DocFinding::Finding> fs = ChangelogQuery::lint(
             md, relPath, hasVersionFilter ? versionFilter : QString());
@@ -1191,6 +1194,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         // Render optional bullets — each a bare string summary, or an object
         // {summary (required), body?, id?}. Empty summaries are skipped.
         QStringList bulletBlocks;
+        QStringList scrubbed;   // ANTS-6637 — reported, as op:"add" does
         const QJsonArray bulletsArr =
             req.value(QStringLiteral("bullets")).toArray();
         for (const QJsonValue &bv : bulletsArr) {
@@ -1204,13 +1208,11 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                 bid = bo.value(QStringLiteral("id")).toString();
             }
             if (bs.trimmed().isEmpty()) continue;
-            QStringList bscrub;
-            rcScrubLeakedToolXml(bs, bscrub);
-            rcScrubLeakedToolXml(bb, bscrub);
+            rcScrubLeakedToolXml(bs, scrubbed);
+            rcScrubLeakedToolXml(bb, scrubbed);
             bulletBlocks.append(ChangelogLog::formatBullet(bs, bb, bid));
         }
 
-        QStringList scrubbed;
         rcScrubLeakedToolXml(headline, scrubbed);
         rcScrubLeakedToolXml(subBody, scrubbed);
 
@@ -1234,6 +1236,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["date"]     = date;
         out["heading"]  = heading;
         out["line"]     = res.line;
+        clSetScrubbed(out, scrubbed);
         if (dryRun) {
             out["dry_run"] = true;
             out["written"] = false;
@@ -1451,6 +1454,7 @@ struct ClBatchEntryResult {
     // can route the entry to the dated-topic form as op:"add" does.
     QString summary, body;
     QString laymanOmitted;   // ANTS-5673
+    QStringList scrubbed;    // ANTS-6637 — the leaked tool-XML names dropped
 };
 }  // namespace
 
@@ -1530,9 +1534,9 @@ static ClBatchEntryResult resolveClBatchEntry(
         return r;
     }
 
-    QStringList scrubbed;  // parity with single op (drop leaked tool XML)
-    rcScrubLeakedToolXml(summary, scrubbed);
-    rcScrubLeakedToolXml(body, scrubbed);
+    // Parity with the single op (drop leaked tool XML).
+    rcScrubLeakedToolXml(summary, r.scrubbed);
+    rcScrubLeakedToolXml(body, r.scrubbed);
 
     r.ok       = true;
     r.id       = id0;
@@ -1724,6 +1728,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         if (routedInsert.routed) a["routed_to_subsection"] = true;  // ANTS-5098
         if (!er.laymanOmitted.isEmpty())
             a["layman_body_omitted"] = er.laymanOmitted;   // ANTS-5673
+        clSetScrubbed(a, er.scrubbed);                     // ANTS-6637
         // ANTS-4395 — stash the bullet so the line can be RE-RESOLVED against
         // the final markdown below. `res.line` is correct at insert time and
         // goes stale the moment a later entry lands in the same category:

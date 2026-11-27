@@ -24,6 +24,7 @@
 
 #include <QDate>       // ANTS-4501 — buildRoadmapReportEnvelope's window args
 #include <QDateTime>   // ANTS-6399 — buildCiReportBlock's clock
+#include <cmath>       // ANTS-6637 — wholeIntArg
 #include <functional>  // ANTS-3543 — downshiftMatches lean-projector callback
 #include <limits>
 #include <memory>
@@ -200,6 +201,18 @@ public:
         }
         if (out_stripped) *out_stripped = removed;
         return out;
+    }
+
+    // ANTS-6637 — a JSON number that is a whole `int`, else nullopt.
+    // QJsonValue::toInt() returns its default for 1.5 or 1e10, which a
+    // handler then reads as a real 0. Inline for the reason above.
+    static inline std::optional<int> wholeIntArg(const QJsonValue &v) {
+        if (!v.isDouble()) return std::nullopt;
+        const double d = v.toDouble();
+        if (d != std::floor(d) || d < std::numeric_limits<int>::min() ||
+            d > std::numeric_limits<int>::max())
+            return std::nullopt;
+        return static_cast<int>(d);
     }
 
     // ANTS-1348 — server-side byte cap on `get-text` responses.

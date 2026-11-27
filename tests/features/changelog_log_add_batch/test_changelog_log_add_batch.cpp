@@ -107,6 +107,32 @@ TEST(changelog_log_add_batch, Inv1CleanBatchAllApply) {
     EXPECT_TRUE(contains(md, "- **A bug fix.** (ANTS-1002)"));
 }
 
+// ANTS-6637 — an entry's scrubbed tool-XML names are reported on its applied
+// row, as op:"add" reports them.
+TEST(changelog_log_add_batch, Ants6637ScrubbedNamesAreReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+
+    QJsonObject e = addEntry(QStringLiteral("A feature."), QStringLiteral("feature"),
+                             QStringLiteral("ANTS-1003"));
+    e[QStringLiteral("body")] =
+        QStringLiteral("Detail. <parameter name=\"lanes\">x</parameter>");
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    req[QStringLiteral("entries")]    = QJsonArray{e};
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const QJsonObject applied =
+        resp.value(QStringLiteral("applied")).toArray().at(0).toObject();
+    EXPECT_EQ(applied.value(QStringLiteral("scrubbed_params")).toArray(),
+              QJsonArray{QStringLiteral("lanes")})
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
 // INV-2 — mixed modes (add + add_from_roadmap) in one batch.
 TEST(changelog_log_add_batch, Inv2MixedModes) {
     QTemporaryDir tmp;

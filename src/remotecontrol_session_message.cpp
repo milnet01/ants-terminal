@@ -56,7 +56,9 @@ QJsonDocument refuse(const char *code, const QString &message) {
 // so a hyphen-for-underscore slip is fixable without guessing.
 QJsonDocument refuseUnknownProject(const RoadmapStore &store, const QString &to,
                                    const QString &message) {
-    QJsonObject e = refuse("unknown_project", message).object();
+    // ANTS-6637 — prefixed here, so the send, preview and outbox paths agree.
+    QJsonObject e =
+        refuse("unknown_project", QStringLiteral("session_message: %1").arg(message)).object();
     e[QStringLiteral("candidates")] =
         QJsonArray::fromStringList(store.slugCandidates(to));
     return QJsonDocument(e);
@@ -246,8 +248,7 @@ QJsonDocument opSend(MailCall &c) {
                : c.store.sendMessage(c.self, to, body, from, c.now, &id, &code, &err);
     if (!sent) {
         if (code == QLatin1String("unknown_project"))
-            return refuseUnknownProject(c.store, to,
-                                        QStringLiteral("session_message: %1").arg(err));
+            return refuseUnknownProject(c.store, to, err);
         return refuseStore(code, err);
     }
     c.out[QStringLiteral("message_id")] = double(id);

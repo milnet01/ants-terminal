@@ -41,6 +41,16 @@ asked for (spec §§ 4.2 to 4.4): `alternating`, `dynamic` runs left out of
 `unread`, budgets at a run's commit, `budget_trend`'s step and rise,
 matrix runners, and `window.files`.
 
+## ANTS-6637 — bounded input, quoted annotations, stopped jobs
+
+- `McpCiReport.Ants6637OversizedWorkflowIsUnread` — a workflow file past
+  `CiWorkflows::kMaxFileBytes` (1 MiB) is listed in `unread` and not parsed.
+- `McpCiReport.Ants6637AnnotationIsQuotedAsData` — an annotation finding
+  quotes at most 300 characters of the warning, with its quotes escaped.
+- `McpCiReport.Ants6637StoppedJobsAreIncomplete` — a limit that stops the
+  jobs calls before an attempt is read sets `jobsComplete` false, so the
+  report is not saved.
+
 ## ANTS-6739 — a cache shared on purpose
 
 `cache_key_shared` stays quiet when every job sharing a key prefix caches the

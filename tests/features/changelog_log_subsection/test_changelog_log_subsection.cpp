@@ -219,6 +219,36 @@ TEST(changelog_log_subsection, Inv8DryRunWritesNothing) {
     EXPECT_EQ(readFileStd(clPath(tmp.path())), std::string(kFlat));
 }
 
+// INV-10 (ANTS-6637) — the names a scrub dropped from the body and from a
+// bullet are reported, not silent.
+TEST(changelog_log_subsection, Ants6637ScrubbedNamesAreReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kFlat)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_subsection");
+    req[QStringLiteral("category")]   = QStringLiteral("Fixed");
+    req[QStringLiteral("headline")]   = QStringLiteral("A fix");
+    req[QStringLiteral("body")]       =
+        QStringLiteral("Prose. <parameter name=\"kind\">fix</parameter>");
+    req[QStringLiteral("bullets")]    = QJsonArray{bullet(
+        QStringLiteral("The change."),
+        QStringLiteral("detail <parameter name=\"lanes\">x</parameter>"), QString())};
+    req[QStringLiteral("dry_run")]    = true;
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const QJsonArray names = resp.value(QStringLiteral("scrubbed_params")).toArray();
+    EXPECT_TRUE(names.contains(QJsonValue(QStringLiteral("kind"))))
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(names.contains(QJsonValue(QStringLiteral("lanes"))))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
 // INV-9 — handler guards: missing headline, bad category, kind-derived category.
 TEST(changelog_log_subsection, Inv9Guards) {
     QTemporaryDir tmp;

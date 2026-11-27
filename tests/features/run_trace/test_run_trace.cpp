@@ -162,6 +162,11 @@ TEST(RunTrace, StartMintsIdAndWritesNoTrackedFile) {
                                        QStringLiteral("a\nb"), kNow(), false,
                                        seq({1u}))),
               QStringLiteral("bad_args"));
+    // ANTS-6637 — a tab would add a column to the run-costs.tsv row.
+    EXPECT_EQ(code(RunTraceVerb::start(fx.paths, QStringLiteral("G"),
+                                       QStringLiteral("a\tb"), kNow(), false,
+                                       seq({1u}))),
+              QStringLiteral("bad_args"));
 }
 
 // INV-2
@@ -663,4 +668,37 @@ TEST(RunTrace, Ants5956GenreSearchMatchesDocLintHead) {
     a[QStringLiteral("detail")] = detail;
     ASSERT_TRUE(finishWith(fx, id, a).value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(readAll(fx.at(QStringLiteral("docs/reviews/%1.md").arg(id))), detail);
+}
+
+// ANTS-6637 — an index whose header has no separator row gets one, so the
+// new row is found again: a second finish refuses already_recorded.
+TEST(RunTrace, Ants6637HeaderWithoutSeparatorGetsOne) {
+    Fixture fx;
+    ASSERT_TRUE(fx.init());
+    ASSERT_TRUE(writeAll(fx.index(), QStringLiteral("Genre: record\n\n") + header()
+                                         + QStringLiteral("\n")));
+    const QString id = startId(fx);
+    ASSERT_FALSE(id.isEmpty());
+    const QJsonObject r = finishWith(fx, id, basicArgs(3));
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << code(r).toStdString();
+    const QString text = readAll(fx.index());
+    EXPECT_TRUE(text.contains(header() + QStringLiteral("\n|---|---|---|---|---|\n| ") + id))
+        << text.toStdString();
+    EXPECT_EQ(code(finishWith(fx, id, basicArgs(3))), QStringLiteral("already_recorded"));
+}
+
+// ANTS-6637 — an `agent-…` session_id names the helper agent's transcript in
+// its session's subagents folder, where session_cost finds it.
+TEST(RunTrace, Ants6637AgentSessionIdFindsTheSubagentsFolder) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString projects = QDir(tmp.filePath(QStringLiteral("projects"))).absolutePath();
+    const QString cwd = QDir(tmp.filePath(QStringLiteral("proj"))).absolutePath();
+    ASSERT_TRUE(QDir().mkpath(cwd));
+    const QString agent = projects + QLatin1Char('/') + SessionCost::folderNameFor(cwd)
+                        + QStringLiteral("/abcdef12/subagents/agent-a1b2c3d4.jsonl");
+    ASSERT_TRUE(writeAll(agent, QStringLiteral("{}\n")));
+    EXPECT_EQ(RunTraceVerb::transcriptForSession({projects}, cwd, QStringLiteral("agent-a1b2c3d4")),
+              agent);
+    EXPECT_TRUE(RunTraceVerb::transcriptAllowed(agent, {projects}));
 }

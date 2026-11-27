@@ -17,6 +17,7 @@ rows source-scrape the registration sites.
 | `Inv9EtagShortCircuitIsHandlerLocal` | A matching `etag_match` short-circuits to `{ok, unchanged, etag}`; a non-matching one does not; a refusal envelope is never short-circuited. And the negative that makes all three work: `spec_conformance` is **absent** from `isEtagSupportedTool`. |
 | `PathIsRewrittenProjectRelative` | The envelope's `path` is the project-relative path, not the engine's absolute one. |
 | `VerbContractMinimums` | `caller_cwd` Required at both declaration sites; `path` required and validated before the engine runs; `max_cases` forwarded **unclamped**; the verb is bucketed in `kindForName`. |
+| `Ants6637MaxCasesMustBeAWholeNumber` | A `max_cases` of `2.5`, `1e10` or `"500"` refuses `bad_args`; it never becomes the default 200. A whole number, or none, runs. Driven on a bare `RemoteControl`. |
 
 ## Why the ETag 304 is handler-local, against `mcp-tools.md` step 7
 

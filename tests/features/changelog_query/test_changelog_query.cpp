@@ -708,6 +708,37 @@ TEST(ChangelogQueryHandler, Ants5543LintModeIsReadOnly) {
     EXPECT_TRUE(clean.value(QStringLiteral("findings")).toArray().isEmpty());
 }
 
+// ANTS-6637 — a CHANGELOG.md that exists but cannot be read refuses, rather
+// than linting as an empty file: the push gate keys on findings:[].
+TEST(ChangelogQueryHandler, Ants6637UnreadableFileRefusesLint) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/CHANGELOG.md");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(kLintFixture);
+    }
+    ASSERT_TRUE(QFile::setPermissions(path, QFileDevice::Permissions()));
+    {
+        QFile probe(path);
+        if (probe.open(QIODevice::ReadOnly)) {
+            QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+            GTEST_SKIP() << "a mode-000 file is still readable here (running as root?)";
+        }
+    }
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdChangelogQuery(QJsonObject{
+        {QStringLiteral("caller_cwd"), tmp.path()},
+        {QStringLiteral("mode"), QStringLiteral("lint")}}).object();
+    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("code")).toString(),
+              QStringLiteral("changelog_read_failed"))
+        << QJsonDocument(r).toJson().toStdString();
+}
+
 // ANTS-5507 — the release checks. Pure: the store's and git's answers arrive
 // as ReleaseFacts, so each kind is driven by one fact.
 namespace {

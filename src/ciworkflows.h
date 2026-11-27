@@ -65,6 +65,9 @@ inline const QString kDirRel = QStringLiteral(".github/workflows");
 QStringList files(const QString &root);
 // Every file files() names, read.
 Result read(const QString &root);
+// The largest workflow file read (ANTS-6637), in bytes from disk and in
+// characters for parseInto's text; a larger one is listed unread.
+inline constexpr qint64 kMaxFileBytes = 1024 * 1024;
 // One file's text; `rel` names it in `unread`.
 void parseInto(Result &out, const QString &rel, const QString &text);
 

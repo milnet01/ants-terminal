@@ -63,7 +63,8 @@ QJsonObject get(const Paths &p, const QString &id);
 // INV-13. The harness names a session's transcript folder after the
 // session's cwd, as SessionCost::folderNameFor spells it. ANTS-6271 — the
 // folder is found as session_cost finds it (SessionCost::folderFor); with
-// none, the last of `projectsDirs` is where the name points.
+// none, the last of `projectsDirs` is where the name points. ANTS-6637 — an
+// `agent-…` id is looked for in that folder's <session>/subagents/ first.
 QString transcriptForSession(const QStringList &projectsDirs, const QString &cwd,
                              const QString &sessionId);
 // True when `path` is a .jsonl file under one of `projectsDirs`.

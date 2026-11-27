@@ -11,9 +11,14 @@
 
 #include <string>
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
+#include <QTemporaryDir>
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
@@ -188,4 +193,36 @@ TEST(spec_conformance_verb, VerbContractMinimums) {
     EXPECT_TRUE(has(handler, "max_cases"));
     EXPECT_FALSE(has(handler, "qBound"))
         << "max_cases must refuse out of range, not clamp";
+}
+
+// ANTS-6637 — a max_cases that is not a whole number refuses bad_args; it
+// never falls back to the default 200. Driven on a bare RemoteControl, which
+// this handler needs no MainWindow for.
+TEST(SpecConformanceVerb, Ants6637MaxCasesMustBeAWholeNumber) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/docs/specs")));
+    QFile f(root + QStringLiteral("/docs/specs/x.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("# X\n\nNo cases.\n");
+    f.close();
+
+    RemoteControl rc(nullptr);
+    const auto call = [&](const QJsonValue &maxCases) {
+        QJsonObject req{{QStringLiteral("caller_cwd"), root},
+                        {QStringLiteral("path"), QStringLiteral("docs/specs/x.md")}};
+        if (!maxCases.isUndefined()) req[QStringLiteral("max_cases")] = maxCases;
+        return rc.cmdSpecConformance(req).object();
+    };
+    for (const QJsonValue &bad : {QJsonValue(2.5), QJsonValue(1e10),
+                                  QJsonValue(QStringLiteral("500"))}) {
+        const QJsonObject r = call(bad);
+        EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(r).toJson().toStdString();
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+            << QJsonDocument(r).toJson().toStdString();
+    }
+    EXPECT_TRUE(call(QJsonValue(5)).value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(call(QJsonValue(QJsonValue::Undefined)).value(QStringLiteral("ok")).toBool());
 }

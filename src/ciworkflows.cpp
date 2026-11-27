@@ -434,6 +434,12 @@ double shellGuardMinutes(const QString &run) {
 }
 
 void parseInto(Result &out, const QString &rel, const QString &body) {
+    // ANTS-6637 — the parse rescans text per nesting level; a file past the
+    // cap is no workflow anyone wrote, and is unread rather than parsed.
+    if (body.size() > kMaxFileBytes) {
+        addUnread(out.unread, rel, QString(), QStringLiteral("file"));
+        return;
+    }
     Parser p(body);
     const QVariant root = p.parse();
     if (!p.ok() || root.typeId() != QMetaType::QVariantMap) {
@@ -494,7 +500,7 @@ Result read(const QString &root) {
     for (const QString &f : files(root)) {
         const QString rel = kDirRel + QLatin1Char('/') + f;
         QFile file(dir.filePath(f));
-        if (!file.open(QIODevice::ReadOnly)) {
+        if (!file.open(QIODevice::ReadOnly) || file.size() > kMaxFileBytes) {
             addUnread(out.unread, rel, QString(), QStringLiteral("file"));
             continue;
         }

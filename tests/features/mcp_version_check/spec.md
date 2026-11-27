@@ -17,3 +17,4 @@ its own list. This reads the recipe, so it serves any project that has one.
 | INV-6 | A recipe outside the format refuses `bad_recipe`, including bump-recipe.md's foreign-dialect tells. A `version_source` that yields no version refuses `version_unreadable`. *Test:* `McpVersionCheck.Ants5510Refusals` |
 | INV-7 | The verb is registered and declared, with `caller_cwd` required. *Test:* `McpVersionCheck.Ants5510VerbIsWired` |
 | INV-8 | The verb reads nothing outside the project root. A `version_source` resolving outside it, by `..` or a symlink, refuses `bad_recipe`. A listed or tracked file resolving outside it is not read, and a listed one draws `file_missing`. *Test:* `McpVersionCheck.Ants5510ReadsNothingOutsideRoot` |
+| INV-9 | A `files[]` row's `status` is its first finding; `findings` holds every one, so a later finding never overwrites an earlier status (ANTS-6637). *Test:* `McpVersionCheck.Ants6637RowStatusIsItsFirstFinding` |

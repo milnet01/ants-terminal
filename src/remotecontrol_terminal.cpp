@@ -480,7 +480,15 @@ QJsonDocument RemoteControl::cmdSendText(const QJsonObject &req) {
     const QJsonValue tabVal = req.value("tab");
     TerminalWidget *target = nullptr;
     if (tabVal.isDouble()) {
-        const int idx = tabVal.toInt();
+        // ANTS-6637 — 1.5 or 1e10 refuses; toInt() would read it as tab 0.
+        const std::optional<int> tab = wholeIntArg(tabVal);
+        if (!tab) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "send-text: \"tab\" must be a whole tab index");
+            return QJsonDocument(out);
+        }
+        const int idx = *tab;
         target = m_main->wakeTerminalAtTab(idx);
         if (!target) {
             out["ok"] = false;
@@ -1124,7 +1132,7 @@ QJsonDocument RemoteControl::cmdGrabImage(const QJsonObject &req) {
                             : QDir(root).filePath(chk.argvForm);
     if (!target->grab().save(out, "PNG"))
         return e2eRefusal(QStringLiteral("grab-image"),
-                          QStringLiteral("bad_args"),
+                          QStringLiteral("write_failed"),
                           QStringLiteral("PNG save failed"));
     QJsonObject o;
     o["ok"]   = true;

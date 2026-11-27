@@ -181,16 +181,20 @@ void scanDockerfile(const QString &root, const QString &rel, Inventory *inv) {
 }
 
 // One regex per file form, read from the first line matching it.
-void scanByRegex(const QString &root, const QString &rel, const char *pattern,
-                 const QString &name, Inventory *inv) {
+void matchFirstLine(const QStringList &lines, const QString &rel, const char *pattern,
+                    const QString &name, Inventory *inv) {
     const QRegularExpression re(QString::fromLatin1(pattern));
-    const QStringList lines = readLines(root, rel, inv);
     for (int i = 0; i < lines.size(); ++i) {
         const auto m = re.match(lines[i]);
         if (!m.hasMatch()) continue;
         addRuntime(inv, name, m.captured(1), rel, i + 1);
         return;
     }
+}
+
+void scanByRegex(const QString &root, const QString &rel, const char *pattern,
+                 const QString &name, Inventory *inv) {
+    matchFirstLine(readLines(root, rel, inv), rel, pattern, name, inv);
 }
 
 void scanFirstLine(const QString &root, const QString &rel, const QString &name, Inventory *inv) {
@@ -246,10 +250,12 @@ void scanRuntimeFile(const QString &root, const QString &rel, const QString &bas
     else if (base == QLatin1String("package.json"))
         scanPackageJson(root, rel, inv);
     else if (base == QLatin1String("CMakeLists.txt")) {
-        scanByRegex(root, rel, R"(^\s*cmake_minimum_required\s*\(\s*VERSION\s+([0-9.]+))",
-                    QStringLiteral("cmake"), inv);
-        scanByRegex(root, rel, R"(^\s*find_package\s*\(\s*Qt[56]\s+([0-9.]+))",
-                    QStringLiteral("qt"), inv);
+        // ANTS-6637 — one read, so files_read counts the file once.
+        const QStringList lines = readLines(root, rel, inv);
+        matchFirstLine(lines, rel, R"(^\s*cmake_minimum_required\s*\(\s*VERSION\s+([0-9.]+))",
+                       QStringLiteral("cmake"), inv);
+        matchFirstLine(lines, rel, R"(^\s*find_package\s*\(\s*Qt[56]\s+([0-9.]+))",
+                       QStringLiteral("qt"), inv);
     }
 }
 

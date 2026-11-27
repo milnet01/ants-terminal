@@ -103,6 +103,20 @@ TEST(McpVersionCheck, Ants5510PatternOutcomes) {
     EXPECT_EQ(ofKind(env, "version_drift").size(), 0) << dump(env);
 }
 
+// ANTS-6637 — a row's status is its first finding: a drift found after an
+// ambiguous pattern does not overwrite it.
+TEST(McpVersionCheck, Ants6637RowStatusIsItsFirstFinding) {
+    QTemporaryDir tmp;
+    write(tmp, "version.txt", "VERSION 1.2.3\n");
+    write(tmp, "two.txt", "v=1.2.3\nv=1.2.2\n");
+    write(tmp, ".claude/bump.json", recipe({{"two.txt", "v={OLD}"}}));
+    const QJsonObject env = VersionCheck::run(tmp.path(), {"a"});
+    ASSERT_EQ(ofKind(env, "pattern_ambiguous").size(), 1) << dump(env);
+    ASSERT_EQ(ofKind(env, "version_drift").size(), 1) << dump(env);
+    EXPECT_EQ(env.value("files").toArray().at(0).toObject().value("status").toString(),
+              QStringLiteral("pattern_ambiguous")) << dump(env);
+}
+
 TEST(McpVersionCheck, Ants5510UnlistedFiles) {
     QTemporaryDir tmp;
     write(tmp, "version.txt", "VERSION 1.2.3\n");

@@ -1393,8 +1393,20 @@ QJsonDocument RemoteControl::cmdSpecConformance(const QJsonObject &req) {
     SpecConformance::Options opt;
     // NOT clamped. An out-of-range max_cases REFUSES the call (engine INV-7):
     // a clamp here would make a partial run read as a complete one, which is
-    // the failure mode the whole verb exists to catch.
-    opt.maxCases = req.value(QStringLiteral("max_cases")).toInt(opt.maxCases);
+    // the failure mode the whole verb exists to catch. ANTS-6637 — nor may a
+    // value that is not a whole number fall back to the default.
+    if (const QJsonValue mc = req.value(QStringLiteral("max_cases")); !mc.isUndefined()) {
+        const std::optional<int> n = wholeIntArg(mc);
+        if (!n) {
+            QJsonObject o;
+            o[QStringLiteral("ok")]    = false;
+            o[QStringLiteral("error")] =
+                QStringLiteral("spec_conformance: max_cases must be a whole number");
+            o[QStringLiteral("code")]  = QStringLiteral("bad_args");
+            return QJsonDocument(o);
+        }
+        opt.maxCases = *n;
+    }
 
     return QJsonDocument(specConformanceBuildResponse(
         SpecConformance::run(abs, opt),
@@ -2300,6 +2312,11 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     opts.symbols.excludedNames =
         docSymbolsExcludedNames(rootCanonical, m_mcpVerbVocabularyProvider);
     opts.spec = specLintProjectOptions(rootCanonical, nullptr);
+    // ANTS-6637 — the numbering scheme spec_lint reads, so a project-global
+    // INV number a sibling spec owns is no gap here either.
+    if (opts.checks.isEmpty() || opts.checks.contains(QStringLiteral("spec_lint")))
+        opts.spec.siblingInvNumbers =
+            specLintSiblingInvNumbers(rootCanonical, specsDir, opts.walk, &walkCut);
 
     opts.dedup.excludedPathGlobs = DocDedup::generatedPathGlobs();
     const auto excludedHeadings =

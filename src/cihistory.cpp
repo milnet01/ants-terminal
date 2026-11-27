@@ -243,6 +243,9 @@ public:
                 }
             }
         }
+        // ANTS-6637 — a limit left attempts unread, so the jobs are not whole
+        // and the report must not save over a real warning.
+        if (stopped) m_res.jobsComplete = false;
         return jobs;
     }
 

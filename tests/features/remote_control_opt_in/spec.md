@@ -80,6 +80,13 @@ scripts can detect when their payloads are being altered. Missing
 from the response when filter was in pass-through mode or when
 nothing was stripped.
 
+### Invariant 5 — a `tab` that is not a whole number refuses (ANTS-6637)
+
+`send-text` reads `tab` through `RemoteControl::wholeIntArg`. A value
+such as `1.5` or `1e10` refuses rather than sending keystrokes to tab 0,
+which is what `QJsonValue::toInt()` returns for it. *Test:*
+`RemoteControlOptIn.Ants6637TabMustBeAWholeNumber`.
+
 ## Regression history
 
 - **Introduced:** by design; the initial remote-control implementation

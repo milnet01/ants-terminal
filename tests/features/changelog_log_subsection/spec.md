@@ -36,6 +36,9 @@ Mirrors the `changelog_log_normalize` harness.
   `category` → `bad_category`; `category` omitted but `kind` supplied → derived
   (e.g. `kind:"fix"` → `Fixed`); a `date` that does not parse as `yyyy-MM-dd`
   → `bad_args` (ANTS-5148).
+- **INV-10** — leaked tool-call XML the handler scrubs from the headline,
+  body or any bullet is named in `scrubbed_params`, as on `op:"add"`
+  (ANTS-6637). *Test:* `Ants6637ScrubbedNamesAreReported`.
 
 ## Pre-fix check
 

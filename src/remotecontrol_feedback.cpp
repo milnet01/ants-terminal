@@ -173,6 +173,16 @@ static void fbMarkDerived(QJsonObject &out, const QString &reason) {
         out[QStringLiteral("path_derived_reason")] = reason;
 }
 
+// ANTS-6637 — the most entries one batch array takes per call: changelog_log
+// add_batch's cap (ANTS-5098), so no array is bounded only by the transport.
+static constexpr qsizetype kMaxBatchEntries = 200;
+
+static QJsonObject batchTooLarge(const QString &what, qsizetype got) {
+    return mcp::refusal(QStringLiteral("bad_args"),
+        QStringLiteral("%1 takes at most %2 entries per call; got %3")
+            .arg(what).arg(kMaxBatchEntries).arg(got));
+}
+
 // ANTS-4513 § 4.7 — the store every feedback verb reads and writes. A fresh
 // connection per call, as session_message opens one: § 4.4's BEGIN IMMEDIATE
 // needs a connection with no transaction of its own already open. A store
@@ -813,6 +823,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 QStringLiteral("feedback_log: assign_id_batch requires a "
                                "non-empty \"assignments\" array")));
         }
+        if (assignments.size() > kMaxBatchEntries)
+            return QJsonDocument(batchTooLarge(
+                QStringLiteral("feedback_log: \"assignments\""), assignments.size()));
         QJsonObject refusal;
         const auto store = fbOpenStore(QStringLiteral("feedback_log"), &refusal);
         if (!store) return QJsonDocument(refusal);
@@ -982,6 +995,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             QStringLiteral("feedback_log: append_finding requires a "
                            "non-empty \"findings\" array")));
     }
+    if (findingsArr.size() > kMaxBatchEntries)
+        return QJsonDocument(batchTooLarge(
+            QStringLiteral("feedback_log: \"findings\""), findingsArr.size()));
     QVector<FeedbackFile::Finding> findings;
     for (const QJsonValue &v : findingsArr) {
         const QJsonObject fo = v.toObject();
@@ -2315,6 +2331,8 @@ QJsonObject adRecordBatch(const QJsonObject &req, const QString &root,
         return mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("audit_dismiss: `entries` must be a non-empty array"));
     }
+    if (entries.size() > kMaxBatchEntries)
+        return batchTooLarge(QStringLiteral("audit_dismiss: `entries`"), entries.size());
 
     QList<AdParsed> parsed;
     QList<int> indexes;

@@ -15,3 +15,4 @@ latest version or an end-of-life date stays with the skill.
 | INV-5 | A marker file with no version anywhere draws a `runtime` row with `version:null` and `no_authoritative_source:true`, never a guess. A version in a README draws nothing. *Test:* `McpDependencyInventory.Ants5515NoSourceIsSaid` |
 | INV-6 | No tracked-file list names `tracked_files` in `skipped`, and every reply lists `not_covered`. Vendored folders draw no row. *Test:* `McpDependencyInventory.Ants5515SilenceIsNamed` |
 | INV-7 | The verb is registered and declared, with `caller_cwd` required, and its code opens no network. *Test:* `McpDependencyInventory.Ants5515VerbIsWiredAndOffline` |
+| INV-8 | `files_read` counts each file once, though a `CMakeLists.txt` yields two runtimes (ANTS-6637). *Test:* `McpDependencyInventory.Ants6637CMakeListsIsReadOnce` |

@@ -49,7 +49,8 @@ writes the **fingerprint** ledger the audit *engine* filters on.
   `bad_args`, so a caller reading only `ok` cannot take it for success.
 - **INV-9 / a batch cannot share an identity.** `fingerprint`, `file` or
   `message` at the top level beside `entries` refuses `bad_args`. An empty or
-  non-array `entries` refuses too.
+  non-array `entries` refuses too, and so does one over 200 entries
+  (ANTS-6637), before anything is written.
 - **INV-10 / `replace_reason` replaces a stored reason.** The reply says
   `outcome:"reason_replaced"`, later reads see the new reason, and the rule
   stays the stored one. On an unrecorded finding it records as usual. Without

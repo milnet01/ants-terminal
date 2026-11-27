@@ -106,6 +106,16 @@ else
     fail "7b relative grab path — reply=$relout echoed=$relpath"
 fi
 
+# ── Case 7c: a failed PNG save refuses write_failed (ANTS-6637) ──
+# The arguments pass every check; the folder the PNG names does not exist, so
+# the save itself fails, and that is not the caller's bad_args.
+saveout=$(call_e2e '{"cmd":"grab-image","path":"no-such-dir/x.png"}')
+if has "$saveout" 'write_failed'; then
+    pass "7c failed save → write_failed"
+else
+    fail "7c failed save — reply=$saveout"
+fi
+
 # ── Case 8: teardown reaps instances + temp dirs (INV-6) ──
 d_main=$(dirname "$(e2e_art main)")
 d_gate=$(dirname "$(e2e_art gate)")

@@ -360,6 +360,18 @@ TEST(AuditDismiss, Inv9BatchRefusesASharedIdentityAndEmptyEntries) {
                   .value(QStringLiteral("code")).toString(),
               QStringLiteral("bad_args")) << "INV-9: non-array entries";
     EXPECT_FALSE(QFile::exists(ledgerPath(tmp.path())));
+
+    // ANTS-6637 — over 200 entries refuses before anything is written.
+    QJsonArray many;
+    for (int i = 0; i < 201; ++i)
+        many.append(QJsonObject{{QStringLiteral("file"), QStringLiteral("app.py")},
+                                {QStringLiteral("message"),
+                                 QStringLiteral("unused function 'f%1'").arg(i)}});
+    req[QStringLiteral("entries")] = many;
+    EXPECT_EQ(rc.cmdAuditDismiss(req).object()
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args")) << "INV-9: 201 entries";
+    EXPECT_FALSE(QFile::exists(ledgerPath(tmp.path())));
 }
 
 // INV-10 — a wrong reason can be corrected through the verb.

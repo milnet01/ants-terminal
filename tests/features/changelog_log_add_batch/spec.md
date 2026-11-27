@@ -99,6 +99,12 @@ over a `QTemporaryDir` project (CHANGELOG.md + optional ROADMAP.md),
 mirroring the `changelog_log_writer` harness. No real CHANGELOG.md. INV-3
 and INV-5 FAIL against pre-fix code (the op is unknown → `bad_op_combo`).
 
+## ANTS-6637 — scrubbed names are reported per entry
+
+Leaked tool-call XML scrubbed from an entry's `summary` or `body` is named in
+that entry's applied row as `scrubbed_params`, as on `op:"add"`. *Test:*
+`Ants6637ScrubbedNamesAreReported`.
+
 ## ANTS-5673 — an id-only fix entry drops the defect's Layman line
 
 An id-only entry follows the single op's rule
