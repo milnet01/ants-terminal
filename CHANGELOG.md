@@ -124,6 +124,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Code-search verbs: duplicate_blocks, file_outline, apply_edits, function_sizes, comment_claims, source_scrapes, read_region, trace and find_definition each fix an edge case, from long lines and CRLF files to overlapping paths and capped indexes** (ANTS-6628)
+
+- **Private data folders work under a symlinked home; project_layout notices a deleted file; --chrome is read only from a project.json you own; session restore and the feedback-root setting validate their input** (ANTS-6629)
+
+- **The release audit reports every failure instead of stopping at the first; release builds refuse a multi-line tag; the Arch package depends on layer-shell-qt; the local CI runner uses GitHub's shell per step** (ANTS-6630)
+
+- **The push gate stays out of build-asan while the nightly build holds it, and says when the Qt 6.2 guard could not run; check-shipped-coverage.sh and vendor-grammars.sh refuse bad input and failed downloads** (ANTS-6631)
+
 - **MCP: non-object arguments and over-size requests get a clear refusal; secrets-file reads warn once; a Claude's exit clears its session; a failing trust prompt no longer ends the process; tool schemas say what each verb accepts** (ANTS-6626)
 
 - **Claude status chips follow the right session after a quick restart or in a tab with no Claude; a queued model switch dies with its session; foreground helper results no longer end background tasks; the allowlist hint names the real buttons** (ANTS-6627)

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6986 -->
+<!-- ants-roadmap-id-high-water: ANTS=6987 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98761,6 +98761,27 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6626/6627 helpers 2026-11-27.
   Lanes: claude-integration, claude-session-widgets.
 
+- 📋 [ANTS-6987] **Fix the bugs the ANTS-6628 to ANTS-6631 helpers found.**
+  - trace: decide on a tree-sitter match limit (set_match_limit drops
+    in-progress matches) and index class ranges once instead of nested
+    scans (row 175's remainder); the trace spec's parse_timeout reason
+    should say it covers a query timeout too.
+  - project_layout: a roadmap declared in .ants/project.json is not in
+    isStale's list, so editing it waits for the 7-day TTL.
+  - release-audit.yml: with set +e, a failing gh release view reports
+    every asset missing; it should say they were not checked.
+  - release.yml: sign the update manifest in its own job that receives
+    only the built AppImage, away from the linuxdeploy download.
+  - tools/build-and-stage.sh's header says the terminal runs from
+    build/ants-terminal; launch.sh runs a staged copy.
+  - local-ci.sh's build-test leg reports qt62-guard exit 4 as "build-test
+    job FAILED locally".
+  - vendor-grammars.sh fetch ignores a failed jq rewrite under --pin.
+  **Layman:** Small bugs in the code-search tools, release scripts and push checks, found while fixing others.
+  Kind: fix.
+  Source: ANTS-6628–6631 helpers 2026-11-27.
+  Lanes: code-index-search, config-session-project, dev-python-ci-packaging, dev-shell-tools.
+
 ### Other bugs (2026-11-06 review)
 
 - ✅ [ANTS-6620] **Fix the smaller bugs the 2026-11-06 reviews found in app-entry-dialogs.**
@@ -98957,7 +98978,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6628] **Fix the smaller bugs the 2026-11-06 reviews found in code-index-search.**
+- 🚧 [ANTS-6628] **Fix the smaller bugs the 2026-11-06 reviews found in code-index-search.**
   25 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 160 `findsources.cpp:338` (Medium)
   - row 161 `duplicateblocks.cpp:181` (Medium)
@@ -98984,24 +99005,30 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1445 `src/indiereviewengine.cpp:62-76` (Info)
   - row 1446 `src/trace/extract.cpp:66-67` (Info)
   - row 1447 `src/sourcescrapes.cpp:988` (Info)
+  2026-11-27 (faaca205): 16 rows fixed (175 in part: deadline, no match
+  limit); 7 already fixed; 1447 not a bug. Row 180 waits on the user:
+  clamp trace's max_bytes to the 4 MiB family ceiling (recommended, as
+  the other read verbs do; INV-26's 64 MiB paging test in ANTS-5734
+  would be rewritten to fit) or leave it unclamped.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6629] **Fix the smaller bugs the 2026-11-06 reviews found in config-session-project.**
+- ✅ [ANTS-6629] **Fix the smaller bugs the 2026-11-06 reviews found in config-session-project.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 206 `secureio.h:274-276` (Medium)
   - row 211 `projectlayoutengine.cpp:706` (Low)
   - row 213 `projectsettings.cpp:139-145` (Low)
   - row 214 `sessionmanager.cpp:383` (Low)
   - row 1454 `src/config.cpp:687` (Info)
+  Shipped 2026-11-27 (88db7fdd): all 5 rows fixed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6630] **Fix the smaller bugs the 2026-11-06 reviews found in dev-python-ci-packaging.**
+- 🚧 [ANTS-6630] **Fix the smaller bugs the 2026-11-06 reviews found in dev-python-ci-packaging.**
   7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 455 `release-audit.yml:145-152` (Medium)
   - row 456 `release.yml:172-176` (Medium)
@@ -99010,12 +99037,17 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 463 `tools/ci_workflow.py:74-77` (Low)
   - row 466 `tools/roadmap-corpus-survey.py:288` (Low)
   - row 467 `tools/token-bench/bench.py:30-31,173` (Low)
+  2026-11-27 (e575ff43): 6 rows fixed; row 456's comment corrected. Row
+  456's pin waits on the user: pin both linuxdeploy AppImages to a dated
+  release with a recorded sha256 checked by sha256sum -c (recommended;
+  costs a manual bump per upstream change, and fetching the sha256 needs
+  a download), or keep the continuous channel unpinned.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: dev-python-ci-packaging.
 
-- 📋 [ANTS-6631] **Fix the smaller bugs the 2026-11-06 reviews found in dev-shell-tools.**
+- ✅ [ANTS-6631] **Fix the smaller bugs the 2026-11-06 reviews found in dev-shell-tools.**
   7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 447 `tools/local-ci.sh:275` (Medium)
   - row 449 `packaging/release.sh:120` (Medium)
@@ -99024,6 +99056,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 452 `tools/vendor-grammars.sh:80-81` (Low)
   - row 453 `tools/local-ci.sh:407-414` (Low)
   - row 454 `tools/asan-nightly.sh:84-87` (Low)
+  Shipped 2026-11-27 (c86c678f): 5 rows fixed; 449 not a bug; 454
+  already fixed (ANTS-6595).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
