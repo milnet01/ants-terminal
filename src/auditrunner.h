@@ -156,6 +156,9 @@ struct RunResult {
     int                        totalActionable = 0;
     int                        noiseRatePct = 0;
     QString                    sarifPath;
+    // ANTS-6981 — set only when both SARIF writes (cache and fallback)
+    // failed: the paths tried and why. The run stays ok with its findings.
+    QString                    sarifError;
     QString                    htmlPath;
     QVector<ToolSkip>          toolsSkipped;
     qint64                     elapsedTotalMs = 0;

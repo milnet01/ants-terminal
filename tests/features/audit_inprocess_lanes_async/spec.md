@@ -23,6 +23,10 @@ locks its invariants; the numbering below is that spec's.
   process (ctest runs each test in its own).
 - **INV-8** — `AuditRunner::runAudit` routes each lane outcome's status
   through `finish`. Source scrape.
+- **INV-9** (ANTS-6981) — while an earlier run's abandoned lane worker still
+  runs, `runAudit` skips the in-process lanes and lists each in
+  `toolsSkipped`; once the worker ends, the next run runs them. Fails before
+  the fix: the busy run starts a second worker and reports `spec_code_drift`.
 
 ## Red proof
 

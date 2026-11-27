@@ -73,6 +73,7 @@
 #include <QTimer>
 
 #include <algorithm>      // ANTS-3706 std::sort over the detail keys
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -1170,7 +1171,9 @@ bool writeSarif(const QString &path,
                 // sum past it and the envelope still said
                 // findings_truncated:false. Silent loss in the artifact a
                 // reviewer treats as the complete finding set.
-                bool *docTruncated = nullptr) {
+                bool *docTruncated = nullptr,
+                // ANTS-6981 — out-param: why the write failed, when it did.
+                QString *whyFailed = nullptr) {
     QJsonArray  runsArr;
     int         emitted = 0;   // running result count vs kSarifFindingsMax
     int         dropped = 0;   // ANTS-3629 — results shed at that ceiling
@@ -1279,17 +1282,22 @@ bool writeSarif(const QString &path,
     doc["runs"]    = runsArr;
 
     QSaveFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    const auto fail = [whyFailed](const QString &why) {
+        if (whyFailed) *whyFailed = why;
+        return false;
+    };
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
+        return fail(f.errorString());
     // ANTS-5151 — the SARIF holds the findings, secrets included: private or
     // not written. An uncommitted QSaveFile discards its temp file.
-    if (!setOwnerOnlyPerms(f)) return false;
+    if (!setOwnerOnlyPerms(f)) return fail(QStringLiteral("cannot make it owner-only"));
     const QByteArray bytes =
         QJsonDocument(doc).toJson(QJsonDocument::Indented);
-    if (f.write(bytes) != bytes.size()) return false;
-    if (!f.commit()) return false;
+    if (f.write(bytes) != bytes.size()) return fail(f.errorString());
+    if (!f.commit()) return fail(f.errorString());
     if (!setOwnerOnlyPerms(path)) {
         QFile::remove(path);
-        return false;
+        return fail(QStringLiteral("cannot make it owner-only"));
     }
     fsyncParentDir(path);  // ANTS-1810 — durable like the cache manifest
     return true;
@@ -1620,6 +1628,10 @@ bool validateCompileCommandsImpl(const QString &canonProject,
     return true;
 }
 
+// ANTS-6981 — in-process lane workers abandoned at a deadline and still
+// running. While one runs, runAudit skips the lanes (ANTS-5067 allows one).
+std::atomic<int> g_abandonedLaneWorkers{0};
+
 }  // namespace
 
 namespace internal {
@@ -1698,6 +1710,7 @@ QList<InProcessLaneOutcome> runInProcessLanes(const QList<InProcessLane> &lanes,
         }
         const std::lock_guard<std::mutex> lock(shared->mutex);
         shared->finished = true;
+        if (shared->abandoned) --g_abandonedLaneWorkers;  // ANTS-6981
         shared->cv.notify_all();
     }).detach();
 
@@ -1705,6 +1718,7 @@ QList<InProcessLaneOutcome> runInProcessLanes(const QList<InProcessLane> &lanes,
     shared->cv.wait_for(lock, std::chrono::milliseconds(budgetMs),
                         [&shared] { return shared->finished; });
     shared->abandoned = !shared->finished;
+    if (shared->abandoned) ++g_abandonedLaneWorkers;  // ANTS-6981
     for (qsizetype i = 0; i < shared->done.size(); ++i) out[i] = shared->done.at(i);
     return out;
 }
@@ -2360,22 +2374,35 @@ void writeArtifacts(const RunRequest &req, const QString &canonProject,
         cacheSarifAbs = AuditCache::sarifPathFor(canonProject,
                                                  iso.forFilename,
                                                  gitI.shortSha);
+        QString cacheWhy;   // ANTS-6981 — why the cache write failed
         if (!cacheSarifAbs.isEmpty()
          && ensurePrivateDir(AuditCache::cacheDir(canonProject))  // ANTS-1988 — 0700
          && writeSarif(cacheSarifAbs, r.byTool, rawByTool, req.projectRoot,
                        fullFindingsByTool, recorded.carriedForwardForSarif,
-                       &sarifDocTruncated)) {
+                       &sarifDocTruncated, &cacheWhy)) {
             r.sarifPath = cacheSarifAbs;
             r.cachePath = cacheSarifAbs;
         } else {
+            if (cacheSarifAbs.isEmpty())
+                cacheWhy = QStringLiteral("no cache path");
+            else if (cacheWhy.isEmpty())
+                cacheWhy = QStringLiteral("cannot create %1")
+                               .arg(AuditCache::cacheDir(canonProject));
+            const QString cacheTried = cacheSarifAbs;
             // Fall back to legacy /tmp path so callers depending on
             // sarifPath still work even on read-only roots.
             cacheSarifAbs.clear();
             const QString sp = allocFallbackPath(QStringLiteral("sarif"));
+            QString fallbackWhy;
             if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot,
                            fullFindingsByTool, recorded.carriedForwardForSarif,
-                           &sarifDocTruncated)) {
+                           &sarifDocTruncated, &fallbackWhy)) {
                 r.sarifPath = sp;
+            } else {
+                // ANTS-6981 — both writes failed: the reply keeps ok:true and
+                // the findings, and says why no sarif_path came back.
+                r.sarifError = QStringLiteral("cache %1: %2; fallback %3: %4")
+                                   .arg(cacheTried, cacheWhy, sp, fallbackWhy);
             }
         }
         // ANTS-3629 — a cross-tool shed is truncation too. Without this,
@@ -2627,9 +2654,17 @@ RunResult runAudit(const RunRequest &req) {
     // This mirrors AuditDialog::populateChecks. ANTS-5067 — they are counted
     // in the cap like tools, so a sweep with no external tool gives them a
     // budget.
-    const QList<internal::InProcessLane> inProcess =
+    QList<internal::InProcessLane> inProcess =
         (req.tools.isEmpty() && !scope.scopeNarrowed) ? inProcessLanes()
                                                : QList<internal::InProcessLane>{};
+    // ANTS-6981 — an earlier run's abandoned lane worker is still running:
+    // skip the lanes rather than start a second one. External tools still run.
+    if (!inProcess.isEmpty() && g_abandonedLaneWorkers.load() > 0) {
+        for (const internal::InProcessLane &lane : std::as_const(inProcess))
+            r.toolsSkipped.append({lane.id,
+                QStringLiteral("an earlier run's in-process lane is still running")});
+        inProcess.clear();
+    }
     const int perToolMs = req.capPerToolSeconds * 1000;
     const int aggCapMs  = std::min(
         static_cast<int>((toolAbsPath.size() + inProcess.size()) * perToolMs * 3 / 2),

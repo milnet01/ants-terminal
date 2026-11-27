@@ -248,3 +248,51 @@ TEST(AuditInprocessLanesAsync, Inv8OutcomeStatusReachesFinish) {
     EXPECT_EQ(lanes.find("QStringLiteral(\"ok\")"), std::string::npos)
         << "INV-8: a lane status is still hard-coded to ok";
 }
+
+// INV-9 (ANTS-6981) — while an earlier run's abandoned lane worker still runs,
+// runAudit starts no second one: it skips the in-process lanes and lists each
+// in toolsSkipped. Once the worker ends, the next run starts the lanes again.
+TEST(AuditInprocessLanesAsync, Inv9AbandonedWorkerSkipsTheNextRunsLanes) {
+    auto latch = std::make_shared<Latch>();
+    auto returned = std::make_shared<std::atomic<bool>>(false);
+    QList<InProcessLane> stuck;
+    stuck.append({QStringLiteral("stuck"), [latch, returned](const QString &) {
+        latch->wait();
+        returned->store(true);
+        return QString();
+    }});
+    const QList<InProcessLaneOutcome> out = runInProcessLanes(stuck, laneRoot(), 100);
+    ASSERT_EQ(out.size(), 1);
+    ASSERT_EQ(out[0].status, QStringLiteral("timed_out"))
+        << "setup: the lane was not abandoned";
+
+    QTemporaryDir project;
+    QTemporaryDir emptyBin;
+    ASSERT_TRUE(project.isValid() && emptyBin.isValid());
+    const auto run = [&] {
+        ants_test::XdgGuard env;
+        env.setEnv("PATH", emptyBin.path().toLocal8Bit());
+        AuditRunner::RunRequest req;
+        req.projectRoot = project.path();
+        return AuditRunner::runAudit(req);
+    };
+
+    const AuditRunner::RunResult busy = run();
+    latch->release();
+    ASSERT_TRUE(busy.ok) << "setup: runAudit refused: " << busy.code.toStdString()
+                         << " " << busy.error.toStdString();
+    EXPECT_FALSE(busy.byTool.contains(QStringLiteral("spec_code_drift")))
+        << "INV-9: a second lane worker started while the first still ran";
+    bool listed = false;
+    for (const AuditRunner::ToolSkip &s : busy.toolsSkipped)
+        if (s.tool == QLatin1String("spec_code_drift") && !s.reason.isEmpty())
+            listed = true;
+    EXPECT_TRUE(listed) << "INV-9: the skipped lane is not listed in toolsSkipped";
+
+    ASSERT_TRUE(waitFor(*returned, 5000)) << "setup: the blocked lane never returned";
+    std::this_thread::sleep_for(200ms);  // the worker's exit follows the lane's return
+    const AuditRunner::RunResult after = run();
+    EXPECT_EQ(after.byTool.value(QStringLiteral("spec_code_drift")).status,
+              QStringLiteral("ok"))
+        << "INV-9: the lanes stay skipped after the abandoned worker ended";
+}

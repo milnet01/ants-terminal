@@ -88,6 +88,8 @@ QJsonObject doneEnvelope(const RunResult &r) {
             env["parse_failures_detail"] = r.parseFailuresDetail;
     }
     if (!r.sarifPath.isEmpty()) env["sarif_path"] = r.sarifPath;
+    // ANTS-6981 — why no sarif_path came back; omitted when a write landed.
+    if (!r.sarifError.isEmpty()) env["sarif_error"] = r.sarifError;
     if (!r.htmlPath.isEmpty())  env["html_path"]  = r.htmlPath;
     QJsonArray skipped;
     for (const auto &ts : r.toolsSkipped) {

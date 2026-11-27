@@ -40,7 +40,9 @@ Rejected: stopping the lane through a cancel flag passed into
 - The wasted work is bounded by one lane's run time.
 
 Cost accepted: an abandoned lane keeps a core busy until it finishes. An
-audit started meanwhile runs alongside it.
+audit started meanwhile runs alongside it. `audit_run` starts no second
+lane worker meanwhile: it skips its in-process lanes, each listed in
+`tools_skipped[]` (ANTS-6981).
 
 ### 2.2 Audit dialog — `src/auditdialog.cpp`, `src/auditdialog.h`
 

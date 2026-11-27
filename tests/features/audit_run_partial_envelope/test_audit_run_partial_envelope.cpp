@@ -6,14 +6,21 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #include <string>
 
+#include <unistd.h>
+
+#include <QDir>
+#include <QFile>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 namespace {
 
@@ -159,4 +166,51 @@ TEST(AuditRunPartialEnvelope, Ants4371CoverageEvidenceIsSerialised) {
     EXPECT_FALSE(env.value(QStringLiteral("partial")).toBool());
     EXPECT_FALSE(env.contains(QStringLiteral("incomplete_tools")))
         << "no_files must stay out of incomplete_tools / partial";
+}
+
+// INV-5 (ANTS-6981) — when both SARIF writes fail, the reply stays ok with its
+// findings, omits sarif_path, and says why in sarif_error. The cache write
+// fails on a `.audit_cache` that is a plain file; the fallback fails in a
+// read-only fallback directory.
+TEST(AuditRunPartialEnvelope, Inv5FailedSarifWriteIsReported) {
+    if (::geteuid() == 0) GTEST_SKIP() << "root ignores the read-only directory";
+    QTemporaryDir project, cacheHome, emptyBin;
+    ASSERT_TRUE(project.isValid() && cacheHome.isValid() && emptyBin.isValid());
+    {
+        QFile blocker(project.path() + QStringLiteral("/.audit_cache"));
+        ASSERT_TRUE(blocker.open(QIODevice::WriteOnly)) << "setup: no .audit_cache file";
+    }
+
+    AuditRunner::RunResult r;
+    QString fallbackDir;
+    {
+        ants_test::XdgGuard env;
+        env.setEnv("XDG_CACHE_HOME", cacheHome.path().toLocal8Bit());
+        env.setEnv("PATH", emptyBin.path().toLocal8Bit());
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+        if (cacheRoot.isEmpty()) GTEST_SKIP() << "no XDG cache location here";
+        fallbackDir = cacheRoot + QStringLiteral("/audit");
+        ASSERT_TRUE(QDir().mkpath(fallbackDir)) << "setup: no fallback directory";
+        ASSERT_TRUE(QFile::setPermissions(fallbackDir,
+                        QFileDevice::ReadOwner | QFileDevice::ExeOwner))
+            << "setup: the fallback directory stayed writable";
+        AuditRunner::RunRequest req;
+        req.projectRoot = project.path();
+        r = AuditRunner::runAudit(req);
+        QFile::setPermissions(fallbackDir, QFileDevice::ReadOwner
+                                  | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    }
+
+    ASSERT_TRUE(r.ok) << "INV-5: the run refused: " << r.code.toStdString();
+    EXPECT_FALSE(r.byTool.isEmpty()) << "INV-5: the run kept no findings";
+    const QJsonObject env = AuditRunner::doneEnvelope(r);
+    EXPECT_FALSE(env.contains(QStringLiteral("sarif_path")))
+        << "setup: a SARIF write succeeded";
+    const QString why = env.value(QStringLiteral("sarif_error")).toString();
+    EXPECT_FALSE(why.isEmpty()) << "INV-5: no sarif_error says why sarif_path is missing";
+    EXPECT_TRUE(why.contains(QStringLiteral(".audit_cache")))
+        << "INV-5: sarif_error does not name the cache path: " << why.toStdString();
+    EXPECT_TRUE(why.contains(fallbackDir))
+        << "INV-5: sarif_error does not name the fallback path: " << why.toStdString();
 }

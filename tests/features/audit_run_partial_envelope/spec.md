@@ -47,6 +47,14 @@ descriptor advertises them.
 source order so the
 "artifact-before-reply" guarantee can't silently regress.
 
+### INV-5 — a failed SARIF write is reported (ANTS-6981)
+
+When the cache write and the fallback write both fail, `runAudit` stays
+`ok` with its findings, the reply omits `sarif_path`, and `sarif_error`
+names both paths tried and why each failed. The test makes `.audit_cache`
+a plain file and the XDG fallback directory read-only. It fails before the
+fix: the reply had no `sarif_error`.
+
 ## Test plan
 
 INV-1/INV-2 are behavioural over the pure helper (synthetic ToolResult
