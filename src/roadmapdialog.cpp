@@ -1068,6 +1068,10 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         RoadmapIndex::buildIndex(markdownText);   // ANTS-5213, as above
     const QHash<QString, SectionCounts> rolledCounts =
         RoadmapIndex::rollupCounts(sectionIndex, countsBySection);
+    // ANTS-6960 — the title's per-status totals: the flat (not rolled-up)
+    // tallies, so each shown item counts once, under this tab's filters.
+    SectionCounts totals;
+    for (const SectionCounts &c : std::as_const(countsBySection)) totals += c;
 
     // ANTS-1694 — surface duplicate [PROJ-NNNN] IDs the MCP already
     // flags (roadmap_query's rcComputeDuplicateIds). A collision is
@@ -1163,6 +1167,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // background, not the card background the bare `td` rule paints.
         ".rm-hd{background:@pageBg@;}"
         ".rm-count{text-align:center;white-space:nowrap;font-size:@metaPx@px;color:@muted@;}"
+        ".rm-totals{font-size:@metaPx@px;font-weight:normal;color:@muted@;}"
         // ANTS-5610 — no `nowrap` on the two date columns: Qt's import turns
         // a nowrap cell's spaces into no-break spaces, so they could never
         // wrap inside the width applyCardColumnGrid() gives them.
@@ -1602,9 +1607,22 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             level > 0 ? tocAnchorAt(headingIdx++) : QString();
 
         if (level == 1) {
-            // File title (large heading), on every tab.
+            // File title (large heading), on every tab, followed by the
+            // per-status totals in the count columns' order (ANTS-6960).
+            QString totalsText;
+            const std::pair<const char *, int> perStatus[] = {
+                {kEmojiDone, totals.done}, {kEmojiInProgress, totals.inProgress},
+                {kEmojiPlanned, totals.planned},
+                {kEmojiConsidered, totals.considered},
+                {kEmojiDropped, totals.dropped}};
+            for (const auto &[emoji, n] : perStatus)
+                totalsText += QStringLiteral("&nbsp;&nbsp;&nbsp;%1&nbsp;%2")
+                                  .arg(QString::fromUtf8(emoji))
+                                  .arg(n);
             emitFullRow(QStringLiteral("<a name=\"%1\"></a>").arg(anchor)
                         + QStringLiteral("<h1>") + applyInline(hText)
+                        + QStringLiteral("<span class=\"rm-totals\">%1</span>")
+                              .arg(totalsText)
                         + QStringLiteral("</h1>"));
             continue;
         }

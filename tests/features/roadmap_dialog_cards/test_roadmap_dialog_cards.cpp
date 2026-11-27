@@ -1427,3 +1427,34 @@ TEST(RoadmapDialogCards, Ants5793ColumnsHoldStillWhatEverIsShown) {
         }
     }
 }
+
+// ANTS-6960 — the title carries one total per status, counting each item
+// the tab's filters keep once, in the count columns' order.
+TEST(RoadmapDialogCards, Ants6960TitleTotalsFollowTheFilter) {
+    const QString md = QStringLiteral(
+        "# Sample Roadmap\n\n"
+        "## Parent\n\n"
+        "- ✅ [ANTS-1100] **Shipped one.** Body.\n\n"
+        "### Child\n\n"
+        "- ✅ [ANTS-1101] **Shipped two.** Body.\n\n"
+        "- 📋 [ANTS-1300] **Planned one.** Body.\n");
+    const auto totals = [&](unsigned filter) {
+        RoadmapDialog::CardRenderOptions opts;
+        const QString html = RoadmapDialog::renderCardsHtml(
+            md, filter, {}, QStringLiteral("default"),
+            RoadmapDialog::SortOrder::Document, QString(), {}, opts);
+        const QRegularExpressionMatch m =
+            QRegularExpression(QStringLiteral(
+                "<span class=\"rm-totals\">(.*?)</span>")).match(html);
+        return m.hasMatch() ? m.captured(1).replace(QStringLiteral("&nbsp;"),
+                                                    QStringLiteral(" "))
+                                  .simplified()
+                            : QStringLiteral("<no totals>");
+    };
+    using RD = RoadmapDialog;
+    const unsigned all = RD::ShowDone | RD::ShowPlanned | RD::ShowInProgress
+                       | RD::ShowConsidered | RD::ShowDropped;
+    EXPECT_EQ(totals(all).toStdString(), "✅ 2 🚧 0 📋 1 💭 0 🚫 0");
+    EXPECT_EQ(totals(all & ~RD::ShowDone).toStdString(),
+              "✅ 0 🚧 0 📋 1 💭 0 🚫 0");
+}
