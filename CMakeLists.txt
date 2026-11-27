@@ -4093,6 +4093,8 @@ if(ANTS_TESTS)
                 tests/features/debt_sweep_dialog/test_debt_sweep_dialog.cpp
                 tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
                 tests/features/settings_restore_defaults/test_settings_restore_defaults.cpp
+                # ANTS-6979 — Settings warns about a pattern it would not save.
+                tests/features/settings_bad_pattern_warning/test_settings_bad_pattern_warning.cpp
                 tests/features/settings_parse_failure_mirror/test_settings_parse_failure_mirror.cpp
                 tests/features/settings_dialog_config_reload/test_settings_dialog_config_reload.cpp
                 tests/features/roadmap_viewer/test_roadmap_viewer.cpp

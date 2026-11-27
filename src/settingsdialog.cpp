@@ -110,11 +110,13 @@ SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
     auto *buttonBox = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Apply, this);
     connect(buttonBox, &QDialogButtonBox::accepted, this, [this]() {
+        if (!patternsSaveable()) return;
         applySettings();
         accept();
     });
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(buttonBox->button(QDialogButtonBox::Apply), &QPushButton::clicked, this, [this]() {
+        if (!patternsSaveable()) return;
         applySettings();
     });
     mainLayout->addWidget(buttonBox);
@@ -1284,6 +1286,44 @@ static bool isUsablePattern(const QString &pattern) {
         && !AuditEngine::isCatastrophicRegex(pattern);
 }
 
+QStringList SettingsDialog::unusablePatterns(const QString &tabName,
+                                             const QStringList &patterns) {
+    QStringList bad;
+    for (const QString &pattern : patterns) {
+        if (isUsablePattern(pattern)) continue;
+        const QRegularExpression re(pattern);
+        const QString why = re.isValid() ? QStringLiteral("it could freeze the terminal")
+                                         : re.errorString();
+        bad << QStringLiteral("%1: \"%2\" (%3)").arg(tabName, pattern, why);
+    }
+    return bad;
+}
+
+static QStringList patternColumn(const QTableWidget *table) {
+    QStringList patterns;
+    for (int row = 0; row < table->rowCount(); ++row) {
+        const auto *item = table->item(row, 0);
+        patterns << (item ? item->text() : QString());
+    }
+    return patterns;
+}
+
+bool SettingsDialog::patternsSaveable() {
+    const QStringList bad =
+        unusablePatterns(QStringLiteral("Highlights"), patternColumn(m_highlightTable))
+        + unusablePatterns(QStringLiteral("Triggers"), patternColumn(m_triggerTable));
+    if (bad.isEmpty()) return true;
+    // Plain text: a pattern such as `<b>(` must show as typed.
+    QMessageBox box(QMessageBox::Warning, QStringLiteral("Settings not saved"),
+        QStringLiteral("These patterns have a mistake, so nothing was saved yet:\n\n%1\n\n"
+                       "Fix them, or delete the rows, then save again.")
+            .arg(bad.join(QChar('\n'))),
+        QMessageBox::Ok, this);
+    box.setTextFormat(Qt::PlainText);
+    box.exec();
+    return false;
+}
+
 void SettingsDialog::applySettings() {
     // General
     QString shell;
@@ -1397,8 +1437,8 @@ void SettingsDialog::applySettings() {
     // under a quantifier, etc.). A pattern that backtracks
     // pathologically inside the terminal hot path crashes responsive
     // typing without crashing the process — the worst kind of latent
-    // UX bug. Saved-but-disabled rows still get persisted so the
-    // user can fix them; only unfixable ones are dropped here.
+    // UX bug. OK and Apply refuse such a row first, with a warning
+    // (patternsSaveable, ANTS-6979); this drop is the backstop.
     QJsonArray highlights;
     for (int row = 0; row < m_highlightTable->rowCount(); ++row) {
         QJsonObject obj;

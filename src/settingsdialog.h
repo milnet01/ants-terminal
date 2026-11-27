@@ -45,6 +45,12 @@ public:
     // Shared by the Plugins tab and MainWindow's first-load prompt.
     static QString describePluginPermission(const QString &permission);
 
+    // ANTS-6979 — the patterns of one tab that would not be saved, one
+    // line each naming the tab, the pattern and why. Empty when all are
+    // usable (an empty pattern counts as usable).
+    static QStringList unusablePatterns(const QString &tabName,
+                                        const QStringList &patterns);
+
 signals:
     void settingsChanged();
 
@@ -61,6 +67,9 @@ private:
     void populatePluginsTab();
 
     void loadSettings();
+    // ANTS-6979 — false, after a warning, when a Highlights or Triggers
+    // pattern would not be saved; OK and Apply then save nothing.
+    bool patternsSaveable();
     void applySettings();
     void addHighlightRow(const QString &pattern = {}, const QString &fg = "#FF0000",
                          const QString &bg = {}, bool enabled = true);
