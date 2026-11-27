@@ -458,6 +458,30 @@ TEST(SourceScrapes, Inv16SkipWalksDropsListingReaders) {
         << QJsonDocument(bad).toJson().constData();
 }
 
+// ANTS-6628 — a listing cut at 2,000 files, and a test file read only up to an
+// unclosed raw string, are counted in `scanned`, so the rows do not read as
+// complete.
+TEST(SourceScrapes, Inv17CutListingsAndFilesAreCounted) {
+    QTemporaryDir dir;
+    for (int i = 0; i <= 2000; ++i)
+        writeFile(dir.filePath(QStringLiteral("src/f%1.py").arg(i)), "x = 1\n");
+    writeFile(dir.filePath("tests/test_g.py"),
+              "from pathlib import Path\n"
+              "ROOT = Path(__file__).parent.parent\n"
+              "def test_walk():\n"
+              "    for p in (ROOT / \"src\").glob(\"*.py\"):\n"
+              "        p.read_text()\n");
+    writeFile(dir.filePath("tests/test_raw.cpp"),
+              "TEST(S, Raw) {\n"
+              "    const char *s = R\"x(never closed;\n"
+              "}\n");
+    const QJsonObject r = call(dir, {{QStringLiteral("path"), QStringLiteral("src/f0.py")}});
+    const QJsonObject scanned = r.value(QStringLiteral("scanned")).toObject();
+    EXPECT_EQ(scanned.value(QStringLiteral("files_cut_short")).toInt(), 1)
+        << QJsonDocument(scanned).toJson().constData();
+    EXPECT_GE(scanned.value(QStringLiteral("listings_capped")).toInt(), 1);
+}
+
 TEST(SourceScrapes, Inv13NoticeWhenNoTestFileWasRead) {
     QTemporaryDir empty;
     writeFile(empty.filePath(".ants/project.json"), "{\"test_roots\": [\"tests\"]}\n");

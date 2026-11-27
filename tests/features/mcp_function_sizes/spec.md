@@ -10,12 +10,12 @@ shares with the other readability verbs is `src/codewalk.{h,cpp}`.
 | # | Invariant | Test |
 |---|---|---|
 | 1 | Rows are ordered by `lines`, longest first, then by file and `body_start`. `lines` is `body_end - body_start + 1`. `top` caps the rows (default 20). | `FunctionSizes.Inv1RankedLongestFirst` |
-| 2 | A brace-family body ends at the brace that balances its first `{`, skipping braces in comments and strings. A declaration ending in `;` is not a row. | `FunctionSizes.Inv2BraceBodyEndsAtItsBrace` |
+| 2 | A brace-family body ends at the brace that balances its first `{`, skipping braces in comments and strings. A declaration ending in `;`, a trailing `//` comment aside, is not a row. | `FunctionSizes.Inv2BraceBodyEndsAtItsBrace`, `FunctionSizes.Inv2DeclarationWithTrailingCommentIsNotARow` |
 | 2a | A function whose first `{` comes at or after the next symbol's line has no brace body (`fun f() = x`), and a Ruby function closes with `end`: each is counted in `scanned.unmeasured` and named in `unmeasured` (`file`, `symbol`, `line`, `why`, capped at `top`), never given another function's size. `not_covered` names the languages a directory walk leaves out. | `FunctionSizes.Inv2aNoBraceBodyIsUnmeasured` |
 | 2b | A shell body skips braces after a `#` that starts a word, inside `'…'` or `"…"` (which may span lines), after a backslash, and in a heredoc body up to its delimiter line. `//` and `/*` mean nothing in shell. | `FunctionSizes.Inv2bShellBodyEndsAtItsBrace` |
 | 3 | A Python body ends at its last non-blank line indented deeper than its `def`. | `FunctionSizes.Inv3PythonBodyEndsByIndentation` |
 | 4 | `nesting_depth` counts the body's own level as 1 and each level opened inside it as one more. | `FunctionSizes.Inv4NestingDepth` |
-| 5 | A directory walk leaves out test and generated files unless `include_tests` or `include_generated` is set, and `scanned` counts each kind left out. A file named in `paths` is measured whatever it is. | `FunctionSizes.Inv5TestsAndGeneratedLeftOut` |
+| 5 | A directory walk leaves out test and generated files unless `include_tests` or `include_generated` is set, and `scanned` counts each kind left out. A file named in `paths` is measured whatever it is. Overlapping `paths` walk each file once. | `FunctionSizes.Inv5TestsAndGeneratedLeftOut`, `FunctionSizes.Inv5OverlappingPathsCountEachFileOnce` |
 | 6 | Every reply names what it looked at: `scanned.files`, `scanned.functions_measured` and `scanned.unmeasured`, so an empty answer is not a silent one. | `FunctionSizes.Inv6EmptyAnswerSaysWhatItScanned` |
 | 7 | `top` outside 1 to 500 and a non-string `paths` entry refuse `bad_args`. A path outside the root or missing refuses `bad_path`. | `FunctionSizes.Inv7Refusals` |
 | 8 | The verb is registered in `registerProjectScopedVerbs` with `CallerCwdContract::Required`, matches `callerCwdContractFor`, and its schema is a closed object. | `FunctionSizes.Inv8Wiring` |

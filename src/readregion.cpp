@@ -223,6 +223,25 @@ int shellBraceEndLine(NextLine &next, int startLine, int *maxDepth, int *openLin
     return 0;
 }
 
+// ANTS-6628 — whether the `'` at `i` opens a character literal. A `'` inside
+// a number token is a digit separator (`1'000`, `0xFF'FF`), as CppScope reads
+// it. A `'` before a name that does not close straight after it is a Rust
+// lifetime (`&'a str`). `'a'`, `'\n'`, `L'x'` and `'RIFF'` still open one.
+bool opensCharLiteral(const QString &line, int i) {
+    if (i > 0 && line.at(i - 1).isLetterOrNumber()) {
+        int t = i - 1;
+        while (t > 0 && line.at(t - 1).isLetterOrNumber()) --t;
+        if (line.at(t).isDigit()) return false;
+    }
+    int j = i + 1;
+    const auto identChar = [&](int k) {
+        return line.at(k).isLetterOrNumber() || line.at(k) == QLatin1Char('_');
+    };
+    if (j >= line.size() || line.at(j).isDigit() || !identChar(j)) return true;
+    while (j < line.size() && identChar(j)) ++j;
+    return j < line.size() && line.at(j) == QLatin1Char('\'');
+}
+
 // ANTS-2222 / ANTS-2224 — the C-family scan behind braceBalancedEndLine.
 template <class NextLine>
 int cFamilyBraceEndLine(NextLine &next, int startLine, int *maxDepth, int *openLine) {
@@ -257,7 +276,7 @@ int cFamilyBraceEndLine(NextLine &next, int startLine, int *maxDepth, int *openL
             if (c == QLatin1Char('/') && n == QLatin1Char('/')) break;  // line comment
             if (c == QLatin1Char('/') && n == QLatin1Char('*')) { inBlockComment = true; ++i; continue; }
             if (c == QLatin1Char('"'))  { inString = true; prev = c; continue; }
-            if (c == QLatin1Char('\'')) { inChar = true; prev = c; continue; }
+            if (c == QLatin1Char('\'')) { inChar = opensCharLiteral(line, i); prev = c; continue; }
             if (c.isSpace()) continue;
             const QChar before = prev;
             prev = c;
@@ -436,9 +455,14 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
     const int chosenIdx = (defIdx >= 0) ? defIdx : firstIdx;
     const QJsonObject symObj = syms.at(chosenIdx).toObject();
     r.start = symObj.value(QStringLiteral("line")).toInt();
-    const int outlineEnd = (chosenIdx + 1 < syms.size())
-        ? syms.at(chosenIdx + 1).toObject().value(QStringLiteral("line")).toInt() - 1
-        : INT_MAX;  // to EOF
+    // The next symbol by LINE, not list order: a typedef-struct is listed when
+    // it closes but carries its start line, so it can follow symbols below it.
+    int nextLine = INT_MAX;
+    for (const QJsonValue v : syms) {
+        const int l = v.toObject().value(QStringLiteral("line")).toInt();
+        if (l > r.start && l < nextLine) nextLine = l;
+    }
+    const int outlineEnd = nextLine == INT_MAX ? INT_MAX : nextLine - 1;  // INT_MAX: to EOF
     // ANTS-2222 — aggregate symbols (struct/class/union) get their FULL body.
     // The flat outline's "next entry" for a struct is its first member, so the
     // outline-derived end stops at the first field. Brace-match to the closing

@@ -94,7 +94,11 @@ QList<Function> measure(const QString &absPath, const QStringList &lines,
     for (qsizetype i = 0; i < symbols.size(); ++i) {
         const QJsonObject s = symbols.at(i).toObject();
         if (s.value(QStringLiteral("kind")).toString() != QLatin1String("func")) continue;
-        if (s.value(QStringLiteral("signature")).toString().trimmed().endsWith(QLatin1Char(';')))
+        // A declaration has no body. The signature is the raw line, so a
+        // trailing `//` comment comes off before the `;` test.
+        static const QRegularExpression trailingComment(QStringLiteral(R"(\s*//[^"]*$)"));
+        if (s.value(QStringLiteral("signature")).toString().remove(trailingComment)
+                .trimmed().endsWith(QLatin1Char(';')))
             continue;
         Function f;
         f.symbol = s.value(QStringLiteral("name")).toString();

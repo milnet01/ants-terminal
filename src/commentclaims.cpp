@@ -32,6 +32,7 @@ namespace {
 inline constexpr int kDefaultLimit = 500;
 inline constexpr int kMaxLimit = 5000;
 inline constexpr int kMinQuotation = 12;
+int g_maxPaths = 200000;   // walkPaths' bound on a huge root (ANTS-6628 seam)
 
 // True when the text between a file name and a quotation attributes the one
 // to the other: nothing, punctuation, or one linking word ("src/a.cpp says").
@@ -309,6 +310,7 @@ public:
     QList<PendingSymbol> pending;
     QStringList unread;   // walked or named, with no comment syntax this knows
     int comments = 0;
+    int pathsUnchecked = 0;   // path references the capped index could not decide
 
 private:
     // `p` as a root-relative path, trying the root then the comment's own
@@ -326,12 +328,16 @@ private:
     // left out, as a reference into one is not a claim about this project's
     // tree. Walked once, on the first reference the plain lookup cannot find.
     void walkPaths(const QString &dir) {  // NOLINT(misc-no-recursion): directory depth; symlinks are not followed
-        constexpr int kMaxPaths = 200000;   // bounds a huge root; beyond it, a reference can read dead
         const QDir root(m_root);
         const auto entries = QDir(dir).entryInfoList(
             QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
         for (const QFileInfo &fi : entries) {
-            if (m_paths.size() >= kMaxPaths) return;
+            // ANTS-6628 — a capped index may lack the path a reference
+            // names, so seeReferences counts such a reference as unchecked.
+            if (m_paths.size() >= g_maxPaths) {
+                m_pathsCapped = true;
+                return;
+            }
             const QString rel = QLatin1Char('/') + root.relativeFilePath(fi.filePath());
             if (fi.isDir()) {
                 if (fi.fileName().startsWith(QLatin1Char('.'))
@@ -448,9 +454,13 @@ private:
                     || tok.contains(QLatin1Char('<')) || tok.contains(QLatin1Char('{'))
                     || tok.contains(QLatin1Char('$')))
                     continue;
-                if (resolve(tok).isEmpty() && !endsAProjectPath(tok))
-                    add(j, at, QStringLiteral("dead_reference"), m.captured(0).trimmed(),
-                        QStringLiteral("no file or directory %1 under the project").arg(tok));
+                if (resolve(tok).isEmpty() && !endsAProjectPath(tok)) {
+                    if (m_pathsCapped)
+                        ++pathsUnchecked;
+                    else
+                        add(j, at, QStringLiteral("dead_reference"), m.captured(0).trimmed(),
+                            QStringLiteral("no file or directory %1 under the project").arg(tok));
+                }
                 continue;
             }
             if (suffix.match(tok).hasMatch()) continue;   // a bare file name: not looked up
@@ -524,6 +534,7 @@ private:
     QString m_root;
     QStringList m_paths;        // endsAProjectPath's index, built on first use
     bool m_pathsWalked = false;
+    bool m_pathsCapped = false;  // walkPaths stopped at g_maxPaths
     QSet<QString> m_ids;
     QSet<QString> m_prefixes;
     QString m_dir;
@@ -567,6 +578,12 @@ QSet<QString> roadmapIds(const QString &rootCanonical) {
 }
 
 } // namespace
+
+int setMaxPathsForTest(int n) {
+    const int was = g_maxPaths;
+    g_maxPaths = n;
+    return was;
+}
 
 QList<Block> harvest(const QString &fileName, const QString &text) {
     const Family f = familyFor(fileName, text);
@@ -640,6 +657,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     scanned[QStringLiteral("findings_total")] = findingsTotal;
     scanned[QStringLiteral("candidates_total")] = candidatesTotal;
     scanned[QStringLiteral("symbols_unchecked")] = unchecked;
+    scanned[QStringLiteral("paths_unchecked")] = checker.pathsUnchecked;
     scanned[QStringLiteral("unread_files")] = static_cast<int>(checker.unread.size());
     // True when `limit` cut either bucket; `truncated` is the file walk's cap.
     scanned[QStringLiteral("rows_truncated")] = findingsTotal > limit || candidatesTotal > limit;

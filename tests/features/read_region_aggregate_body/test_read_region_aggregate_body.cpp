@@ -248,3 +248,36 @@ TEST(ReadRegionAggregateBody, BraceScanSkipsParameterBraces) {
                   {"app.get('/x', (req, res) => {", "  send();", "});",
                    "function next() {", "}"}, 1), 3);
 }
+
+// INV-6 (ANTS-6628) — a `'` opens a character literal only where one can
+// start: not a digit separator, not a Rust lifetime.
+TEST(ReadRegionAggregateBody, BraceScanReadsDigitSeparatorsAndLifetimes) {
+    EXPECT_EQ(ReadRegion::braceBalancedEndLine(
+                  {"int f(int n) {", "    if (n > 1'000) {", "        work();", "    }",
+                   "    return n;", "}"}, 1), 6);
+    EXPECT_EQ(ReadRegion::braceBalancedEndLine(
+                  {"fn f<'a>(x: &'a str) -> &'a str {", "    x", "}",
+                   "fn g() {", "}"}, 1), 3);
+    EXPECT_EQ(ReadRegion::braceBalancedEndLine(
+                  {"char f() {", "    if (c == '{') return 'x';", "    return '}';", "}"}, 1), 4);
+}
+
+// INV-7 (ANTS-6628) — a symbol's outline end is the next symbol by line. A
+// typedef-struct is listed at its close, after the struct declared inside it,
+// so list order put `Inner` after `first` and the slice ran into `Outer`.
+TEST(ReadRegionAggregateBody, OutlineEndIsTheNextSymbolByLine) {
+    QTemporaryDir dir;
+    const QString path = QFileInfo(dir.path()).canonicalFilePath() + "/t.cpp";
+    const QJsonObject env = extractSym(path,
+        "namespace first {\n"        // 1
+        "}\n"                        // 2
+        "typedef struct Outer {\n"   // 3
+        "struct Inner {\n"           // 4
+        "    int x;\n"               // 5
+        "} in;\n"                    // 6
+        "} Outer;\n",                // 7
+        "first");
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("start_line").toInt(), 1);
+    EXPECT_EQ(env.value("end_line").toInt(), 2);
+}

@@ -16,6 +16,8 @@ source tree spanning C++, Python, Lua, Shell):
 1a. (ANTS-3680) `findDefinitions` answers N needles in one walk and
     returns exactly what N `findDefinition` calls return, including
     `fileStemHint`, per-needle caps and `bad_args` on an invalid needle.
+    Needles that differ only in case each get their `fileStemHint`
+    (ANTS-6628).
 2. `findCaller` returns call sites, excludes the definition line
    (INV-9), and attaches the best-guess `definition`.
 3. Per-language anchors fire for C++ / Python / Lua / Shell.

@@ -66,7 +66,10 @@ bool isIdentChar(QChar c) { return c.isLetterOrNumber() || c == QLatin1Char('_')
 
 // Cuts `text` into statements and brace events. A brace inside parentheses
 // (a lambda or an initialiser list in an argument) stays in its statement.
-void lex(const QString &text, QList<Event> *events, QList<Literal> *lits) {
+// False when a raw string that never closes stopped it: the rest of the file
+// is not read (ANTS-6628).
+bool lex(const QString &text, QList<Event> *events, QList<Literal> *lits) {
+    bool whole = true;
     const int n = text.size();
     int line = 1;
     int paren = 0;
@@ -136,10 +139,10 @@ void lex(const QString &text, QList<Event> *events, QList<Literal> *lits) {
             lit.line = line;
             if (raw) {
                 const int open = text.indexOf(QLatin1Char('('), i + 1);
-                if (open < 0) break;
+                if (open < 0) { whole = false; break; }
                 const QString close = QLatin1Char(')') + text.mid(i + 1, open - i - 1) + QLatin1Char('"');
                 const int end = text.indexOf(close, open + 1);
-                if (end < 0) break;
+                if (end < 0) { whole = false; break; }
                 lit.text = text.mid(open + 1, end - open - 1);
                 line += int(lit.text.count(QLatin1Char('\n')));
                 i = end + close.size() - 1;
@@ -186,6 +189,7 @@ void lex(const QString &text, QList<Event> *events, QList<Literal> *lits) {
         put(QString(c));
     }
     emitStmt(Event::Stmt);
+    return whole;
 }
 
 // The literal indices of an argument made only of literals ("a" "b"), else
@@ -247,7 +251,7 @@ public:
          QHash<QString, QSet<QString>> *exportHelpers, const QStringList &fileDirs = {},
          const ByName &byName = {})
         : m_r(r), m_existing(existing), m_export(exportHelpers), m_byName(byName) {
-        lex(text, &m_events, &m_lits);
+        m_out.cutShort = !lex(text, &m_events, &m_lits);
         for (const QString &d : fileDirs) m_dirs.insert(d);
         static const QRegularExpression ident(QStringLiteral("\\b[A-Za-z_]\\w*\\b"));
         for (const Event &e : std::as_const(m_events))
@@ -1216,7 +1220,9 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     };
     QList<Row> rows, readerRows;
     QSet<QString> readerSeen;
-    const ListFiles listFiles = [&root](const QString &dir, const QString &glob, bool recurse) {
+    int listingsCapped = 0, filesCutShort = 0;   // ANTS-6628 — reported in `scanned`
+    const ListFiles listFiles = [&root, &listingsCapped](const QString &dir, const QString &glob,
+                                                         bool recurse) {
         constexpr int kMaxListed = 2000;
         QStringList found;
         QDirIterator it(root.filePath(dir), {glob}, QDir::Files,
@@ -1226,6 +1232,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
             const QStringList parts = rel.split(QLatin1Char('/'));
             if (std::none_of(parts.cbegin(), parts.cend() - 1, ProjectSettings::isNoiseDir)) found << rel;
         }
+        if (it.hasNext()) ++listingsCapped;
         return found;
     };
     for (const QString &abs : std::as_const(files)) {
@@ -1235,6 +1242,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
                                   ? analyse(text, readers, existing,
                                             fileRelativeDirs(rel, text, root), byName)
                                   : analyseScript(rel, text, moduleRoots, existing, listFiles);
+        if (fr.cutShort) ++filesCutShort;
         for (const Anchor &a : fr.anchors)
             for (const QString &p : matching(a.paths)) {
                 QJsonObject o;
@@ -1283,6 +1291,10 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     scanned[QStringLiteral("unresolved_anchors")] = unresolved;
     scanned[QStringLiteral("truncated")] = walk.truncated;
     scanned[QStringLiteral("skipped_too_large")] = walk.skippedTooLarge;  // ANTS-6501
+    // ANTS-6628 — a test file read only up to an unclosed raw string, and a
+    // glob or walk listing cut at 2,000 files.
+    scanned[QStringLiteral("files_cut_short")] = filesCutShort;
+    scanned[QStringLiteral("listings_capped")] = listingsCapped;
     // True when `limit` cut either list; `truncated` is the file walk's cap.
     scanned[QStringLiteral("rows_truncated")] = total > limit || readerRows.size() > limit;
     QJsonObject env;

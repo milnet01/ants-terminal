@@ -18,7 +18,7 @@ matches.
 
 | # | Invariant | Test |
 |---|---|---|
-| 1 | A run of at least `min_lines` compared lines (default 5) found in two or more places is one group: `{id, lines, copies, diverged, finding_shape, similarity, sites:[{file, start, end}], diff}`. `start` and `end` are the first and last line of the site; `lines` is the longest match in compared lines. | `DuplicateBlocks.Inv1ExactCopiesFormAGroup` |
+| 1 | A run of at least `min_lines` compared lines (default 5) found in two or more places is one group: `{id, lines, copies, diverged, finding_shape, similarity, sites:[{file, start, end}], diff}`. `start` and `end` are the first and last line of the site; `lines` is the longest match in compared lines. A run whose earlier seeds are all skipped (a repeated line, a seed in more than 30 places) is still found. | `DuplicateBlocks.Inv1ExactCopiesFormAGroup`, `DuplicateBlocks.Inv1CopiesAfterARepeatedLineFormAGroup` |
 | 2 | A match continues across up to three edited lines on either side while matched lines stay at least `similarity` (default 0.8) of the longer side. Such a group is `diverged`, and `diff` lists the edited lines of each side, `{file, line, text}`, at most 20. | `DuplicateBlocks.Inv2DivergedCopiesStayOneGroup` |
 | 3 | Three copies are one group with `copies` 3, not three pairs. `finding_shape` is true when `copies` is 3 or more, or the group is `diverged` (coding.md § 1.3, the Rule of Three). | `DuplicateBlocks.Inv3ThreeCopiesAreOneGroup` |
 | 4 | Without `normalise_names`, renamed copies are not matched; with it they are, and a group whose sites differ in raw text is `diverged`. | `DuplicateBlocks.Inv4NormaliseNames` |

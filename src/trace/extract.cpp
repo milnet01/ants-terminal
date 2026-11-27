@@ -34,6 +34,19 @@ bool cancelPastDeadline(TSParseState *state) {
     return d->timer.elapsed() > d->ms;   // true abandons the parse
 }
 
+// ANTS-6628 — the query runs on the parse's deadline too, so a query that
+// matches without end cannot hold the worker.
+struct QueryDeadline {
+    const Deadline *deadline = nullptr;
+    bool hit = false;
+};
+
+bool haltPastDeadline(TSQueryCursorState *state) {
+    auto *q = static_cast<QueryDeadline *>(state->payload);
+    q->hit = q->hit || q->deadline->timer.elapsed() > q->deadline->ms;
+    return q->hit;   // true halts the query
+}
+
 QString nodeText(const QByteArray &text, TSNode n) {
     const uint32_t s = ts_node_start_byte(n), e = ts_node_end_byte(n);
     return QString::fromUtf8(text.constData() + s, int(e - s));
@@ -170,9 +183,11 @@ std::shared_ptr<const FileRows> extractRows(const QString &langId, const TSQuery
 
     QVector<ScopeNode> scopes;
     TSQueryCursor *qc = ts_query_cursor_new();
-    ts_query_cursor_exec(qc, query, root);
+    QueryDeadline qd{&deadline};
+    const TSQueryCursorOptions qopts{&qd, &haltPastDeadline};
+    ts_query_cursor_exec_with_options(qc, query, root, &qopts);
     TSQueryMatch m;
-    while (ts_query_cursor_next_match(qc, &m)) {
+    while (!qd.hit && ts_query_cursor_next_match(qc, &m)) {
         TSNode outer{}, name{};
         bool haveOuter = false, haveName = false;
         QByteArray role;
@@ -219,6 +234,13 @@ std::shared_ptr<const FileRows> extractRows(const QString &langId, const TSQuery
         }
     }
     ts_query_cursor_delete(qc);
+    if (qd.hit) {
+        // A halted query left rows missing: the file reads as timed out.
+        ts_tree_delete(tree);
+        auto timedOut = std::make_shared<FileRows>();
+        timedOut->timedOut = true;
+        return timedOut;
+    }
     collectCommentsAndStrings(root, *rows);
     ts_tree_delete(tree);
 

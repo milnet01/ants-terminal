@@ -5,6 +5,7 @@
 
 #include "markdownscan.h"   // ANTS-4520 — shared blockquote strip
 #include "pathvalidation.h"
+#include "utf8cut.h"
 
 #include <QSet>
 #include <QHash>
@@ -761,9 +762,11 @@ struct HeaderDocCollector {
             if (!doc.isEmpty()) doc.append(QLatin1Char('\n'));
             doc.append(line);
             ++linesEmitted;
-            if (doc.toUtf8().size() > kHeaderDocByteCap) {
-                // ANTS-1249-INV-9: 2 KiB header_doc cap.
-                doc.truncate(kHeaderDocByteCap);
+            const QByteArray utf8 = doc.toUtf8();
+            if (utf8.size() > kHeaderDocByteCap) {
+                // ANTS-1249-INV-9: 2 KiB header_doc cap, in UTF-8 bytes and
+                // on a character boundary.
+                doc = QString::fromUtf8(Utf8Cut::prefix(utf8, kHeaderDocByteCap));
                 doc.append(QChar(0x2026));  // …
                 active = false;
             }
@@ -855,7 +858,8 @@ struct CppScanner {
         // the qualifier run, and rxCppFuncHeaderOpen needs `\([^)]*$` — so
         // `void CreateInstance()   // set up` matched NONE and the symbol
         // vanished. Same family as ANTS-3735 (raw-line matching against a
-        // comment-aware brace scan), one site further on.
+        // comment-aware brace scan), one site further on. The old-style
+        // pair, rxCppNameArgs and rxCppTypeOnly, end-anchor too (ANTS-6628).
         //
         // Deliberately used for matching ONLY. `offer()` is still handed
         // the raw `line`, because `signature` carries the source text
@@ -869,6 +873,16 @@ struct CppScanner {
                                          endsWithSemicolon, out);
         trackScope(line, braceDelta, opensBody);
         closeTypedefs(line, out);
+    }
+
+    // ANTS-6628 — a line over kMaxLineBytes skips the regexes
+    // (ANTS-1249-INV-8), not the brace count: a `}` on it still closes its
+    // body, so a long line cannot hide every later function. netBraceDelta is
+    // a linear scan with no regex.
+    void scanBracesOnly(const QString &line, SymbolSink &out) {
+        const int braceDelta = netBraceDelta(line, inBlockComment);
+        trackScope(line, braceDelta, false);
+        closeTypedefs(QString(), out);
     }
 
     // The match chain. First hit wins, so order decides the result:
@@ -960,7 +974,7 @@ struct CppScanner {
             return true;
         }
         if (!inFuncBody && !prevPendingType.isEmpty()
-            && (m = rxCppNameArgs().match(line)).hasMatch()) {
+            && (m = rxCppNameArgs().match(codeLine)).hasMatch()) {
             out.offer(lineNo, "func", m.captured(1), line);   // old-style
             return true;
         }
@@ -980,7 +994,7 @@ struct CppScanner {
             out.offer(lineNo, "qt", m.captured(1), line);
             return false;
         }
-        if (!inFuncBody && rxCppTypeOnly().match(line).hasMatch())
+        if (!inFuncBody && rxCppTypeOnly().match(codeLine).hasMatch())
             pendingType = line;               // candidate return type for the next line
         return false;
     }
@@ -1354,14 +1368,15 @@ QJsonObject compute(const QString &absPath,
         return errObj("not_found",
             QStringLiteral("file_outline: \"%1\" does not exist").arg(absPath));
     }
+    // Not Text mode: it drops the `\r` of each `\r\n`, so total_bytes and the
+    // sizes would undercount a CRLF file. The read loop strips `\r` itself.
     const bool opened = containRoot.isEmpty()
-        ? f.open(QIODevice::ReadOnly | QIODevice::Text)
+        ? f.open(QIODevice::ReadOnly)
         : PathValidation::openInsideProject(f, containRoot, absPath);
     if (!opened) {
         return errObj("not_found",
             QStringLiteral("file_outline: cannot open \"%1\"").arg(absPath));
     }
-    f.setTextModeEnabled(true);
 
     // Resolve effective mode (auto → ext-based).
     Mode effective = (mode == Mode::Auto) ? pickModeByExt(absPath) : mode;
@@ -1425,7 +1440,11 @@ QJsonObject compute(const QString &absPath,
 
         // ANTS-1249-INV-8: skip regex scan on lines exceeding the
         // per-line byte cap (catastrophic-backtracking guard).
-        if (withoutEol.size() > kMaxLineBytes) continue;
+        if (withoutEol.size() > kMaxLineBytes) {
+            if (effective == Mode::Cpp || effective == Mode::Glsl)
+                cpp.scanBracesOnly(QString::fromUtf8(withoutEol), sink);
+            continue;
+        }
         if (isUnknown) continue;
 
         const QString line = QString::fromUtf8(withoutEol);

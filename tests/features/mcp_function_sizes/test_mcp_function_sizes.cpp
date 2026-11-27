@@ -257,6 +257,35 @@ TEST(FunctionSizes, Inv5TestsAndGeneratedLeftOut) {
         << "a file named in paths is measured whatever it is";
 }
 
+// ANTS-6628 — paths that overlap (`src` and `src/tests`) walk one file once,
+// so the skip counts are not inflated.
+TEST(FunctionSizes, Inv5OverlappingPathsCountEachFileOnce) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/a.cpp"), kCpp);
+    writeFile(dir.filePath("src/tests/t.cpp"), kCpp);
+    const QJsonObject r = call(dir, {{QStringLiteral("paths"),
+                                      QJsonArray{QStringLiteral("src"), QStringLiteral("src/tests")}}});
+    const QJsonObject scanned = r.value(QStringLiteral("scanned")).toObject();
+    EXPECT_EQ(scanned.value(QStringLiteral("files")).toInt(), 1) << QJsonDocument(r).toJson().constData();
+    EXPECT_EQ(scanned.value(QStringLiteral("skipped_tests")).toInt(), 1);
+}
+
+// ANTS-6628 — a declaration followed by a `//` comment is still a declaration:
+// not a row, and not counted as unmeasured.
+TEST(FunctionSizes, Inv2DeclarationWithTrailingCommentIsNotARow) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/a.cpp"),
+              "int declared(int x); // defined below\n"
+              "int defined(int x) {\n"
+              "    return x;\n"
+              "}\n");
+    const QJsonObject r = call(dir);
+    EXPECT_TRUE(rowFor(r, QStringLiteral("declared")).isEmpty()) << QJsonDocument(r).toJson().constData();
+    EXPECT_EQ(rowFor(r, QStringLiteral("defined")).value(QStringLiteral("body_end")).toInt(), 4);
+    EXPECT_EQ(r.value(QStringLiteral("scanned")).toObject()
+                  .value(QStringLiteral("unmeasured")).toInt(), 0);
+}
+
 TEST(FunctionSizes, Inv6EmptyAnswerSaysWhatItScanned) {
     QTemporaryDir dir;
     writeFile(dir.filePath("src/notes.cpp"), "// no functions here\n");

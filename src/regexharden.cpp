@@ -23,7 +23,9 @@ bool isCatastrophicRegex(const QString &pattern) {
 
 QString hardenUserRegex(const QString &pattern) {
     if (pattern.isEmpty()) return {};
-    if (pattern.startsWith(QStringLiteral("(*LIMIT_"))) return pattern;
+    // Always prefixed: PCRE2 uses the lower of two settings of one limit, so
+    // a caller's own (*LIMIT_MATCH=…) can only lower ours, and a
+    // (*LIMIT_HEAP=…) or (*LIMIT_DEPTH=…) prefix no longer skips it.
     return QStringLiteral("(*LIMIT_MATCH=100000)") + pattern;
 }
 

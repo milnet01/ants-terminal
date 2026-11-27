@@ -1330,3 +1330,39 @@ TEST(McpFileOutline, CppPatternsShareArgsAndKeywords) {
     EXPECT_TRUE(names.contains("split")) << names.join(", ").toStdString();
     EXPECT_FALSE(names.contains("foo")) << names.join(", ").toStdString();
 }
+
+// INV-16 (ANTS-6628) — a CRLF file's total_bytes is its size on disk.
+TEST(McpFileOutline, Ants6628CrlfByteCountIsExact) {
+    QTemporaryDir dir;
+    const QString path = QFileInfo(dir.path()).canonicalFilePath() + "/crlf.cpp";
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("int alpha() {\r\n    return 1;\r\n}\r\n");
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Cpp, /*includeDocComment=*/false, /*maxSymbols=*/100);
+    ASSERT_TRUE(out.value("ok").toBool());
+    EXPECT_EQ(qint64(out.value("total_bytes").toDouble()), QFileInfo(path).size());
+}
+
+// INV-17 (ANTS-6628) — the 2 KiB header_doc cap counts UTF-8 bytes and cuts
+// on a character boundary, for non-ASCII text too.
+TEST(McpFileOutline, Ants6628HeaderDocCapCountsUtf8Bytes) {
+    QTemporaryDir dir;
+    const QString path = QFileInfo(dir.path()).canonicalFilePath() + "/doc.cpp";
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        const QString line = QStringLiteral("// ") + QString(40, QChar(0x00E9)) + QLatin1Char('\n');
+        for (int i = 0; i < 30; ++i) f.write(line.toUtf8());   // ~2.5 KB, ~1.3 K UTF-16 units
+        f.write("int alpha() { return 1; }\n");
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Cpp, /*includeDocComment=*/true, /*maxSymbols=*/100);
+    ASSERT_TRUE(out.value("ok").toBool());
+    const QString doc = out.value("header_doc").toString();
+    EXPECT_TRUE(doc.endsWith(QChar(0x2026))) << "the cap fired";
+    EXPECT_LE(doc.chopped(1).toUtf8().size(), 2048);
+    EXPECT_FALSE(doc.contains(QChar(0xFFFD))) << "no character cut in half";
+}

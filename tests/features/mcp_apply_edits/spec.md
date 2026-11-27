@@ -12,7 +12,7 @@ contract: [`docs/specs/ANTS-2022-apply-edits-mcp-tool-n.md`](../../../docs/specs
 | B3 | `TrailingNewline` (INV-8) | a file ending in `\n` keeps exactly one; a file without one keeps none. |
 | R1 | `Ants3711RangeReplacesAndKeepsTrailingNewline` (INV-12) | a guarded `start_line`/`end_line` range replaces exactly those lines and preserves the trailing newline. |
 | R2 | `Ants3711EmptyNewDeletesTheRange` (INV-13) | an empty `new` removes the lines outright — no blank line left behind, since "delete these 76 lines" is the motivating case. |
-| R3 | `Ants3711StaleRangeRefusesAndLeavesFileIntact` (INV-14) | drifted coordinates → `range_mismatch` skip, file byte-identical; past EOF → `range_out_of_bounds`. |
+| R3 | `Ants3711StaleRangeRefusesAndLeavesFileIntact` (INV-14) | drifted coordinates → `range_mismatch` skip, file byte-identical; past EOF → `range_out_of_bounds`, including the empty text after a final `\n` (ANTS-6628). |
 | R4 | `Ants3711SelectorArgumentRules` (INV-15) | `old` + a range → `bad_args`; neither → `bad_args`; a range without `expect_first_line`/`expect_last_line` → `bad_args`; half a range → `bad_args`. Whole-call refusals, not per-edit skips: the request is malformed, not the file surprising. |
 | R5 | `Ants3711EarlierEditShiftsLaterRangeAndTheGuardCatchesIt` (INV-16) | edits compose against one working content, so an earlier line-count change shifts a later range — and the guard turns that into a skip rather than a write to the wrong lines. |
 | R6 | `Ants4427RangeMismatchNamesTheEarlierEditThatShiftedIt` | that skip names its cause: `shifted_by`, `shifted_by_edits`, `current_start_line`/`current_end_line` and a `hint`, only when the expected lines sit at the shifted place. Nothing more is written. |

@@ -55,13 +55,13 @@ struct FileRows {
     QVector<ByteRange> comments;
     QVector<ByteRange> strings;
     bool hasErrors = false;
-    bool timedOut = false;     // the parse was abandoned; nothing else is set
+    bool timedOut = false;     // the parse or the query ran out of time; nothing else is set
     qint64 bytes() const;      // the cache's size estimate
 };
 
 // Parses `text` as `langId` with `query` (compiled for that language) and
-// extracts its rows. `timeoutMs` bounds the parse; rowsFor() passes
-// kParseTimeoutMs.
+// extracts its rows. `timeoutMs` bounds the parse and the query together;
+// rowsFor() passes kParseTimeoutMs.
 std::shared_ptr<const FileRows> extractRows(const QString &langId,
                                             const TSQuery *query,
                                             const QByteArray &text, int timeoutMs);

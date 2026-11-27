@@ -460,7 +460,7 @@ struct ScanState {
     // `bySymbol` keys on views into the caller's stable needle list.
     QVector<ScanState> *batch = nullptr;
     const QHash<QStringView, int> *bySymbol = nullptr;
-    const QHash<QString, int> *byStem = nullptr;   // lowercased needle -> slot
+    const QMultiHash<QString, int> *byStem = nullptr;   // lowercased needle -> slots
 };
 
 // ANTS-3680 — the batch gate. Every anchor bounds the symbol on both sides
@@ -994,10 +994,11 @@ void walk(ScanState &st, const QString &dirPath) {  // NOLINT(misc-no-recursion)
             st.fileStemHit = fi.absoluteFilePath().mid(st.rootPrefixLen);
         // ANTS-3680 — the same hint per needle, keyed on the lowercased stem
         // so the batch pays one hash lookup per file rather than one compare
-        // per needle per file.
+        // per needle per file. Needles differing only in case share a stem,
+        // so each of them gets the hint (ANTS-6628).
         if (st.byStem) {
-            const auto it = st.byStem->constFind(fi.completeBaseName().toLower());
-            if (it != st.byStem->constEnd()) {
+            const auto [from, to] = st.byStem->equal_range(fi.completeBaseName().toLower());
+            for (auto it = from; it != to; ++it) {
                 ScanState &sl = (*st.batch)[*it];
                 if (sl.fileStemHit.isEmpty())
                     sl.fileStemHit = fi.absoluteFilePath().mid(st.rootPrefixLen);
@@ -1208,7 +1209,7 @@ QHash<QString, DefResult> findDefinitions(const QString &rootCanonical,
 
     QVector<ScanState> batchSlots(needles.size());
     QHash<QStringView, int> bySymbol;
-    QHash<QString, int> byStem;
+    QMultiHash<QString, int> byStem;
     for (int i = 0; i < needles.size(); ++i) {
         prepare(batchSlots[i], rootCanonical, needles.at(i), opts);
         batchSlots[i].collectDefs = true;

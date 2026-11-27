@@ -300,7 +300,8 @@ call made before dispatching verbs in parallel.
 - **`comment_claims` reports a finding only where a lookup decides it**
   (ANTS-5786). A `see` naming a bare file name, a Qt or `std::` name, or an
   all-caps name is not looked up, and a symbol the capped walk never reached
-  is counted in `scanned.symbols_unchecked`. Ticket ids are checked only for
+  is counted in `scanned.symbols_unchecked`; a path the capped path index
+  could not find, in `scanned.paths_unchecked`. Ticket ids are checked only for
   prefixes the roadmap's own items use. Contract:
   [`tests/features/mcp_comment_claims/spec.md`](../../tests/features/mcp_comment_claims/spec.md).
 

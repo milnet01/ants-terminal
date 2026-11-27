@@ -30,4 +30,9 @@ QList<Block> harvest(const QString &fileName, const QString &text);
 // refusal {ok:false, code, error}.
 QJsonObject run(const QString &rootCanonical, const QJsonObject &args);
 
+// Test seam (ANTS-6628): the cap on the path index a "see dir/file" reference
+// is looked up in, so a test can reach it without 200,000 files. Returns the
+// previous cap.
+int setMaxPathsForTest(int n);
+
 } // namespace CommentClaims

@@ -10,6 +10,9 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "regexharden.h"
+
+#include <QString>
 
 #ifndef ANTS_AUDITDIALOG_SOURCES
 #  error "ANTS_AUDITDIALOG_SOURCES compile definition required"
@@ -230,4 +233,14 @@ TEST(AuditRegexDosWatchdog, Main) {
             failures);
         FAIL();
     }
+}
+
+// INV-5 (ANTS-6628) — a pattern's own (*LIMIT_…) prefix keeps the backstop.
+TEST(AuditRegexDosWatchdog, Ants6628OwnLimitCannotLiftTheBackstop) {
+    using ants::regex::hardenUserRegex;
+    const QString cap = QStringLiteral("(*LIMIT_MATCH=100000)");
+    for (const char *p : {"a+b", "(*LIMIT_HEAP=100)a+b", "(*LIMIT_DEPTH=100)a+b",
+                          "(*LIMIT_MATCH=10000000)a+b"})
+        EXPECT_EQ(hardenUserRegex(QString::fromLatin1(p)), cap + QString::fromLatin1(p)) << p;
+    EXPECT_TRUE(hardenUserRegex(QString()).isEmpty());
 }

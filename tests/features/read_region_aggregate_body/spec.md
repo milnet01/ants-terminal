@@ -36,6 +36,13 @@ had to fall back to line mode and hand-compute the range (DOOM_Ants feedback S4)
   parentheses after anything else, such as a callback's `=> {`, still opens
   the body. Tests: `ParameterBracesAreNotTheBody`,
   `BraceScanSkipsParameterBraces`.
+- **INV-6 a `'` opens a character literal only where one can start
+  (ANTS-6628)** — not inside a number token (`1'000`), and not before a name
+  that does not close straight after it (a Rust lifetime, `&'a str`). Test:
+  `BraceScanReadsDigitSeparatorsAndLifetimes`.
+- **INV-7 the outline end is the next symbol by line (ANTS-6628)** — not the
+  next in the outline's list, which lists a typedef-struct at its close.
+  Test: `OutlineEndIsTheNextSymbolByLine`.
 
 ## Out of scope
 

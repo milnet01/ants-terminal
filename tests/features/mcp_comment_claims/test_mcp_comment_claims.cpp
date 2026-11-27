@@ -142,6 +142,29 @@ TEST(CommentClaims, Inv3ShorterPathIsNotDead) {
         << q.join(QStringLiteral(" | ")).toStdString();
 }
 
+// ANTS-6628 — when the path index is capped, a reference it cannot find is
+// counted in scanned.paths_unchecked, never reported dead.
+TEST(CommentClaims, Inv3bCappedPathIndexCountsUnchecked) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    writeFile(dir.filePath("db/one.cpp"), "");
+    writeFile(dir.filePath("db/two.cpp"), "");
+    writeFile(dir.filePath("src/a.cpp"), "// see db/missing.cpp\n");
+    const QJsonObject full = call(dir);
+    EXPECT_EQ(quotes(rows(full, "findings", QStringLiteral("dead_reference"))),
+              QStringList{QStringLiteral("see db/missing.cpp")});
+    EXPECT_EQ(full.value(QStringLiteral("scanned")).toObject()
+                  .value(QStringLiteral("paths_unchecked")).toInt(), 0);
+
+    const int was = CommentClaims::setMaxPathsForTest(1);
+    const QJsonObject capped = call(dir);
+    CommentClaims::setMaxPathsForTest(was);
+    EXPECT_TRUE(rows(capped, "findings", QStringLiteral("dead_reference")).isEmpty())
+        << QJsonDocument(capped).toJson().constData();
+    EXPECT_EQ(capped.value(QStringLiteral("scanned")).toObject()
+                  .value(QStringLiteral("paths_unchecked")).toInt(), 1);
+}
+
 TEST(CommentClaims, Inv4UnknownTicket) {
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const QStringList t = quotes(rows(call(*dir), "findings", QStringLiteral("unknown_ticket")));

@@ -107,3 +107,13 @@ and opens a body as a gtest block does, so its locals are not outlined. A
 `SECTION("name")` inside such a body is outlined as kind `section`, named by
 its quoted name. *Test:*
 `FileOutlineCppScanner.Ants5349Catch2BlocksAndSectionsOutlined`.
+
+## ANTS-6628 — long lines and old-style definitions with comments
+
+A line over the 1 KiB regex cap is not matched, but its braces still count,
+so a `}` on it closes the body it ends and the functions after it are
+outlined. *Test:* `FileOutlineCppScanner.Ants6628LongLineStillClosesItsBraces`.
+
+INV-3 holds with a trailing `//` comment on the return-type line or on the
+name line. *Test:*
+`FileOutlineCppScanner.Ants6628OldStyleDefinitionWithTrailingComments`.

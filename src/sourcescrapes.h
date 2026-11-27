@@ -46,6 +46,7 @@ struct FileResult {
     QList<Anchor> anchors;
     QList<Read> reads;
     QList<QSet<QString>> unresolved;   // the paths of each anchor that is a variable
+    bool cutShort = false;   // ANTS-6628 — an unclosed raw string ended the read early
 };
 
 // Functions in `text` whose return reads a path, added to `r->helpers`. Run

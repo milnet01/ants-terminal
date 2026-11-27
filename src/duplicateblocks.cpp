@@ -155,6 +155,12 @@ public:
                 seeds[key].append({f, p});
             }
         }
+        // Which seeds the loop below extends, for extend()'s first-seed test.
+        m_extended.clear();
+        for (const File &f : m_files) m_extended.append(QList<bool>(f.ids.size(), false));
+        for (auto it = seeds.cbegin(); it != seeds.cend(); ++it)
+            if (it.value().size() >= 2 && it.value().size() <= kMaxBucket)
+                for (const QPair<int, int> &at : it.value()) m_extended[at.first][at.second] = true;
         QList<Match> out;
         for (auto it = seeds.cbegin(); it != seeds.cend(); ++it) {
             const QList<QPair<int, int>> &b = it.value();
@@ -179,7 +185,12 @@ private:
         int pa = a.second, pb = b.second;
         if (fa == fb && pa > pb) std::swap(pa, pb);
         if (fa == fb && pb - pa < k) return false;
-        if (pa > 0 && pb > 0 && id(fa, pa - 1) == id(fb, pb - 1)) return false;
+        // Not the match's first seed when an earlier seed of the same run is
+        // one run() extends: that seed's match covers this one. A run whose
+        // earlier seeds are all skipped (a repeated line, a crowded bucket)
+        // starts here instead.
+        for (int j = 1; pa - j >= 0 && pb - j >= 0 && id(fa, pa - j) == id(fb, pb - j); ++j)
+            if (m_extended.at(fa).at(pa - j)) return false;
         // In one file the first copy must end before the second begins.
         const int limitA = fa == fb ? pb : size(fa);
         int ea = pa, eb = pb, matched = 0;
@@ -235,6 +246,7 @@ private:
     }
 
     const QList<File> &m_files;
+    QList<QList<bool>> m_extended;   // per file, per seed position
     int m_minLines;
     double m_similarity;
     bool m_names;

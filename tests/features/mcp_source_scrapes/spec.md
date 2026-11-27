@@ -51,6 +51,7 @@ agreed with claude-config (CFG-0830, 2026-10-19). The seam is
 | 14 | A Python walk's root may be `Path(module.__file__)` for an imported module, may climb with `.parent`, may name a sub-directory in its pattern, and may be a `for` name over a module-level tuple or list of roots. A root it cannot place, such as `tmp_path`, reads nothing. | `SourceScrapes.Ants6343WalksThroughModuleRootsAndTuples` |
 | 15 | In a Python test, a name assigned from a read (`.read_text()`, `.read_bytes()`, `.read()`, `getsource`) holds that file's text until its test or function ends; `b = a` copies it. `"x" in S`, `"x" not in S` and `S.count/find/rfind/index/rindex("x")` are `literal` anchors, and `re.search/match/fullmatch/findall/finditer(r"x", S)` is a `regex` anchor, where S is such a name or a read written on the same line. In a shell test, a quoted `grep` pattern on a line reading a file is an anchor of that file: `literal` under `-F`, `regex` otherwise. A pattern holding `$` reads nothing. | `SourceScrapes.Inv15PythonAndShellAnchors` |
 | 16 | `skip_walks: true` leaves out the reader rows of a `glob`, `rglob` or `os.walk` listing, which pins no text. A non-boolean `skip_walks` refuses `bad_args`. | `SourceScrapes.Inv16SkipWalksDropsListingReaders` |
+| 17 | (ANTS-6628) `scanned.listings_capped` counts the `glob`, `rglob` or `os.walk` listings cut at 2,000 files, and `scanned.files_cut_short` the C++ test files read only up to a raw string that never closes. | `SourceScrapes.Inv17CutListingsAndFilesAreCounted` |
 
 ## Not covered
 

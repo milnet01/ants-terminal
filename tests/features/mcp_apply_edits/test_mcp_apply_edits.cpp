@@ -416,6 +416,16 @@ TEST(McpApplyEdits, Ants3711StaleRangeRefusesAndLeavesFileIntact) {
                   .value("reason").toString(),
               QStringLiteral("range_out_of_bounds"));
     EXPECT_EQ(slurp(p), before);
+
+    // ANTS-6628 — the empty text after the final '\n' is not a line 6: a
+    // range naming it is out of bounds, and the file keeps its newline.
+    const QJsonObject phantom = runEdit(
+        dir.path(), rangeEdit(6, 6, QString(), QString(), QString()));
+    ASSERT_EQ(phantom.value("skipped").toArray().size(), 1);
+    EXPECT_EQ(phantom.value("skipped").toArray().at(0).toObject()
+                  .value("reason").toString(),
+              QStringLiteral("range_out_of_bounds"));
+    EXPECT_EQ(slurp(p), before);
 }
 
 // INV-12 — the selectors are mutually exclusive, and a range without its

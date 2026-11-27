@@ -93,6 +93,12 @@ accept any `qWarning(... %s ...)` near the rejection code, paired
 with the helper-invocation site (search window ±300 chars of the
 helper call).
 
+**INV-5 — a pattern's own limit cannot lift the step limit (ANTS-6628).**
+`hardenUserRegex` prefixes every non-empty pattern, including one that
+starts with `(*LIMIT_HEAP=…)`, `(*LIMIT_DEPTH=…)` or `(*LIMIT_MATCH=…)`.
+PCRE2 uses the lower of two settings of one limit, so a caller can lower
+the budget but not raise it. Test: `AuditRegexDosWatchdog.Ants6628OwnLimitCannotLiftTheBackstop`.
+
 ## Scope
 
 ### In scope

@@ -615,6 +615,23 @@ TEST(McpSymbolQuery, Ants5544CmakeFamily) {
                     .definitions.isEmpty());
 }
 
+// ANTS-6628 — two batch needles that differ only in case each get the file
+// stem hint, as each would alone.
+TEST(McpSymbolQuery, Ants6628CaseVariantNeedlesEachGetTheStemHint) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("src/stemprobe.cpp"), QStringLiteral("int unrelated() { return 0; }\n"));
+    const QStringList needles = {QStringLiteral("StemProbe"), QStringLiteral("stemprobe")};
+    const auto res = SymbolQuery::findDefinitions(root, needles, SymbolQuery::Options{});
+    for (const QString &n : needles) {
+        EXPECT_EQ(res.value(n).fileStemHint, QStringLiteral("src/stemprobe.cpp")) << qPrintable(n);
+        EXPECT_EQ(res.value(n).fileStemHint,
+                  SymbolQuery::findDefinition(root, n, SymbolQuery::Options{}).fileStemHint)
+            << qPrintable(n);
+    }
+}
+
 // ANTS-5670 — spec 3b: Rust items whose definition carries no fn/struct
 // keyword. `const NAME: T` and `static [mut] NAME: T` (the `:` type is
 // mandatory in Rust), and a visibility with a path, `pub(crate) fn`.

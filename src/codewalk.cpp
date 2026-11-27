@@ -20,8 +20,9 @@ namespace {
 
 // Every indexable file under `dir`, as root-relative paths, pruning noise
 // directories by name. Stops once `out` holds kMaxFiles + 1 entries, so the
-// caller can tell a full walk from a cut one.
-void walk(const QDir &root, const QString &dir, QStringList &out) {  // NOLINT(misc-no-recursion): directory depth; symlinks are not followed
+// caller can tell a full walk from a cut one. A file already in `seen` is
+// not added again, so overlapping `paths` (`src`, `src/x`) count it once.
+void walk(const QDir &root, const QString &dir, QStringList &out, QSet<QString> &seen) {  // NOLINT(misc-no-recursion): directory depth; symlinks are not followed
     const QFileInfoList entries = QDir(dir).entryInfoList(
         QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks,
         QDir::Name);
@@ -31,9 +32,13 @@ void walk(const QDir &root, const QString &dir, QStringList &out) {  // NOLINT(m
             if (fi.fileName().startsWith(QLatin1Char('.'))
                 || ProjectSettings::isNoiseDir(fi.fileName()))
                 continue;
-            walk(root, fi.absoluteFilePath(), out);
+            walk(root, fi.absoluteFilePath(), out, seen);
         } else if (CodebaseIndex::isIndexableFile(fi)) {
-            out.append(root.relativeFilePath(fi.absoluteFilePath()));
+            const QString rel = root.relativeFilePath(fi.absoluteFilePath());
+            if (!seen.contains(rel)) {
+                seen.insert(rel);
+                out.append(rel);
+            }
         }
     }
 }
@@ -118,6 +123,7 @@ Result collect(const QString &rootCanonical, const QJsonArray &paths,
 
     QStringList named;   // files asked for by name: kept as asked
     QStringList walked;  // files found under a directory: filtered below
+    QSet<QString> seenWalked;
     for (const QString &raw : requested) {
         const PathValidation::Check check =
             PathValidation::validatePath(raw, rootCanonical, verb, QStringLiteral("paths"));
@@ -135,7 +141,7 @@ Result collect(const QString &rootCanonical, const QJsonArray &paths,
         if (fi.isFile())
             named.append(root.relativeFilePath(fi.canonicalFilePath()));
         else
-            walk(root, fi.canonicalFilePath(), walked);
+            walk(root, fi.canonicalFilePath(), walked, seenWalked);
     }
 
     // A walk that stopped at kMaxFiles + 1 left files unseen. The cap below

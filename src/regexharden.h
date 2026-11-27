@@ -23,9 +23,10 @@ namespace ants::regex {
 bool isCatastrophicRegex(const QString &pattern);
 
 // Prefix a user-supplied pattern with PCRE2's inline `(*LIMIT_MATCH=100000)` so
-// a slow match aborts in milliseconds instead of hanging. Empty in → empty out;
-// patterns already starting with `(*LIMIT_` pass through unchanged so an author
-// can specify their own budget.
+// a slow match aborts in milliseconds instead of hanging. Empty in → empty out.
+// Every other pattern is prefixed, its own `(*LIMIT_…)` items included: PCRE2
+// keeps the lower of two match limits, so an author can lower the budget but
+// not raise it (ANTS-6628).
 QString hardenUserRegex(const QString &pattern);
 
 }  // namespace ants::regex

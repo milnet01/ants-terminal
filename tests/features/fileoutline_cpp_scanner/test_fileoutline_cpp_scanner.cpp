@@ -593,3 +593,40 @@ TEST(FileOutlineCppScanner, Ants5349Catch2BlocksAndSectionsOutlined) {
                                      QStringLiteral("say \\\"hi\\\"")}));
     EXPECT_EQ(sectionLines, (QList<int>{3, 6}));
 }
+
+// ANTS-6628 — a line over the 1 KiB regex cap still counts its braces, so a
+// `}` on it closes the body it ends and later functions stay visible.
+TEST(FileOutlineCppScanner, Ants6628LongLineStillClosesItsBraces) {
+    QTemporaryDir dir;
+    const QString longLine =
+        QStringLiteral("        ") + QString(1100, QLatin1Char('7')) + QStringLiteral(" };\n");
+    const QString path = writeCpp(dir, QStringLiteral(
+        "void first() {\n"
+        "    static const int table[] = {\n") + longLine + QStringLiteral(
+        "}\n"
+        "void second() {\n"
+        "}\n"));
+    const QStringList fns = funcNames(path);
+    EXPECT_TRUE(fns.contains(QStringLiteral("first")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("second"))) << fns.join(", ").toStdString();
+}
+
+// ANTS-6628 — the old-style pair (return type on the line above the name)
+// matches with a trailing comment on either line, as ANTS-3738's anchors do.
+TEST(FileOutlineCppScanner, Ants6628OldStyleDefinitionWithTrailingComments) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "static int // the count\n"
+        "CountThings(int a)\n"
+        "{\n"
+        "    return a;\n"
+        "}\n"
+        "static int\n"
+        "OtherThing(int a) // note\n"
+        "{\n"
+        "    return a;\n"
+        "}\n"));
+    const QStringList fns = funcNames(path);
+    EXPECT_TRUE(fns.contains(QStringLiteral("CountThings"))) << fns.join(", ").toStdString();
+    EXPECT_TRUE(fns.contains(QStringLiteral("OtherThing"))) << fns.join(", ").toStdString();
+}

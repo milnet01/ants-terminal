@@ -230,13 +230,21 @@ EditOutcome applyToContent(const QString &contents, const QString &oldStr,
     return r;
 }
 
+namespace {
+// The text's line count. A final '\n' ends the last line; the empty element
+// split() returns after it is not a line a range can name.
+int lineCount(const QString &contents, const QStringList &lines) {
+    return int(lines.size()) - (contents.endsWith(QLatin1Char('\n')) ? 1 : 0);
+}
+}  // namespace
+
 EditOutcome applyRangeToContent(const QString &contents, int startLine,
                                 int endLine, const QString &expectFirst,
                                 const QString &expectLast,
                                 const QString &newStr) {
     EditOutcome r;
     QStringList lines = contents.split(QLatin1Char('\n'));
-    if (startLine < 1 || endLine < startLine || endLine > lines.size()) {
+    if (startLine < 1 || endLine < startLine || endLine > lineCount(contents, lines)) {
         r.skipReason = QStringLiteral("range_out_of_bounds");
         return r;
     }
@@ -268,7 +276,7 @@ EditOutcome applyRangeToContent(const QString &contents, int startLine,
 bool rangeMatchesAt(const QString &contents, int startLine, int endLine,
                     const QString &expectFirst, const QString &expectLast) {
     const QStringList lines = contents.split(QLatin1Char('\n'));
-    if (startLine < 1 || endLine < startLine || endLine > lines.size())
+    if (startLine < 1 || endLine < startLine || endLine > lineCount(contents, lines))
         return false;
     return lines.at(startLine - 1) == expectFirst
         && lines.at(endLine - 1) == expectLast;

@@ -397,7 +397,9 @@ std::optional<QJsonObject> parseRequest(const QJsonObject &args, const QString &
     if (args.contains(QStringLiteral("depth"))) {
         const QJsonValue d = args.value(QStringLiteral("depth"));
         const double dv = d.toDouble(-1);
-        if (!d.isDouble() || dv != int(dv) || dv < 1 || dv > 3)
+        // The range test comes first: casting an out-of-range double to int
+        // is undefined.
+        if (!d.isDouble() || dv < 1 || dv > 3 || dv != int(dv))
             return refuse("bad_args", QStringLiteral("\"depth\" must be 1, 2 or 3"));
         if (dv > 1)
             return refuse("bad_args", QStringLiteral("\"depth\" above 1 arrives with ship 2"));

@@ -118,6 +118,20 @@ TEST(DuplicateBlocks, Inv1ExactCopiesFormAGroup) {
     EXPECT_EQ(site.value(QStringLiteral("end")).toInt(), 10);
 }
 
+// ANTS-6628 — copies that open with three identical lines: the seed made of
+// those lines is skipped, so the match starts at the next seed rather than
+// never being reported.
+TEST(DuplicateBlocks, Inv1CopiesAfterARepeatedLineFormAGroup) {
+    const QByteArray body = QByteArray("x();\nx();\nx();\n") + kBlock;
+    std::unique_ptr<QTemporaryDir> dir(dirWith({{"src/a.cpp", wrap("a", body)},
+                                                {"src/b.cpp", wrap("b", body)}}));
+    const QJsonObject r = call(*dir);
+    ASSERT_EQ(groups(r).size(), 1) << QJsonDocument(r).toJson().constData();
+    const QJsonObject g = groups(r).first().toObject();
+    EXPECT_EQ(g.value(QStringLiteral("copies")).toInt(), 2);
+    EXPECT_GE(g.value(QStringLiteral("lines")).toInt(), 6);
+}
+
 TEST(DuplicateBlocks, Inv2DivergedCopiesStayOneGroup) {
     std::unique_ptr<QTemporaryDir> dir(dirWith({{"src/a.cpp", wrap("a", kBlock)},
                                                 {"src/d.cpp", wrap("d", kDrifted)}}));

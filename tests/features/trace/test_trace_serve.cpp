@@ -617,6 +617,19 @@ TEST_F(TraceServe, Inv18ShipOneRefusesDepthAndCallees) {
     }
 }
 
+// ANTS-6628 — a `depth` far outside int's range is refused before any cast
+// (casting it is undefined behaviour, which UBSan reports).
+TEST_F(TraceServe, DepthOutOfIntRangeRefusesBadArgs) {
+    for (const double depth : {1e20, -1e20}) {
+        SCOPED_TRACE(depth);
+        const QJsonObject r = call({{QStringLiteral("symbol"), QStringLiteral("callee")},
+                                    {QStringLiteral("depth"), depth}});
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args")) << dump(r);
+        EXPECT_TRUE(r.value(QStringLiteral("error")).toString().contains(QStringLiteral("1, 2 or 3")))
+            << dump(r);
+    }
+}
+
 // § 2.3, ship 3's first batch — each new grammar yields shipThreeProbe's
 // definition in its own file, and each language with calls yields a caller
 // row there. A name in a CSS string is a string_or_config reference.
