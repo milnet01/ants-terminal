@@ -244,6 +244,44 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+// ANTS-6948 — the bounded markdown walk doc_integrity and doc_citations share:
+// every .md under `dirAbs`, as absolute paths in walk order. Each caller passes
+// its own caps. Sets *truncated (never clears it) when a cap stops the walk.
+//
+// ANTS-5098 / ANTS-5623 — no name filter: with "*.md" the iterator stepped
+// through every other entry unseen, so nothing bounded the walk. Every entry
+// visited, file or directory, counts against `maxEntries`.
+//
+// Dot-directories are left out by the FILTER: omitting QDir::Hidden stops the
+// iterator descending into .git, .venv, .ants and the rest. Adding QDir::Hidden
+// would re-open that recursion; the ANTS-4728 test holds it shut.
+//
+// ANTS-6449 — a symlinked doc is kept only if it lands inside the root.
+static QStringList boundedMdWalk(const QString &rootCanonical,
+                                 const QString &dirAbs, int maxEntries,
+                                 int maxDocs, bool *truncated) {
+    QStringList out;
+    QDirIterator it(dirAbs, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories);
+    int visited = 0;
+    while (it.hasNext()) {
+        if (visited >= maxEntries || out.size() >= maxDocs) {
+            if (truncated) *truncated = true;
+            break;
+        }
+        const QString path = it.next();
+        ++visited;
+        if (!it.fileInfo().isFile() ||
+            !path.endsWith(QLatin1String(".md"), Qt::CaseInsensitive))
+            continue;
+        if (it.fileInfo().isSymLink() &&
+            !PathValidation::isInsideProject(rootCanonical, path))
+            continue;
+        out << path;
+    }
+    return out;
+}
+
 // ANTS-3601 — pure: a validated `rawPath` → sorted project-relative doc set.
 QStringList RemoteControl::docIntegrityEnumerate(const QString &rootCanonical,
                                                  const QString &rawPath,
@@ -254,28 +292,9 @@ QStringList RemoteControl::docIntegrityEnumerate(const QString &rootCanonical,
     const QDir rootDir(rootCanonical);
     const auto collectMd = [&](const QString &dirAbs) {
         QStringList out;
-        // ANTS-5623 — no name filter: with "*.md" the iterator stepped through
-        // every other entry unseen, so nothing bounded the walk. Every entry
-        // counts against `maxEntries`, as in docCitationsMdScan (ANTS-5098).
-        QDirIterator it(dirAbs, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
-                        QDirIterator::Subdirectories);
-        int visited = 0;
-        while (it.hasNext()) {
-            if (visited >= maxEntries || out.size() >= kDocWalkMaxDocs) {
-                if (truncated) *truncated = true;
-                break;
-            }
-            const QString path = it.next();
-            ++visited;
-            if (!it.fileInfo().isFile() ||
-                !path.endsWith(QLatin1String(".md"), Qt::CaseInsensitive))
-                continue;
-            // ANTS-6449 — a symlinked doc is read only if it lands in the root.
-            if (it.fileInfo().isSymLink() &&
-                !PathValidation::isInsideProject(rootCanonical, path))
-                continue;
+        for (const QString &path : boundedMdWalk(rootCanonical, dirAbs, maxEntries,
+                                                 kDocWalkMaxDocs, truncated))
             out << rootDir.relativeFilePath(path);
-        }
         out.sort();
         return out;
     };
@@ -1684,15 +1703,8 @@ QJsonObject RemoteControl::docCitationsValidate(const QString &rootCanonical,
 // ANTS-4728 — see the declaration for why this is a static rather than inline
 // in the handler. Bounded because doc_citations is a READ verb: markdown only,
 // and a file cap that is a backstop rather than a budget — markdown files are
-// few even in large trees.
-//
-// Dot-directories are excluded by the FILTER, not by a check of our own:
-// omitting QDir::Hidden stops QDirIterator descending into .git, .venv, .ants
-// and the rest, which is where the recursion would otherwise spend its time.
-// An explicit dot-segment guard was written here first and measured dead — the
-// iterator never yields such a path for it to reject. It is stated rather than
-// re-added because adding QDir::Hidden later would silently re-open the
-// recursion; the ANTS-4728 test is what holds that shut.
+// few even in large trees. The walk is boundedMdWalk's, shared with
+// doc_integrity (ANTS-6948); dot-directories and symlinks are handled there.
 int RemoteControl::docCitationsMdScan(const QString &rootCanonical,
                                       QHash<QString, QStringList> *index,
                                       int maxEntries, bool *truncated) {
@@ -1700,30 +1712,13 @@ int RemoteControl::docCitationsMdScan(const QString &rootCanonical,
     if (!index) return 0;
     constexpr int kMdScanCap = 5000;
     const QDir rootDir(rootCanonical);
-    // ANTS-5098 — no name filter: with "*.md" the iterator stepped through
-    // every other entry unseen, so the cap below bounded what was KEPT and
-    // nothing bounded the walk. Every entry is counted against `maxEntries`.
-    QDirIterator it(rootCanonical,
-                    QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot |
-                        QDir::NoSymLinks,
-                    QDirIterator::Subdirectories);
-    int seen = 0;
-    int visited = 0;
-    while (it.hasNext()) {
-        if (visited >= maxEntries || seen >= kMdScanCap) {
-            if (truncated) *truncated = true;
-            break;
-        }
-        const QString path = it.next();
-        ++visited;
-        if (!it.fileInfo().isFile() ||
-            !path.endsWith(QLatin1String(".md"), Qt::CaseInsensitive))
-            continue;
+    const QStringList found =
+        boundedMdWalk(rootCanonical, rootCanonical, maxEntries, kMdScanCap, truncated);
+    for (const QString &path : found) {
         const QString rel = rootDir.relativeFilePath(path);
-        ++seen;
         (*index)[rel.section(QLatin1Char('/'), -1)].append(rel);
     }
-    return seen;
+    return found.size();
 }
 
 // ANTS-3636 — pure: request args → Options. Out-of-domain values coerce rather

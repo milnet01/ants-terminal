@@ -359,6 +359,36 @@ TEST(DocCitationsVerb, Ants5098MdScanCapsEntriesVisited) {
     EXPECT_TRUE(whole.contains(QStringLiteral("guide.md")));
 }
 
+// ANTS-6948 — the markdown scan and doc_integrity's walk see the same files:
+// a symlinked doc that lands inside the root is kept, one that leaves it is not
+// (ANTS-6449's rule). The scan used to drop every symlink.
+TEST(DocCitationsVerb, Ants6948MdScanKeepsInRootSymlinksLikeDocIntegrity) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid() && outside.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/docs/real.md"), "# H\n"));
+    ASSERT_TRUE(writeFile(outside.path() + QStringLiteral("/secret.md"), "# S\n"));
+    ASSERT_TRUE(QFile::link(outside.path() + QStringLiteral("/secret.md"),
+                            root + QStringLiteral("/docs/leak.md")));
+    ASSERT_TRUE(QFile::link(root + QStringLiteral("/docs/real.md"),
+                            root + QStringLiteral("/docs/alias.md")));
+
+    QHash<QString, QStringList> index;
+    const int seen = RemoteControl::docCitationsMdScan(root, &index);
+    EXPECT_EQ(seen, 2);
+    EXPECT_EQ(index.value(QStringLiteral("alias.md")),
+              QStringList{QStringLiteral("docs/alias.md")})
+        << "an in-root symlinked doc must be scanned";
+    EXPECT_FALSE(index.contains(QStringLiteral("leak.md")))
+        << "a symlink leaving the root must not be scanned";
+
+    QStringList scanned;
+    for (const QStringList &paths : std::as_const(index)) scanned << paths;
+    scanned.sort();
+    EXPECT_EQ(scanned, RemoteControl::docIntegrityEnumerate(root, QString(), QStringLiteral("docs")))
+        << "both walks must keep the same documents";
+}
+
 TEST(DocCitationsVerb, Inv48CallerCwdRequired) {
     expect_reset();
     const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
