@@ -78,7 +78,7 @@ inline const std::vector<Rule> &rules()
         // lets `.` cross newlines; the non-greedy `.*?` is anchored by
         // the END marker so we don't swallow neighbouring blocks.
         { QRegularExpression(
-              QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY-----.*?-----END [^\\-\\n]*PRIVATE KEY-----"),
+              QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY(?: BLOCK)?-----.*?-----END [^\\-\\n]*PRIVATE KEY(?: BLOCK)?-----"),
               QRegularExpression::DotMatchesEverythingOption),
           QStringLiteral("private_key"), 0 },
 
@@ -256,9 +256,9 @@ inline Result scrub(const QString &input)
 inline int scrubCutPemHead(QString &text)
 {
     static const QRegularExpression kEnd(
-        QStringLiteral("-----END [^\\-\\n]*PRIVATE KEY-----"));
+        QStringLiteral("-----END [^\\-\\n]*PRIVATE KEY(?: BLOCK)?-----"));
     static const QRegularExpression kBegin(
-        QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY-----"));
+        QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY(?: BLOCK)?-----"));
     const QRegularExpressionMatch end = kEnd.match(text);
     if (!end.hasMatch()) return 0;
     // A QString, not a QStringView: match(QStringView) is deprecated from Qt

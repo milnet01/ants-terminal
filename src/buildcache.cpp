@@ -33,6 +33,14 @@ const QRegularExpression &gccLineRe() {
     return re;
 }
 
+// Cut `m` to kMessageCharCap UTF-16 units, one fewer when the cut would
+// split a surrogate pair.
+void clipMessage(QString &m) {
+    if (m.size() <= kMessageCharCap) return;
+    m.truncate(kMessageCharCap);
+    if (m.back().isHighSurrogate()) m.chop(1);
+}
+
 void appendOrFoldError(QList<ParsedError> &errors,
                        int &errorsCount,
                        int &warningsCount,
@@ -47,9 +55,7 @@ void appendOrFoldError(QList<ParsedError> &errors,
         QString &m = errors.back().message;
         const QString suffix = QStringLiteral(" / ") + candidate.message;
         m.append(suffix);
-        if (m.size() > kMessageCharCap) {
-            m.truncate(kMessageCharCap);
-        }
+        clipMessage(m);
         // lastSeverity remains "error" so a subsequent note also folds
         return;
     }
@@ -64,9 +70,7 @@ void appendOrFoldError(QList<ParsedError> &errors,
         ++errorsCount;
         if (errors.size() < kMaxErrors) {
             ParsedError clipped = candidate;
-            if (clipped.message.size() > kMessageCharCap) {
-                clipped.message.truncate(kMessageCharCap);
-            }
+            clipMessage(clipped.message);
             errors.append(clipped);
             lastSeverity = QStringLiteral("error");
         } else {
@@ -149,21 +153,22 @@ std::optional<ParsedBuild> loadBuild(const QString &canonProject) {
     return b;
 }
 
-StaleCheck checkStale(const QString &canonProject, qint64 recordedAtMs) {
+qint64 staleSinceMs(const ParsedBuild &build) {
+    return build.startedAtMs > 0 ? build.startedAtMs : build.recordedAtMs;
+}
+
+StaleCheck checkStale(const QString &canonProject, qint64 sinceMs) {
     StaleCheck out;
-    // Nothing to compare against, so the reply adds neither stale nor
-    // stale_walk_capped. The one caller passes a loaded build's time,
-    // which recordBuild always sets.
-    if (canonProject.isEmpty() || recordedAtMs <= 0) {
-        out.staleKnown = true;
-        out.stale      = false;
+    // No time to compare against: whether the build is stale is unknown.
+    if (canonProject.isEmpty() || sinceMs <= 0) {
+        out.staleKnown = false;
         return out;
     }
     int probed = 0;
 
     const QFileInfo cmakeLists(canonProject + QStringLiteral("/CMakeLists.txt"));
     if (cmakeLists.exists() &&
-        cmakeLists.lastModified().toMSecsSinceEpoch() > recordedAtMs) {
+        cmakeLists.lastModified().toMSecsSinceEpoch() > sinceMs) {
         out.stale = true;
         return out;
     }
@@ -190,7 +195,7 @@ StaleCheck checkStale(const QString &canonProject, qint64 recordedAtMs) {
             }
             // The iterator's own entry: a fresh QFileInfo(path) stats again.
             const QFileInfo fi = it.fileInfo();
-            if (fi.lastModified().toMSecsSinceEpoch() > recordedAtMs) {
+            if (fi.lastModified().toMSecsSinceEpoch() > sinceMs) {
                 out.stale = true;
                 return out;
             }
@@ -255,7 +260,8 @@ ParsedBuild fromJson(const QJsonObject &obj, bool *okOut) {
         e.file     = eo.value(QStringLiteral("file")).toString();
         e.line     = eo.value(QStringLiteral("line")).toInt(0);
         e.severity = eo.value(QStringLiteral("severity")).toString();
-        e.message  = eo.value(QStringLiteral("message")).toString().left(kMessageCharCap);
+        e.message  = eo.value(QStringLiteral("message")).toString();
+        clipMessage(e.message);
         b.errors.append(e);
     }
     b.errorsCount    = obj.value(QStringLiteral("errors_count")).toInt(0);

@@ -3,17 +3,18 @@
 #include "tooldetectionengine.h"
 
 #include <QCryptographicHash>
-#include <QDateTime>
 #include <QHash>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QStandardPaths>
 
+#include <chrono>
+
 namespace {
 
 struct Entry {
     QString path;           // "" = not found
-    qint64  probedAtMs = 0;
+    qint64  probedAtMs = 0;  // steadyNowMs()
 };
 
 QMutex g_mutex;
@@ -26,6 +27,13 @@ QString hashCurrentPath() {
     return QString::fromLatin1(
         QCryptographicHash::hash(p, QCryptographicHash::Sha256)
             .toHex().left(16));
+}
+
+// A monotonic clock, so a wall-clock step back cannot hold a miss past its TTL.
+qint64 steadyNowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
 }
 
 void resetIfPathChangedLocked() {
@@ -44,7 +52,7 @@ QString resolve(const QString &tool) {
     if (tool.isEmpty()) return {};
     QMutexLocker lock(&g_mutex);
     resetIfPathChangedLocked();
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 now = steadyNowMs();
     auto it = g_resolved.constFind(tool);
     if (it != g_resolved.constEnd()
         && (!it->path.isEmpty() || now - it->probedAtMs < g_missTtlMs)) {

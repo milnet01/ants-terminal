@@ -63,17 +63,22 @@ bool recordBuild(const QString &canonProject, ParsedBuild &build);
 inline constexpr qint64 kMaxCacheFileBytes = qint64{256} * 1024;
 std::optional<ParsedBuild> loadBuild(const QString &canonProject);
 
+// The time checkStale compares against: when the build started, if the
+// caller supplied it, else when it was recorded. A file edited during the
+// build may be missing from its result.
+qint64 staleSinceMs(const ParsedBuild &build);
+
 // Walk the project's compile-input set looking for any file with
-// mtime > recordedAtMs. Returns {stale_known, stale}. When
+// mtime > sinceMs. Returns {stale_known, stale}. When
 // stale_known is false, the walk hit kStaleWalkCap before any
-// newer file was found — callers report `stale_walk_capped:true`
-// instead of `stale:false`. The probed set is per § 3.3 (`op=read`)
-// step 3 of the spec.
+// newer file was found, or sinceMs is not a time — callers report
+// `stale_walk_capped:true` instead of `stale:false`. The probed set is
+// per § 3.3 (`op=read`) step 3 of the spec.
 struct StaleCheck {
-    bool staleKnown = true;  // false ⇒ walk capped, stale unknown
+    bool staleKnown = true;  // false ⇒ stale unknown
     bool stale      = false;
 };
-StaleCheck checkStale(const QString &canonProject, qint64 recordedAtMs);
+StaleCheck checkStale(const QString &canonProject, qint64 sinceMs);
 
 // Render to/from JSON object (1:1 with the on-disk shape). Caller
 // uses this when building the MCP envelope. fromJson keeps the writer's

@@ -60,7 +60,7 @@ public:
     // location: ~/.local/share/ants-terminal/debug.log.
     static QString logFilePath();
 
-    // Delete debug.log (debug.log.1 is kept); it is recreated at once if a
+    // Delete debug.log and debug.log.1; debug.log is recreated at once if a
     // category is still on. Safe to call at any time.
     static void clear();
 

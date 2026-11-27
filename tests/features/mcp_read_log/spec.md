@@ -37,17 +37,20 @@ dispatch are locked by source-scrape.
 - **B-INV-11** — a line longer than `max_bytes` is never held whole: it is
   skipped, counted in `lines_oversize_skipped` with `truncated:true`, and the
   cursor passes it; one with no newline yet holds the cursor at its first byte.
+  A line of exactly `max_bytes` is not oversized (ANTS-6632).
 - **B-INV-12** — a line's cost against `max_bytes` counts its JSON
   escapes, not only its raw bytes (ANTS-5110).
 - **B-INV-13** — a scan past its wall-clock budget stops between lines with
   `time_budget_exhausted:true`, and its `cursor` resumes the scan
-  (ANTS-1855 INV-13).
+  (ANTS-1855 INV-13). The budget is checked after every line, so lines an
+  `include` regex is slow to reject cannot run on past it (ANTS-6632).
 - **B-INV-14** — with `redactSecrets` on (the default), each returned line
   is `SecretRedact::scrub` of the raw line, and `redacted` sums the
   replacements. A kept line inside a private-key block, including one in a
   `since_cursor` slice that starts mid-block, returns as
   `[REDACTED:private_key]`. A skipped oversized line's markers still open
-  and close blocks. The byte cap counts the scrubbed text.
+  and close blocks. An armoured PGP key's `PRIVATE KEY BLOCK` markers count
+  as key-block markers (ANTS-6632). The byte cap counts the scrubbed text.
   `cmdReadLog` sets the option from `claude.mcp_redact_secrets` on each
   call (ANTS-1855 INV-14, ANTS-5707).
 - **B-not_found** — an unopenable path → `{ok:false, code:"not_found"}`.

@@ -5,6 +5,7 @@
 
 #include "../../_support/expect.h"
 #include "readlog.h"
+#include "secretredact.h"
 
 #include <cstdio>
 #include <string>
@@ -413,4 +414,62 @@ TEST(McpReadLog, Inv14ReturnedLinesAreScrubbed) {
     // cmdReadLog takes the option from the config key on each call.
     const std::string rcCpp = ants_test::slurpRemoteControl();
     EXPECT_TRUE(has(rcCpp, "opts.redactSecrets = Config().claudeMcpRedactSecrets()"));
+}
+
+// B-INV-11 — only a line LONGER than max_bytes is oversized: one of exactly
+// max_bytes is read with its newline and kept.
+TEST(McpReadLog, LineOfExactlyMaxBytesIsNotOversized) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    ReadLog::Options o; o.maxBytes = 64;
+    const QString exact = writeLog(d, "exact.log", {QString(64, QLatin1Char('x')), "after"});
+    const QJsonObject e1 = ReadLog::filter(exact, o);
+    ASSERT_TRUE(e1.value("ok").toBool());
+    EXPECT_FALSE(e1.contains("lines_oversize_skipped"))
+        << "a line of exactly max_bytes was skipped as oversized";
+    EXPECT_EQ(e1.value("matched").toInt(), 2);
+
+    const QString longer = writeLog(d, "longer.log", {QString(65, QLatin1Char('x')), "after"});
+    const QJsonObject e2 = ReadLog::filter(longer, o);
+    EXPECT_EQ(e2.value("lines_oversize_skipped").toInt(), 1);
+    EXPECT_EQ(linesOf(e2), (QStringList{"after"}));
+}
+
+// B-INV-13 — the budget is checked after every line, so lines that each take
+// an include regex a long time to reject cannot run hundreds of lines past it.
+TEST(McpReadLog, TimeBudgetHoldsAgainstSlowRegexLines) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    QStringList lines;
+    for (int i = 0; i < 300; ++i) lines << QString(22, QLatin1Char('a')) + "!";
+    const QString p = writeLog(d, "slow.log", lines);
+    ReadLog::Options o; o.include = "^(a+)+$"; o.timeBudgetMs = 1;   // backtracks 2^22 ways
+    const QJsonObject env = ReadLog::filter(p, o);
+    ASSERT_TRUE(env.value("ok").toBool());
+    ASSERT_TRUE(env.value("time_budget_exhausted").toBool());
+    EXPECT_LT(env.value("scanned").toInt(), 256)
+        << "the budget was checked only every 256 lines";
+}
+
+// B-INV-14 — an armoured PGP private key is a key block too: its markers end
+// "KEY BLOCK-----". Split so the secret scan does not read this source as a key.
+TEST(McpReadLog, PgpPrivateKeyBlockIsRedacted) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString kind = QStringLiteral("PGP PRIVATE") + QStringLiteral(" KEY BLOCK-----");
+    const QStringList key = {"before", "-----BEGIN " + kind, "lQOYBGkeybodyone",
+                             "=abcd", "-----END " + kind, "after"};
+    const QString p = writeLog(d, "pgp.log", key);
+    const QStringList got = linesOf(ReadLog::filter(p, ReadLog::Options{}));
+    ASSERT_EQ(got.size(), key.size());
+    EXPECT_EQ(got.first(), "before");
+    EXPECT_EQ(got.last(), "after");
+    for (int i = 1; i < 5; ++i)
+        EXPECT_EQ(got[i], "[REDACTED:private_key]") << "line " << i << " was returned raw";
+
+    // scrub() and scrubCutPemHead() know the marker too.
+    EXPECT_FALSE(SecretRedact::scrub(key.join('\n')).text.contains("lQOYBGkeybodyone"));
+    QString cut = key.mid(2).join('\n');
+    EXPECT_EQ(SecretRedact::scrubCutPemHead(cut), 1);
+    EXPECT_FALSE(cut.contains("lQOYBGkeybodyone"));
 }

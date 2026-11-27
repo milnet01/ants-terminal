@@ -36,6 +36,22 @@ most 50 errors, each message at most 240 characters.
 `a.cpp:1:10: fatal error: x.h: No such file or directory` as an error with
 message `x.h: No such file or directory`, as `recent_errors` does.
 
+**INV-10 — staleness is measured from the build's start** (ANTS-6632).
+`BuildCache::staleSinceMs` is `startedAtMs` when the record supplied it, else
+`recordedAtMs`, so a file edited while the build ran makes the cache stale.
+
+**INV-11 — a cache with no time is not reported fresh** (ANTS-6632).
+`BuildCache::checkStale` with no time returns `staleKnown:false`.
+
+**INV-12 — the message cap never splits a surrogate pair** (ANTS-6632), in
+`parseBuildOutput` or in `fromJson`.
+
+**INV-13 — clearing the debug log removes `debug.log.1` too** (ANTS-6632).
+
+**INV-14 — the debug log rotates under `debug.log.lock`** (ANTS-6632). While
+another instance holds the lock, this one does not rotate; the size is
+checked again once the lock is held.
+
 ## Rationale
 
 The ANTS-5110 performance pass found each of these. For INV-1 and INV-2:
@@ -46,9 +62,10 @@ file without limit, and a FIFO path blocked the worker on open.
 
 `test_diagnostics_guards.cpp` reads `src/debuglog.cpp` and
 `src/remotecontrol_workspace.cpp` (located from the test's own path) for
-INV-1 and INV-2. INV-3 to INV-9 call `BuildCache` and
+INV-1 and INV-2. INV-3 to INV-14 call `BuildCache` and
 `DebugLog` directly, with the debug log in a temporary directory.
 
 ## Regression history
 
 - **ANTS-5110:** the defects above. Locked by this spec.
+- **ANTS-6632:** INV-10 to INV-14, from the 2026-11-06 reviews.

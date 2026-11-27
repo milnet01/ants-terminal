@@ -155,3 +155,16 @@ TEST(ToolDetectionEngine, AuditDialogToolExistsDelegates) {
     EXPECT_EQ(body.find("\"which\""), std::string::npos)
         << "INV-7: no \"which\" subprocess call should remain";
 }
+
+// TDE-10 — INV-3 (ANTS-6632): a miss's age is read from a monotonic clock,
+// so a wall-clock step back cannot keep it cached past its TTL. A source
+// scrape, as a test cannot move the system clock.
+TEST(ToolDetectionEngine, MissAgeUsesAMonotonicClock) {
+    const std::string here = __FILE__;
+    const std::string src = ants_test::stripComments(ants_test::slurpFile(
+        here.substr(0, here.rfind('/')) + "/../../../src/tooldetectionengine.cpp"));
+    ASSERT_FALSE(src.empty());
+    EXPECT_EQ(src.find("currentMSecsSinceEpoch"), std::string::npos)
+        << "the miss TTL is measured on the wall clock";
+    EXPECT_NE(src.find("steady_clock"), std::string::npos);
+}

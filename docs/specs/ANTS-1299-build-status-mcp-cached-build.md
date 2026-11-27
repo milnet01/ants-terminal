@@ -158,7 +158,9 @@ Server-side flow:
 2. Load `<root>/.audit_cache/build.json`. If absent, malformed, or
    `schema_version != 1` → `{ok:false, code:"not_cached"}`.
 3. Walk the project's compile-input set looking for any file with
-   `mtime_ms > recorded_at_ms`. The set is: `<root>/src/`,
+   `mtime_ms > started_at_ms`, or `recorded_at_ms` when the record
+   gave no start time: a file edited while the build ran may be
+   missing from its result. The set is: `<root>/src/`,
    `<root>/tests/`, `<root>/cmake/` (each if it exists), plus
    `<root>/CMakeLists.txt` (always probed when present). Third-
    party headers under `/usr/include/`, generated files under
@@ -167,7 +169,8 @@ Server-side flow:
    match sets `stale:true`. Walk is capped at 5 000 files; if cap
    hit before any newer file is found, `stale_walk_capped:true`
    is set and `stale` is omitted (not false — distinguishes
-   "looked, none found" from "could not walk fully"). Future-
+   "looked, none found" from "could not walk fully"). A cache
+   with neither time is treated the same way. Future-
    proofing: if a project carries a top-level `include/` directory,
    it is also probed (Ants itself does not, today).
 4. Return the cached envelope with `ok:true` injected.

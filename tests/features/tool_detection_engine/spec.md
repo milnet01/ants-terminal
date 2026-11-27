@@ -5,7 +5,7 @@
 
 GTest cases against the engine in isolation (no GUI, no QProcess).
 
-## Cases (TDE-1..TDE-9)
+## Cases (TDE-1..TDE-10)
 
 | # | Case | Asserts |
 |---|---|---|
@@ -18,6 +18,7 @@ GTest cases against the engine in isolation (no GUI, no QProcess).
 | TDE-7 | RepeatProbesAreFree | INV-1 — 1000 repeat `exists("sh")` complete in < 5 ms |
 | TDE-9 | MissExpiresSoInstalledToolIsFound | INV-3 (ANTS-5110) — with `setMissTtlMs(0)`, a tool created on PATH after a miss is found |
 | TDE-8 | AuditDialogToolExistsDelegates | source-grep INV-8 — `auditdialog.cpp`'s `toolExists` body calls `ToolDetectionEngine::exists` and contains no `QProcess` |
+| TDE-10 | MissAgeUsesAMonotonicClock | source-grep INV-3 (ANTS-6632) — `tooldetectionengine.cpp` measures a miss's age on `steady_clock`, not the wall clock, so a clock step back cannot hold a miss past its TTL |
 
 ## Build wiring
 

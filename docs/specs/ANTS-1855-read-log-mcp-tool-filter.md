@@ -135,6 +135,9 @@ emitted `lines[]` array, not just raw text (consistent with how
 whenever the total exceeds `max_bytes` (or the deque exceeds `tail` N),
 so peak heap is bounded by `max_bytes` regardless of file size or
 whether `tail` is set (INV-12). Any drop sets `truncated:true` + `lines_dropped:<n>`.
+The newest survivor is never popped, so one line can take `lines[]`
+past `max_bytes`: a line of up to `max_bytes` raw bytes serialises at
+about six times that when it is all control bytes.
 It reuses neither existing capper: `trimScrollbackForGetText`
 trims a single text blob + sentinel (wrong
 shape), and `capJsonArrayToBytes` keeps the
@@ -224,7 +227,8 @@ A single call applies these stages in this exact order:
    so the byte cap is re-applied to the scrubbed lines, dropping the
    oldest. Filters in step 2 match the raw line.
    Private-key blocks span lines, which `scrub` cannot see one line at
-   a time. So the scan tracks `-----BEGIN … PRIVATE KEY-----` and its
+   a time. So the scan tracks `-----BEGIN … PRIVATE KEY-----` (or
+   `PRIVATE KEY BLOCK-----`, an armoured PGP key) and its
    END marker across every scanned line, kept or not, and each kept
    line from a BEGIN through its END is emitted whole as
    `[REDACTED:private_key]`. A slice that starts inside a block (a

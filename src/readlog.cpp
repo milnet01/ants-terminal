@@ -59,14 +59,15 @@ struct Kept {
     Pem pem;
 };
 
+// An OpenSSH or PEM key, or (with " BLOCK") an armoured PGP private key.
 const QRegularExpression &pemBegin() {
     static const QRegularExpression re(
-        QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY-----"));
+        QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY(?: BLOCK)?-----"));
     return re;
 }
 const QRegularExpression &pemEnd() {
     static const QRegularExpression re(
-        QStringLiteral("-----END [^\\-\\n]*PRIVATE KEY-----"));
+        QStringLiteral("-----END [^\\-\\n]*PRIVATE KEY(?: BLOCK)?-----"));
     return re;
 }
 
@@ -81,7 +82,7 @@ public:
 
     // Where `line` sits; advances the block state past it.
     Pem classify(const QString &line, std::deque<Kept> &kept) {
-        if (!line.contains(QLatin1String("PRIVATE KEY-----"))) {
+        if (!line.contains(QLatin1String("PRIVATE KEY"))) {
             if (m_inBlock) return Pem::Inside;
             return m_headPending ? Pem::HeadPending : Pem::Outside;
         }
@@ -132,7 +133,7 @@ class PieceMarkers {
 public:
     void feed(const QByteArray &piece) {
         static const QRegularExpression kMarker(
-            QStringLiteral("-----(BEGIN|END) [^\\-\\n]*PRIVATE KEY-----"));
+            QStringLiteral("-----(BEGIN|END) [^\\-\\n]*PRIVATE KEY(?: BLOCK)?-----"));
         const QString window = QString::fromLatin1(m_carry + piece);
         auto it = kMarker.globalMatch(window);
         while (it.hasNext()) {
@@ -221,7 +222,8 @@ QJsonObject filter(const QString &path, const Options &opts) {
     int oversizeSkipped = 0;         // lines longer than maxBytes (B-INV-11)
 
     // ANTS-5110 — a wall-clock budget, so a huge log cannot hold the worker.
-    // Checked every 256 lines, between lines, so `cursor` resumes the scan.
+    // Checked between lines, so `cursor` resumes the scan; after every line,
+    // as one slow include/exclude match can take most of the budget.
     const qint64 budgetMs = opts.timeBudgetMs > 0 ? opts.timeBudgetMs
                                                   : kDefaultTimeBudgetMs;
     QElapsedTimer clock;
@@ -235,21 +237,23 @@ QJsonObject filter(const QString &path, const Options &opts) {
     // own bytes and not a maxBytes-sized allocation (ANTS-6367).
     QByteArray scratch;
     while (!f.atEnd()) {
-        if (scanned > 0 && (scanned & 255) == 0 && clock.elapsed() > budgetMs) {
+        if (scanned > 0 && clock.elapsed() > budgetMs) {
             budgetExhausted = true;
             break;
         }
         const qint64 lineStart = f.pos();
         // Never hold more than maxBytes of one line: a longer line is
-        // drained in maxBytes pieces and skipped whole, its key-block
-        // markers still tracked.
-        QByteArray raw = BoundedReadLine::readTight(f, qint64(maxBytes) + 1, scratch);
+        // drained in pieces and skipped whole, its key-block markers still
+        // tracked. readTight returns at most its size - 1 bytes, so + 2
+        // keeps a line of exactly maxBytes with its newline.
+        const qint64 readSize = qint64(maxBytes) + 2;
+        QByteArray raw = BoundedReadLine::readTight(f, readSize, scratch);
         if (!raw.endsWith('\n') && !f.atEnd()) {
             PieceMarkers markers;
             markers.feed(raw);
             QByteArray piece;
             do {
-                piece = BoundedReadLine::readTight(f, qint64(maxBytes) + 1, scratch);
+                piece = BoundedReadLine::readTight(f, readSize, scratch);
                 markers.feed(piece);
             } while (!piece.endsWith('\n') && !f.atEnd());
             if (!piece.endsWith('\n')) {   // oversized AND still being written

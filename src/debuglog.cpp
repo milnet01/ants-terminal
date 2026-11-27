@@ -1,5 +1,6 @@
 #include "debuglog.h"
 
+#include "configbackup.h"  // ConfigWriteLock
 #include "secretredact.h"
 #include "secureio.h"
 
@@ -97,11 +98,17 @@ void DebugLog::openLogFileLocked() {
     // forgotten ANTS_DEBUG=all session can't write secrets
     // indefinitely. Single-generation rotation: debug.log → .log.1
     // (replacing any prior .1).
-    QFileInfo existing(path);
-    if (existing.exists() && existing.size() > kMaxLogBytes) {
-        const QString rotated = path + QStringLiteral(".1");
-        QFile::remove(rotated);
-        QFile::rename(path, rotated);
+    // Under debug.log.lock, and checked again once held: two instances
+    // crossing the cap together would otherwise both rotate, the second
+    // deleting the generation the first had just rotated out. One that
+    // cannot take the lock leaves the rotation to its holder.
+    if (QFileInfo(path).size() > kMaxLogBytes) {
+        const ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
+        if (lock.acquired() && QFileInfo(path).size() > kMaxLogBytes) {
+            const QString rotated = path + QStringLiteral(".1");
+            QFile::remove(rotated);
+            QFile::rename(path, rotated);
+        }
     }
     s_file.setFileName(path);
     // ANTS-1142 — created 0600, so there is no window between create and
@@ -165,6 +172,7 @@ void DebugLog::clear() {
     std::lock_guard<std::mutex> lk(s_mutex);
     if (s_file.isOpen()) s_file.close();
     QFile::remove(logFilePath());
+    QFile::remove(logFilePath() + QStringLiteral(".1"));
     // ANTS-1190 — reopen if categories remain active. Without this,
     // the menu's "Clear Log File" action permanently silences future
     // ANTS_LOG calls until the user toggles a category off-and-on

@@ -5,6 +5,7 @@
 #include "buildcache.h"
 #include "debuglog.h"
 
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -14,6 +15,7 @@
 #include <QTemporaryDir>
 
 #include <fcntl.h>
+#include <sys/file.h>
 #include <unistd.h>
 
 #include <cstdio>
@@ -180,4 +182,107 @@ TEST(DiagnosticsGuards, BuildLogFatalErrorIsAnError) {
     ASSERT_EQ(b.errors.size(), 1) << "a fatal error was not parsed as an error";
     EXPECT_EQ(b.errorsCount, 1);
     EXPECT_EQ(b.errors.front().message, QStringLiteral("x.h: No such file or directory"));
+}
+
+// INV-10 — staleness is measured from the build's start when it was given:
+// a file edited while the build ran makes the result stale.
+TEST(DiagnosticsGuards, StaleIsMeasuredFromTheBuildStart) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral("src")));
+    QFile f(tmp.path() + QStringLiteral("/src/a.cpp"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("int a;\n");
+    f.close();
+    const qint64 edited = QFileInfo(f.fileName()).lastModified().toMSecsSinceEpoch();
+
+    BuildCache::ParsedBuild b;
+    b.startedAtMs  = edited - 60'000;   // the build started before the edit
+    b.recordedAtMs = edited + 60'000;   // and was recorded after it
+    EXPECT_EQ(BuildCache::staleSinceMs(b), b.startedAtMs);
+    const BuildCache::StaleCheck s =
+        BuildCache::checkStale(tmp.path(), BuildCache::staleSinceMs(b));
+    EXPECT_TRUE(s.staleKnown);
+    EXPECT_TRUE(s.stale) << "an edit made during the build was reported fresh";
+
+    b.startedAtMs = 0;                  // no start time: the record time
+    EXPECT_EQ(BuildCache::staleSinceMs(b), b.recordedAtMs);
+    EXPECT_FALSE(BuildCache::checkStale(tmp.path(), BuildCache::staleSinceMs(b)).stale);
+}
+
+// INV-11 — a cache with no time to compare against is not reported fresh.
+TEST(DiagnosticsGuards, StaleIsUnknownWithNoBuildTime) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    EXPECT_FALSE(BuildCache::checkStale(tmp.path(), 0).staleKnown)
+        << "a build with no recorded time was reported known-fresh";
+}
+
+// INV-12 — the message cap never splits a surrogate pair, in the parser or
+// in fromJson.
+TEST(DiagnosticsGuards, MessageCapNeverSplitsASurrogatePair) {
+    const QString emoji = QString::fromUtf8("\xF0\x9F\x98\x80");   // two UTF-16 units
+    ASSERT_EQ(emoji.size(), 2);
+    const QString msg = QString(BuildCache::kMessageCharCap - 1, QLatin1Char('m'))
+                        + emoji + QStringLiteral("tail");
+    const BuildCache::ParsedBuild b = BuildCache::parseBuildOutput(
+        QStringLiteral("a.cpp:1:2: error: ") + msg + QLatin1Char('\n'));
+    ASSERT_EQ(b.errors.size(), 1);
+    const QString &m = b.errors.front().message;
+    ASSERT_FALSE(m.isEmpty());
+    EXPECT_LE(m.size(), BuildCache::kMessageCharCap);
+    EXPECT_FALSE(m.back().isHighSurrogate()) << "the cut split a surrogate pair";
+
+    QJsonObject o = BuildCache::toJson(BuildCache::ParsedBuild{});
+    o[QStringLiteral("errors")] = QJsonArray{QJsonObject{
+        {"file", "a.cpp"}, {"line", 1}, {"severity", "error"}, {"message", msg}}};
+    bool ok = false;
+    const BuildCache::ParsedBuild r = BuildCache::fromJson(o, &ok);
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(r.errors.size(), 1);
+    ASSERT_FALSE(r.errors.front().message.isEmpty());
+    EXPECT_FALSE(r.errors.front().message.back().isHighSurrogate())
+        << "fromJson's cut split a surrogate pair";
+}
+
+// INV-13 — clearing the log removes the rotated generation too.
+TEST(DiagnosticsGuards, ClearRemovesTheRotatedLog) {
+    ScratchLog log;
+    ASSERT_TRUE(log.dir.isValid());
+    const QString rotated = DebugLog::logFilePath() + QStringLiteral(".1");
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(rotated).absolutePath()));
+    QFile f(rotated);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("older pty output\n");
+    f.close();
+    DebugLog::clear();
+    EXPECT_FALSE(QFileInfo::exists(rotated)) << "Clear Log File kept debug.log.1";
+}
+
+// INV-14 — rotation happens under debug.log.lock: while another instance
+// holds it, this one does not rotate; once it is free, the next write does.
+TEST(DiagnosticsGuards, RotationWaitsForTheRotationLock) {
+    ScratchLog log;
+    ASSERT_TRUE(log.dir.isValid());
+    const QString path = DebugLog::logFilePath();
+    const QString rotated = path + QStringLiteral(".1");
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(path).absolutePath()));
+    {
+        QFile big(path);
+        ASSERT_TRUE(big.open(QIODevice::WriteOnly));
+        ASSERT_TRUE(big.resize(qint64(10) * 1024 * 1024 + 1));   // past the 10 MiB cap
+    }
+    const int fd = ::open((path + QStringLiteral(".lock")).toLocal8Bit().constData(),
+                          O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+    ASSERT_GE(fd, 0);
+    ASSERT_EQ(::flock(fd, LOCK_EX), 0);   // another instance is rotating
+    DebugLog::setActive(DebugLog::Events);
+    const bool rotatedWhileHeld = QFileInfo::exists(rotated);
+    ::close(fd);
+    EXPECT_FALSE(rotatedWhileHeld)
+        << "the log rotated while another instance held the rotation lock";
+
+    DebugLog::write(DebugLog::Events, QStringLiteral("after the lock"));
+    DebugLog::setActive(0);
+    EXPECT_TRUE(QFileInfo::exists(rotated)) << "the log never rotated once the lock was free";
 }
