@@ -1,4 +1,5 @@
 #include "scrollbackexporter.h"
+#include "utf16append.h"
 
 #include <QDateTime>
 #include <QStringList>
@@ -12,16 +13,6 @@ const Cell kBlankCell{' ', {}};
 const std::vector<Cell> kNoCells;
 const std::unordered_map<int, std::vector<uint32_t>> kNoCombining;
 
-void appendCodepoint(QString &text, uint32_t cp) {
-    if (cp < 0x10000) {
-        text += QChar(static_cast<char16_t>(cp));
-    } else {
-        cp -= 0x10000;
-        text += QChar(static_cast<char16_t>(0xD800 + (cp >> 10)));
-        text += QChar(static_cast<char16_t>(0xDC00 + (cp & 0x3FF)));
-    }
-}
-
 // One line's text, as TerminalWidget::lineText builds it: a cell past the
 // stored cells reads as a space, and combining characters follow their cell.
 QString lineText(const std::vector<Cell> &cells,
@@ -33,18 +24,20 @@ QString lineText(const std::vector<Cell> &cells,
     for (int c = 0; c < cols; ++c) {
         uint32_t cp = c < stored ? cells[c].codepoint : ' ';
         if (cp == 0) cp = ' ';
-        appendCodepoint(text, cp);
+        Utf16::append(text, cp);
         if (!combining.empty()) {
             auto it = combining.find(c);
             if (it != combining.end())
                 for (uint32_t combCp : it->second)
-                    appendCodepoint(text, combCp);
+                    Utf16::append(text, combCp);
         }
     }
     return text;
 }
 
-QString escapeJson(const QString &s) {
+}  // namespace
+
+QString ScrollbackExporter::escapeJson(const QString &s) {
     QString out;
     out.reserve(s.size() + 8);
     for (QChar c : s) {
@@ -64,8 +57,6 @@ QString escapeJson(const QString &s) {
     }
     return out;
 }
-
-}  // namespace
 
 ScrollbackExporter::ScrollbackExporter(const TerminalGrid &grid, Request request)
     : m_grid(grid), m_request(std::move(request)), m_file(m_request.path) {}

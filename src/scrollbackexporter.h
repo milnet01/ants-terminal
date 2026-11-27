@@ -37,6 +37,10 @@ public:
     QString error() const { return m_error; }
     qint64 bytesWritten() const { return m_bytesWritten; }
 
+    // A JSON string body for `s`. The Cast export and the live asciicast
+    // recording (TerminalWidget) both escape through this.
+    static QString escapeJson(const QString &s);
+
 private:
     using Combining = std::unordered_map<int, std::vector<uint32_t>>;
 

@@ -12,6 +12,7 @@
 #include "shellhistory.h"    // ANTS-5685 — history read on a worker
 #include "shellutils.h"      // ANTS-3828 — shellQuote() for pasted file paths
 #include "stickycommandtext.h" // ANTS-5027 — sticky-header command text
+#include "utf16append.h"     // codepoint → UTF-16, one rule for every line builder
 
 #include <QImageReader>
 #include <QPainter>
@@ -85,6 +86,28 @@ bool batchEntersSyncOutput(const VtBatch &b) {
         }
     }
     return false;
+}
+
+// Shift plus one of these scrolls the view (keyPressEvent), so it must not
+// snap the view to the bottom first.
+bool isShiftScrollKey(int key) {
+    return key == Qt::Key_Home || key == Qt::Key_End
+        || key == Qt::Key_PageUp || key == Qt::Key_PageDown;
+}
+
+// A finished command with output can fold. The fold triangle also needs a
+// following region (paintEvent); the menu, click and shortcut do not.
+bool canFold(const PromptRegion &pr) {
+    return pr.hasOutput && pr.commandEndMs > 0;
+}
+
+// Trailing blanks off a lineText line: ' ' only (lineText's padding), or any
+// whitespace, tabs and non-breaking spaces included.
+void chopTrailingSpaces(QString &s) {
+    while (s.endsWith(QLatin1Char(' '))) s.chop(1);
+}
+void chopTrailingWhitespace(QString &s) {
+    while (!s.isEmpty() && s.back().isSpace()) s.chop(1);
 }
 
 }  // namespace
@@ -1543,7 +1566,7 @@ void TerminalWidget::paintPromptChrome(QPainter &p, const PaintFrame &f) const {
         }
 
         // Fold indicator for completed command output
-        if (pr.hasOutput && pr.commandEndMs > 0 && std::next(it) != regions.end())
+        if (canFold(pr) && std::next(it) != regions.end())
             paintFoldIndicator(p, pr, static_cast<int>(it - regions.begin()), py);
     }
 }
@@ -2029,8 +2052,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     // the app instead, so they keep the snap-to-bottom there.
     const bool shiftOnlyScroll = (mods & Qt::ShiftModifier)
         && m_grid->kittyKeyFlags() == 0
-        && (key == Qt::Key_Home || key == Qt::Key_End
-            || key == Qt::Key_PageUp || key == Qt::Key_PageDown);
+        && isShiftScrollKey(key);
     const bool ctrlShiftNav = (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)
         && (key == Qt::Key_Up || key == Qt::Key_Down
             || key == Qt::Key_J || key == Qt::Key_K
@@ -2173,9 +2195,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     }
 
     // Shift+Home/End/PageUp/PageDown scroll the view; they never reach the shell.
-    if ((mods & Qt::ShiftModifier)
-        && (key == Qt::Key_Home || key == Qt::Key_End
-            || key == Qt::Key_PageUp || key == Qt::Key_PageDown)) {
+    if ((mods & Qt::ShiftModifier) && isShiftScrollKey(key)) {
         if (key == Qt::Key_Home)
             m_scrollOffset = m_grid->scrollbackSize();
         else if (key == Qt::Key_End)
@@ -2633,22 +2653,10 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {  // NOLINT(performance-unnece
         double elapsed = batch->wallClockMs / 1000.0;
         // ANTS-5078 — a stateful decoder, so a UTF-8 sequence split across
         // two batches decodes whole instead of as U+FFFD.
-        QString raw = m_recordDecoder.decode(batch->rawBytes);
-        QString escaped;
-        escaped.reserve(raw.size() + raw.size() / 4);
-        for (QChar ch : raw) {
-            ushort u = ch.unicode();
-            if (u == '\\')      escaped += "\\\\";
-            else if (u == '"')  escaped += "\\\"";
-            else if (u == '\n') escaped += "\\n";
-            else if (u == '\r') escaped += "\\r";
-            else if (u == '\t') escaped += "\\t";
-            else if (u < 0x20)  escaped += QString("\\u%1").arg(u, 4, 16, QChar('0'));
-            else                escaped += ch;
-        }
+        const QString raw = m_recordDecoder.decode(batch->rawBytes);
         QString line = QString("[%1, \"o\", \"%2\"]\n")
             .arg(elapsed, 0, 'f', 6)
-            .arg(escaped);
+            .arg(ScrollbackExporter::escapeJson(raw));
         m_recordFile->write(line.toUtf8());
     }
 
@@ -3461,7 +3469,6 @@ void TerminalWidget::copySelectionRich() {
     // one line with startCol > endCol, and the HTML half came out empty.
     const OrderedSelection sel = orderedSelection();
     const int startLine = sel.startLine, endLine = sel.endLine;
-    const int startCol = sel.startCol, endCol = sel.endCol;
 
     auto *mimeData = new QMimeData();
     mimeData->setText(plainText);
@@ -3473,11 +3480,8 @@ void TerminalWidget::copySelectionRich() {
     if (selCells <= kRichCopyCellCap) {
         QString html = QStringLiteral("<pre style='font-family: monospace;'>");
         for (int line = startLine; line <= endLine; ++line) {
-            // A rectangular selection covers the same columns on every line,
-            // as selectedText() builds the plain half.
-            int colStart = sel.rect ? sel.rectColMin : (line == startLine) ? startCol : 0;
-            int colEnd = sel.rect ? std::min(sel.rectColMax, m_grid->cols() - 1)
-                                  : (line == endLine) ? endCol : m_grid->cols() - 1;
+            // The same columns selectedText() takes for the plain half.
+            const auto [colStart, colEnd] = sel.colsOn(line, m_grid->cols());
 
             // ANTS-5078 — one span per run of same-style cells, as the
             // HTML export does, instead of one span per character.
@@ -3970,7 +3974,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
                 int vr = pr.startLine - (m_grid->scrollbackSize() - m_scrollOffset);
                 if (vr >= 0 && vr < m_grid->rows() && cell.x() == pr.startLine) {
                     // Close enough — toggle fold for prompt at this line
-                    if (pr.hasOutput && pr.commandEndMs > 0) {
+                    if (canFold(pr)) {
                         const_cast<PromptRegion &>(pr).folded = !pr.folded;
                         update();
                         return;
@@ -4208,16 +4212,9 @@ QString TerminalWidget::selectedText(qsizetype maxChars, int *linesSkipped) cons
     const int cols = m_grid->cols();
 
     auto lineAt = [&](int gl) {
-        int startCol, endCol;
-        if (sel.rect) {
-            startCol = sel.rectColMin;
-            endCol = std::min(sel.rectColMax, cols - 1);
-        } else {
-            startCol = (gl == sel.startLine) ? sel.startCol : 0;
-            endCol = (gl == sel.endLine) ? sel.endCol : cols - 1;
-        }
+        const auto [startCol, endCol] = sel.colsOn(gl, cols);
         QString line = a11yComposeCols(gl, startCol, endCol + 1);
-        while (line.endsWith(' ')) line.chop(1);
+        chopTrailingSpaces(line);
         return line;
     };
 
@@ -4258,12 +4255,7 @@ QString TerminalWidget::a11yComposeCols(int globalLine, int beginCol, int endCol
     const auto put = [&out](char32_t cp) {
         // Same output as fromUcs4 for a codepoint it rejects.
         if (cp > 0x10FFFF || QChar::isSurrogate(cp)) cp = QChar::ReplacementCharacter;
-        if (QChar::requiresSurrogates(cp)) {
-            out += QChar(QChar::highSurrogate(cp));
-            out += QChar(QChar::lowSurrogate(cp));
-        } else {
-            out += QChar(static_cast<char16_t>(cp));
-        }
+        Utf16::append(out, cp);
     };
     for (int c = beginCol; c < endCol; ++c) {
         uint32_t cp = cellAtGlobal(globalLine, c).codepoint;
@@ -4455,16 +4447,6 @@ QString TerminalWidget::lineText(int globalLine) const {
     QString text;
     text.reserve(qsizetype(cols) * 2);
 
-    auto appendCp = [&](uint32_t cp) {
-        if (cp < 0x10000) {
-            text += QChar(static_cast<char16_t>(cp));
-        } else {
-            cp -= 0x10000;
-            text += QChar(static_cast<char16_t>(0xD800 + (cp >> 10)));
-            text += QChar(static_cast<char16_t>(0xDC00 + (cp & 0x3FF)));
-        }
-    };
-
     // ANTS-2000 — search builds this for every scrollback line on every
     // query. A history line is read directly: one row lookup and one
     // combining-map check per line, instead of a bounds-checked lookup of
@@ -4483,15 +4465,7 @@ QString TerminalWidget::lineText(int globalLine) const {
         text.resize(capacity);
         const char16_t *const begin = reinterpret_cast<char16_t *>(text.data());
         char16_t *out = reinterpret_cast<char16_t *>(text.data());
-        auto put = [&out](uint32_t cp) {
-            if (cp < 0x10000) {
-                *out++ = static_cast<char16_t>(cp);
-            } else {
-                cp -= 0x10000;
-                *out++ = static_cast<char16_t>(0xD800 + (cp >> 10));
-                *out++ = static_cast<char16_t>(0xDC00 + (cp & 0x3FF));
-            }
-        };
+        auto put = [&out](uint32_t cp) { out = Utf16::put(out, cp); };
 
         for (int c = 0; c < cols; ++c) {
             uint32_t cp = c < stored ? cells[c].codepoint : ' ';
@@ -4511,10 +4485,10 @@ QString TerminalWidget::lineText(int globalLine) const {
     for (int c = 0; c < cols; ++c) {
         uint32_t cp = cellAtGlobal(globalLine, c).codepoint;
         if (cp == 0) cp = ' ';
-        appendCp(cp);
+        Utf16::append(text, cp);
         if (auto *comb = combiningAt(globalLine, c)) {
             for (uint32_t combCp : *comb)
-                appendCp(combCp);
+                Utf16::append(text, combCp);
         }
     }
     return text;
@@ -4530,13 +4504,12 @@ TerminalWidget::LineColumns TerminalWidget::lineColumns(int globalLine) const {
     LineColumns lc;
     lc.startCol.reserve(cols + 1);
     lc.lastCol.reserve(cols);
-    const auto units = [](uint32_t cp) { return cp >= 0x10000 ? 2 : 1; };
     for (int c = 0; c < cols; ++c) {
         const Cell &cell = cellAtGlobal(globalLine, c);
         const uint32_t cp = cell.codepoint == 0 ? uint32_t(' ') : cell.codepoint;
-        int n = units(cp);
+        int n = Utf16::units(cp);
         if (const auto *comb = combiningAt(globalLine, c))
-            for (uint32_t combCp : *comb) n += units(combCp);
+            for (uint32_t combCp : *comb) n += Utf16::units(combCp);
         const int last = (cell.isWideChar && c + 1 < cols &&
                           cellAtGlobal(globalLine, c + 1).isWideCont) ? c + 1 : c;
         for (int k = 0; k < n; ++k) {
@@ -4855,10 +4828,10 @@ void TerminalWidget::openFileAtPath(const QString &path) {
     // defeats the point of the semantic-history click. Reference syntax:
     //   code         --goto <path>:<line>[:<col>]
     //   code-insiders --goto … (same as code)
-    //   codium       --goto … (VSCodium)
+    //   codium/vscodium --goto … (VSCodium)
     //   kate         -l <line> [-c <col>] <path>
-    //   sublime/subl <path>:<line>[:<col>]
-    //   nvim/vim     +<line> <path>
+    //   subl/sublime_text <path>:<line>[:<col>]
+    //   nvim/vim/vi/ex +<line> <path>
     //   nano         +<line>[,<col>] <path>
     //   helix/hx     <path>:<line>[:<col>]
     //   micro        <path>:<line>[:<col>]
@@ -5455,7 +5428,7 @@ void TerminalWidget::toggleFoldAtCursor() {
     int globalLine = m_grid->scrollbackSize() + m_grid->cursorRow();
     std::vector<PromptRegion> &regions = m_grid->promptRegions();
     for (size_t i = 0; i < regions.size(); ++i) {
-        if (globalLine >= regions[i].startLine && regions[i].hasOutput && regions[i].commandEndMs > 0) {
+        if (globalLine >= regions[i].startLine && canFold(regions[i])) {
             regions[i].folded = !regions[i].folded;
             update();
             return;
@@ -5783,11 +5756,14 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
     // (a question has no rule). "Enter to select" is the ASCII-stable
     // anchor; a genuine permission prompt (which wins) is excluded so a
     // future Claude Code that renders both strings doesn't double-fire.
+    //
+    // Both detectors and the structure check read the last this-many lines.
+    static constexpr int kLookbackLines = 12;
     {
         const int total = m_grid->scrollbackSize() + m_grid->rows();
         bool questionFooter = false;
         bool permFooter = false;
-        for (int i = total - 1; i >= std::max(0, total - 12); --i) {
+        for (int i = total - 1; i >= std::max(0, total - kLookbackLines); --i) {
             const QString text = lineText(i);
             if (ClaudePromptDetect::containsPermissionAnchor(text))
                 permFooter = true;
@@ -5837,15 +5813,15 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
     // absent, footerLine stays -1 and the no-prompt debounce below
     // retracts any stale rule, exactly as if no footer were on screen.
     QStringList claudeRecentLines;
-    claudeRecentLines.reserve(12);
-    for (int i = std::max(0, totalLines - 12); i < totalLines; ++i)
+    claudeRecentLines.reserve(kLookbackLines);
+    for (int i = std::max(0, totalLines - kLookbackLines); i < totalLines; ++i)
         claudeRecentLines << lineText(i);
     const bool claudePromptStructure =
         ClaudePromptDetect::isPermissionPromptStructure(claudeRecentLines);
 
     int footerLine = -1;
     if (claudePromptStructure) {
-        for (int i = totalLines - 1; i >= std::max(0, totalLines - 12); --i) {
+        for (int i = totalLines - 1; i >= std::max(0, totalLines - kLookbackLines); --i) {
             if (ClaudePromptDetect::containsPermissionAnchor(lineText(i))) {
                 footerLine = i;
                 break;
@@ -5855,8 +5831,8 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
     if (footerLine < 0) {
         // No prompt on screen this scan. Debounce: require N=3
         // consecutive misses before retracting, so a transient TUI
-        // repaint that briefly pushes the footer out of the 12-line
-        // lookback window doesn't nuke the "Add to allowlist" button
+        // repaint that briefly pushes the footer out of the
+        // kLookbackLines window doesn't nuke the "Add to allowlist" button
         // while the prompt is still live. The user-visible retraction
         // latency on a real approve/decline is at most 3 * 300 ms
         // ≈ 900 ms, which stays under the "did it work?" threshold.
@@ -6101,7 +6077,7 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
             if (idx >= 0) rerunCommandAt(idx);
         });
 
-        if (pr.hasOutput && pr.commandEndMs > 0) {
+        if (canFold(pr)) {
             QAction *fold = menu.addAction(pr.folded ? "Unfold Output" : "Fold Output");
             connect(fold, &QAction::triggered, this, [this, blockId]() {
                 const int idx = m_grid->promptRegionIndexById(blockId);
@@ -6313,21 +6289,22 @@ void TerminalWidget::checkTriggers(const QByteArray &data) {
         // we have a line-to-cell mapping. Routing them here would double-fire
         // and produce the wrong semantics (we'd match raw chunk bytes instead
         // of the finalized line).
-        if (rule.actionType == QLatin1String("highlight_line")
-         || rule.actionType == QLatin1String("highlight_text")
-         || rule.actionType == QLatin1String("make_hyperlink")) continue;
+        if (rule.mutatesGrid()) continue;
         if (!rule.instant) continue;   // non-instant dispatch → onGridLineCompleted
-        QRegularExpressionMatch m = rule.pattern.match(text);
-        if (!m.hasMatch()) continue;
-        if (!takeEventBudget(m_triggerDispatchBudget)) continue;   // ANTS-5079
-        // run_script gets a separate signal carrying the matched substring so
-        // the plugin handler receives the actual hit, not just the rule id.
-        if (rule.actionType == QLatin1String("run_script")) {
-            emit triggerRunScript(rule.actionValue, m.captured(0));
-        } else {
-            emit triggerFired(rule.pattern.pattern(), rule.actionType, rule.actionValue);
-        }
+        const QRegularExpressionMatch m = rule.pattern.match(text);
+        if (m.hasMatch()) dispatchTrigger(rule, m);
     }
+}
+
+void TerminalWidget::dispatchTrigger(const TriggerRule &rule,
+                                     const QRegularExpressionMatch &m) {
+    if (!takeEventBudget(m_triggerDispatchBudget)) return;   // ANTS-5079
+    // run_script gets a separate signal carrying the matched substring so
+    // the plugin handler receives the actual hit, not just the rule id.
+    if (rule.actionType == QLatin1String("run_script"))
+        emit triggerRunScript(rule.actionValue, m.captured(0));
+    else
+        emit triggerFired(rule.pattern.pattern(), rule.actionType, rule.actionValue);
 }
 
 // 0.6.13 — grid-mutation trigger dispatch. Called from the grid's
@@ -6351,7 +6328,7 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
         const bool wrapped = m_grid->screenLineWrapped(screenRow);
         QString row = lineText(m_grid->scrollbackSize() + screenRow);
         if (!wrapped)   // lineText pads to the width; a wrapped row is full
-            while (!row.isEmpty() && row.back() == QLatin1Char(' ')) row.chop(1);
+            chopTrailingSpaces(row);
         const auto line = m_pluginLineJoiner.addRow(row, wrapped);
         if (line && takeEventBudget(m_pluginLineBudget, kPluginLinesPerSecond))
             emit pluginLine(*line);
@@ -6411,11 +6388,7 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
     };
 
     for (const auto &rule : m_triggerRules) {
-        const QString &kind = rule.actionType;
-        bool isHighlightLine = (kind == QLatin1String("highlight_line"));
-        bool isHighlightText = (kind == QLatin1String("highlight_text"));
-        bool isMakeLink      = (kind == QLatin1String("make_hyperlink"));
-        if (!(isHighlightLine || isHighlightText || isMakeLink)) {
+        if (!rule.mutatesGrid()) {
             // ANTS-2119 M1 — non-instant DISPATCH triggers (notify/sound/command/
             // bell/inject/run_script) fire here too, once per completed line, so
             // every matching line fires (not once per raw batch) and a match
@@ -6425,16 +6398,14 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
             // must fire mid-line, before a line completes).
             if (!rule.instant) {
                 const QRegularExpressionMatch m = rule.pattern.match(text);
-                if (m.hasMatch() && takeEventBudget(m_triggerDispatchBudget)) {   // ANTS-5079
-                    if (kind == QLatin1String("run_script"))
-                        emit triggerRunScript(rule.actionValue, m.captured(0));
-                    else
-                        emit triggerFired(rule.pattern.pattern(), kind,
-                                          rule.actionValue);
-                }
+                if (m.hasMatch()) dispatchTrigger(rule, m);
             }
             continue;   // dispatch handled here; instant rules run in checkTriggers
         }
+        const QString &kind = rule.actionType;
+        const bool isHighlightLine = (kind == QLatin1String("highlight_line"));
+        const bool isHighlightText = (kind == QLatin1String("highlight_text"));
+        const bool isMakeLink      = (kind == QLatin1String("make_hyperlink"));
 
         auto it = rule.pattern.globalMatch(text);
         while (it.hasNext()) {
@@ -6741,9 +6712,8 @@ QString TerminalWidget::commandTextAt(int index) const {
             else if (from >= line.size())
                 line.clear();
         }
-        // Trim trailing whitespace (cells past the command are padded with spaces).
-        while (!line.isEmpty() && line.back().isSpace() && line.back() != '\n')
-            line.chop(1);
+        // Cells past the command are padded with spaces.
+        chopTrailingWhitespace(line);
         if (!cmd.isEmpty()) cmd += '\n';
         cmd += line;
     }
@@ -6762,8 +6732,7 @@ QString TerminalWidget::outputTextAt(int index) const {
     QString text;
     for (int gl = outStart; gl < outEnd; ++gl) {
         QString line = lineText(gl);
-        while (!line.isEmpty() && line.back().isSpace() && line.back() != '\n')
-            line.chop(1);
+        chopTrailingWhitespace(line);
         text += line;
         text += '\n';
     }
@@ -6804,7 +6773,7 @@ void TerminalWidget::toggleFoldAt(int index) {
     auto &regions = m_grid->promptRegions();
     if (index < 0 || index >= static_cast<int>(regions.size())) return;
     PromptRegion &pr = regions[index];
-    if (!pr.hasOutput || pr.commandEndMs == 0) return;  // mirrors toggleFoldAtCursor gating
+    if (!canFold(pr)) return;
     pr.folded = !pr.folded;
     update();
 }

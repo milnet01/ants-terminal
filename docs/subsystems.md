@@ -358,6 +358,9 @@ Listed only where behavior isn't obvious from the name.
 - `utf8cut` (header only) — cuts UTF-8 bytes to a byte budget on a character
   boundary. A new byte-budget clip calls it rather than adding a copy
   (ANTS-6269, ANTS-6592).
+- `utf16append` (header only) — writes a codepoint as UTF-16 and counts its
+  units. `TerminalWidget`'s line text and the scrollback exporter encode
+  through it (ANTS-6615).
 - `gitorigin` (header only) — the GitHub `owner/name` of a checkout's
   `origin`, and of every GitHub remote (ANTS-6726), read from `.git/config`.
   Shared by `session_message` op `projects` and the status bar's repo label

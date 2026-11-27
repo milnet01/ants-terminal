@@ -26,6 +26,7 @@
 #include <unordered_map>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <sys/types.h>
 
 class QLabel;
@@ -207,6 +208,12 @@ public:
         QString actionType;
         QString actionValue;
         bool instant = false;
+        // checkTriggers skips these and onGridLineCompleted applies them.
+        bool mutatesGrid() const {
+            return actionType == QLatin1String("highlight_line")
+                || actionType == QLatin1String("highlight_text")
+                || actionType == QLatin1String("make_hyperlink");
+        }
     };
     void setTriggerRules(const QJsonArray &rules);
     // ANTS-4272 — asked before each plugin emit (output, line, prompt,
@@ -506,6 +513,14 @@ private:
             if (globalLine == startLine) return col >= startCol;
             if (globalLine == endLine) return col <= endCol;
             return true;
+        }
+        // The first and last column selected on globalLine, a line inside
+        // [startLine, endLine], for a grid `cols` wide. Both halves of a
+        // copy (selectedText, copySelectionRich) take their columns here.
+        std::pair<int, int> colsOn(int globalLine, int cols) const {
+            if (rect) return {rectColMin, std::min(rectColMax, cols - 1)};
+            return {globalLine == startLine ? startCol : 0,
+                    globalLine == endLine ? endCol : cols - 1};
         }
     };
     OrderedSelection orderedSelection() const;
@@ -1070,6 +1085,9 @@ private:
     // Trigger rules
     std::vector<TriggerRule> m_triggerRules;
     void checkTriggers(const QByteArray &data);
+    // A dispatch rule's matched hit, under the dispatch budget (ANTS-5079):
+    // run_script → triggerRunScript with the matched text, else triggerFired.
+    void dispatchTrigger(const TriggerRule &rule, const QRegularExpressionMatch &m);
     // 0.6.13 — grid-mutation trigger dispatch. Called by the TerminalGrid
     // line-completion callback once per newline, passing the screen row
     // that the cursor was leaving. Runs `highlight_line`, `highlight_text`,

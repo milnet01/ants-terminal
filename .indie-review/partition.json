@@ -43,7 +43,8 @@
         "src/terminalaccessible.cpp",
         "src/terminalaccessible.h",
         "src/terminalwidget.cpp",
-        "src/terminalwidget.h"
+        "src/terminalwidget.h",
+        "src/utf16append.h"
       ]
     },
     {
