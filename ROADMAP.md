@@ -99002,6 +99002,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Decision (user, 2026-11-27): row 85 option A: wrap get_session_info in
   <ants_mcp_data>, update the ANTS-1294 exempt set, its test and the
   mcp_output_sanitisation spec.
+  2026-11-27: row 85 is built in
+  /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/DEC-privacy.diff, not
+  yet applied.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99145,6 +99148,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Decision (user, 2026-11-27): row 441: read_log leaves input and pty
   lines out of its default read; a caller can still ask for them. Rows
   438 and 1464 still open.
+  2026-11-27: row 441 is built in
+  /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/DEC-privacy.diff
+  (read_log include_input_pty, default false), not yet applied.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
