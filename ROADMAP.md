@@ -98424,6 +98424,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   two can parse a headline differently. Row 664 of the 2026-11-06
   review; left out of ANTS-6611. Decide the intended rule, lock it with
   a test, then fold.
+  Rule set 2026-11-27 (user delegated): use maskQuotedRegions'
+  CommonMark rule; lock with a test first.
   **Layman:** Two parts of the roadmap reader treat code in a headline slightly differently; this picks one rule.
   Kind: investigate.
   Source: ANTS-6611/6612 helpers 2026-11-27.
@@ -98435,6 +98437,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   it widens matching, so some calls now answering bullet_not_found would
   succeed. Row 1349 of the 2026-11-06 review; left out of ANTS-6611
   because it changes behaviour. Needs a rule choice.
+  Rule set 2026-11-27 (user delegated): keep exact headline matching (no
+  widening); document why and leave the locator as is.
   **Layman:** Finding an item by its title works a little differently on one roadmap style; this decides whether to make it match.
   Kind: investigate.
   Source: ANTS-6611/6612 helpers 2026-11-27.
@@ -98529,6 +98533,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   9FE064 / E06464. Needs the user's colour choice; then share the pair
   (command_mark_gutter counts QColor literals, so update it too). Row
   507 of the 2026-11-06 review.
+  User decision 2026-11-27: both use the stripe's pair, 9ECE6A / F7768E.
   **Layman:** Two places show a command's success or failure in slightly different greens and reds; you choose which.
   Kind: ux.
   Source: ANTS-6613–6617 helpers 2026-11-27.
@@ -98609,6 +98614,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   keep every non-option token. Needs a rule choice: (a) reject
   non-option tokens (and `-`, `--`) and amend INV-1; (b) keep it and
   document bookmarks as trusted. Row 1461 of the 2026-11-06 review.
+  User decision 2026-11-27: (a) refuse non-option tokens (and -, --)
+  with a message; amend ssh_extra_args_sanitize INV-1.
   **Layman:** A saved SSH bookmark with an extra word in its options could connect somewhere other than the host it shows.
   Kind: security.
   Source: ANTS-6620–6622 helpers 2026-11-27.
@@ -98619,6 +98626,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Needs a choice: (a) warn and keep the dialog open; (b) save the row
   disabled, with a runtime guard where the pattern is compiled; (c)
   both. Row 246 of the 2026-11-06 review.
+  User decision 2026-11-27: (a) warn naming the broken rule and keep
+  Settings open.
   **Layman:** A highlight rule with a typo in its pattern disappears when you save, with no message.
   Kind: fix.
   Source: ANTS-6620–6622 helpers 2026-11-27.
@@ -98629,6 +98638,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   status line naming the allocated ids; the dialog shows a heading text
   box. Choose: build that modal, or amend § 3.2 (its Status line says
   this part was deferred to v2). Row 296 of the 2026-11-06 review.
+  Rule set 2026-11-27 (user delegated): amend ANTS-1111 § 3.2 to the
+  heading text box; the modal stays a v2 idea.
   **Layman:** The audit's send-to-roadmap step is simpler than its design promised; pick which one is right.
   Kind: fix.
   Source: ANTS-6620–6622 helpers 2026-11-27.
@@ -98642,6 +98653,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   out runs (ANTS-5067 allows one). Choose: (a) a global cap that refuses
   as busy, (b) skip in-process lanes while one still runs (recommended),
   or (c) amend the spec.
+  Rule set 2026-11-27 (user delegated): row 323 (a) a sarif_error reply
+  field; row 320 (b) skip in-process lanes while an abandoned worker
+  runs.
   **Layman:** Two small audit failure cases need a choice of how loudly to report them.
   Kind: fix.
   Source: ANTS-6620–6622 helpers 2026-11-27.
@@ -115662,6 +115676,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   docCitationsMdScan passes QDir::NoSymLinks. Their caps differ too.
   Review row 931 asked for one walk; folding needs the rule settled
   first.
+  Rule set 2026-11-27 (user delegated): both walks keep symlinks that
+  resolve inside the root (ANTS-6449's rule).
   **Layman:** Two document checks treat linked files differently, so they can see different files.
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6601).
@@ -115692,6 +115708,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   sections made in the same run. createSectionSkipCount is not
   file-aware. Decide the rule, then fold review row 865's remaining
   copies onto rcPastDeeper.
+  Rule set 2026-11-27 (user delegated): a section stored in another file
+  is skipped, not a stop (release.cpp's rule).
   **Layman:** Moving or placing roadmap sections can treat sections stored in other files differently.
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6603).
@@ -115729,6 +115747,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   src/remotecontrol_state.cpp, invariant_check's scanOneDir. The comment
   says it treats README as task_priors does, so the case-insensitive
   rule looks intended. Align, then fold (review row 903).
+  Rule set 2026-11-27 (user delegated): README is matched
+  case-insensitively, as the comment intends.
   **Layman:** Two tools disagree on whether readme.md counts as a README.
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6605).
@@ -115738,6 +115758,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   src/remotecontrol_state.cpp: pickForeignReport passes n.toLower() to
   hasNarrowReportSuffix, classifyAuditScope passes base as it is (review
   row 902). Pick one rule.
+  Rule set 2026-11-27 (user delegated): narrow suffixes match
+  case-insensitively in both places.
   **Layman:** A report named -NARROW can be treated as narrow by one step and broad by the next.
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6605).
