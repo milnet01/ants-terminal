@@ -75,6 +75,10 @@ struct Outcome {
     // the downgrade was wrong.
     bool overrideUndidDowngrade   = false;
     bool pending                  = true;   // outcome not yet filled in
+
+    // computeOutcome's `changed` flag compares whole Outcomes, so a new field
+    // is flushed to disk without touching that site.
+    bool operator==(const Outcome &) const = default;
 };
 
 struct Record {

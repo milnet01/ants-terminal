@@ -711,9 +711,9 @@ TEST(ModelRecommender, Ants1944CommandSetsFromCommand) {
 }
 
 // INV-2 — assistant-turn path sets fromCommand=false and carries the turn's
-// parsed timestamp in currentModelTsMs. Guards the def→r propagation: if the
-// fresh Result at modelrecommender.cpp:337-339 doesn't copy the fields, this
-// test fails (fields stay at zero/false defaults).
+// parsed timestamp in currentModelTsMs. Guards the def→r propagation in
+// score()'s final Result: if it stops copying def's fields, this test fails
+// (fields stay at zero/false defaults).
 TEST(ModelRecommender, Ants1944AssistantTurnSetsTimestamp) {
     // writeSyntheticTranscript stamps every turn with "2026-05-21T00:00:00Z";
     // QDateTime::fromString("2026-05-21T00:00:00.000Z", Qt::ISODate) → valid ms.

@@ -270,12 +270,9 @@ Result score(const QString &transcriptPath, Tier homeTier)
     // (so a fresh-session "commit and push" routes to Haiku). The Haiku
     // target is then subject to ModelAutoSwitch::clampToFloor in the gate.
     if (hasCommitIntent(latestUserText)) {
-        Result r;
+        Result r = def;   // keeps the current-model provenance fields
         r.tier         = Tier::Haiku;
         r.reason       = QStringLiteral("commit_intent");
-        r.currentModel = def.currentModel;
-        r.currentModelFromCommand = def.currentModelFromCommand;  // ANTS-1944
-        r.currentModelTsMs        = def.currentModelTsMs;
         return memoize(r);
     }
 
@@ -352,11 +349,8 @@ Result score(const QString &transcriptPath, Tier homeTier)
     if (avgLen >= 500.0)         { sc += 1; reasons += QStringLiteral("long_prompts "); }
     if (mechanical)              { sc -= 2; reasons += QStringLiteral("mechanical "); }
 
-    Result r;
-    r.currentModel = def.currentModel;
+    Result r = def;   // keeps the current-model provenance fields
     r.isMechanical = mechanical;
-    r.currentModelFromCommand = def.currentModelFromCommand;  // ANTS-1944
-    r.currentModelTsMs        = def.currentModelTsMs;
     // ANTS-1930 — rebalanced thresholds for symmetric upgrades/downgrades
     // (>= 2 up, <= -2 down). ANTS-1974 — the up/neutral/down decision is now
     // RELATIVE to the user's home tier via tierForScore(); home==Sonnet

@@ -393,14 +393,7 @@ OutcomeFillResult computeOutcome(
     }
 
     // changed flag — caller flushes only when something differs from input.
-    res.changed = (res.outcome.pending != inputBefore.pending)
-               || (res.outcome.turnsOnToTier != inputBefore.turnsOnToTier)
-               || (res.outcome.userOverrideWithin5 != inputBefore.userOverrideWithin5)
-               || (res.outcome.overrideUndidDowngrade != inputBefore.overrideUndidDowngrade)
-               || (res.outcome.correctionSignalFirstTurn != inputBefore.correctionSignalFirstTurn)
-               || (res.outcome.underRouteSignalWithin5 != inputBefore.underRouteSignalWithin5)
-               || (res.outcome.sessionCleanlyEndedOnNewTier
-                       != inputBefore.sessionCleanlyEndedOnNewTier);   // ANTS-1891
+    res.changed = (res.outcome != inputBefore);
     return res;
 }
 

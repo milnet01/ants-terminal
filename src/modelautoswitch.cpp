@@ -103,7 +103,9 @@ Decision decide(const Gate &g) {
     // picture. The tokens are the ANTS-1894 INV-9 stable handles — do NOT
     // rename or reorder (consumers persist them to disk). v1 = 7 tokens;
     // ANTS-1917 appended idle_end_of_session (8th); ANTS-1959 appended
-    // downgrade_requires_active_work (9th). New tokens always go last.
+    // downgrade_requires_active_work (9th). New tokens always go last, and
+    // also go last in taxonomyOrder() (modelnearmissledger.cpp), which breaks
+    // ties for the dominant blocker.
     if (!g.enabled)
         d.blockedBy << QStringLiteral("auto_switch_disabled");
     // focused_state_not_idle yields when the human has been idle for the
@@ -277,10 +279,10 @@ bool directModelSwitchVisible(const QString &recentOutput) {
 // closed that: typing `/model <tier>` while idle to pre-pick a model for a later
 // message is NOT consent to start a billable turn — injecting a continuation
 // there would start unrequested work (the hard ANTS-1959 billing-safety
-// invariant). This now mirrors shouldContinueAfterUnarmedConfirm exactly: idle ⇒
+// invariant). So it is the same gate as shouldContinueAfterUnarmedConfirm: idle ⇒
 // observe/confirm only, never continue.
 bool shouldContinueAfterDirectSwitch(bool autoModeOn, bool activeTurn) {
-    return autoModeOn && activeTurn;
+    return shouldContinueAfterUnarmedConfirm(autoModeOn, activeTurn);
 }
 
 }  // namespace ModelAutoSwitch
