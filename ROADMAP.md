@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6977 -->
+<!-- ants-roadmap-id-high-water: ANTS=6983 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98602,9 +98602,90 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6967 helper 2026-11-27.
   Lanes: terminal-widget.
 
+- 📋 [ANTS-6978] **An SSH bookmark's extra arguments cannot change which host it connects to.**
+  sshdialog.cpp: a bare `other.host` token in a bookmark's extra args
+  becomes ssh's destination and the real host becomes the remote
+  command (OpenSSH parsing). ssh_extra_args_sanitize INV-1 promises to
+  keep every non-option token. Needs a rule choice: (a) reject
+  non-option tokens (and `-`, `--`) and amend INV-1; (b) keep it and
+  document bookmarks as trusted. Row 1461 of the 2026-11-06 review.
+  **Layman:** A saved SSH bookmark with an extra word in its options could connect somewhere other than the host it shows.
+  Kind: security.
+  Source: ANTS-6620–6622 helpers 2026-11-27.
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6979] **Settings says so when a Highlights or Triggers row with a bad pattern is not saved.**
+  settingsdialog.cpp drops a row whose regex does not compile, silently.
+  Needs a choice: (a) warn and keep the dialog open; (b) save the row
+  disabled, with a runtime guard where the pattern is compiled; (c)
+  both. Row 246 of the 2026-11-06 review.
+  **Layman:** A highlight rule with a typo in its pattern disappears when you save, with no message.
+  Kind: fix.
+  Source: ANTS-6620–6622 helpers 2026-11-27.
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6980] **The audit's Fold-in-to-roadmap step matches what ANTS-1111 promises, or the spec says what it does.**
+  ANTS-1111 § 3.2 promises a modal with one checkbox per finding and a
+  status line naming the allocated ids; the dialog shows a heading text
+  box. Choose: build that modal, or amend § 3.2 (its Status line says
+  this part was deferred to v2). Row 296 of the 2026-11-06 review.
+  **Layman:** The audit's send-to-roadmap step is simpler than its design promised; pick which one is right.
+  Kind: fix.
+  Source: ANTS-6620–6622 helpers 2026-11-27.
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6981] **The audit reports a failed SARIF write instead of a quiet ok.**
+  When both SARIF writes fail, audit_run still answers ok:true with no
+  sarif_path. Choose: (a) a new `sarif_error` reply field (recommended;
+  keeps the findings), or (b) ok:false / sarif_write_failed. Row 323.
+  Also row 320: abandoned in-process lane workers pile up across timed
+  out runs (ANTS-5067 allows one). Choose: (a) a global cap that refuses
+  as busy, (b) skip in-process lanes while one still runs (recommended),
+  or (c) amend the spec.
+  **Layman:** Two small audit failure cases need a choice of how loudly to report them.
+  Kind: fix.
+  Source: ANTS-6620–6622 helpers 2026-11-27.
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6982] **Fix the audit bugs the ANTS-6621 and ANTS-6622 helpers found.**
+  - falseposledger.cpp loadEntries: a readLine that returns empty on a
+    read error before EOF spins the loop forever.
+  - trendLineHtml shows "Trend vs" under Since-baseline / Recent-only.
+  - todo_scan is codeLinesOnly, so TODOs inside comments are dropped
+    (with ANTS-5848).
+  - "Defer all to ROADMAP" has row 295's re-scan race.
+  - Blame jobs from the previous run refill the cleared cache.
+  - readRecentChangeSets' git log quotes non-ASCII paths
+    (core.quotePath), dropping them from the recent set.
+  - computeConfidence matches /tests/ only with a leading slash.
+  - Fold-in templates do not escape a newline in a message; the
+    indie-review TODO placeholder puts f.file in a code span unescaped;
+    only `file` should be escaped there (row 1333's other half).
+  - RuleQualityTracker::reload's header comment is inaccurate.
+  **Layman:** A list of small audit-tool bugs found while fixing others, one of which can hang.
+  Kind: fix.
+  Source: ANTS-6620–6622 helpers 2026-11-27.
+  Lanes: audit-dialog, audit-engine.
+
+- 📋 [ANTS-6983] **Fix the Review Changes and setup bugs the ANTS-6620 helper found.**
+  - diffviewer.cpp: git status paths are relative to the working dir,
+    diff headers to the repo root; opened in a subfolder, links and line
+    counts miss files outside it.
+  - diffHeaderPath splits on the first " b/".
+  - Under Flatpak, SIGKILL on flatpak-spawn likely leaves host git
+    running (new round cancel and ~ProbeHost).
+  - scaffoldPlugin leaves a half-written folder after a failed write.
+  - claudesetup halfBlock misses a stray marker after a full pair.
+  - Spec ANTS-3794 § 2.1 says the import flag "scans argv"; it is now
+    argv[1] only.
+  **Layman:** Small problems in the Review Changes window and first-run setup, found while fixing others.
+  Kind: fix.
+  Source: ANTS-6620–6622 helpers 2026-11-27.
+  Lanes: app-entry-dialogs.
+
 ### Other bugs (2026-11-06 review)
 
-- 📋 [ANTS-6620] **Fix the smaller bugs the 2026-11-06 reviews found in app-entry-dialogs.**
+- ✅ [ANTS-6620] **Fix the smaller bugs the 2026-11-06 reviews found in app-entry-dialogs.**
   14 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 240 `claudesetup.cpp:181-187` (Medium)
   - row 243 `diffviewer.cpp:852` (Medium)
@@ -98620,12 +98701,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1460 `src/main.cpp:438` (Info)
   - row 1461 `src/sshdialog.cpp:176` (Info)
   - row 1462 `src/settingsdialog.cpp:1087` (Info)
+  Shipped d1267b8f: rows 240, 243, 244, 245, 247, 248, 249, 250, 251,
+  253 fixed (9 tests seen red then green). 1460, 1462 not bugs; 246 and
+  1461 need a decision (filed).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6621] **Fix the smaller bugs the 2026-11-06 reviews found in audit-dialog.**
+- ✅ [ANTS-6621] **Fix the smaller bugs the 2026-11-06 reviews found in audit-dialog.**
   16 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 292 `auditdialog.cpp:3400` (Medium)
   - row 293 `auditdialog.cpp:2556` (Medium)
@@ -98643,12 +98727,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1322 `src/auditdialog_triage.cpp:408` (Info)
   - row 1323 `src/auditdialog_triage.cpp:436` (Info)
   - row 1324 `src/auditdialog.cpp:115` (Info)
+  Shipped 069815e0: rows 292–295, 298–300, 302, 303, 305, 306, 1322
+  fixed (10 tests red then green), 1323 comment. 301 already fixed; 296
+  needs a decision (filed); 1324 is ANTS-5848.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6622] **Fix the smaller bugs the 2026-11-06 reviews found in audit-engine.**
+- ✅ [ANTS-6622] **Fix the smaller bugs the 2026-11-06 reviews found in audit-engine.**
   18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 311 `auditdelta.cpp:41` (Medium)
   - row 312 `auditscope.cpp:247-249` (Medium)
@@ -98668,6 +98755,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1332 `src/auditengine.cpp:1038` (Info)
   - row 1333 `src/debtsweepengine.cpp:1574` (Info)
   - row 1334 `src/auditcache.h:99` (Info)
+  Shipped d8cede4d: rows 311, 312, 315, 316, 317, 319, 324, 1326, 1330,
+  1331, 1332, 1333 (debt half), 1334 fixed (12 tests; 11 seen red).
+  1325, 1328 already fixed; 1327 not a bug; 320, 323 need a decision
+  (filed).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

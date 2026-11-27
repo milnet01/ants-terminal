@@ -118,6 +118,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Claude setup leaves alone a file holding only one Ants marker, and quotes the path it adds to ~/.bashrc** (ANTS-6620)
+
+- **Review Changes shows files with non-ASCII names and stops the previous refresh's git probes** (ANTS-6620)
+
+- **The audit window's Claude hand-off file has secrets scrubbed, and its results, blame and trend follow the run's filters** (ANTS-6621)
+
+- **Audit runs kill every tool helper they started, and count findings past the 10,000 cap** (ANTS-6622)
+
 - **Spec tools keep an escaped `\|` inside its table cell instead of splitting there, and find an `## INVARIANTS` heading in any case** (ANTS-6613)
 
 - **Bash and fish complete a folder for `--import-roadmap`'s project root, and the Debian and Arch recipes test as the openSUSE one does** (ANTS-6599)
