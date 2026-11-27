@@ -38,7 +38,15 @@ with write access to the config file.
 Both the single-token form (`-oProxyCommand=...`) and the space-
 separated form (`-o ProxyCommand=...`) MUST be stripped. Case-
 insensitive on the key name. The filter preserves all other
-`-o KEY=VAL` options, all non-option tokens, and short/long flags.
+`-o KEY=VAL` options, short flags, and the value of each option that takes
+one, whether separate (`-p 2222`) or attached (`-p2222`).
+
+It MUST also reject every token that is neither an option nor an option's
+value — a stray word, a bare `-`, or `--` — because ssh takes its first
+non-option argument as the host, so such a token would replace the
+bookmark's host (ANTS-6978). It MUST reject an option that takes a value
+when no value follows, because that option would take `toSshCommand`'s
+`--` as its value.
 
 ### Invariant 2 — toSshCommand delegates to sanitizeExtraArgs
 

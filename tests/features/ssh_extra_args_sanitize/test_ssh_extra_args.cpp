@@ -1,7 +1,8 @@
 // Feature-conformance test for spec.md — asserts that
 // SshBookmark::sanitizeExtraArgs rejects ProxyCommand/LocalCommand/
 // PermitLocalCommand in both single-token and space-separated forms,
-// preserves all other options, and reports rejected tokens.
+// rejects stray non-option tokens ssh would take as the host, preserves
+// all other options and their values, and reports rejected tokens.
 //
 // Also exercises the end-to-end toSshCommand to confirm a poisoned
 // bookmark never emits the dangerous option to the final command.
@@ -9,7 +10,10 @@
 // Exit 0 = all assertions hold. Non-zero = regression.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 #include "sshdialog.h"
+
+#include <QProcess>
 
 #include <gtest/gtest.h>
 
@@ -63,14 +67,13 @@ void testSanitize() {
     }
 
     // Match exec — ssh_config(5) directive that runs a shell command.
-    // Added 0.7.12 after the re-review sweep flagged it as HIGH.
-    // (Residual `evil` token passes through as an unrelated positional
-    // arg — ssh would reject it as an unknown option — that's fine;
-    // the protection is dropping the `-oMatch=` option itself.)
+    // The leftover `evil` is a stray word, rejected too (see testStrayTokens).
     {
         auto safe = SshBookmark::sanitizeExtraArgs("-oMatch=exec evil");
         expect(!safe.contains("-oMatch=exec"),
                "sanitize: -oMatch= rejected (prevents Match exec RCE)");
+        expect(!safe.contains("evil"),
+               "sanitize: leftover stray word rejected");
     }
     {
         auto safe = SshBookmark::sanitizeExtraArgs("-o Match=exec evil");
@@ -86,17 +89,16 @@ void testSanitize() {
                "sanitize: -oKnownHostsCommand= rejected");
     }
 
-    // Bare trailing `-o` — no value follows. Previously slipped through
-    // to ssh verbatim; low-risk (ssh errors out) but cleaner to drop.
-    // Actually: current implementation preserves it since there's no
-    // payload key to check. Test the current behavior so we notice if
-    // it changes.
+    // Bare trailing `-o` — no value follows, so ssh would take
+    // toSshCommand's `--` as its value. Rejected.
     {
-        auto safe = SshBookmark::sanitizeExtraArgs("foo -o");
-        // This is the CURRENT (intentional) behavior — just documents it.
-        // A future tightening could drop the trailing -o; update here.
-        expect(safe.contains("-o"),
-               "sanitize: bare trailing -o passes through (documents current)");
+        QStringList rej;
+        auto safe = SshBookmark::sanitizeExtraArgs("-4 -o", &rej);
+        expect(safe == QStringList{"-4"},
+               "sanitize: bare trailing -o rejected",
+               QString("got: %1").arg(safe.join(QStringLiteral(" | "))));
+        expect(rej == QStringList{"-o"},
+               "sanitize: bare trailing -o reported");
     }
 
     // Safe options pass through
@@ -204,6 +206,43 @@ void testBypassForms() {
     }
 }
 
+// ANTS-6978 — ssh takes its first non-option argument as the host, so a
+// stray word in extra args must not reach it.
+void testStrayTokens() {
+    for (const char *extra : {"other.host", "-4 other.host", "-", "--",
+                              "-- other.host", "-C - -4"}) {
+        QStringList rej;
+        const QStringList safe = SshBookmark::sanitizeExtraArgs(extra, &rej);
+        for (const QString &t : safe)
+            expect(t.startsWith(QLatin1Char('-')) && t != "-" && t != "--",
+                   "stray: only options survive",
+                   QString("%1 -> %2").arg(extra, safe.join(QStringLiteral(" | "))));
+        expect(!rej.isEmpty(), "stray: rejected token reported",
+               QString("input: %1").arg(extra));
+    }
+    {
+        SshBookmark bm;
+        bm.host = "real.host";
+        bm.extraArgs = "other.host";
+        const QString cmd = bm.toSshCommand();
+        expect(!cmd.contains("other.host"),
+               "stray: e2e command never names the stray host",
+               QString("got: %1").arg(cmd));
+        expect(cmd.endsWith("-- 'real.host'") || cmd.endsWith("-- real.host"),
+               "stray: e2e command ends with the bookmark's host",
+               QString("got: %1").arg(cmd));
+    }
+    // An option's value is not a stray token, in either form.
+    for (const char *extra : {"-p 2222", "-p2222", "-o StrictHostKeyChecking=yes",
+                              "-i ~/.ssh/id", "-J jump", "-4 -l admin -L 8080:h:80"}) {
+        QStringList rej;
+        const QStringList safe = SshBookmark::sanitizeExtraArgs(extra, &rej);
+        expect(safe == QProcess::splitCommand(QString::fromLatin1(extra)) && rej.isEmpty(),
+               "stray: option value kept intact",
+               QString("%1 -> %2").arg(extra, safe.join(QStringLiteral(" | "))));
+    }
+}
+
 void testEndToEnd() {
     // A poisoned bookmark must NOT produce a ProxyCommand in the final
     // ssh command. This is the invariant that actually protects users.
@@ -239,9 +278,30 @@ TEST(SshExtraArgsSanitize, BypassForms) {
     if (expect_failures() > before) FAIL();
 }
 
+TEST(SshExtraArgsSanitize, StrayTokens) {
+    const int before = expect_failures();
+    testStrayTokens();
+    if (expect_failures() > before) FAIL();
+}
+
 TEST(SshExtraArgsSanitize, EndToEnd) {
     const int before = expect_failures();
     testEndToEnd();
     if (expect_failures() > before) FAIL();
 }
 
+
+// ANTS-6978 — Save and both Connect buttons refuse refused extra args out
+// loud (extraArgsAccepted names them) instead of dropping them silently.
+TEST(SshExtraArgsSanitize, DialogNamesRefusedArgs) {
+    const std::string src = ants_test::slurpFile(
+        std::string(ANTS_SOURCE_DIR) + "/src/sshdialog.cpp");
+    ASSERT_FALSE(src.empty());
+    for (const char *sig : {"void SshDialog::onSave()",
+                            "void SshDialog::onConnectNewTab()",
+                            "void SshDialog::onConnectCurrent()"}) {
+        const std::string body = ants_test::slurpFunctionBody(src, sig);
+        EXPECT_NE(body.find("extraArgsAccepted(this, bm)"), std::string::npos)
+            << sig << " must refuse dropped extra args with a message";
+    }
+}

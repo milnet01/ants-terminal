@@ -27,7 +27,9 @@ struct SshBookmark {
     // ssh. Rejects every `-o` option that runs a command or loads a file
     // or library (ProxyCommand, Match, Include and others), and the `-E`,
     // `-F` and `-I` flags. The full lists are kDangerous and
-    // kRejectedLetters in sshdialog.cpp.
+    // kRejectedLetters in sshdialog.cpp. Also rejects any token that is
+    // neither an option nor an option's value (a stray word, `-`, `--`),
+    // which ssh would take as the host, and an option missing its value.
     // These options let the bookmark owner (potentially: a contributed
     // plugin, a config-syncing tool, a synced dotfile repo) run
     // arbitrary shell commands when the user connects — the classic

@@ -157,7 +157,13 @@ QStringList SshBookmark::sanitizeExtraArgs(const QString &extraArgs,
         QChar opt;
         QString optArg;
         bool argIsNext = false;
-        if (t.size() > 1 && t.startsWith(QLatin1Char('-'))) {
+        bool argMissing = false;
+        // ANTS-6978 — ssh takes its first non-option argument as the host, so
+        // a stray word here would replace the bookmark's host. A bare `-` is
+        // such a word, and `--` would make the next one the host.
+        const bool isOption = t.size() > 1 && t.startsWith(QLatin1Char('-'))
+            && t != QLatin1String("--");
+        if (isOption) {
             for (int c = 1; c < t.size(); ++c) {
                 if (!kTakesArg.contains(t[c])) continue;
                 opt = t[c];
@@ -166,11 +172,17 @@ QStringList SshBookmark::sanitizeExtraArgs(const QString &extraArgs,
                 } else if (i + 1 < tokens.size()) {
                     optArg = tokens[i + 1];
                     argIsNext = true;
+                } else {
+                    // A trailing `-o` would take toSshCommand's `--` as its
+                    // value, and a host starting with `-` would then be
+                    // read as an option.
+                    argMissing = true;
                 }
                 break;
             }
         }
-        const bool reject = kRejectedLetters.contains(opt)
+        const bool reject = !isOption || argMissing
+            || kRejectedLetters.contains(opt)
             || (opt == QLatin1Char('o') && isDangerousKey(optionKey(optArg)));
         if (reject) {
             if (out_rejected) {
@@ -337,12 +349,28 @@ SshBookmark SshDialog::currentFormData() const {
     return bm;
 }
 
+// ANTS-6978 — names any extra arg sanitizeExtraArgs would drop, so a stray
+// word is refused out loud rather than silently. False when one was found.
+static bool extraArgsAccepted(QWidget *parent, const SshBookmark &bm) {
+    QStringList rejected;
+    SshBookmark::sanitizeExtraArgs(bm.extraArgs, &rejected);
+    if (rejected.isEmpty()) return true;
+    QMessageBox::warning(
+        parent, "SSH Manager",
+        QStringLiteral("Extra Args may only hold ssh options, such as "
+                       "-p 2222. These were not accepted:\n\n%1\n\n"
+                       "Remove them, then try again.")
+            .arg(rejected.join(QLatin1Char('\n'))));
+    return false;
+}
+
 void SshDialog::onSave() {
     SshBookmark bm = currentFormData();
     if (bm.host.isEmpty()) {
         QMessageBox::warning(this, "SSH Manager", "Host is required.");
         return;
     }
+    if (!extraArgsAccepted(this, bm)) return;
 
     if (m_currentIndex >= 0 && m_currentIndex < m_bookmarks.size()) {
         m_bookmarks[m_currentIndex] = std::move(bm);
@@ -364,14 +392,14 @@ void SshDialog::onDelete() {
 
 void SshDialog::onConnectNewTab() {
     SshBookmark bm = currentFormData();
-    if (bm.host.isEmpty()) return;
+    if (bm.host.isEmpty() || !extraArgsAccepted(this, bm)) return;
     emit connectRequested(bm.toSshCommand(m_controlMaster), true);
     accept();
 }
 
 void SshDialog::onConnectCurrent() {
     SshBookmark bm = currentFormData();
-    if (bm.host.isEmpty()) return;
+    if (bm.host.isEmpty() || !extraArgsAccepted(this, bm)) return;
     emit connectRequested(bm.toSshCommand(m_controlMaster), false);
     accept();
 }
