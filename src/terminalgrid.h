@@ -650,6 +650,24 @@ private:
     // can still tell the neighbor's pre-write state. See
     // tests/features/wide_char_overwrite_mate for the contract.
     void breakWidePairsAround(int row, int startCol, int endCol);
+    // The two steps handlePrint and handleAsciiPrintRun share. Inline:
+    // both run per printed character or run.
+    // A wrap is pending and DECAWM is on: soft-wrap to the next line.
+    void applyPendingWrap() {
+        if (m_wrapNext && m_autoWrap) {
+            m_screenLines[m_cursorRow].softWrapped = true;
+            m_cursorCol = 0;
+            newLine();
+            m_wrapNext = false;
+        }
+    }
+    // Before a write at [startCol, endCol): break any wide pair it splits,
+    // and drop the links it overprints (ANTS-5076). The active link's own
+    // span is pushed only when it closes, so it is not touched here.
+    void prepareCellWrite(int row, int startCol, int endCol) {
+        breakWidePairsAround(row, startCol, endCol);
+        dropHyperlinkSpans(row, startCol, endCol);
+    }
     void handleExecute(char ch);
     void handleCsi(const VtAction &a);
     void handleEsc(const VtAction &a);

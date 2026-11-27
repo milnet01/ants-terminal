@@ -512,12 +512,7 @@ void TerminalGrid::handleAsciiPrintRun(const char *data, int len) {
     // byte-for-byte identical with the scalar handlePrint() path.
     int i = 0;
     while (i < len) {
-        if (m_wrapNext && m_autoWrap) {
-            m_screenLines[m_cursorRow].softWrapped = true;
-            m_cursorCol = 0;
-            newLine();
-            m_wrapNext = false;
-        }
+        applyPendingWrap();
         if (m_cursorCol >= m_cols) m_cursorCol = m_cols - 1;
 
         const int row = std::clamp(m_cursorRow, 0, m_rows - 1);
@@ -530,10 +525,7 @@ void TerminalGrid::handleAsciiPrintRun(const char *data, int len) {
         int span = remaining < available ? remaining : available;
         if (span <= 0) break;  // defensive
 
-        // Sanitize any wide-char pair at either edge of this write span
-        // BEFORE writing — see breakWidePairsAround for the contract.
-        breakWidePairsAround(row, startCol, startCol + span);
-        dropHyperlinkSpans(row, startCol, startCol + span);  // ANTS-5076
+        prepareCellWrite(row, startCol, startCol + span);
         auto &cells = line.cells;
         const CellAttrs attrs = m_currentAttrs;
         bool rowHasCombining = !line.combining.empty();
@@ -591,13 +583,9 @@ void TerminalGrid::handlePrint(uint32_t cp) {
         return;
     }
 
-    if (m_wrapNext && m_autoWrap) {
-        // Mark current line as soft-wrapped before moving to next
-        m_screenLines[m_cursorRow].softWrapped = true;
-        m_cursorCol = 0;
-        newLine();
-        m_wrapNext = false;
-    }
+    // handleAsciiPrintRun is this function's fast path for printable ASCII
+    // runs: a change to the wrap, write or cursor steps here goes there too.
+    applyPendingWrap();
 
     if (m_cursorCol >= m_cols) {
         m_cursorCol = m_cols - 1;
@@ -619,13 +607,8 @@ void TerminalGrid::handlePrint(uint32_t cp) {
         }
     }
 
-    // Sanitize any wide-char pair at either edge of this write BEFORE we
-    // clobber the cell(s). Write region is [cursorCol, cursorCol+charWidth).
-    // See breakWidePairsAround + tests/features/wide_char_overwrite_mate.
-    breakWidePairsAround(m_cursorRow, m_cursorCol, m_cursorCol + charWidth);
-    // ANTS-5076 — text printed over a link replaces it. The active link's
-    // own span is only pushed when it closes, so it is not touched here.
-    dropHyperlinkSpans(m_cursorRow, m_cursorCol, m_cursorCol + charWidth);
+    // See tests/features/wide_char_overwrite_mate for the wide-pair contract.
+    prepareCellWrite(m_cursorRow, m_cursorCol, m_cursorCol + charWidth);
 
     auto &c = cell(m_cursorRow, m_cursorCol);
     c.codepoint = cp;
@@ -3018,6 +3001,31 @@ void TerminalGrid::resize(int rows, int cols) {
         lines = std::move(newLines);
     };
 
+    // The copy without reflow, for the live screen and the saved main screen
+    // alike: `copyRows` lines of `lines` from row `first` go into a fresh
+    // rows x cols screen, each clipped to `copyCols`. 0.6.28 — combining
+    // marks are kept, filtered to the columns that remain; link spans move
+    // with their line, unclipped.
+    auto copyScreen = [&](std::vector<TermLine> &lines, int first,
+                          int copyRows, int copyCols) {
+        std::vector<TermLine> out(rows);
+        for (auto &line : out)
+            line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+        for (int r = 0; r < copyRows; ++r) {
+            TermLine &src = lines[r + first];
+            const int n = std::min(copyCols, static_cast<int>(src.cells.size()));
+            for (int c = 0; c < n; ++c)
+                out[r].cells[c] = src.cells[c];
+            out[r].softWrapped = src.softWrapped;
+            for (const auto &kv : src.combining) {
+                if (kv.first < copyCols)
+                    out[r].combining.emplace(kv.first, kv.second);
+            }
+            out[r].hyperlinks = std::move(src.hyperlinks);
+        }
+        return out;
+    };
+
     // Reflow screen lines when width changes
     if (cols != m_cols && !m_altScreenActive) {
         reflowScreen(m_screenLines);
@@ -3039,11 +3047,6 @@ void TerminalGrid::resize(int rows, int cols) {
         m_cursorCol = std::clamp(m_cursorCol, 0, cols - 1);
     } else {
         // No reflow needed (same width or alt screen) — simple copy.
-        // 0.6.28 — preserve the per-line combining-char side table. The
-        // old copy walked cells only, so resize that widened/shrank the
-        // terminal wiped accents/ZWJ/diacritics on all lines. Filter
-        // entries whose column is now out of bounds (shrink case). Link
-        // spans move with their line, unclipped.
         // ANTS-6530 — on the main screen, a shrink that would cut off the
         // cursor row moves the rows above it into scrollback, as xterm
         // does, so the cursor line and the newest output stay on screen.
@@ -3054,23 +3057,9 @@ void TerminalGrid::resize(int rows, int cols) {
             pushToScrollback(std::move(m_screenLines[r]));
         m_cursorRow -= shift;
 
-        std::vector<TermLine> newScreen(rows);
-        for (auto &line : newScreen)
-            line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
-        int copyRows = std::min(rows, m_rows - shift);
-        int copyCols = std::min(cols, m_cols);
-        for (int r = 0; r < copyRows; ++r) {
-            TermLine &src = m_screenLines[r + shift];
-            for (int c = 0; c < copyCols; ++c)
-                newScreen[r].cells[c] = src.cells[c];
-            newScreen[r].softWrapped = src.softWrapped;
-            for (const auto &kv : src.combining) {
-                if (kv.first < copyCols)
-                    newScreen[r].combining.emplace(kv.first, kv.second);
-            }
-            newScreen[r].hyperlinks = std::move(src.hyperlinks);
-        }
-        m_screenLines = std::move(newScreen);
+        m_screenLines = copyScreen(m_screenLines, shift,
+                                   std::min(rows, m_rows - shift),
+                                   std::min(cols, m_cols));
     }
 
     // Also resize the saved alt-screen buffer if it exists. m_altScreen holds
@@ -3086,10 +3075,8 @@ void TerminalGrid::resize(int rows, int cols) {
             // the (already-reflowed) main scrollback.
             reflowScreen(m_altScreen);
         } else {
-            // Rows-only resize — no soft-wrap boundary change, simple copy.
-            // Same combining-map preservation as the main-screen simple-copy
-            // path above (alt-screen TUIs render accented filenames / ZWJ emoji
-            // that would otherwise disappear).
+            // Rows-only resize — no soft-wrap boundary change, so the same
+            // copyScreen as the live screen.
             // ANTS-6812 — the saved main screen keeps its cursor line as the
             // live one does (ANTS-6530): rows above it go to the main
             // scrollback, which is this screen's while the alt screen runs.
@@ -3099,23 +3086,9 @@ void TerminalGrid::resize(int rows, int cols) {
                 pushToScrollback(std::move(m_altScreen[r]));
             m_altCursorRow -= altShift;
 
-            std::vector<TermLine> newAlt(rows);
-            for (auto &line : newAlt)
-                line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
-            int altCopyRows = std::min(rows, altRows - altShift);
-            int altCopyCols = std::min(cols, oldCols);
-            for (int r = 0; r < altCopyRows; ++r) {
-                TermLine &src = m_altScreen[r + altShift];
-                for (int c = 0; c < altCopyCols && c < static_cast<int>(src.cells.size()); ++c)
-                    newAlt[r].cells[c] = src.cells[c];
-                newAlt[r].softWrapped = src.softWrapped;
-                for (const auto &kv : src.combining) {
-                    if (kv.first < altCopyCols)
-                        newAlt[r].combining.emplace(kv.first, kv.second);
-                }
-                newAlt[r].hyperlinks = std::move(src.hyperlinks);
-            }
-            m_altScreen = std::move(newAlt);
+            m_altScreen = copyScreen(m_altScreen, altShift,
+                                     std::min(rows, altRows - altShift),
+                                     std::min(cols, oldCols));
         }
         m_altCursorRow = std::clamp(m_altCursorRow, 0, rows - 1);
         m_altCursorCol = std::clamp(m_altCursorCol, 0, cols - 1);
