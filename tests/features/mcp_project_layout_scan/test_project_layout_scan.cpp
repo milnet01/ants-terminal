@@ -227,6 +227,18 @@ TEST(ProjectLayoutEngine, IsStaleOnMtimeAdvance) {
         QDateTime::currentMSecsSinceEpoch()));
 }
 
+// INV-3b (ANTS-6629) — a file found at scan time and deleted since makes
+// the cache stale, so roadmap_found:true does not outlive the file.
+TEST(ProjectLayoutEngine, Ants6629IsStaleWhenDiscoveredFileIsDeleted) {
+    QTemporaryDir td;
+    writeFile(td.path() + "/ROADMAP.md", "# Roadmap\n");
+    const auto env = PLE::scanLayout(td.path());
+    ASSERT_FALSE(env.roadmap.path.isEmpty());
+    EXPECT_FALSE(PLE::isStale(env, env.scannedAtMs + 5));
+    ASSERT_TRUE(QFile::remove(td.path() + "/ROADMAP.md"));
+    EXPECT_TRUE(PLE::isStale(env, env.scannedAtMs + 5));
+}
+
 // INV-4 — TTL invalidation: a cached envelope older than ttlDays
 // is stale even if nothing changed on disk.
 TEST(ProjectLayoutEngine, IsStaleOnTtlExpiry) {

@@ -45,6 +45,9 @@ by the indie-review #6 sweep:
   0700 (subsumes the old unconditional-chmod intent) and returns true.
 - **INV-4** — `ensurePrivateDir` rejects a symlink in place of the leaf
   (returns false, does not follow it).
+- **INV-4b** (ANTS-6629) — `ensurePrivateDir` follows a pre-existing
+  ancestor that is a symlink to a directory, and creates the leaf at 0700
+  under its target.
 - **INV-5** — `mutateLocked` writes only when the mutator returns true; a
   read-only mutator (returns false) leaves no store file on disk.
 - **INV-6** — `mutateLocked` enforces the total-bytes cap with code

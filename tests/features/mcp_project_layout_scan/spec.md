@@ -22,6 +22,9 @@ The `ProjectLayoutEngine` surface:
 - **INV-3 / mtime invalidation.** `isStale(cached,
   scannedAtMs + 1000)` is false when nothing changed; advancing
   any probed path's mtime makes it true.
+- **INV-3b / Deletion invalidation (ANTS-6629).** Deleting a file the
+  scan found makes `isStale` true, so `roadmap_found:true` does not
+  outlive the file until TTL.
 - **INV-4 / TTL invalidation.** `isStale(cached,
   scannedAtMs + (ttl_days + 1) * 86400000)` is true regardless
   of mtime state.

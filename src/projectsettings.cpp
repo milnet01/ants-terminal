@@ -23,6 +23,8 @@
 
 #include <algorithm>
 
+#include <unistd.h>
+
 namespace ProjectSettings {
 
 namespace {
@@ -241,13 +243,18 @@ Settings load(const QString &rootCanonical) {
     return s;
 }
 
-bool claudeChromeFor(const QString &dir) {
+bool claudeChromeFor(const QString &dir, uint trustedUid) {
     QDir d(dir);
     do {
-        if (QFileInfo(d.filePath(QStringLiteral(".ants/project.json"))).isFile())
+        const QFileInfo fi(d.filePath(QStringLiteral(".ants/project.json")));
+        if (fi.isFile() && fi.ownerId() == trustedUid)
             return load(d.canonicalPath()).claudeChrome.value_or(false);
     } while (d.cdUp());
     return false;
+}
+
+bool claudeChromeFor(const QString &dir) {
+    return claudeChromeFor(dir, ::getuid());
 }
 
 RoadmapParse::IdFormat idFormatFor(const QString &rootCanonical) {

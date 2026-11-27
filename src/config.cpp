@@ -746,6 +746,7 @@ QString Config::claudeMcpFeedbackRoot() const {
 }
 
 void Config::setClaudeMcpFeedbackRoot(const QString &dir) {
+    if (!acceptablePathValue(dir)) return;
     if (!storeIfChanged("claude.mcp_feedback_root", dir)) return;
     save();
 }

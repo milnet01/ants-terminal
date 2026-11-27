@@ -119,6 +119,21 @@ void testEnsurePrivateDir() {
                                link.toLocal8Bit().constData()));
         expect(!ensurePrivateDir(link), "PD-4 symlink leaf rejected");
     }
+
+    // INV-4b (ANTS-6629) — a pre-existing symlinked ancestor is followed.
+    {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString real = tmp.path() + QStringLiteral("/real");
+        ASSERT_TRUE(QDir().mkdir(real));
+        const QString link = tmp.path() + QStringLiteral("/link");
+        ASSERT_EQ(0, ::symlink(real.toLocal8Bit().constData(),
+                               link.toLocal8Bit().constData()));
+        expect(ensurePrivateDir(link + QStringLiteral("/sessions")),
+               "PD-4b symlinked ancestor accepted");
+        expect(dirMode(real + QStringLiteral("/sessions")) == 0700,
+               "PD-4b leaf created 0700 under the symlink's target");
+    }
 }
 
 // ---- mutateLocked (ANTS-1823) -------------------------------------

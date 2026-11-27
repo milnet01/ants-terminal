@@ -53,6 +53,12 @@ With `claude.mcp_feedback_root` set, `*_Ants_MCP_Feedback.md` files in
 that directory appear in `candidates`, even though no path rule could
 reach it from `caller_cwd`.
 
+### INV-2b — the key refuses a malformed path (ANTS-6629)
+
+`setClaudeMcpFeedbackRoot` passes the value through the same gate as the
+other path setters: a value holding a NUL, or longer than the path cap, is
+not stored, and the key keeps its previous value.
+
 ### INV-3 — the configured root ADDS, it does not replace
 
 The derived directory is still scanned when the key is set, so

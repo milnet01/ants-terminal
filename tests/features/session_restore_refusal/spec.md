@@ -33,6 +33,9 @@ defects turned a refusal into data loss.
   rows are more, than its header's grid restores at the header's size. The
   extra cells and rows are read and dropped, so the fields after the
   screen still restore.
+- **INV-F — a combining mark off the kept cells is dropped (ANTS-6629).**
+  A combining-table entry whose column is negative or past the cells a
+  restored line kept is not stored; an entry on a kept cell is.
 
 ## Test scope
 

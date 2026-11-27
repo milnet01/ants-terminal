@@ -268,8 +268,11 @@ inline QString privateSocketPath(const QString &name) {
 // untouched (we must not narrow e.g. ~/.local/share, which other apps share).
 // The leaf is force-tightened to 0700 even when it already existed, because
 // an older build / permissive umask / another tool may have left it 0755
-// (mirrors the ANTS-1801 unconditional-tighten intent). A file or symlink
-// found where a directory component must be is a hard failure (no follow).
+// (mirrors the ANTS-1801 unconditional-tighten intent). A pre-existing
+// ancestor may be a symlink to a directory (a home or ~/.local moved to
+// another disk), so it is checked with stat, which follows it. The leaf and
+// every component created here are checked with lstat: a symlink there is a
+// hard failure (no follow), as is a file anywhere in the path.
 //
 // Returns true iff `dir` exists as a real directory at mode 0700 on return.
 // Callers should surface false (it means the private dir could not be
@@ -284,14 +287,18 @@ inline bool ensurePrivateDir(const QString &dir) {
 
     QString cur;  // built up component-by-component below; the leading '/'
                   // for absolute paths is prepended in the first iteration
-    for (const QString &part : parts) {
+    for (qsizetype i = 0; i < parts.size(); ++i) {
+        const QString &part = parts.at(i);
         cur = cur.isEmpty()
                   ? (absolute ? QLatin1Char('/') + part : part)
                   : cur + QLatin1Char('/') + part;
         const QByteArray b = QFile::encodeName(cur);
         struct stat st{};
-        if (::lstat(b.constData(), &st) == 0) {
-            if (!S_ISDIR(st.st_mode)) return false;  // file/symlink blocks us
+        const bool isLeaf = i == parts.size() - 1;
+        const int rc = isLeaf ? ::lstat(b.constData(), &st)
+                              : ::stat(b.constData(), &st);
+        if (rc == 0) {
+            if (!S_ISDIR(st.st_mode)) return false;  // file (or symlink leaf) blocks us
             continue;                                 // pre-existing dir: leave
         }
         if (errno != ENOENT) return false;

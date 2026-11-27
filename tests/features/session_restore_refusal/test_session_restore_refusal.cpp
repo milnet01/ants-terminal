@@ -17,6 +17,9 @@
 #include <QFileInfo>
 #include <QString>
 
+#include <clocale>
+#include <string>
+
 namespace {
 
 void feed(TerminalGrid &grid, const QByteArray &bytes) {
@@ -98,6 +101,43 @@ TEST(SessionRestoreRefusal, InvEOversizedScreenIsCropped) {
     EXPECT_EQ(rowText(target.screenLine(0).cells), QStringLiteral("abcdefghij"));
     EXPECT_EQ(rowText(target.screenLine(2).cells), QStringLiteral("row-2"));
     EXPECT_EQ(cwd, savedCwd) << "the fields after the screen were not read";
+}
+
+// INV-F (ANTS-6629) — a combining mark on a cell the restore dropped is
+// dropped with it; one on a kept cell stays.
+TEST(SessionRestoreRefusal, Ants6629MarksPastTheKeptCellsAreDropped) {
+    // wcwidth() calls U+0301 unprintable under the C locale.
+    const std::string savedCType = std::setlocale(LC_CTYPE, nullptr);
+    struct RestoreCType {
+        std::string name;
+        ~RestoreCType() { std::setlocale(LC_CTYPE, name.c_str()); }
+    } restoreCType{savedCType};
+    ASSERT_TRUE(TerminalGrid::ensureUtf8CType()) << "no UTF-8 locale on this host";
+
+    TerminalGrid source(6, 20);
+    // U+0301 on 'a' (col 0) and on 'p' (col 15).
+    feed(source, "a\xCC\x81" "bcdefghijklmnop\xCC\x81" "qrst");
+    ASSERT_EQ(source.screenCombining(0).count(0), 1u);
+    ASSERT_EQ(source.screenCombining(0).count(15), 1u);
+    const QByteArray envelope = SessionManager::serialize(&source);
+
+    // The INV-E rewrite: a legacy blob whose header says 3x10.
+    constexpr int kEnvelopeHeader = 4 + 4 + 32 + 4;
+    QByteArray raw = qUncompress(envelope.mid(kEnvelopeHeader));
+    ASSERT_FALSE(raw.isEmpty());
+    {
+        QDataStream patch(&raw, QIODevice::ReadWrite);
+        patch.setVersion(QDataStream::Qt_6_0);
+        ASSERT_TRUE(patch.device()->seek(4 + 4));
+        patch << qint32(3) << qint32(10);
+    }
+
+    TerminalGrid target(24, 80);
+    ASSERT_TRUE(SessionManager::restore(&target, qCompress(raw, 6)));
+    const auto &marks = target.screenCombining(0);
+    EXPECT_EQ(marks.count(0), 1u) << "the mark on a kept cell was lost";
+    EXPECT_EQ(marks.count(15), 0u)
+        << "a mark past the line's 10 cells was stored";
 }
 
 // INV-B — loadSession keeps a file that restore refuses.

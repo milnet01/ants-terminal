@@ -68,6 +68,11 @@ file-static).
   globs and is not read whole.
   *Test:* `ProjectSettings.Ants6797OversizedGitattributesDeclaresNothing`.
 
+- **INV-16** (ANTS-6629) — `claudeChromeFor` skips a `.ants/project.json`
+  not owned by the trusted uid (the running user by default) and walks on
+  upward, so another user's file cannot add `--chrome` to a launch.
+  *Test:* `ProjectSettings.Ants6629ClaudeChromeForSkipsAForeignOwner`.
+
 ## Pre-fix check
 
 Against pre-implementation code `src/projectsettings.{h,cpp}` does not

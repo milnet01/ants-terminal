@@ -750,6 +750,12 @@ bool isStale(const LayoutEnvelope &cached, qint64 nowMs) {
             return true;
         }
     }
+    // ANTS-6629 — a path found at scan time and gone now is a change too:
+    // the cached answer still names it.
+    for (const auto &d : cached.discovered) {
+        if (!QFileInfo::exists(cached.rootCwd + QLatin1Char('/') + d))
+            return true;
+    }
     return false;
 }
 

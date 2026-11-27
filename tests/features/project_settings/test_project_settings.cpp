@@ -539,6 +539,20 @@ TEST(ProjectSettings, Ants5728ClaudeChromeForWalksUp) {
     EXPECT_FALSE(ProjectSettings::claudeChromeFor(root + "/a/b"));
 }
 
+// INV-16 (ANTS-6629) — the walk reaches `/`, so a file owned by anyone but
+// the trusted uid is skipped. A test cannot create a file another user owns,
+// so it asks for a uid that owns none of them.
+TEST(ProjectSettings, Ants6629ClaudeChromeForSkipsAForeignOwner) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    writeFile(root + "/.ants/project.json", QStringLiteral("{\"claude_chrome\":true}"));
+    const uint mine = QFileInfo(root + "/.ants/project.json").ownerId();
+    EXPECT_TRUE(ProjectSettings::claudeChromeFor(root, mine));
+    EXPECT_FALSE(ProjectSettings::claudeChromeFor(root, mine + 1))
+        << "a file the trusted uid does not own decided the launch";
+}
+
 // ANTS-5728 — every place Ants types a Claude Code launch builds it through
 // MainWindow::claudeLaunch, so --chrome reaches all four. A literal
 // "&& claude" or "\"claude \"" left behind is a launch that skips the key.

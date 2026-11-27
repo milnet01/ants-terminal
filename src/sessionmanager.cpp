@@ -429,6 +429,10 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
         if (cellCount > keepCols) line.cells.resize(keepCols);
         CombiningMap::Map comb;  // ANTS-6395 — an empty table stays unallocated.
         if (!readCombining(comb)) return false;
+        // ANTS-6629 — keep only marks on a cell this line kept.
+        std::erase_if(comb, [&line](const auto &e) {
+            return e.first < 0 || e.first >= static_cast<int>(line.cells.size());
+        });
         line.combining = std::move(comb);
         return true;
     };

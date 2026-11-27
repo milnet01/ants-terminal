@@ -153,6 +153,27 @@ TEST(feedback_query_shared_root, Inv2ConfiguredRootIsSearched) {
     EXPECT_TRUE(found) << "the configured root's file must be offered";
 }
 
+// INV-2b (ANTS-6629) — the key's setter refuses what the other path setters
+// refuse: a value holding a NUL, or one over the length cap.
+TEST(feedback_query_shared_root, Ants6629SetterRefusesNulAndOverlongPaths) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    sandboxConfig(g, tmp);
+    const QString good = QDir(tmp.path()).filePath(QStringLiteral("corpus"));
+    Config cfg;
+    cfg.setClaudeMcpFeedbackRoot(good);
+    ASSERT_EQ(cfg.claudeMcpFeedbackRoot(), good);
+
+    QString withNul = good;
+    withNul.append(QChar(0)).append(QStringLiteral("/etc"));
+    cfg.setClaudeMcpFeedbackRoot(withNul);
+    EXPECT_EQ(cfg.claudeMcpFeedbackRoot(), good) << "a NUL-embedded path was stored";
+
+    cfg.setClaudeMcpFeedbackRoot(QStringLiteral("/") + QString(5000, QChar('a')));
+    EXPECT_EQ(cfg.claudeMcpFeedbackRoot(), good) << "an over-length path was stored";
+}
+
 // INV-3 — setting the key does not COST the default directory. Both are
 // searched, so configuring it cannot break the common case (a project sitting
 // beside its corpus), and a root that IS the parent yields one entry, not two.

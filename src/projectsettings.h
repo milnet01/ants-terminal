@@ -99,7 +99,10 @@ QString repoRootOf(const QString &dirCanonical);
 // ANTS-5728 — whether a Claude Code session started in `dir` gets --chrome:
 // the `claude_chrome` of the nearest .ants/project.json at `dir` or above it.
 // The nearest file decides, even when it leaves the key out. False when no
-// file is found.
+// file is found. A file not owned by `trustedUid` (the running user, in the
+// one-argument form) is skipped (ANTS-6629): the walk reaches `/`, and
+// another user's file must not decide our launch.
+bool claudeChromeFor(const QString &dir, uint trustedUid);
 bool claudeChromeFor(const QString &dir);
 
 // ANTS-5705 — the globs naming this project's machine-made files: the
