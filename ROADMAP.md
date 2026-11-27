@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6987 -->
+<!-- ants-roadmap-id-high-water: ANTS=6988 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98782,6 +98782,25 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6628–6631 helpers 2026-11-27.
   Lanes: code-index-search, config-session-project, dev-python-ci-packaging, dev-shell-tools.
 
+- 📋 [ANTS-6988] **Fix the bugs the ANTS-6632 to ANTS-6635 helpers found.**
+  - build_status: a cache with no time reports stale_walk_capped:true,
+    which names the wrong cause; add stale_unknown or rename.
+  - read_log: row 435's pattern-length cap and (*LIMIT_MATCH=...) prefix
+    are not applied, so one line's match is bounded only by PCRE2's
+    built-in limit.
+  - MarkdownScan::codeSpans pass 2 is still quadratic when one block holds
+    many unpaired backtick runs of mixed length.
+  - verifytrustmodal commandPreview cuts with left(200), which can split
+    a surrogate pair (now shown as <U+D8xx>).
+  - docs/specs/ANTS-5560-appimage-self-update.md § 6 does not list the
+    two new SelfUpdate tests.
+  - packaging/obs: obs-setup.sh and obs-submit.sh have no behaviour test
+    (a stub-osc test would cover them).
+  **Layman:** Small bugs in logging, document checks, the update dialog and packaging, found while fixing others.
+  Kind: fix.
+  Source: ANTS-6632–6635 helpers 2026-11-27.
+  Lanes: diagnostics-logging, doc-engines, dialog-chrome-theme, hooks-packaging.
+
 ### Other bugs (2026-11-06 review)
 
 - ✅ [ANTS-6620] **Fix the smaller bugs the 2026-11-06 reviews found in app-entry-dialogs.**
@@ -99063,7 +99082,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: dev-shell-tools.
 
-- 📋 [ANTS-6632] **Fix the smaller bugs the 2026-11-06 reviews found in diagnostics-logging.**
+- 🚧 [ANTS-6632] **Fix the smaller bugs the 2026-11-06 reviews found in diagnostics-logging.**
   15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 432 `buildcache.cpp:200` (Medium)
   - row 435 `readlog.cpp:163` (Medium)
@@ -99080,12 +99099,20 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1463 `src/buildcache.cpp:87-89` (Info)
   - row 1464 `src/debuglog.cpp:200-202` (Info)
   - row 1465 `src/tooldetectionengine.cpp:53-55` (Info)
+  2026-11-27 (36f6abf9): 9 rows fixed (435 in part); 1463, 1465 not
+  bugs. Waiting on the user: row 438 (oversize-line drain ignores the
+  time budget; recommended: keep, and say in the spec that one oversized
+  line can overrun the budget), row 441 (read_log returns input/pty
+  lines that can hold typed passwords; recommended: leave those
+  categories out unless asked for), row 1464 (after a failed rotation
+  every write reopens the log; recommended: stop file logging and say so
+  on stderr).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: diagnostics-logging.
 
-- 📋 [ANTS-6633] **Fix the smaller bugs the 2026-11-06 reviews found in dialog-chrome-theme.**
+- 🚧 [ANTS-6633] **Fix the smaller bugs the 2026-11-06 reviews found in dialog-chrome-theme.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 230 `verifytrustmodal.cpp:176` (Medium)
   - row 232 `updatedialog.cpp:80-82` (Low)
@@ -99095,29 +99122,41 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 237 `verifytrustmodal.cpp:71-76,128` (Low)
   - row 1319 `src/themes.cpp:357-374` (Info)
   - row 1320 `src/reviewdialogbase.cpp:433` (Info)
+  2026-11-27 (a5b36653): 6 rows fixed. Rows 230 and 1320 wait on a check
+  on the real KWin Wayland desktop: do the trust prompt's QMessageBox
+  buttons respond? If not, file replacing modal QMessageBox prompts with
+  the non-modal pattern; if so, narrow the warnings in aboutdialogs.cpp
+  and dialogfocus.h.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: dialog-chrome-theme.
 
-- 📋 [ANTS-6634] **Fix the smaller bugs the 2026-11-06 reviews found in doc-engines.**
+- 🚧 [ANTS-6634] **Fix the smaller bugs the 2026-11-06 reviews found in doc-engines.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 370 `doccitations.cpp:1106` (Medium)
   - row 371 `markdownscan.cpp:222-227` (Low)
   - row 372 `doccitations.cpp:1474` (Low)
   - row 1426 `src/docintegrity.cpp:875` (Info)
   - row 1427 `src/doccitations.cpp:1120` (Info)
+  2026-11-27 (83ca9e70): 3 rows fixed; 1427 already fixed (ANTS-6598).
+  Row 372 waits on the user: (a) check() refuses read_failed when the
+  document vanished mid-run, amending INV-47 in ANTS-3636 and the
+  feature spec (recommended; only doc_lint sees a difference), or (b)
+  keep INV-47 and have doc_lint's second pass report check_failed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: doc-engines.
 
-- 📋 [ANTS-6635] **Fix the smaller bugs the 2026-11-06 reviews found in hooks-packaging.**
+- ✅ [ANTS-6635] **Fix the smaller bugs the 2026-11-06 reviews found in hooks-packaging.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1482 `packaging/flatpak/make-flathub-manifest.sh:44` (Info)
   - row 1483 `packaging/obs/obs-submit.sh:142` (Info)
   - row 1484 `hooks/ants-bash-veto.sh:131` (Info)
   - row 1485 `packaging/obs/obs-setup.sh:19` (Info)
+  Shipped 2026-11-27 (008748e9): 3 rows fixed; 1482 already fixed
+  (ANTS-6599).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99856,6 +99895,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-19, ANTS-6156 (b4390f44) closed row 1282 by comment: the
   helpers now say both nudges share them. Rename rejected: specs
   ANTS-2141 and ANTS-2023, two env vars and the hook test pin the names.
+  2026-11-27: row 1291 (obs-setup.sh overwrites USER) fixed by ANTS-6635
+  (008748e9).
   **Layman:** Code here is harder to follow than it needs to be.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (readability).

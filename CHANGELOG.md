@@ -124,6 +124,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **build_status measures staleness from the build's start; read_log keeps exact-size lines, holds its time budget and redacts PGP private keys; Clear Log File removes the rotated log; two instances no longer rotate the debug log at once** (ANTS-6632)
+
+- **A stalled update download gives up after 30 s; dialogs reopen at the size and place you left them; the trust prompt shows hidden characters as <U+XXXX>; update offers and theme errors show plain, accurate text** (ANTS-6633)
+
+- **doc_citations keeps its quote cache within its limit; code-span scanning stays fast with a stray backtick above a large table; doc_integrity reads Windows line endings** (ANTS-6634)
+
+- **The Bash veto hook blocks a ROADMAP grep that also mentions git diff as text; the OBS packaging scripts keep your USER and give the right scriptlet hint** (ANTS-6635)
+
 - **Code-search verbs: duplicate_blocks, file_outline, apply_edits, function_sizes, comment_claims, source_scrapes, read_region, trace and find_definition each fix an edge case, from long lines and CRLF files to overlapping paths and capped indexes** (ANTS-6628)
 
 - **Private data folders work under a symlinked home; project_layout notices a deleted file; --chrome is read only from a project.json you own; session restore and the feedback-root setting validate their input** (ANTS-6629)
