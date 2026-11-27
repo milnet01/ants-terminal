@@ -24,9 +24,15 @@ text: rewriting the markdown would mean corrupting a C signature to suit a regex
 ## The fix
 
 Mask code spans before matching, so the bold run is located outside code. The
-mask is **length-preserving** — only `*` inside a span becomes `x` — so the
-match offsets index the original string and every capture is sliced from it. The
-stored headline is therefore the author's bytes, mask or no mask.
+mask is **length-preserving**, so the match offsets index the original string
+and every capture is sliced from it. The stored headline is therefore the
+author's bytes, mask or no mask.
+
+**One masking rule (ANTS-6962).** The mask is `maskQuotedRegions()`, the one
+the trailers use: spans pair by `MarkdownScan::codeSpans()` (a run of N
+backticks closes only on a run of exactly N; a run with no partner is literal),
+and fenced lines are masked too. The mask blanks to spaces, so the nested-bold
+check (ANTS-6710) reads whitespace off the original, not the mask.
 
 ## Cases
 
@@ -37,11 +43,15 @@ stored headline is therefore the author's bytes, mask or no mask.
 | `PlainBoldHeadlineUnchanged` | the ordinary case is untouched — the containment claim |
 | `RealBoldAfterACodeSpanStillCloses` | a code span that carries no `*` changes nothing |
 | `UnterminatedBacktickDoesNotSwallowTheHeadline` | a stray backtick leaves the tail alone rather than masking to end-of-string |
+| `DoubleBacktickSpanHoldingOneBacktickIsOneSpan` | a ``double`` span holding a single backtick is one span (ANTS-6962) |
+| `UnpartneredRunOpensNothing` | a ``` run with no equal-length partner does not pair with a later single backtick (ANTS-6962) |
+| `BoldBesideACodeSpanStillNests` | a `**` beside a code span's backtick still opens a nested bold span (ANTS-6962) |
+| `BoldInsideAFencedBlockIsNotTheHeadline` | a bold run on a fenced line is never the headline (ANTS-6962) |
 
 ## Verified red first
 
-Against pre-change source the first two cases fail with a truncated headline;
-the last three pass and are the regression half — they are what makes "only
+Against ANTS-4066's pre-change source the first two cases fail with a
+truncated headline; the next three pass and are the regression half — they are what makes "only
 these 12 change" testable rather than asserted.
 
 ## Corpus check

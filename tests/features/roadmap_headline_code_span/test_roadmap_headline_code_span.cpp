@@ -88,3 +88,50 @@ TEST(RoadmapHeadlineCodeSpan, UnterminatedBacktickDoesNotSwallowTheHeadline) {
                   "  Kind: implement.\n")),
               QStringLiteral("A headline with one stray ` backtick."));
 }
+
+// ANTS-6962 — the headline mask pairs code spans by CommonMark's rule, the
+// one maskQuotedRegions() uses for trailers: a run of N backticks closes only
+// on a run of exactly N. A ``double`` span holding a single backtick is ONE
+// span, so the `**` inside it is quoted text and does not close the headline.
+TEST(RoadmapHeadlineCodeSpan, DoubleBacktickSpanHoldingOneBacktickIsOneSpan) {
+    EXPECT_EQ(headlineOf(QStringLiteral(
+                  "- 📋 [DEMO-0007] **Quote ``a ** b` `` in text.**\n"
+                  "  Kind: implement.\n")),
+              QStringLiteral("Quote ``a ** b` `` in text."));
+}
+
+// ANTS-6962 — a run with no partner of its own length is literal text and
+// opens nothing. Here the ``` run must not pair with the single backtick that
+// opens `code` on the next line and hide the headline's closing `**`.
+TEST(RoadmapHeadlineCodeSpan, UnpartneredRunOpensNothing) {
+    EXPECT_EQ(headlineOf(QStringLiteral(
+                  "- 📋 [DEMO-0008] **One ``` stray run.**\n"
+                  "  Body quotes `code` here.\n"
+                  "  Kind: implement.\n")),
+              QStringLiteral("One ``` stray run."));
+}
+
+// ANTS-6962 — the no-regression half. The mask blanks a span's delimiters to
+// spaces, but a backtick beside a `**` is still not whitespace when the bold
+// matcher (ANTS-6710) decides whether that `**` opens a nested span. Read off
+// the mask, the second `**` would look like it closes, and the headline would
+// come out as "Use".
+TEST(RoadmapHeadlineCodeSpan, BoldBesideACodeSpanStillNests) {
+    EXPECT_EQ(headlineOf(QStringLiteral(
+                  "- 📋 [DEMO-0009] **Use **`foo`** here.**\n"
+                  "  Kind: implement.\n")),
+              QStringLiteral("Use **`foo`** here."));
+}
+
+// ANTS-6962 — fenced lines are masked as they are for trailers (ANTS-4526): a
+// bold run inside a fenced block is a quoted example, never the headline. The
+// tilde fence carries no backtick, so nothing masked it before.
+TEST(RoadmapHeadlineCodeSpan, BoldInsideAFencedBlockIsNotTheHeadline) {
+    EXPECT_NE(headlineOf(QStringLiteral(
+                  "- 📋 [DEMO-0010] A headline with no bold run.\n"
+                  "  ~~~\n"
+                  "  **quoted bold**\n"
+                  "  ~~~\n"
+                  "  Kind: implement.\n")),
+              QStringLiteral("quoted bold"));
+}

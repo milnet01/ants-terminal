@@ -36,9 +36,7 @@ pairing. That primitive states the pairing rules once for the project:
 a run pairs only with an equal-length run; a run with no partner is literal
 text and opens nothing; a span may cross a newline but never a blank line or a
 fence line; a backtick run inside a fenced block is not a delimiter. The
-per-bullet mask ANTS-4066 added to `parseBullets()` pairs backticks one at a
-time and says so — it is a known miss, not a rule, and it is not the thing to
-copy.
+bold-headline matcher (ANTS-4066) uses the same mask (ANTS-6962).
 
 **Fenced blocks are deliberately NOT masked.** A fence mask is computed because
 `codeSpans()` requires one, but a key on a fenced line keeps parsing as it does

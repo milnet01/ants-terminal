@@ -571,9 +571,8 @@ using CandidatePred = bool (*)(const QString &);
 // Span boundaries are MarkdownScan::codeSpans()' — the one place this project
 // states CommonMark's pairing rules: a run pairs only with an equal-length run,
 // an unpartnered run is literal text and opens nothing, and a span may cross a
-// newline but never a blank line or a fence line. The per-bullet mask
-// parseBullets() carries for the bold headline (ANTS-4066) pairs backticks one
-// at a time and documents that as a known miss; it is not the thing to copy.
+// newline but never a blank line or a fence line. The bold-headline matcher
+// (ANTS-4066) uses this mask too (ANTS-6962), so the two cannot disagree.
 //
 // ANTS-4526 — FENCED lines are blanked too, for the same reason and by the
 // same means: a key inside a fenced block is a quoted example, not a
@@ -1391,30 +1390,13 @@ std::optional<HeadlineResolution> resolveHeadline(const QString &head,
     // correct in all 12 — rewriting the markdown would mean corrupting a C
     // signature to suit a regex, so the fix is here.
     //
-    // The mask is LENGTH-PRESERVING (only `*` inside a span becomes `x`), which
-    // is what lets every match offset index the original string. Captures are
-    // sliced from `body`, never taken from the mask, so the stored headline is
-    // the author's bytes.
-    //
-    // An UNTERMINATED backtick masks nothing: swallowing the tail would hide the
-    // headline's own closing `**` and lose the headline entirely, which is worse
-    // than the truncation this removes. A ``double-backtick`` span is likewise
-    // left alone — the pairing is per backtick — which is a miss, not a
-    // corruption, and no corpus bullet writes one.
-    const QString maskedBody = [&body] {
-        QString out = body;
-        qsizetype i = 0;
-        while (true) {
-            const qsizetype open = out.indexOf(QLatin1Char('`'), i);
-            if (open < 0) break;
-            const qsizetype close = out.indexOf(QLatin1Char('`'), open + 1);
-            if (close < 0) break;
-            for (qsizetype k = open + 1; k < close; ++k)
-                if (out.at(k) == QLatin1Char('*')) out[k] = QLatin1Char('x');
-            i = close + 1;
-        }
-        return out;
-    }();
+    // ANTS-6962 — the mask is maskQuotedRegions(), the trailers' own, so code
+    // spans pair by one rule (CommonMark's, via MarkdownScan::codeSpans()) and
+    // fenced lines are masked too. It is LENGTH-PRESERVING, which is what lets
+    // every match offset index the original string. Captures are sliced from
+    // `body`, never taken from the mask, so the stored headline is the
+    // author's bytes.
+    const QString maskedBody = maskQuotedRegions(body);
     // ANTS-6710 — rxBold's match, with its close moved past any bold span
     // nested inside it. As in Markdown, a `**` run with whitespace (or nothing)
     // before it and a non-space after it opens a span and cannot close one, so
@@ -1426,13 +1408,15 @@ std::optional<HeadlineResolution> resolveHeadline(const QString &head,
         int capturedStart() const { return int(start); }
         int capturedEnd() const { return int(end); }
     };
-    const auto matchBold = [&maskedBody](qsizetype from) {
+    const auto matchBold = [&maskedBody, &body](qsizetype from) {
         BoldSpan s;
         const auto m = rxBold.match(maskedBody, from);
         if (!m.hasMatch()) return s;
         s = {m.capturedStart(), m.capturedStart(1), m.capturedEnd(1), m.capturedEnd()};
+        // Read off `body`, not the mask: the mask blanks a code span's
+        // backticks, and a `**` beside one is not beside whitespace.
         const auto isSpace = [&](qsizetype i) {
-            return i < 0 || i >= maskedBody.size() || maskedBody.at(i).isSpace();
+            return i < 0 || i >= body.size() || body.at(i).isSpace();
         };
         int depth = 0;
         for (qsizetype q = maskedBody.indexOf(QLatin1String("**"), s.capStart + 1); q >= 0;) {
