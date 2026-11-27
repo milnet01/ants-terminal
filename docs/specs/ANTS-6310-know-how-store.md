@@ -217,7 +217,7 @@ secret shapes only, and that an entry says how to authenticate, never the secret
 ### 4.4 Discovery
 
 **The hook.** New `hooks/ants-know-how-notice.sh`, added under `SessionStart` to
-`hook_entries` and to `pack_hook_regex` in `tools/install-hooks.sh`. It is not gated on `.ants-project`, because the
+`hook_entries` in `tools/install-hooks.sh`, whose uninstall regex is built from that list. It is not gated on `.ants-project`, because the
 store serves every project. It stats
 `${XDG_DATA_HOME:-$HOME/.local/share}/ants-terminal/knowhow.sqlite` and, if
 present, prints one line, and otherwise nothing:

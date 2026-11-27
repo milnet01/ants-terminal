@@ -133,10 +133,12 @@ splice_install() {
 
 # The files this pack ships, and the hook commands it puts in settings.
 # Uninstall removes exactly these: a pattern such as ants-*.sh in the
-# install dir also matches scripts other tools put there. The regex must
-# name every script hook_entries names.
+# install dir also matches scripts other tools put there. The regex is
+# built from the script names hook_entries uses, so a new hook goes there only.
 pack_files=("$src_dir"/ants-*.sh "$src_dir"/_common.sh)
-pack_hook_regex='/ants-(session-preamble|bash-veto|read-roadmap-veto|drift-check|precompact-snapshot|inbox-notice|know-how-notice)\.sh$'
+pack_hook_regex="$(hook_entries | jq -r '
+    [.hooks[][].hooks[].command | split("/") | last | ltrimstr("ants-") | rtrimstr(".sh")]
+    | unique | "/ants-(" + join("|") + ")\\.sh$"')"
 
 splice_uninstall() {
     local current
