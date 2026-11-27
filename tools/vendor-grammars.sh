@@ -54,7 +54,8 @@ wanted() {
 
 # fetch <jq path of the entry> <name>: prints the extracted tree's top directory.
 # Under --pin, an entry with no sha256 gets the tarball's hash written into the
-# manifest.
+# manifest. It runs inside $(...), where set -e is off, so each step that can
+# fail returns failure itself.
 fetch() {
     local path=$1 name=$2 repo commit want got slug tarball dest
     repo=$(jq -r "$path.repo" "$manifest")
@@ -62,8 +63,9 @@ fetch() {
     want=$(jq -r "$path.sha256" "$manifest")
     slug=${repo#https://github.com/}
     tarball="$work/$name.tar.gz"
-    curl -fsSL "https://codeload.github.com/$slug/tar.gz/$commit" -o "$tarball"
-    got=$(sha256sum "$tarball" | cut -d' ' -f1)
+    curl -fsSL "https://codeload.github.com/$slug/tar.gz/$commit" -o "$tarball" \
+        || { echo "vendor-grammars: $name download failed" >&2; return 1; }
+    got=$(sha256sum "$tarball" | cut -d' ' -f1) && [ -n "$got" ] || return 1
     if [ -z "$want" ]; then
         if [ "$pin" -ne 1 ]; then
             echo "vendor-grammars: $name has no sha256; rerun with --pin" >&2
@@ -78,12 +80,16 @@ fetch() {
     fi
     dest="$work/$name"
     mkdir -p "$dest"
-    tar -xzf "$tarball" -C "$dest" --strip-components=1
+    tar -xzf "$tarball" -C "$dest" --strip-components=1 || return 1
     printf '%s\n' "$dest"
 }
 
 if wanted tree-sitter; then
     src=$(fetch '.runtime' tree-sitter)
+    if [ ! -d "$src/lib/src" ]; then
+        echo "vendor-grammars: tree-sitter has no lib/src; $runtime_dir left as it was" >&2
+        exit 1
+    fi
     rm -rf "$runtime_dir"
     mkdir -p "$runtime_dir/lib"
     cp -r "$src/lib/src" "$src/lib/include" "$runtime_dir/lib/"

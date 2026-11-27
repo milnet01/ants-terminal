@@ -87,7 +87,9 @@
 # holds the tree's lock (ANTS-5423).
 #
 # Exit: 0 pass (or skipped under --warm-only), 1 compile/job failure or
-# refusal, 3 not warm (--check-warm only), 130 interrupted.
+# refusal, 3 not warm (--check-warm only), 4 the guard itself could not run
+# (podman, the lock, the marker or the cache directory failed), 130
+# interrupted.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.." || {
     echo "qt62-guard: cannot cd to repo root" >&2; exit 1; }
@@ -284,7 +286,7 @@ fi
 # keep the lock.
 if command -v flock >/dev/null 2>&1; then
     mkdir -p "$guard_state_dir" && exec 9>"$guard_state_dir/$guard_volume.lock" || {
-        echo "qt62-guard: cannot open the lock in $guard_state_dir" >&2; exit 1; }
+        echo "qt62-guard: cannot open the lock in $guard_state_dir" >&2; exit 4; }
     if ! flock -n 9; then
         echo "qt62-guard: ⊘ another $job run is still running on this build tree."
         echo "            Wait for it to finish, then run this again."
@@ -356,7 +358,7 @@ guard_ensure_image() {
 }
 
 guard_ensure_image || {
-    echo "qt62-guard: image build failed" >&2; exit 1; }
+    echo "qt62-guard: image build failed" >&2; exit 4; }
 
 # --- the job run --------------------------------------------------------------
 # The build tree lives in the named volume, which is what makes a re-run
@@ -366,7 +368,7 @@ if [[ -e "$guard_interrupted_marker" ]]; then
     echo "            discarding it and building cold."
     if podman volume exists "$guard_volume"; then
         podman volume rm -f "$guard_volume" >/dev/null || {
-            echo "qt62-guard: cannot remove $guard_volume" >&2; exit 1; }
+            echo "qt62-guard: cannot remove $guard_volume" >&2; exit 4; }
     fi
     rm -f "$guard_interrupted_marker"
 fi
@@ -375,7 +377,7 @@ trap 'echo "qt62-guard: interrupted — stopping $guard_container; the build tre
       podman stop -t 5 "$guard_container" >/dev/null 2>&1
       exit 130' INT TERM HUP
 mkdir -p "$guard_state_dir" && : > "$guard_interrupted_marker" || {
-    echo "qt62-guard: cannot write $guard_interrupted_marker" >&2; exit 1; }
+    echo "qt62-guard: cannot write $guard_interrupted_marker" >&2; exit 4; }
 # ANTS-5192 — a compile cache that outlives the build volume, so a cold tree
 # (new package set, or a tree discarded after an interruption) still compiles
 # from cache. ccache is in both jobs' ci.yml package lists. The root is this
@@ -387,7 +389,7 @@ guard_ccache_root=$(git config --get ants.qt62CcacheDir || true)
 guard_ccache="$guard_ccache_root/$guard_prefix"
 [[ "$run_job" == 1 ]] && guard_ccache="$guard_ccache_root/$guard_prefix-job"
 mkdir -p "$guard_ccache" || {
-    echo "qt62-guard: cannot create $guard_ccache" >&2; exit 1; }
+    echo "qt62-guard: cannot create $guard_ccache" >&2; exit 4; }
 # ci.yml's own steps, through the same runner the host leg uses (ANTS-5324).
 # The job env points CCACHE_DIR at the workspace's .ccache, so that path is the
 # mount; ANTS_PUSH_GATE passes through so the push gate skips the perf step
@@ -416,7 +418,7 @@ if (( rc >= 125 )); then
     echo "            killed, or podman could not run it. The build tree stays" >&2
     echo "            marked interrupted, so the next run builds cold:" >&2
     echo "              $guard_cmd" >&2
-    exit 1
+    exit 4
 fi
 rm -f "$guard_interrupted_marker"
 

@@ -1798,6 +1798,24 @@ if(ANTS_TESTS)
         SKIP_RETURN_CODE 77
         ENVIRONMENT "PREPUSH_HOOK=${CMAKE_CURRENT_SOURCE_DIR}/tools/local-ci.sh")
 
+    # ANTS-6631 — tools/check-shipped-coverage.sh's argument and path
+    # quoting; see tests/features/shipped_coverage_args/spec.md.
+    add_test(NAME shipped_coverage_args
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/shipped_coverage_args/test_shipped_coverage_args.sh")
+    set_tests_properties(shipped_coverage_args PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60
+        SKIP_RETURN_CODE 77)
+
+    # ANTS-6631 — tools/vendor-grammars.sh keeps the vendored runtime when its
+    # download fails; see tests/features/vendor_grammars_fetch/spec.md.
+    add_test(NAME vendor_grammars_fetch
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/vendor_grammars_fetch/test_vendor_grammars_fetch.sh")
+    set_tests_properties(vendor_grammars_fetch PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60
+        SKIP_RETURN_CODE 77)
+
     # ANTS-5322 — tools/ci-parity.sh runs ci.yml's own steps through
     # tools/ci_workflow.py rather than a copy; see
     # tests/features/ci_workflow_runner/spec.md. Exits 77 without PyYAML.

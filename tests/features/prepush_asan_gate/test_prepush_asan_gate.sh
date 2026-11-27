@@ -268,11 +268,14 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
     flock -n "$repo/build-asan/.ants-build.lock" true 2>/dev/null || break
     sleep 0.1
 done
-run_hook 3
+# A pending regen: the gate would run CMake in the tree to measure it.
+run_hook 3 regen
 kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
 check "exit 0" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
 check "cmake --build was NOT run while the tree was held" \
       "$(grep -q -- '--build build-asan' <<<"$calls" && echo 1 || echo 0)"
+check "ninja was NOT run in the held tree, not even the regen (ANTS-6631)" \
+      "$([[ -z "$ninja_calls" ]] && echo 0 || echo 1)"
 check "the skip names the busy tree" \
       "$(grep -q 'being' <<<"$out" && echo 0 || echo 1)"
 
@@ -374,6 +377,27 @@ echo '# a comment' >> "$repo/.github/workflows/ci.yml"
 git -C "$repo" add -A; git -C "$repo" commit -qm ci
 run_hook 0
 check "ci.yml changed since the pass: the leg runs" "$(asan_ran)"
+
+echo "INV-14 — a Qt 6.2 guard that could not run is not reported as a floor violation (ANTS-6631)"
+# A stub guard and podman: every guard call passes except --warm-only, which
+# exits with STUB_QT62_RC.
+printf '#!/bin/bash\n[[ " $* " == *" --warm-only "* ]] && exit "${STUB_QT62_RC:-0}"\nexit 0\n' \
+    > "$repo/tools/qt62-guard.sh"
+printf '#!/bin/bash\nexit 0\n' > "$tmp/bin/podman"
+chmod +x "$repo/tools/qt62-guard.sh" "$tmp/bin/podman"
+export STUB_QT62_RC=4
+run_hook 0
+check "the guard's own failure blocks the push" "$([[ $rc -ne 0 ]] && echo 0 || echo 1)"
+check "and says the guard could not run" \
+      "$(grep -q 'guard could not run' <<<"$out" && echo 0 || echo 1)"
+check "and does not call it a floor violation" \
+      "$(grep -q 'FLOOR violation' <<<"$out" && echo 1 || echo 0)"
+export STUB_QT62_RC=1
+run_hook 0
+check "control: a compile failure is still a floor violation" \
+      "$([[ $rc -ne 0 ]] && grep -q 'FLOOR violation' <<<"$out" && echo 0 || echo 1)"
+unset STUB_QT62_RC
+rm -f "$repo/tools/qt62-guard.sh" "$tmp/bin/podman"
 
 if [[ $failures -gt 0 ]]; then
     echo "FAILED: $failures assertion(s)"

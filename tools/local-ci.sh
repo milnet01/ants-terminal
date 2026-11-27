@@ -301,13 +301,21 @@ else
     asan_marker="$asan_dir/.ants-prepush-interrupted"
     asan_max_edges="${ANTS_PREPUSH_ASAN_MAX_EDGES:-25}"
 
+    # tools/asan-nightly.sh builds this tree overnight; two ninjas in one
+    # tree corrupt it, so both hold this lock and the second steps aside.
+    # Taken before the measurement too: the regen below writes the tree.
+    exec 9>"$asan_dir/.ants-build.lock"
+    asan_locked=""
+    flock -n 9 && asan_locked=1
+
     # `ninja -n` lists the edges it WOULD run, in `[i/n] …` form, and costs
     # milliseconds. Unmeasurable (no ninja, no build.ninja) counts as unsafe:
     # an unmeasured build is exactly the one that gets killed. stderr is kept —
     # ninja reports a damaged deps file there, and that is a reading too.
     asan_dry=""
     asan_edges=""
-    if command -v ninja >/dev/null 2>&1 && [[ -f "$asan_dir/build.ninja" ]]; then
+    if [[ -n "$asan_locked" ]] && command -v ninja >/dev/null 2>&1 \
+            && [[ -f "$asan_dir/build.ninja" ]]; then
         asan_dry="$(ninja -C "$asan_dir" -n 2>&1 || true)"
         asan_edges="$(grep -cE '^\[[0-9]+/[0-9]+\]' <<<"$asan_dry" || true)"
 
@@ -337,7 +345,11 @@ else
         fi
     fi
 
-    if [[ -f "$asan_marker" ]]; then
+    if [[ -z "$asan_locked" ]]; then
+        echo "pre-push: ⊘ build-asan gate SKIPPED — $asan_dir is being"
+        echo "          built by something else (tools/asan-nightly.sh?)."
+        echo "          CI's nightly build-asan run still covers this push."
+    elif [[ -f "$asan_marker" ]]; then
         # ANTS-4943 — the marker never expires, and this skip is one line
         # inside a long run that callers commonly tail. A marker written days
         # ago printed identically to one written this session, so the leg
@@ -407,37 +419,28 @@ else
             echo "          $asan_dir. Harmless (it rebuilds more, not less);"
             echo "          'cmake --build $asan_dir --clean-first' clears it."
         fi
-        # tools/asan-nightly.sh builds this tree overnight; two ninjas in one
-        # tree corrupt it, so both hold this lock and the second steps aside.
-        exec 9>"$asan_dir/.ants-build.lock"
-        if ! flock -n 9; then
-            echo "pre-push: ⊘ build-asan gate SKIPPED — $asan_dir is being"
-            echo "          built by something else (tools/asan-nightly.sh?)."
-            echo "          CI's nightly build-asan run still covers this push."
-        else
-            # If the caller's timeout kills us anyway, the marker stays, so
-            # the NEXT run refuses to trust an incremental build over a
-            # killed ninja (ANTS-6050, ANTS-6595).
-            # Beside this script, not under $repo_root: the tests run it
-            # against a scratch repo that lacks this library.
-            # shellcheck source=tools/build-marker-lib.sh
-            . "$(dirname "${BASH_SOURCE[0]}")/build-marker-lib.sh"
-            if ! marked_build "$asan_marker" pre-push \
-                    env ANTS_PUSH_GATE=1 python3 "$runner" run build-asan; then
-                echo >&2
-                echo "pre-push: ci.yml's build-asan job FAILED locally — push blocked." >&2
-                echo "          This is the class that reached CI as run 30587366963." >&2
-                echo "          ('git push --no-verify' to override.)" >&2
-                exit 1
-            fi
-            # Only a clean tree is recorded: the commit names what passed.
-            if tree_is_clean; then
-                { git rev-parse HEAD; date '+%Y-%m-%d %H:%M'; asan_binaries_state; } \
-                    > "$asan_stamp"
-            fi
+        # If the caller's timeout kills us anyway, the marker stays, so
+        # the NEXT run refuses to trust an incremental build over a
+        # killed ninja (ANTS-6050, ANTS-6595).
+        # Beside this script, not under $repo_root: the tests run it
+        # against a scratch repo that lacks this library.
+        # shellcheck source=tools/build-marker-lib.sh
+        . "$(dirname "${BASH_SOURCE[0]}")/build-marker-lib.sh"
+        if ! marked_build "$asan_marker" pre-push \
+                env ANTS_PUSH_GATE=1 python3 "$runner" run build-asan; then
+            echo >&2
+            echo "pre-push: ci.yml's build-asan job FAILED locally — push blocked." >&2
+            echo "          This is the class that reached CI as run 30587366963." >&2
+            echo "          ('git push --no-verify' to override.)" >&2
+            exit 1
         fi
-        exec 9>&-
+        # Only a clean tree is recorded: the commit names what passed.
+        if tree_is_clean; then
+            { git rev-parse HEAD; date '+%Y-%m-%d %H:%M'; asan_binaries_state; } \
+                > "$asan_stamp"
+        fi
     fi
+    exec 9>&-
 fi
 
 # --- qt62-baseline leg (ANTS-4131) ------------------------------------------
@@ -465,7 +468,16 @@ elif [[ ! -x tools/qt62-guard.sh ]]; then
 else
     if [[ -z "$compilable" ]]; then
         echo "pre-push: qt62-baseline leg skipped — no compilable source or ci.yml change in this push."
-    elif ! tools/qt62-guard.sh --warm-only; then
+    elif tools/qt62-guard.sh --warm-only; then
+        :
+    elif (( $? == 4 )); then
+        echo >&2
+        echo "pre-push: the Qt 6.2 floor guard could not run — push blocked." >&2
+        echo "          podman, a lock, a marker or a cache directory failed (the" >&2
+        echo "          error is above); the code was not judged against the floor." >&2
+        echo "          ('git push --no-verify' to override.)" >&2
+        exit 1
+    else
         echo >&2
         echo "pre-push: Qt 6.2 FLOOR violation — push blocked." >&2
         echo "          The code compiles on this box's Qt but not on the 6.2 floor" >&2

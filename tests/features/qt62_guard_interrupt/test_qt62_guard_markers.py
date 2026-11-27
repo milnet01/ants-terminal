@@ -96,6 +96,8 @@ for rc, kept, what in ((0, False, "a pass"), (1, False, "a job failure"),
         if kept:
             check("FAILED to build" not in r.stderr,
                   f"INV-7 {what} is not reported as a compile failure")
+            check(r.returncode == 4,
+                  f"INV-8 {what} exits 4, not a compile failure's 1 (got {r.returncode})")
 
 # INV-6 — a second run, started while the first holds the tree and before any
 # container is visible, runs nothing and leaves the first run's marker.

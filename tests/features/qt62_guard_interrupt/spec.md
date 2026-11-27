@@ -70,8 +70,12 @@ fix; INV-5 is a guard and passed throughout.
   job's own result, pass or failure, and kept when it exits 125 or above:
   podman could not run it, or a signal ended it (137 is an OOM kill). That
   case is not reported as a compile failure.
+- **INV-8** (ANTS-6631) — a failure of the guard itself exits 4, not the
+  compile failure's 1, so the push gate does not report it as a Qt 6.2 floor
+  violation. The test takes the container's 125 and 137 arms; the lock,
+  marker, cache-directory and image failures share the code but are not run.
 
-INV-6 and INV-7 are run, not scraped: `test_qt62_guard_markers.py` runs the
+INV-6 to INV-8 are run, not scraped: `test_qt62_guard_markers.py` runs the
 script with a stub `podman` first on `PATH`, registered as the ctest
 `qt62_guard_markers`. It skips where PyYAML or `flock` is missing.
 

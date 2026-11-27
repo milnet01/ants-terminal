@@ -126,7 +126,16 @@ tree and read no `ci.yml`.
 **INV-11** — the leg holds `build-asan/.ants-build.lock`. While another
 process holds it, the leg is skipped with a message naming the busy tree,
 and the tree is not built. Two ninjas in one tree corrupt it. Red against
-the gate before 2026-10-10, which built the held tree.
+the gate before 2026-10-10, which built the held tree. The lock is taken
+before the edge count, so nothing runs ninja in a held tree, not even the
+dry run or a pending regen; the case holds the lock over a pending regen.
+Red before ANTS-6631, which ran the regen first.
+
+**INV-14 (ANTS-6631)** — when `tools/qt62-guard.sh --warm-only` exits 4 (the
+guard itself could not run), the push is blocked with a message saying so,
+not as a Qt 6.2 floor violation; exit 1 is still reported as the violation.
+The case puts a stub guard in the fixture repo and a stub `podman` on
+`PATH`. Red before ANTS-6631, which reported every failure as a violation.
 
 **INV-12** — `tools/asan-nightly.sh` builds the tree incrementally; a tree
 carrying the interrupted marker is rebuilt with `--clean-first` and the

@@ -44,7 +44,12 @@ QUIET=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --since) SINCE="${2:-}"; shift 2 ;;
+        --since)
+            # Checked here because the date goes into SQL below.
+            [[ $# -ge 2 && "$2" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || {
+                echo "check-shipped-coverage: --since needs a date, YYYY-MM-DD" >&2
+                exit 2; }
+            SINCE="$2"; shift 2 ;;
         --quiet) QUIET=1; shift ;;
         -h|--help)
             echo "usage: check-shipped-coverage.sh [--since YYYY-MM-DD] [--quiet]"
@@ -91,7 +96,8 @@ query_failed() {
     echo "                  so nothing was checked."
     exit 0
 }
-PROJECT_ID="$(q "SELECT project_id FROM project WHERE root='${ROOT}' LIMIT 1;")" \
+# A ' in the checkout path is doubled, as SQL quotes it.
+PROJECT_ID="$(q "SELECT project_id FROM project WHERE root='${ROOT//"'"/"''"}' LIMIT 1;")" \
     || query_failed "project lookup"
 if [[ -z "$PROJECT_ID" ]]; then
     echo "shipped-coverage: ⊘ SKIPPED — this project is not registered in the"
