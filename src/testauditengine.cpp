@@ -1159,6 +1159,50 @@ int scanChunkReport(const QString &contents, SeverityHistogram &hist) {
     return findings;
 }
 
+// INV-14 — caller_cwd → canonical project root. Empty when it is not an
+// existing directory, with a bad_path refusal carrying `error` filled into `r`.
+template <typename Result>
+QString canonicalRootOrRefuse(const QString &callerCwd, Result &r,
+                              const QString &error) {
+    const QString canon = QFileInfo(callerCwd).canonicalFilePath();
+    if (!canon.isEmpty() && QFileInfo(canon).isDir()) return canon;
+    r.ok = false; r.code = QStringLiteral("bad_path");
+    r.error = error;
+    return {};
+}
+
+// foldIn's shared tail: insert `block` under the active release heading and
+// fill `r` for `count` findings (narrative mode passes 0). ANTS-2227 —
+// dry_run skips the write and reports success with the would-be block, so
+// the caller can preview it.
+FoldInResult insertFoldInBlock(FoldInResult r, const QString &canon,
+                               const QString &block, int count, bool dryRun,
+                               RoadmapFoldIn::LockWait lockWait) {
+    const QString release =
+        RoadmapFoldIn::findActiveReleaseHeading(canon);
+    const bool wrote = dryRun
+        ? true
+        : RoadmapFoldIn::insertBlock(canon, release, block, lockWait, &r.busy);
+    if (!wrote) {
+        r.ok = false;
+        r.code  = QStringLiteral("write_failed");
+        r.error = QStringLiteral(
+            "test_audit_fold_in: insertBlock failed (heading not "
+            "found OR IO error) — release heading was \"%1\"")
+                .arg(release);
+        r.failedCount = count;
+        return r;
+    }
+    r.block               = block;
+    r.bytesWritten        = block.toUtf8().size();
+    r.writtenCount        = count;
+    r.failedCount         = 0;
+    r.partial             = false;
+    r.releaseBlockHeading = release;
+    r.written             = canon + QLatin1String("/ROADMAP.md");
+    return r;
+}
+
 }  // namespace
 
 const QStringList &kDimensions() { return g_kDimensions(); }
@@ -1194,15 +1238,10 @@ QStringList walkTestFiles(const QString &projectRoot,
 
 PartitionResult partition(const PartitionRequest &req) {
     PartitionResult r;
-    // INV-14 — caller_cwd → canonical projectRoot.
-    const QString canon = QFileInfo(req.callerCwd).canonicalFilePath();
-    if (canon.isEmpty() || !QFileInfo(canon).isDir()) {
-        r.ok = false; r.code = QStringLiteral("bad_path");
-        r.error = QStringLiteral(
-            "test_audit_partition: caller_cwd \"%1\" does not "
-            "canonicalise to an existing directory").arg(req.callerCwd);
-        return r;
-    }
+    const QString canon = canonicalRootOrRefuse(req.callerCwd, r,
+        QStringLiteral("test_audit_partition: caller_cwd \"%1\" does not "
+                       "canonicalise to an existing directory").arg(req.callerCwd));
+    if (canon.isEmpty()) return r;
     // INV-14 — scope:"files:..." backslash check.
     if (req.scope.startsWith(QLatin1String("files:")) &&
         req.scope.contains(QLatin1Char('\\'))) {
@@ -1529,14 +1568,10 @@ PartitionResult partition(const PartitionRequest &req) {
 
 BriefResult brief(const BriefRequest &req) {
     BriefResult r;
-    const QString canon = QFileInfo(req.callerCwd).canonicalFilePath();
-    if (canon.isEmpty() || !QFileInfo(canon).isDir()) {
-        r.ok = false; r.code = QStringLiteral("bad_path");
-        r.error = QStringLiteral(
-            "test_audit_brief: caller_cwd \"%1\" does not "
-            "canonicalise to an existing directory").arg(req.callerCwd);
-        return r;
-    }
+    const QString canon = canonicalRootOrRefuse(req.callerCwd, r,
+        QStringLiteral("test_audit_brief: caller_cwd \"%1\" does not "
+                       "canonicalise to an existing directory").arg(req.callerCwd));
+    if (canon.isEmpty()) return r;
     if (req.partitionToken.isEmpty()) {
         r.ok = false; r.code = QStringLiteral("missing_field");
         r.error = QStringLiteral(
@@ -1609,15 +1644,10 @@ BriefResult brief(const BriefRequest &req) {
 
 SynthResult synthesize(const SynthRequest &req) {
     SynthResult r;
-    const QString canon = QFileInfo(req.callerCwd).canonicalFilePath();
-    if (canon.isEmpty() || !QFileInfo(canon).isDir()) {
-        r.ok = false; r.code = QStringLiteral("bad_path");
-        r.error = QStringLiteral(
-            "test_audit_synthesis_prompt: caller_cwd \"%1\" does "
-            "not canonicalise to an existing directory")
-                .arg(req.callerCwd);
-        return r;
-    }
+    const QString canon = canonicalRootOrRefuse(req.callerCwd, r,
+        QStringLiteral("test_audit_synthesis_prompt: caller_cwd \"%1\" does "
+                       "not canonicalise to an existing directory").arg(req.callerCwd));
+    if (canon.isEmpty()) return r;
     if (req.partitionToken.isEmpty()) {
         r.ok = false; r.code = QStringLiteral("missing_field");
         r.error = QStringLiteral(
@@ -2011,13 +2041,9 @@ FoldInResult foldIn(const FoldInRequest &req) {
     FoldInResult r;
     const auto lockWait = req.interactive ? RoadmapFoldIn::LockWait::Interactive
                                           : RoadmapFoldIn::LockWait::Standard;
-    const QString canon = QFileInfo(req.callerCwd).canonicalFilePath();
-    if (canon.isEmpty() || !QFileInfo(canon).isDir()) {
-        r.ok = false; r.code = QStringLiteral("bad_path");
-        r.error = QStringLiteral(
-            "test_audit_fold_in: caller_cwd does not canonicalise");
-        return r;
-    }
+    const QString canon = canonicalRootOrRefuse(req.callerCwd, r,
+        QStringLiteral("test_audit_fold_in: caller_cwd does not canonicalise"));
+    if (canon.isEmpty()) return r;
     // ANTS-3498 — a non-empty id_prefix override must match the canonical
     // prefix grammar (ANTS-3492) or the fold-in would stamp non-canonical ids.
     // Refuse early (before any counter touch), consistent with roadmap_log.
@@ -2055,36 +2081,13 @@ FoldInResult foldIn(const FoldInRequest &req) {
         block += QStringLiteral("\n\n");
         block += narrative;
         if (!block.endsWith(QChar('\n'))) block += QChar('\n');
-        const QString release =
-            RoadmapFoldIn::findActiveReleaseHeading(canon);
-        // ANTS-2227 — dry_run skips the write; report success with the
-        // would-be block so the caller can preview it.
-        const bool wrote = req.dryRun
-            ? true
-            : RoadmapFoldIn::insertBlock(canon, release, block, lockWait,
-                                         &r.busy);
-        if (!wrote) {
-            r.ok = false;
-            r.code  = QStringLiteral("write_failed");
-            r.error = QStringLiteral(
-                "test_audit_fold_in: insertBlock failed (heading not "
-                "found OR IO error) — release heading was \"%1\"")
-                    .arg(release);
-            return r;
-        }
-        r.block               = block;
-        r.bytesWritten        = block.toUtf8().size();
         // Narrative mode does not allocate IDs and the on-roadmap
-        // bullet count is opaque to the engine — leave writtenCount=0
-        // (the standard "no per-bullet allocation" signal). Callers
-        // that care about a paragraph-vs-bullet count parse the
+        // bullet count is opaque to the engine — count 0 leaves
+        // writtenCount=0 (the standard "no per-bullet allocation" signal).
+        // Callers that care about a paragraph-vs-bullet count parse the
         // returned `block` themselves.
-        r.writtenCount        = 0;
-        r.failedCount         = 0;
-        r.partial             = false;
-        r.releaseBlockHeading = release;
-        r.written             = canon + QLatin1String("/ROADMAP.md");
-        return r;
+        return insertFoldInBlock(std::move(r), canon, block, 0, req.dryRun,
+                                 lockWait);
     }
     if (req.actionable.isEmpty()) {
         r.ok = false; r.code = QStringLiteral("missing_field");
@@ -2219,33 +2222,10 @@ FoldInResult foldIn(const FoldInRequest &req) {
            << f.value(QStringLiteral("fix")).toString() << "\n";
     }
     bs.flush();
-    // Single insertBlock per call (INV-3). Find or fall back to the
-    // active release heading via the helper.
-    const QString release =
-        RoadmapFoldIn::findActiveReleaseHeading(canon);
-    // ANTS-2227 — dry_run skips the write; report success with the
-    // would-be IDs + rendered block so the caller can preview it.
-    const bool wrote = req.dryRun
-        ? true
-        : RoadmapFoldIn::insertBlock(canon, release, block, lockWait, &r.busy);
-    if (!wrote) {
-        r.ok = false;
-        r.code  = QStringLiteral("write_failed");
-        r.error = QStringLiteral(
-            "test_audit_fold_in: insertBlock failed (heading not "
-            "found OR IO error) — release heading was \"%1\"")
-                .arg(release);
-        r.failedCount = n;
-        return r;
-    }
-    r.block               = block;
-    r.bytesWritten        = block.toUtf8().size();
-    r.writtenCount        = n;
-    r.failedCount         = 0;
-    r.partial             = false;
-    r.releaseBlockHeading = release;
-    r.written             = canon + QLatin1String("/ROADMAP.md");
-    return r;
+    // Single insertBlock per call (INV-3), under the active release
+    // heading; a dry run also previews the would-be IDs in r.allocatedIds.
+    return insertFoldInBlock(std::move(r), canon, block, n, req.dryRun,
+                             lockWait);
 }
 
 

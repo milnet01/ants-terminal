@@ -564,6 +564,7 @@ Command buildCommand(Runner r, const QString &root, const QStringList &changedFi
             break;
         case Runner::Go:
             c.program = QStringLiteral("go");
+            // -v: parseGo reads only `=== RUN` lines, which go prints only with -v.
             c.fullArgs = {QStringLiteral("test"), QStringLiteral("-v"), QStringLiteral("./...")};
             break;
     }

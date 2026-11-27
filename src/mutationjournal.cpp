@@ -1,6 +1,8 @@
 // ANTS-5096 — see mutationjournal.h.
 #include "mutationjournal.h"
 
+#include "secureio.h"
+
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -48,11 +50,11 @@ bool MutationJournal::write(const QString &dir, const QString &path,
     o[QStringLiteral("mutant_sha256")] = QString::fromLatin1(sha256Hex(mutant));
     o[QStringLiteral("pid")]           = QCoreApplication::applicationPid();
     const QByteArray body = QJsonDocument(o).toJson(QJsonDocument::Compact);
-    QSaveFile f(journalPath(dir, path));
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    // It holds a copy of a source file, so only the owner reads it.
-    f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    return f.write(body) == body.size() && f.commit();
+    // It holds a copy of a source file, so only the owner reads it. The temp
+    // name ends in .tmp, so recover()'s *.json glob never reads a torn one.
+    const QString jp = journalPath(dir, path);
+    return writeFileAtomicOwnerOnly(jp, jp + QLatin1String(".tmp"), body,
+                                    "mutation journal", TempPerms::Refuse);
 }
 
 void MutationJournal::clear(const QString &dir, const QString &path) {

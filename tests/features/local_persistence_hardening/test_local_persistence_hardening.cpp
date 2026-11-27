@@ -215,11 +215,12 @@ void testWiring() {
     expect(af.find("f.write(\"\\n\")") == std::string::npos,
            "WI-1824d autofix log standalone newline write removed");
 
-    // ANTS-1836 — writeReport atomic + 0600.
-    expect(ta.find("QSaveFile") != std::string::npos,
-           "WI-1836a writeReport uses QSaveFile");
-    expect(ta.find("setOwnerOnlyPerms") != std::string::npos,
-           "WI-1836b writeReport sets 0600");
+    // ANTS-1836 — writeReport atomic + 0600, through the shared owner-only
+    // writer since ANTS-6616 (temp file private before the first byte).
+    expect(ta.find("writeFileAtomicOwnerOnly(") != std::string::npos,
+           "WI-1836a writeReport writes atomically");
+    expect(ta.find("TempPerms::Refuse") != std::string::npos,
+           "WI-1836b writeReport refuses a temp file it cannot make 0600");
 }
 
 int runMain() {

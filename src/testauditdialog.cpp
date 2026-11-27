@@ -18,7 +18,6 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRadioButton>
-#include <QSaveFile>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -48,26 +47,14 @@ QString jsonArrayBlock(const QString &title, const QJsonArray &arr) {
     return s;
 }
 
-// ANTS-1836 — atomic, owner-only report write (was a plain QFile with a
-// discarded write() return: a torn report on disk-full, no 0600, silent
-// failure). QSaveFile gives temp+rename atomicity; the verbatim model
-// reports may quote source the user keeps private, so 0600 like the
-// audit-cache pattern. Returns false on any failure so the caller can tell.
+// ANTS-1836 — atomic, owner-only report write. The verbatim model reports may
+// quote source the user keeps private, so the temp file is 0600 before a byte
+// lands, and one that cannot be made so writes nothing (ANTS-5151). Returns
+// false on any failure so the caller can tell.
 bool writeReport(const QString &path, const QString &body) {
-    QSaveFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
-    const QByteArray bytes = body.toUtf8();
-    if (f.write(bytes) != bytes.size()) {
-        f.cancelWriting();
-        return false;
-    }
-    if (!f.commit()) return false;
-    // ANTS-5151 — model reports quote the project's source: private or gone.
-    if (!setOwnerOnlyPerms(path)) {
-        QFile::remove(path);
-        return false;
-    }
-    return true;
+    return writeFileAtomicOwnerOnly(path, path + QLatin1String(".tmp"),
+                                    body.toUtf8(), "test audit report",
+                                    TempPerms::Refuse);
 }
 
 }  // namespace
