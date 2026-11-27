@@ -31,7 +31,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QRegularExpression>
+#include <QStandardPaths>
 
 #include <unistd.h>
 
@@ -836,4 +838,92 @@ TEST(ClaudeSetup, DetectionIgnoresAFolderClaudeCodeDidNotCreate) {
     ASSERT_TRUE(writeFile(program, "#!/bin/sh\n"));
     ASSERT_TRUE(makeExecutable(program));
     EXPECT_TRUE(claudeCodeDetected()) << "the installer's program must be found";
+}
+
+// ANTS-6620 — a file holding one marker and not its partner is left alone.
+// withBlock found no pair, so it appended a second, whole block below the
+// orphan.
+TEST(ClaudeSetup, Ants6620HalfBlockIsRefused) {
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+    const QString md = sb.path(QStringLiteral("claude/CLAUDE.md"));
+    for (const QByteArray &seed :
+         {QByteArray("# mine\n<!-- ants-terminal:begin -->\nold note\n"),
+          QByteArray("# mine\nold note\n<!-- ants-terminal:end -->\n")}) {
+        ASSERT_TRUE(writeFile(md, seed));
+        const Outcome o = installClaudeMdNote(md);
+        EXPECT_FALSE(o.ok) << "a lone marker must be refused: " << o.message.toStdString();
+        EXPECT_EQ(readFile(md), seed) << "a CLAUDE.md with a lone marker must not be rewritten";
+    }
+
+    const QString fx = sb.path(QStringLiteral("scripts"));
+    ASSERT_TRUE(writeFile(fx + QStringLiteral("/ants-osc133.bash"), "# fixture\n"));
+    const QString bashrc = sb.home + QStringLiteral("/.bashrc");
+    const QByteArray rcSeed = "alias a=b\n" + kShBegin + "\n[ -f x ] && source x\n";
+    ASSERT_TRUE(writeFile(bashrc, rcSeed));
+    const Outcome o = installShellIntegration({fx});
+    EXPECT_FALSE(o.ok) << "a .bashrc with a lone marker must be refused: "
+                       << o.message.toStdString();
+    EXPECT_EQ(readFile(bashrc), rcSeed) << "the .bashrc must not be rewritten";
+    EXPECT_FALSE(QFileInfo::exists(keyFilePath(sb)))
+        << "a refused install must write nothing, the key file included";
+}
+
+// ANTS-6620 — "Installed" means our forwarder runs on every event, not that
+// each event has some hook. The user's own hooks sit on these events too.
+TEST(ClaudeSetup, Ants6620StatusHooksNeedOurScriptOnEachEvent) {
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+    ASSERT_TRUE(installStatusHooks().ok);
+    ASSERT_EQ(statusHooksStatus().state, State::Installed);
+
+    const QString settings = sb.home + QStringLiteral("/.claude/settings.json");
+    QJsonObject root = readJson(settings);
+    QJsonObject hooks = root.value("hooks").toObject();
+    const QJsonArray userOnly{QJsonObject{
+        {"hooks", QJsonArray{QJsonObject{{"type", "command"},
+                                         {"command", "/x/user-hook.sh"}}}}}};
+    for (const QString &event : hooks.keys()) hooks[event] = userOnly;
+    root["hooks"] = hooks;
+    ASSERT_TRUE(writeFile(settings, QJsonDocument(root).toJson()));
+
+    const Status st = statusHooksStatus();
+    EXPECT_NE(st.state, State::Installed)
+        << "with only the user's hooks left on each event the status must not "
+           "read Installed; detail: " << st.detail.toStdString();
+}
+
+// ANTS-6620 — the source line quotes the script path so the shell expands
+// nothing in it. In double quotes, `$(...)` in an install path ran in every
+// new shell.
+TEST(ClaudeSetup, Ants6620SourceLineExpandsNothing) {
+    const QString bash = QStandardPaths::findExecutable(QStringLiteral("bash"));
+    if (bash.isEmpty()) GTEST_SKIP() << "bash not on PATH";
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+    const QString fx = sb.path(QStringLiteral("it's $(touch pwned) `true` dir"));
+    ASSERT_TRUE(writeFile(fx + QStringLiteral("/ants-osc133.bash"),
+                          "echo fixture-sourced\n"));
+    const Outcome o = installShellIntegration({fx});
+    ASSERT_TRUE(o.ok) << o.message.toStdString();
+
+    QString line;
+    for (const QString &l : QString::fromUtf8(readFile(sb.home + QStringLiteral("/.bashrc")))
+                                .split(QLatin1Char('\n')))
+        if (l.startsWith(QStringLiteral("[ -f "))) line = l;
+    ASSERT_FALSE(line.isEmpty()) << "no source line in .bashrc";
+
+    const QString cwd = sb.path(QStringLiteral("cwd"));
+    ASSERT_TRUE(QDir().mkpath(cwd));
+    QProcess sh;
+    sh.setWorkingDirectory(cwd);
+    sh.start(bash, {QStringLiteral("--noprofile"), QStringLiteral("--norc"),
+                    QStringLiteral("-c"), line});
+    ASSERT_TRUE(sh.waitForFinished(10000));
+    EXPECT_FALSE(QFileInfo::exists(cwd + QStringLiteral("/pwned")))
+        << "the shell ran a command substitution from the path: "
+        << line.toStdString();
+    EXPECT_TRUE(sh.readAllStandardOutput().contains("fixture-sourced"))
+        << "the script at a path with shell characters was not sourced: "
+        << line.toStdString();
 }

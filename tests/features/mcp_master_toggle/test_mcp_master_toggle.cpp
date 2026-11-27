@@ -154,6 +154,22 @@ TEST(McpMasterToggle, INV6_SettingsMasterCheckbox) {
     EXPECT_LT(created, nextTab) << "checkbox must be created in setupGeneralTab";
 }
 
+// ANTS-6620 — the auto-switch checkbox's own handler keeps the MCP master's
+// greying. Its bare mirrorMaster() re-enabled the sub-toggles when
+// loadSettings checked switch_enabled with MCP already off: MCP's
+// setChecked(false) changed nothing, so mirrorMcpMaster never re-ran.
+TEST(McpMasterToggle, Ants6620AutoSwitchHandlerKeepsMasterGreying) {
+    const std::string sd = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
+    const auto conn = sd.find("connect(m_claudeAutoModelSwitch, &QCheckBox::toggled");
+    ASSERT_NE(conn, std::string::npos) << "the auto-switch toggled handler is gone";
+    const auto close = sd.find("});", conn);
+    ASSERT_NE(close, std::string::npos);
+    const std::string handler = sd.substr(conn, close - conn);
+    EXPECT_TRUE(has(handler, "mirrorMaster(m_claudeMcpEnabled->isChecked())"))
+        << "the handler must pass the MCP master's state to mirrorMaster; got: "
+        << handler;
+}
+
 // INV-7 — settingsChanged propagates the value at runtime.
 TEST(McpMasterToggle, INV7_RuntimePropagation) {
     const std::string mw = ants_test::slurpMainWindow();

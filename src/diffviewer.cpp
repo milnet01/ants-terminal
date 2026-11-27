@@ -166,6 +166,39 @@ QString lineCountSuffix(const QString &baseDir, const QString &rel) {
     return QStringLiteral(" (%1 line%2)").arg(n).arg(n == 1 ? "" : "s");
 }
 
+// ANTS-6620 — a path as `git status --short` prints it. Git wraps a path
+// holding a space, a quote, a backslash or a control byte in double quotes
+// with C escapes (`\t`, `\"`, `\\`, `\ooo` octal bytes); any other path
+// is returned as it stands.
+QString statusPath(const QString &raw) {
+    const QString s = raw.trimmed();
+    if (s.size() < 2 || !s.startsWith(QLatin1Char('"')) || !s.endsWith(QLatin1Char('"')))
+        return s;
+    const QByteArray in = s.mid(1, s.size() - 2).toUtf8();
+    QByteArray out;
+    for (qsizetype i = 0; i < in.size(); ++i) {
+        const char c = in.at(i);
+        if (c != '\\' || i + 1 == in.size()) { out += c; continue; }
+        const char e = in.at(++i);
+        if (e >= '0' && e <= '7' && i + 2 < in.size()) {
+            out += char(in.mid(i, 3).toInt(nullptr, 8));
+            i += 2;
+            continue;
+        }
+        switch (e) {
+        case 'a': out += '\a'; break;
+        case 'b': out += '\b'; break;
+        case 'f': out += '\f'; break;
+        case 'n': out += '\n'; break;
+        case 'r': out += '\r'; break;
+        case 't': out += '\t'; break;
+        case 'v': out += '\v'; break;
+        default:  out += e;     break;   // `\"` and `\\`
+        }
+    }
+    return QString::fromUtf8(out);
+}
+
 // The untracked files a porcelain status lists (`?? <path>`), repo-relative.
 // A directory entry (`dir/`) is left out: it gets no New-files hunk, so no
 // jump target either.
@@ -173,7 +206,7 @@ QStringList untrackedFiles(const QString &status) {
     QStringList out;
     for (const QString &line : status.split('\n')) {
         if (!line.startsWith(QStringLiteral("?? "))) continue;
-        const QString rel = line.mid(3).trimmed();
+        const QString rel = statusPath(line.mid(3));
         if (!rel.isEmpty() && !rel.endsWith('/')) out << rel;
     }
     return out;
@@ -409,10 +442,25 @@ QDialog *show(QWidget *parent,
     // OR the user clicks Refresh. Each call constructs a fresh
     // ProbeState so concurrent in-flight probes from a previous
     // refresh can't poison the new render.
+    // ANTS-6620 — the newest round's probe processes. A new round cancels
+    // the one still running, so a change burst that outlasts a probe cannot
+    // pile up git processes; its render would lose to the new round anyway.
+    auto roundProcs = std::make_shared<QList<QPointer<QProcess>>>();
     auto runProbes = [dialog, probeHost, cwd, dlgGuard, viewerGuard, copyGuard,
                       liveStatusGuard, themeName, lastHtml, gitEnv,
-                      generation, lastRaw, roadmapPath]() {
+                      generation, lastRaw, roadmapPath, roundProcs]() {
         if (!dlgGuard) return;
+        const QList<QPointer<QProcess>> previous = *roundProcs;
+        roundProcs->clear();
+        for (const QPointer<QProcess> &old : previous) {
+            if (!old) continue;
+            old->disconnect();   // first, as in ~ProbeHost
+            if (old->state() != QProcess::NotRunning) {
+                old->kill();
+                old->waitForFinished(200);   // reap the killed child
+            }
+            old->deleteLater();
+        }
         if (liveStatusGuard) {
             liveStatusGuard->setText(QStringLiteral("● refreshing…"));
             // ANTS-5109 — theme colours, not literals (dialogs.md D1).
@@ -536,10 +584,11 @@ QDialog *show(QWidget *parent,
                 } else if (line.startsWith("?? ")) {
                     // Untracked new file — swap the cryptic ?? for a readable
                     // NF marker; the path links to its New-files hunk.
+                    const QString rel = statusPath(line.mid(3));   // ANTS-6620
                     html += QStringLiteral("<span style='color: %1;'>NF</span> ")
                                 .arg(lth.ansi[2].name())
-                         + fileLink(line.mid(3), line.mid(3))
-                         + countSuffix(line.mid(3)) + "\n";
+                         + fileLink(rel, line.mid(3))
+                         + countSuffix(rel) + "\n";
                 } else if (line.size() > 3) {
                     // Porcelain short: 2 status chars + space + path. Keep the
                     // status code as plain text; link the path to its diff
@@ -548,7 +597,8 @@ QDialog *show(QWidget *parent,
                     const QString code = line.left(3);
                     const QString path = line.mid(3);
                     const int arrow = path.indexOf(QStringLiteral(" -> "));
-                    const QString key = arrow >= 0 ? path.mid(arrow + 4) : path;
+                    const QString key =   // ANTS-6620 — unquoted
+                        statusPath(arrow >= 0 ? path.mid(arrow + 4) : path);
                     html += code.toHtmlEscaped() + fileLink(key, path);
                     // ANTS-3632 — size of the file as it stands now. Keyed on
                     // the NEW path so a rename reports the file that exists.
@@ -843,13 +893,14 @@ QDialog *show(QWidget *parent,
     // ANTS-6515 — stdout is read as git writes it, so QProcess never holds
     // a whole diff. With `cut` set, at most kMaxProbeBytes are kept, ending
     // at a line boundary, and *cut says the rest was dropped.
-    auto runAsync = [dialog, probeHost, cwd, gitEnv, finalize](
+    auto runAsync = [dialog, probeHost, cwd, gitEnv, finalize, roundProcs](
                                                     const QStringList &args,
                                                     QString ProbeState::*slot,
                                                     ProbeState *st,
                                                     bool ProbeState::*cut = nullptr) {
         constexpr qsizetype kMaxProbeBytes = 1024LL * 1024;
         auto *p = new QProcess(probeHost);
+        roundProcs->append(p);
         p->setWorkingDirectory(cwd);
         p->setProcessEnvironment(gitEnv);
         p->setProgram("git");
@@ -893,8 +944,12 @@ QDialog *show(QWidget *parent,
         HostExec::start(*p);
     };
 
-    runAsync({"status", "-b", "--short"},                       &ProbeState::status,   state.get());
-    runAsync({"diff", "--stat", "--patch", "HEAD"},              &ProbeState::diff,     state.get(),
+    // ANTS-6620 — core.quotePath=false: a non-ASCII path is printed as it
+    // is, so the Status, diffstat and `diff --git` header keys all match.
+    runAsync({"-c", "core.quotePath=false", "status", "-b", "--short"},
+             &ProbeState::status, state.get());
+    runAsync({"-c", "core.quotePath=false", "diff", "--stat", "--patch", "HEAD"},
+             &ProbeState::diff, state.get(),
              &ProbeState::diffTruncated);
     runAsync({"log", "--oneline", "--decorate", "@{u}..HEAD"},   &ProbeState::unpushed, state.get());
 

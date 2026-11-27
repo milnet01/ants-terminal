@@ -57,6 +57,23 @@ TEST(RoadmapImportCommand, Inv1FlagHandledBeforeQApplication) {
     EXPECT_LT(flag, app) << "--import-roadmap must be handled before QApplication";
 }
 
+// ANTS-6620 — the import and the export run only as the first argument. A
+// scan of every argv slot ran an import from another option's value
+// (`--remote-text --import-roadmap a b`).
+TEST(RoadmapImportCommand, Ants6620FlagsHonouredOnlyAsFirstArgument) {
+    const QString src = QString::fromUtf8(
+        readAll(QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/main.cpp")));
+    ASSERT_FALSE(src.isEmpty());
+    for (const char *flag : {"--import-roadmap", "--export-roadmaps"}) {
+        const QString first =
+            QStringLiteral("qstrcmp(argv[1], \"%1\")").arg(QLatin1String(flag));
+        const QString any =
+            QStringLiteral("qstrcmp(argv[i], \"%1\")").arg(QLatin1String(flag));
+        EXPECT_TRUE(src.contains(first)) << flag << " must be read from argv[1]";
+        EXPECT_FALSE(src.contains(any)) << flag << " must not be matched in any argv slot";
+    }
+}
+
 // INV-2 — into a store that does not exist yet: exit 0, findable by root, and
 // the re-export is byte-identical to the file restored.
 TEST(RoadmapImportCommand, Inv2RestoreIsFaithfulAndFindable) {

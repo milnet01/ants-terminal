@@ -386,8 +386,12 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     // on the Qt 6.2 release floor AND silences the Qt 6.9+ deprecation of
     // stateChanged(int) — without the version guard that
     // checkStateChanged(Qt::CheckState) (Qt 6.7+) would have required.
-    connect(m_claudeAutoModelSwitch, &QCheckBox::toggled,
-            this, [mirrorMaster](bool) { mirrorMaster(); });
+    // ANTS-6620 — pass the MCP master's state, so loading switch_enabled=true
+    // with MCP off does not re-enable the sub-toggles mirrorMcpMaster greyed.
+    connect(m_claudeAutoModelSwitch, &QCheckBox::toggled, this,
+            [this, mirrorMaster](bool) {
+                mirrorMaster(m_claudeMcpEnabled->isChecked());
+            });
     mirrorMaster();   // initial state
 
     // ANTS-1897 — MCP discoverability via SessionStart hook. On by

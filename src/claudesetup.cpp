@@ -217,6 +217,19 @@ QByteArray withBlock(const QByteArray &text, const QByteArray &begin,
     return out + block + '\n';
 }
 
+// ANTS-6620 — a marker with no partner: withBlock would append a second
+// block and leave the orphan where it is, so an install refuses instead.
+bool halfBlock(const QByteArray &text, const QByteArray &begin,
+               const QByteArray &end) {
+    return !findBlock(text, begin, end).found &&
+           (text.contains(begin) || text.contains(end));
+}
+
+Outcome halfBlockRefused(const QString &path) {
+    return fail(QStringLiteral("%1 holds only one of the Ants markers, so it was "
+                               "left alone").arg(path));
+}
+
 QByteArray withoutBlock(const QByteArray &text, const QByteArray &begin,
                         const QByteArray &end) {
     const BlockRange r = findBlock(text, begin, end);
@@ -261,11 +274,17 @@ bool claudeCodeDetected() {
 // Hooks the user already has are preserved.
 
 Status statusHooksStatus() {
-    const bool scriptPresent = QFile::exists(ConfigPaths::antsClaudeForwardScript());
+    const QString scriptPath = ConfigPaths::antsClaudeForwardScript();
+    const bool scriptPresent = QFile::exists(scriptPath);
     const QJsonObject hooks = readHooks();
     bool hooksWired = true;   // ANTS-2205 — EVERY event the installer writes
+    // ANTS-6620 — runs our script, not merely has the key: the user's own
+    // hooks sit on these events too.
     for (const QString &event : claudeHookEvents())
-        if (!hooks.contains(event)) { hooksWired = false; break; }
+        if (!eventRuns(hooks.value(event).toArray(), scriptPath)) {
+            hooksWired = false;
+            break;
+        }
     if (scriptPresent && hooksWired)
         return {State::Installed,
                 QStringLiteral("✓ Hooks installed. Status updates in real time.")};
@@ -812,6 +831,7 @@ Status claudeMdNoteStatus(const QString &path) {
 Outcome installClaudeMdNote(const QString &path) {
     const std::optional<QByteArray> text = readForRewrite(path);
     if (!text) return unreadable(path);
+    if (halfBlock(*text, kMdBegin, kMdEnd)) return halfBlockRefused(path);
     if (!writeBytes(path, withBlock(*text, kMdBegin, kMdEnd,
                                     claudeMdNoteText().toUtf8())))
         return fail(QStringLiteral("Could not write %1").arg(path));
@@ -904,8 +924,11 @@ QByteArray newKey() {
     return raw.toHex();
 }
 
+// ANTS-6620 — single quotes, so the shell expands nothing in the path.
 QByteArray sourceLine(const QString &sourced) {
-    const QByteArray q = '"' + sourced.toUtf8() + '"';
+    QByteArray q = sourced.toUtf8();
+    q.replace('\'', "'\\''");
+    q = '\'' + q + '\'';
     return "[ -f " + q + " ] && source " + q;
 }
 
@@ -959,6 +982,7 @@ Outcome installShellIntegration(const QStringList &scriptDirs) {
     if (!profile) return unreadable(p.profileFile);
     const std::optional<QByteArray> rc = readForRewrite(p.rcFile);
     if (!rc) return unreadable(p.rcFile);
+    if (halfBlock(*rc, kShBegin, kShEnd)) return halfBlockRefused(p.rcFile);
     if (p.sourced != p.script) {
         const QByteArray body = readBytes(p.script);
         if (body.isEmpty() || !writeBytes(p.sourced, body))

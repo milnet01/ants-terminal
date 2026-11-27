@@ -20,6 +20,7 @@
 #include <QString>
 #include <QTemporaryDir>
 
+#include <regex>
 #include <string>
 
 
@@ -247,4 +248,34 @@ static int runMain() {
 
 TEST(LocalSubagentFramework, Main) {
     ASSERT_EQ(0, runMain());
+}
+
+#ifndef SRC_ANTSHELPERMAIN_CPP
+#error "SRC_ANTSHELPERMAIN_CPP compile definition required"
+#endif
+
+// ANTS-6620 — no subcommand is a usage error like any other: the JSON
+// envelope on stdout (INV-7), not the help text. main() lives in the
+// helper binary, which the default build does not make, so this reads it.
+TEST(LocalSubagentFramework, Ants6620NoArgumentsGetsTheEnvelope) {
+    const std::string src = ants_test::slurpFile(SRC_ANTSHELPERMAIN_CPP);
+    ASSERT_FALSE(src.empty());
+    EXPECT_TRUE(std::regex_search(
+        src, std::regex(R"(args\.size\(\)\s*<\s*2\s*\)\s*return\s+usageFail\()")))
+        << "ants-helper with no arguments must return usageFail(...)";
+}
+
+// ANTS-6620 — the stdin-unreadable check reads the parsed request argument,
+// so `-` after `--repo-root X` counts as well as `-` in argv[2].
+TEST(LocalSubagentFramework, Ants6620DashInAnyPositionForcesStdin) {
+    const std::string src = ants_test::slurpFile(SRC_ANTSHELPERMAIN_CPP);
+    ASSERT_FALSE(src.empty());
+    EXPECT_FALSE(contains(src, "args[2]"))
+        << "the explicit-stdin check must not read a fixed argv slot";
+    EXPECT_TRUE(std::regex_search(
+        src, std::regex(R"(explicitStdin\s*=\s*jsonArg\s*==\s*QStringLiteral\("-"\))")))
+        << "the explicit-stdin flag must come from the parsed jsonArg";
+    EXPECT_TRUE(std::regex_search(
+        src, std::regex(R"(if\s*\(\s*!stdinOpened\s*&&\s*explicitStdin\s*\))")))
+        << "stdin_unreadable must be raised whenever `-` was given";
 }

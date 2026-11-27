@@ -93,7 +93,8 @@ int scaffoldPlugin(const QString &name) {
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
         QTextStream out(&f);
         out << content;
-        return true;
+        out.flush();   // ANTS-6620 — a short write must not read as success
+        return out.status() == QTextStream::Ok && f.flush();
     };
 
     QString initLua = QString(
@@ -328,10 +329,10 @@ int main(int argc, char *argv[]) {
 
     // ANTS-3794 § 2.1 — --export-roadmaps runs before QApplication exists, so
     // a systemd user service with no display can run it. QApplication would
-    // connect to a window system; the export needs none.
-    for (int i = 1; i < argc; ++i) {
-        if (qstrcmp(argv[i], "--export-roadmaps") != 0)
-            continue;
+    // connect to a window system; the export needs none. ANTS-6620 — honoured
+    // as the first argument only, so another option's value never runs it.
+    if (argc > 1 && qstrcmp(argv[1], "--export-roadmaps") == 0) {
+        const int i = 1;
         QCoreApplication core(argc, argv);
         if (i + 1 >= argc) {
             std::fputs("usage: ants-terminal --export-roadmaps <dir>\n", stderr);
@@ -342,9 +343,8 @@ int main(int argc, char *argv[]) {
                                                QString::fromLocal8Bit(argv[i + 1]), out);
     }
     // ANTS-5244 — --import-roadmap, its restore, needs no display either.
-    for (int i = 1; i < argc; ++i) {
-        if (qstrcmp(argv[i], "--import-roadmap") != 0)
-            continue;
+    if (argc > 1 && qstrcmp(argv[1], "--import-roadmap") == 0) {
+        const int i = 1;
         QCoreApplication core(argc, argv);
         if (i + 2 >= argc) {
             std::fputs("usage: ants-terminal --import-roadmap <export.jsonl> <project-root>\n",

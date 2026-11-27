@@ -4163,6 +4163,9 @@ if(ANTS_TESTS)
                 # ants_dialogs_lib, and SRC_DIFFVIEWER_CPP_PATH is already
                 # defined target-wide below.
                 tests/features/review_changes_diff_cap/test_review_changes_diff_cap.cpp
+                # ANTS-6620 — quoted status paths; Refresh cancels the round
+                # in flight. Behavioural, real diffviewer::show().
+                tests/features/review_changes_probe_rounds/test_review_changes_probe_rounds.cpp
                 # ANTS-5774 — rendering the diff must not sever others'
                 # links to the Copy Diff button (Qt's style-cache cleanup).
                 # Behavioural, real diffviewer::show().
@@ -4695,6 +4698,10 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/roadmap_import_command/test_roadmap_import_command.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_EXPORT_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/golden")
+    # ANTS-6620 — the ants-helper argv scrapes.
+    set_property(SOURCE tests/features/local_subagent_framework/test_local_subagent_framework.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_ANTSHELPERMAIN_CPP="${CMAKE_SOURCE_DIR}/src/antshelpermain.cpp")
     set_property(SOURCE tests/features/qt_version_guard/test_qt_version_guard.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-4625 — the Qt-version guard, its fixture headers, and the

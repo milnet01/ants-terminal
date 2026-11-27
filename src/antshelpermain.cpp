@@ -117,11 +117,14 @@ int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     const QStringList args = app.arguments();
 
-    if (args.size() < 2 ||
-        args[1] == QStringLiteral("-h") ||
-        args[1] == QStringLiteral("--help")) {
+    // ANTS-6620 — no subcommand is a usage error, so it gets the JSON
+    // envelope every other usage error gets.
+    if (args.size() < 2)
+        return usageFail(QStringLiteral("missing subcommand; see ants-helper --help"),
+                         QStringLiteral("usage_error"));
+    if (args[1] == QStringLiteral("-h") || args[1] == QStringLiteral("--help")) {
         printHelp();
-        return args.size() < 2 ? 2 : 0;
+        return 0;
     }
 
     const QString cmd = args[1];
@@ -137,8 +140,8 @@ int main(int argc, char **argv) {
     }
     // ANTS-5109: only a subcommand that takes a request reads stdin, so
     // `list` cannot wait on a caller's open, never-closed stdin.
-    const bool wantsStdin =
-        jsonArg == QStringLiteral("-") || jsonArg.isEmpty();
+    const bool explicitStdin = jsonArg == QStringLiteral("-");
+    const bool wantsStdin = explicitStdin || jsonArg.isEmpty();
     if (wantsStdin && !AntsHelper::subcommandTakesRequest(cmd)) {
         jsonArg.clear();
     } else if (wantsStdin) {
@@ -155,8 +158,8 @@ int main(int argc, char **argv) {
         // body." Surface it on the explicit `-` path (where the
         // user opted into stdin) so a missing-stdin scenario doesn't
         // get confused with a default empty request.
-        if (!stdinOpened && args.size() > 2 &&
-            args[2] == QStringLiteral("-")) {
+        // ANTS-6620 — `-` in any position, not only argv[2].
+        if (!stdinOpened && explicitStdin) {
             return usageFail(QStringLiteral("stdin not readable"),
                              QStringLiteral("stdin_unreadable"));
         }
