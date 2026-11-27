@@ -27,6 +27,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **The command gutter shows success and failure in the same green and red as the command stripe** (ANTS-6971)
+
+- **audit_run says when it could not save its SARIF file (sarif_error), and skips its built-in checks while an earlier run's are still busy** (ANTS-6981)
+
 - **The terminal grid, VT parser, terminal widget, spec tools, test audit and hook installer each keep one copy of logic they used to repeat**
   ANTS-6613, ANTS-6614, ANTS-6615, ANTS-6616, ANTS-6617, ANTS-6619.
 
@@ -118,6 +122,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Settings names a Highlights or Triggers pattern with a mistake and stays open, instead of dropping the rule on save** (ANTS-6979)
+
+- **doc_citations sees linked markdown files inside the project, as doc_integrity does; invariant_check and last_audit_summary match README and narrow report names in any case**
+  ANTS-6948, ANTS-6955, ANTS-6956.
+
 - **Claude setup leaves alone a file holding only one Ants marker, and quotes the path it adds to ~/.bashrc** (ANTS-6620)
 
 - **Review Changes shows files with non-ASCII names and stops the previous refresh's git probes** (ANTS-6620)
@@ -176,6 +185,8 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **An SSH bookmark's Extra Args accept only ssh options; a stray word is named and refused, so a bookmark always connects to its own host** (ANTS-6978)
 
 - **Opening a link with the keyboard link-picker shows the same lookalike-link warning a click does** (ANTS-6967)
 

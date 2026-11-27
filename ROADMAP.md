@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6983 -->
+<!-- ants-roadmap-id-high-water: ANTS=6984 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98528,12 +98528,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6613–6617 helpers 2026-11-27.
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6971] **Pick one pair of success and failure colours for the command stripe and gutter.**
+- ✅ [ANTS-6971] **Pick one pair of success and failure colours for the command stripe and gutter.**
   The status stripe uses 9ECE6A / F7768E and the command-mark gutter
   9FE064 / E06464. Needs the user's colour choice; then share the pair
   (command_mark_gutter counts QColor literals, so update it too). Row
   507 of the 2026-11-06 review.
   User decision 2026-11-27: both use the stripe's pair, 9ECE6A / F7768E.
+  Shipped 50bbbb99: gutter uses 9ECE6A / F7768E like the stripe.
   **Layman:** Two places show a command's success or failure in slightly different greens and reds; you choose which.
   Kind: ux.
   Source: ANTS-6613–6617 helpers 2026-11-27.
@@ -98607,7 +98608,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6967 helper 2026-11-27.
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6978] **An SSH bookmark's extra arguments cannot change which host it connects to.**
+- ✅ [ANTS-6978] **An SSH bookmark's extra arguments cannot change which host it connects to.**
   sshdialog.cpp: a bare `other.host` token in a bookmark's extra args
   becomes ssh's destination and the real host becomes the remote
   command (OpenSSH parsing). ssh_extra_args_sanitize INV-1 promises to
@@ -98616,18 +98617,22 @@ keeps the reviewer's remedy, which is a claim to check before building.
   document bookmarks as trusted. Row 1461 of the 2026-11-06 review.
   User decision 2026-11-27: (a) refuse non-option tokens (and -, --)
   with a message; amend ssh_extra_args_sanitize INV-1.
+  Shipped b8321938 (pushed): stray words, '-', '--' and a value-less
+  trailing option refused; Save/Connect name them. Tests red then green.
   **Layman:** A saved SSH bookmark with an extra word in its options could connect somewhere other than the host it shows.
   Kind: security.
   Source: ANTS-6620–6622 helpers 2026-11-27.
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6979] **Settings says so when a Highlights or Triggers row with a bad pattern is not saved.**
+- ✅ [ANTS-6979] **Settings says so when a Highlights or Triggers row with a bad pattern is not saved.**
   settingsdialog.cpp drops a row whose regex does not compile, silently.
   Needs a choice: (a) warn and keep the dialog open; (b) save the row
   disabled, with a runtime guard where the pattern is compiled; (c)
   both. Row 246 of the 2026-11-06 review.
   User decision 2026-11-27: (a) warn naming the broken rule and keep
   Settings open.
+  Shipped d6f38256: OK/Apply warn naming each bad row and keep Settings
+  open.
   **Layman:** A highlight rule with a typo in its pattern disappears when you save, with no message.
   Kind: fix.
   Source: ANTS-6620–6622 helpers 2026-11-27.
@@ -98645,7 +98650,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6620–6622 helpers 2026-11-27.
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6981] **The audit reports a failed SARIF write instead of a quiet ok.**
+- ✅ [ANTS-6981] **The audit reports a failed SARIF write instead of a quiet ok.**
   When both SARIF writes fail, audit_run still answers ok:true with no
   sarif_path. Choose: (a) a new `sarif_error` reply field (recommended;
   keeps the findings), or (b) ok:false / sarif_write_failed. Row 323.
@@ -98656,6 +98661,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Rule set 2026-11-27 (user delegated): row 323 (a) a sarif_error reply
   field; row 320 (b) skip in-process lanes while an abandoned worker
   runs.
+  Shipped 8eb88a8d: sarif_error reply field (row 323); busy in-process
+  lanes listed in tools_skipped (row 320).
   **Layman:** Two small audit failure cases need a choice of how loudly to report them.
   Kind: fix.
   Source: ANTS-6620–6622 helpers 2026-11-27.
@@ -98696,6 +98703,23 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: ANTS-6620–6622 helpers 2026-11-27.
   Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6984] **Fix the leftovers the ANTS-6948, 6956, 6971 and 6981 helpers found.**
+  - terminalgrid.cpp copies the failure red (F7768E) by hand for its
+    warning cell; use the shared colour.
+  - audit_run: when both SARIF writes fail, the html write goes to the
+    same unwritable fallback and fails silently too (no html_error).
+  - last_audit_summary: the classifier tests suffixes on baseName() (cut
+    at the first dot), the picker on the whole name; a.v2-narrow.xml
+    differs. Its tests keep hand copies of both functions; drive the
+    handler instead. Its spec's "no QProcess" line may need a word.
+  - docIntegrityEnumerate's single-file branch relies on the earlier
+    path check for an escaping symlink.
+  - ANTS-1351's sarif_path row says "/tmp/XDG"; the code prefers XDG.
+  **Layman:** Small loose ends found while fixing other items.
+  Kind: fix.
+  Source: ANTS-6948/6956/6971/6981 helpers 2026-11-27.
+  Lanes: audit-engine, mcp-state-workspace, terminal-grid.
 
 ### Other bugs (2026-11-06 review)
 
@@ -115671,13 +115695,15 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: close-findings sweep 2026-11-26 (ANTS-6601).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6948] **doc_integrity follows symlinks that land inside the root; doc_citations' markdown walk drops every symlink. Pick one rule.**
+- ✅ [ANTS-6948] **doc_integrity follows symlinks that land inside the root; doc_citations' markdown walk drops every symlink. Pick one rule.**
   docIntegrityEnumerate keeps in-root symlinks (ANTS-6449);
   docCitationsMdScan passes QDir::NoSymLinks. Their caps differ too.
   Review row 931 asked for one walk; folding needs the rule settled
   first.
   Rule set 2026-11-27 (user delegated): both walks keep symlinks that
   resolve inside the root (ANTS-6449's rule).
+  Shipped 0a001b20: one bounded walk keeps in-root symlinks for both
+  verbs.
   **Layman:** Two document checks treat linked files differently, so they can see different files.
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6601).
@@ -115743,23 +115769,26 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: close-findings sweep 2026-11-26 (ANTS-6604).
   Lanes: mcp-roadmap-query-log, mcp-roadmap-batch.
 
-- 📋 [ANTS-6955] **invariant_check skips README.md by exact case; task_priors skips it case-insensitively.**
+- ✅ [ANTS-6955] **invariant_check skips README.md by exact case; task_priors skips it case-insensitively.**
   src/remotecontrol_state.cpp, invariant_check's scanOneDir. The comment
   says it treats README as task_priors does, so the case-insensitive
   rule looks intended. Align, then fold (review row 903).
   Rule set 2026-11-27 (user delegated): README is matched
   case-insensitively, as the comment intends.
+  Shipped 7e78965c: README skipped in any case.
   **Layman:** Two tools disagree on whether readme.md counts as a README.
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6605).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6956] **last_audit_summary's report picker matches the narrow suffixes ignoring case; the scope classifier matches them by case.**
+- ✅ [ANTS-6956] **last_audit_summary's report picker matches the narrow suffixes ignoring case; the scope classifier matches them by case.**
   src/remotecontrol_state.cpp: pickForeignReport passes n.toLower() to
   hasNarrowReportSuffix, classifyAuditScope passes base as it is (review
   row 902). Pick one rule.
   Rule set 2026-11-27 (user delegated): narrow suffixes match
   case-insensitively in both places.
+  Shipped 7e78965c: narrow suffixes matched ignoring case in both
+  places.
   **Layman:** A report named -NARROW can be treated as narrow by one step and broad by the next.
   Kind: fix.
   Source: close-findings sweep 2026-11-26 (ANTS-6605).
