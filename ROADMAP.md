@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6985 -->
+<!-- ants-roadmap-id-high-water: ANTS=6986 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98747,6 +98747,20 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6624/6625 helpers 2026-11-27.
   Lanes: chrome-widgets, changelog-feedback.
 
+- 📋 [ANTS-6986] **Fix the bugs the ANTS-6626 and ANTS-6627 helpers found.**
+  - docs/specs/ANTS-1248-workspace-search-mcp-tool-ripgrep.md still says
+    workspace_search's schema requires pattern.
+  - Tab tracker test INV-10 waits with contains("claude"), which matches
+    the test binary's own name (test_claude) and can pass early.
+  - A dropped queued chip switch (tab closed, session ended) leaves the
+    chip's "queued" tooltip.
+  - walkHelperTranscripts restarts a replaced helper file from the top
+    without clearing what it read, so its events can count twice.
+  **Layman:** Small bugs in the Claude status widgets, a test and a spec, found while fixing others.
+  Kind: fix.
+  Source: ANTS-6626/6627 helpers 2026-11-27.
+  Lanes: claude-integration, claude-session-widgets.
+
 ### Other bugs (2026-11-06 review)
 
 - ✅ [ANTS-6620] **Fix the smaller bugs the 2026-11-06 reviews found in app-entry-dialogs.**
@@ -98886,7 +98900,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: chrome-widgets.
 
-- 📋 [ANTS-6626] **Fix the smaller bugs the 2026-11-06 reviews found in claude-integration.**
+- 🚧 [ANTS-6626] **Fix the smaller bugs the 2026-11-06 reviews found in claude-integration.**
   23 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 83 `src/claudeintegration.cpp:2882` (Medium)
   - row 84 `src/claudeintegration.cpp:1426` (Medium)
@@ -98911,12 +98925,20 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1365 `src/claudeintegration_callpolicy.cpp:893-898` (Info)
   - row 1366 `src/claudeintegration_callpolicy.cpp:912-915` (Info)
   - row 1367 `src/claudeintegration_callpolicy.cpp:276-277` (Info)
+  2026-11-27 (8c515d27): 19 rows fixed; 1354, 1357 already fixed; 1367
+  not a bug. Row 87 narrowed: only a tracked Claude's exit clears the
+  session id. Row 85 waits on the user: (A) wrap get_session_info in
+  <ants_mcp_data>, changing its reply and the ANTS-1294 exempt set, or
+  (B) keep it unwrapped and scrub changed_files and current_tool.
+  Recommended (A): those fields come from hook events and transcripts
+  another process can influence, and an unwrapped reply has no frame for
+  a scrub to protect.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6627] **Fix the smaller bugs the 2026-11-06 reviews found in claude-session-widgets.**
+- ✅ [ANTS-6627] **Fix the smaller bugs the 2026-11-06 reviews found in claude-session-widgets.**
   10 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 346 `claudestatuswidgets.cpp:1129` (Medium)
   - row 347 `claudetabtracker.cpp:212` (Medium)
@@ -98928,6 +98950,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1370 `src/claudebgtasks.cpp:455-491` (Info)
   - row 1371 `src/claudetabtracker.cpp:126` (Info)
   - row 1373 `src/claudeallowlist.cpp:169` (Info)
+  Shipped 2026-11-27 (3ede1859): 7 rows fixed; 1368, 1371 already fixed;
+  1369 not a bug.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

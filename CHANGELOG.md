@@ -124,6 +124,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **MCP: non-object arguments and over-size requests get a clear refusal; secrets-file reads warn once; a Claude's exit clears its session; a failing trust prompt no longer ends the process; tool schemas say what each verb accepts** (ANTS-6626)
+
+- **Claude status chips follow the right session after a quick restart or in a tab with no Claude; a queued model switch dies with its session; foreground helper results no longer end background tasks; the allowlist hint names the real buttons** (ANTS-6627)
+
 - **The build caps compile jobs at 2 when CMake cannot count the host's cores, instead of running unlimited** (ANTS-6623)
 
 - **changelog_log normalize, amend and release, changelog_query's lint, and feedback-file writing and reading handle mixed sections, placeholder notes, unclosed fences, dashes in titles and unreadable files correctly** (ANTS-6624)
