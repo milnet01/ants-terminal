@@ -516,14 +516,10 @@ QHash<QString, QString> archivedIds(const QString &projectPath,
     QDir archive(root + QStringLiteral("/docs/roadmap"));
     if (!archive.exists()) return out;
 
-    // ANTS-4073 — a closed phase archives as P<N>[.<sub>].md (§ 3.9).
-    static const QRegularExpression nameRe(
-        QStringLiteral("\\A(?:(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
-                       "|P[0-9]+(?:\\.[0-9]+)?|unversioned)\\.md\\z"));
     const auto entries =
         archive.entryList({QStringLiteral("*.md")}, QDir::Files, QDir::Name);
     for (const QString &e : entries) {
-        if (!nameRe.match(e).hasMatch()) continue;
+        if (!RoadmapMigrate::parseArchiveName(e)) continue;
         QFile f(archive.absoluteFilePath(e));
         if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
         const QString text = QString::fromUtf8(f.readAll());

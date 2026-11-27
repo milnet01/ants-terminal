@@ -3536,22 +3536,23 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: rotate_minor requires `minor`"));
 
-    // § 3.9's FILENAME rule, and the single place it is stated: the derived
-    // path is `docs/roadmap/<captures>.md`, so validating the argument against
-    // this shape is what makes the path satisfy
+    // § 3.9's FILENAME rule, read through parseArchiveName(): the derived
+    // path is `docs/roadmap/<minor>.md`, so accepting only an argument that
+    // names a version archive is what makes the path satisfy
     // RoadmapMigrateLoad::isPlaceableSourcePath() by construction rather than
     // by a second copy of the same regex.
-    static const QRegularExpression kMinorRx(
-        QStringLiteral("\\A(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\z"));
     const QString minorArg = req.value(QStringLiteral("minor")).toString();
-    const auto minorMatch = kMinorRx.match(minorArg);
-    if (!minorMatch.hasMatch())
+    const auto archiveName =
+        RoadmapMigrate::parseArchiveName(minorArg + QStringLiteral(".md"));
+    if (!archiveName || archiveName->rank != 2)
         return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `minor` must be <MAJOR>.<MINOR> with no "
                            "leading zeros and no patch component (got \"%1\")")
                 .arg(minorArg));
-    const QString major = minorMatch.captured(1);
-    const QString minor = minorMatch.captured(2);
+    // The argument's own digits, not the parsed ints: § 3.9's shape admits a
+    // number too large for int.
+    const QString major = minorArg.section(QLatin1Char('.'), 0, 0);
+    const QString minor = minorArg.section(QLatin1Char('.'), 1, 1);
 
     // Derived, never passed: a caller-supplied path would move § 3.9's naming
     // rule out of the one place that states it, and a non-conforming name

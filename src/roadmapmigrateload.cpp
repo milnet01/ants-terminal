@@ -258,8 +258,6 @@ struct Loader {
     bool applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges *chg);
     bool recordHistory(qint64 itemPk, const QString &field, const QString &oldValue,
                        const QString &newValue, int *seq);
-    RoadmapStore::ItemWrite itemWriteFor(const PlannedItem &it, const QString &id,
-                                         qint64 sectionId);
 };
 
 bool Loader::run() {
@@ -1032,11 +1030,6 @@ bool Loader::allocateId(QString *allocated) {
     return true;
 }
 
-RoadmapStore::ItemWrite Loader::itemWriteFor(const PlannedItem &it, const QString &id,
-                                             qint64 sectionId) {
-    return RoadmapMigrateLoad::itemWriteFrom(it, projectId, id, sectionId);
-}
-
 bool Loader::updateMatched() {
     for (qsizetype i = 0; i < plan.items.size(); ++i) {
         if (!matchPk.at(i))
@@ -1182,7 +1175,8 @@ bool Loader::rebuildElements() {
             QString id = it.id;
             if (id.isEmpty() && !allocateId(&id))
                 return false;
-            RoadmapStore::ItemWrite w = itemWriteFor(it, id, sid);
+            RoadmapStore::ItemWrite w =
+                RoadmapMigrateLoad::itemWriteFrom(it, projectId, id, sid);
             const auto newPk = store.putItem(w, &err);
             if (!newPk)
                 return fail(err);

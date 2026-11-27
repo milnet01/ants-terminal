@@ -2265,6 +2265,46 @@ bool RoadmapStore::fileItem(qint64 itemPk, qint64 sectionId, int position,
     return true;
 }
 
+namespace {
+
+// The tables that name an item through `REFERENCES item(item_pk)` in
+// createSchema(), children first. There is no ON DELETE CASCADE, so this order
+// IS the contract: deleteItem() and deregisterProject() delete these before
+// the item, and itemIsReferenced() checks the ones that make an item
+// referenced. A new such table goes here.
+//
+// `byItem` scopes the rows to one item (`?` = its item_pk). `byProject`
+// scopes them to one project: `{items}` and `{sections}` stand for that
+// project's item and section subqueries. element goes per section, and
+// citation also carries project-level rows of its own.
+struct ItemChild {
+    const char *table;
+    const char *byItem;
+    const char *byProject;
+    int RoadmapStore::DeregisterCounts::*count;
+};
+constexpr ItemChild kItemChildren[] = {
+    {"element", "item_pk = ?", "section_id IN ({sections})",
+     &RoadmapStore::DeregisterCounts::elements},
+    {"history", "item_pk = ?", "item_pk IN ({items})",
+     &RoadmapStore::DeregisterCounts::history},
+    {"feedback_ref", "item_pk = ?", "item_pk IN ({items})",
+     &RoadmapStore::DeregisterCounts::feedbackRefs},
+    // Both ends — see the header.
+    {"relationship", "src_pk = ? OR dst_pk = ?",
+     "src_pk IN ({items}) OR dst_pk IN ({items})",
+     &RoadmapStore::DeregisterCounts::relationships},
+    {"citation", "item_pk = ?", "project_id = ? OR item_pk IN ({items})",
+     &RoadmapStore::DeregisterCounts::citations},
+};
+
+QString deleteFrom(const char *table, const QString &where) {
+    return QStringLiteral("DELETE FROM ") + QLatin1String(table)
+         + QStringLiteral(" WHERE ") + where;
+}
+
+}  // namespace
+
 bool RoadmapStore::deregisterProject(qint64 projectId, const QString &deregisteredAt,
                                      DeregisterCounts *counts, QString *error) {
     // The child scopes, resolved through the project rather than by joining at
@@ -2280,21 +2320,16 @@ bool RoadmapStore::deregisterProject(qint64 projectId, const QString &deregister
 
     // FK order, children first. ANTS-5366 § 2.2 — the `project` row is not in
     // this list: it is kept and stamped below, and `message` rows hang off it
-    // at both ends, so they stay too.
-    const QVector<QPair<QString, int *>> steps = {
-        {QStringLiteral("DELETE FROM element WHERE section_id IN (") + kSections
-             + QStringLiteral(")"), &counts->elements},
-        {QStringLiteral("DELETE FROM history WHERE item_pk IN (") + kItems
-             + QStringLiteral(")"), &counts->history},
-        {QStringLiteral("DELETE FROM feedback_ref WHERE item_pk IN (") + kItems
-             + QStringLiteral(")"), &counts->feedbackRefs},
-        // Both ends — see the header. This step and the citation step each
-        // carry two `?`; the loop below binds the id once per placeholder.
-        {QStringLiteral("DELETE FROM relationship WHERE src_pk IN (") + kItems
-             + QStringLiteral(") OR dst_pk IN (") + kItems + QStringLiteral(")"),
-         &counts->relationships},
-        {QStringLiteral("DELETE FROM citation WHERE project_id = ? OR item_pk IN (")
-             + kItems + QStringLiteral(")"), &counts->citations},
+    // at both ends, so they stay too. The relationship and citation steps each
+    // carry two `?`; the loop below binds the id once per placeholder.
+    QVector<QPair<QString, int *>> steps;
+    for (const ItemChild &c : kItemChildren) {
+        const QString where = QString::fromLatin1(c.byProject)
+                                  .replace(QStringLiteral("{items}"), kItems)
+                                  .replace(QStringLiteral("{sections}"), kSections);
+        steps.append(qMakePair(deleteFrom(c.table, where), &(counts->*c.count)));
+    }
+    steps += QVector<QPair<QString, int *>>{
         {QStringLiteral("DELETE FROM item WHERE project_id = ?"), &counts->items},
         {QStringLiteral("DELETE FROM section WHERE project_id = ?"), &counts->sections},
         {QStringLiteral("DELETE FROM id_prefix WHERE project_id = ?"), &counts->idPrefixes},
@@ -2995,22 +3030,16 @@ bool RoadmapStore::shiftElements(qint64 sectionId, int fromPosition, int by,
     return true;
 }
 
-// ANTS-5287 (ANTS-3765 § 2.4) — the cascade, in foreign-key order. There is no
-// ON DELETE CASCADE in this schema, so the order IS the contract: a child left
-// behind makes the item's DELETE fail the constraint and the caller's
-// transaction roll back.
+// ANTS-5287 (ANTS-3765 § 2.4) — the cascade, in kItemChildren's foreign-key
+// order: a child left behind makes the item's DELETE fail the constraint and
+// the caller's transaction roll back.
 bool RoadmapStore::deleteItem(qint64 itemPk, QString *error) {
-    static const char *const kSteps[] = {
-        "DELETE FROM element WHERE item_pk = ?",
-        "DELETE FROM history WHERE item_pk = ?",
-        "DELETE FROM feedback_ref WHERE item_pk = ?",
-        "DELETE FROM relationship WHERE src_pk = ? OR dst_pk = ?",
-        "DELETE FROM citation WHERE item_pk = ?",
-        "DELETE FROM item WHERE item_pk = ?",
-    };
-    for (const char *sql : kSteps) {
+    QStringList steps;
+    for (const ItemChild &c : kItemChildren)
+        steps.append(deleteFrom(c.table, QString::fromLatin1(c.byItem)));
+    steps.append(QStringLiteral("DELETE FROM item WHERE item_pk = ?"));
+    for (const QString &text : std::as_const(steps)) {
         QSqlQuery q(m_db);
-        const QString text = QString::fromLatin1(sql);
         q.prepare(text);
         for (qsizetype i = 0, n = text.count(QLatin1Char('?')); i < n; ++i)
             q.addBindValue(itemPk);
@@ -3026,6 +3055,8 @@ bool RoadmapStore::deleteItem(qint64 itemPk, QString *error) {
 
 // ANTS-5287 — a relationship names an item by pk from its own project, or by
 // (dst_project = the item's project's export_slug, dst_id_fold) from another.
+// Of kItemChildren, relationship, citation and feedback_ref make an item
+// referenced; element and history are its own rows, so they do not.
 std::optional<bool> RoadmapStore::itemIsReferenced(qint64 itemPk, QString *error) {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
@@ -3109,30 +3140,18 @@ bool RoadmapStore::setLegend(qint64 projectId, const QJsonObject &legend,
     return execOneRow(q, QStringLiteral("no project %1").arg(projectId), error);
 }
 
-// ANTS-3815 § 2.4 / INV-7. Two refusals, and the first is why this does not
-// simply return exec()'s result: an UPDATE matching no row SUCCEEDS in SQLite,
-// so a bare exec() reports having written a project that does not exist. That is
-// the ANTS-3767 failure mode one column along — a column with a writer that
-// always claims to have written. The second refusal is the DDL's CHECK, which
-// SQLite raises for a format outside § 2.1's set.
+// ANTS-3815 § 2.4 / INV-7. Two refusals: execOneRow()'s missing row (the
+// ANTS-3767 failure mode one column along), and the DDL's CHECK, which SQLite
+// raises for a format outside § 2.1's set.
 bool RoadmapStore::setProjectSourceFormat(qint64 projectId, const QString &format,
                                           QString *error) {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("UPDATE project SET source_format = ? WHERE project_id = ?"));
     q.addBindValue(format);
     q.addBindValue(projectId);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return false;
-    }
-    if (q.numRowsAffected() != 1) {
-        if (error)
-            *error = QStringLiteral("no project row %1 to record a source format on")
-                         .arg(projectId);
-        return false;
-    }
-    return true;
+    return execOneRow(
+        q, QStringLiteral("no project row %1 to record a source format on").arg(projectId),
+        error);
 }
 
 bool RoadmapStore::setProjectRoot(qint64 projectId, const QString &canonicalRoot,
@@ -3141,17 +3160,8 @@ bool RoadmapStore::setProjectRoot(qint64 projectId, const QString &canonicalRoot
     q.prepare(QStringLiteral("UPDATE project SET root = ? WHERE project_id = ?"));
     q.addBindValue(canonicalRoot);
     q.addBindValue(projectId);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return false;
-    }
-    if (q.numRowsAffected() != 1) {
-        if (error)
-            *error = QStringLiteral("no project row %1 to re-root").arg(projectId);
-        return false;
-    }
-    return true;
+    return execOneRow(q, QStringLiteral("no project row %1 to re-root").arg(projectId),
+                      error);
 }
 
 bool RoadmapStore::reassignItemId(qint64 itemPk, const QString &newId, QString *error) {

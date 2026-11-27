@@ -420,16 +420,17 @@ void setStoreBacking(QJsonObject &env, const RoadmapMigrate::MigrationPlan &plan
     if (!storeBacked) {
         env[QStringLiteral("store_backed_hint")] = QStringLiteral(
             "Rows were written and are faithful, but NOTHING READS THEM: only "
-            "the ants-v1 and pass-headings dialects are served from the store, "
+            "the %1 dialects are served from the store, "
             "and this roadmap is "
-            "%1. roadmap_query keeps answering from markdown, roadmap_log keeps "
+            "%2. roadmap_query keeps answering from markdown, roadmap_log keeps "
             "editing the file, and roadmap_log op:\"render\" has nothing to "
             "publish. Re-running this verb will not change that — it writes the "
             "same inert snapshot again. Those rows are summed by "
             "roadmap_query mode:\"report\" scope:\"all\", so if the store was "
             "not wanted here, remove them with roadmap_migrate "
             "op:\"deregister\".")
-                .arg(plan.sources.isEmpty()
+                .arg(RoadmapSource::storeServedDialects().join(QStringLiteral(" and ")),
+                     plan.sources.isEmpty()
                          ? QStringLiteral("in no recognised dialect")
                          : QStringLiteral("'%1'").arg(plan.sources.first().format));
     }

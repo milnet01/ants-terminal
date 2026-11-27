@@ -1090,7 +1090,7 @@ The convention:
   read names through `RoadmapMigrate::parseArchiveName`
   (`src/roadmapmigrate.cpp`). So a hand-authored roadmap may rotate a
   closed phase by hand. **A store-migrated one cannot yet**:
-  `rotate_minor` takes a minor only (`kMinorRx`,
+  `rotate_minor` takes a minor only (`cmdRoadmapLogRotateMinor`,
   `src/remotecontrol_roadmap_log_batch.cpp`), and a hand snip is
   discarded at the next render (below). ANTS-4073 owns that op.
 
