@@ -27,8 +27,8 @@ for security-relevant changes.
 
 ### Changed
 
-- **Model switching, Lua plugins, the review engines and the Roadmap window each keep one copy of logic they used to repeat**
-  ANTS-6607, ANTS-6608, ANTS-6609, ANTS-6610.
+- **Model switching, Lua plugins, the review engines, the Roadmap window and the roadmap reader and store each keep one copy of logic they used to repeat**
+  ANTS-6607, ANTS-6608, ANTS-6609, ANTS-6610, ANTS-6611, ANTS-6612.
 
 - **workspace_search, cited_by, co_change_family and the state verbs share one parse-budget check, one refusal builder and one suffix list.** (ANTS-6605)
 

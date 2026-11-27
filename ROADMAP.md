@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6961 -->
+<!-- ants-roadmap-id-high-water: ANTS=6966 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98224,7 +98224,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6611] **Fold the duplicated logic the 2026-11-06 reviews found in roadmap-parse-render.**
+- ✅ [ANTS-6611] **Fold the duplicated logic the 2026-11-06 reviews found in roadmap-parse-render.**
   9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 661 `src/roadmapparse.cpp:1783` (Medium)
   - row 664 `src/roadmapparse.cpp:1223` (Medium)
@@ -98235,18 +98235,21 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 692 `src/roadmaprender.cpp:396` (Low)
   - row 1347 `src/passheadingwrite.cpp:269` (Info)
   - row 1349 `src/passheadingwrite.cpp:94` (Info)
+  Shipped b4c50255: rows 661, 665, 680, 681, 689, 692, 1347 folded. Rows
+  664 and 1349 left (each changes what is matched); filed as follow-ups.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6612] **Fold the duplicated logic the 2026-11-06 reviews found in roadmap-store.**
+- ✅ [ANTS-6612] **Fold the duplicated logic the 2026-11-06 reviews found in roadmap-store.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 638 `src/roadmapstore.cpp:2781` (Medium)
   - row 639 `src/roadmapstore.cpp:2908` (Medium)
   - row 652 `src/roadmapmigrateload.cpp:85` (Medium)
   - row 653 `src/roadmapmigrateverb.cpp:416` (Medium)
   - row 656 `src/roadmapmigrateload.cpp:977` (Low)
+  Shipped b13453ee: rows 638, 639, 652, 653, 656 folded.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -98403,6 +98406,69 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: ANTS-6609 helper 2026-11-27.
   Lanes: review-engines.
+
+- 📋 [ANTS-6962] **Roadmap parsing masks a headline's code spans the same way everywhere.**
+  roadmapparse.cpp maskedBody pairs backticks one at a time and turns
+  `*` into `x`; maskQuotedRegions uses CommonMark pairing, blanks to
+  spaces and masks fences. matchBold tests isSpace() on the mask, so the
+  two can parse a headline differently. Row 664 of the 2026-11-06
+  review; left out of ANTS-6611. Decide the intended rule, lock it with
+  a test, then fold.
+  **Layman:** Two parts of the roadmap reader treat code in a headline slightly differently; this picks one rule.
+  Kind: investigate.
+  Source: ANTS-6611/6612 helpers 2026-11-27.
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6963] **A pass-heading roadmap finds an item by headline with the same normalising rule as other roadmaps.**
+  passheadingwrite.cpp's locator compares headlines without
+  RoadmapParse::normaliseHeadline, which drops trailing .,;:!? . Folding
+  it widens matching, so some calls now answering bullet_not_found would
+  succeed. Row 1349 of the 2026-11-06 review; left out of ANTS-6611
+  because it changes behaviour. Needs a rule choice.
+  **Layman:** Finding an item by its title works a little differently on one roadmap style; this decides whether to make it match.
+  Kind: investigate.
+  Source: ANTS-6611/6612 helpers 2026-11-27.
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6964] **The Roadmap window reads archive file names with the store's rule.**
+  roadmapdialog.cpp parseArchiveFilename keeps a looser copy of the
+  archive-name regex: it accepts leading zeros (00.07.md) that
+  RoadmapMigrate::parseArchiveName refuses, and `^...$` without `\z`
+  lets a trailing newline through. So the window and the migration can
+  disagree on what is an archive. Use parseArchiveName.
+  **Layman:** The Roadmap window and the roadmap store could disagree about which old-version files count; this makes them agree.
+  Kind: fix.
+  Source: ANTS-6611/6612 helpers 2026-11-27.
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6965] **Fold the leftover copies the ANTS-6611 and ANTS-6612 helpers found.**
+  - remotecontrol_roadmap_backfill.cpp: a fifth pass block-end walk;
+    use RoadmapParse::passBlockEnd.
+  - projectlayoutengine.cpp: its own kFormatMarker copy; a marker version
+    bump would miss it.
+  - roadmapdialog.cpp (two), remotecontrol_roadmap_log_batch.cpp,
+    roadmapmigrate.cpp: H2/H3 level checks that could use
+    RoadmapIndex::isSectionLevel.
+  - roadmapstore_feedback.cpp setFeedbackExportSha: a hand copy of
+    execOneRow's row check (execOneRow is file-local).
+  - roadmapstore.cpp: check the other single-row UPDATEs (message
+    acked_at, element payload, deregistered_at = NULL) for the guard.
+  **Layman:** A few more places repeat the same small piece of roadmap logic; this tidies them.
+  Kind: refactor.
+  Source: ANTS-6611/6612 helpers 2026-11-27.
+  Lanes: roadmap-parse-render, roadmap-store.
+
+- 📋 [ANTS-6966] **ANTS-3833's spec and the rotate_minor test comment name helpers that no longer exist.**
+  docs/specs/ANTS-3833-remotecontrol-decomposition.md lists
+  rcExtractBoldId and rcExtractCaretAnchor as internal helpers; both are
+  gone (RoadmapParse::extractBoldId / extractCaretAnchor).
+  tests/features/roadmap_rotate_minor/test_roadmap_rotate_minor.cpp's
+  `placeable` regex comment says it is isPlaceableSourcePath's predicate;
+  that now goes through parseArchiveName.
+  **Layman:** Two notes point at code that has since been renamed.
+  Kind: doc-fix.
+  Source: ANTS-6611/6612 helpers 2026-11-27.
+  Lanes: roadmap-parse-render.
 
 ### Other bugs (2026-11-06 review)
 
