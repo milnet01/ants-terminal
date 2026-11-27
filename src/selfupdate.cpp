@@ -181,6 +181,9 @@ QNetworkRequest makeRequest(const QUrl &url) {
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                      QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setRawHeader("User-Agent", "Ants-Terminal-Updater");
+    // A stalled transfer fails after this long with no data, instead of
+    // spinning the progress bar until the user cancels.
+    req.setTransferTimeout(int(QNetworkRequest::DefaultTransferTimeoutConstant));
     return req;
 }
 

@@ -2660,8 +2660,10 @@ if(ANTS_TESTS)
                 tests/features/verify_trust_modal_buttons_fit/test_verify_trust_modal_buttons_fit.cpp
                 # ANTS-5575 — scroll areas show the dialog's themed background.
                 tests/features/scrollarea_theme_background/test_scrollarea_theme_background.cpp
-                # ANTS-5480 — MD-1 / MD-2 of verify_trust_gate, on the built dialog.
-                tests/features/verify_trust_gate/test_verify_trust_prompt.cpp)
+                # ANTS-5480 — MD-1 to MD-3 of verify_trust_gate, on the built dialog.
+                tests/features/verify_trust_gate/test_verify_trust_prompt.cpp
+                # ANTS-6633 — the dialog-show trace line is one honest line.
+                tests/features/dialog_show_tracer/test_dialog_show_tracer.cpp)
     # command_palette_ghost_completion uses QSignalSpy (Qt6::Test).
     target_link_libraries(test_chrome PRIVATE Qt6::Test)
     target_compile_definitions(test_chrome PRIVATE

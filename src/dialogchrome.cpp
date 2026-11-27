@@ -59,7 +59,7 @@ public:
         // reddening every dialog test under the sanitizer build.
         if (obj == m_dlgObj) {
             switch (ev->type()) {
-            case QEvent::Show:   onShow();      break;
+            case QEvent::Show:   onShow(ev->spontaneous()); break;
             case QEvent::Resize: positionGrip(); break;
             // ANTS-5037 — reject(), accept() and done() hide the dialog
             // without a Close reaching this filter, so save on hide too.
@@ -84,8 +84,11 @@ private:
 #  pragma GCC diagnostic push
 #  pragma GCC diagnostic ignored "-Wnull-dereference"
 #endif
-    void onShow() {
-        if (!m_restored) {
+    // `spontaneous` is a Show from the window system: an un-minimise, not an
+    // open, so D4 leaves a dialog the user moved where it is.
+    void onShow(bool spontaneous) {
+        const bool firstShow = !m_restored;
+        if (firstShow) {
             m_restored = true;
             // D3 — restore AFTER the ctor (which may resize() to a
             // default); persisted size wins, absent size falls through to
@@ -96,7 +99,7 @@ private:
                 if (sz.isValid()) m_dlg->resize(sz);
             }
         }
-        recenter();
+        if (firstShow || !spontaneous) recenter();
         positionGrip();
     }
 
@@ -121,8 +124,11 @@ private:
 
     void saveSize() {
         Config *cfg = currentConfig();
-        if (cfg && !m_sizeKey.isEmpty() && m_dlg)
-            cfg->setDialogSize(m_sizeKey, m_dlg->size());
+        if (!cfg || m_sizeKey.isEmpty() || !m_dlg) return;
+        // D3 keeps the size the user picked, not the screen a maximise filled.
+        const bool filled = m_dlg->isMaximized() || m_dlg->isFullScreen();
+        cfg->setDialogSize(m_sizeKey, filled ? m_dlg->normalGeometry().size()
+                                             : m_dlg->size());
     }
 #if defined(__GNUC__) && !defined(__clang__)
 #  pragma GCC diagnostic pop

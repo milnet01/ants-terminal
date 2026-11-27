@@ -59,6 +59,36 @@ QStringList gateNames(const QList<VerifyEngine::GateConfig> &gates) {
     return names;
 }
 
+// Writes each character that prints nothing — a control, a bidi override or
+// other format character (CVE-2021-42574), a line separator — as <U+XXXX>,
+// so the text the user trusts reads the same as the bytes that run.
+// Newline and tab still lay the text out.
+QString revealHidden(const QString &s) {
+    QString out;
+    out.reserve(s.size());
+    for (qsizetype i = 0; i < s.size(); ++i) {
+        char32_t cp = s.at(i).unicode();
+        qsizetype len = 1;
+        if (s.at(i).isHighSurrogate() && i + 1 < s.size() && s.at(i + 1).isLowSurrogate()) {
+            cp = QChar::surrogateToUcs4(s.at(i), s.at(i + 1));
+            len = 2;
+        }
+        const QChar::Category cat = QChar::category(cp);
+        const bool hidden = (cat == QChar::Other_Control && cp != U'\n' && cp != U'\t')
+                            || cat == QChar::Other_Format || cat == QChar::Other_Surrogate
+                            || cat == QChar::Separator_Line
+                            || cat == QChar::Separator_Paragraph;
+        if (hidden) {
+            out += QStringLiteral("<U+%1>").arg(
+                QString::number(uint(cp), 16).toUpper().rightJustified(4, QLatin1Char('0')));
+        } else {
+            out += s.mid(i, len);
+        }
+        i += len - 1;
+    }
+    return out;
+}
+
 QString commandPreview(const QByteArray &configBytes) {
     // ANTS-1763 — this preview is the ONLY human-readable summary in the
     // trust prompt, so a misrepresentation is a trust-decision hazard.
@@ -73,7 +103,7 @@ QString commandPreview(const QByteArray &configBytes) {
         preview = preview.left(kCommandPreviewChars)
                   + QStringLiteral("…");
     }
-    return preview;
+    return revealHidden(preview);
 }
 
 }  // namespace
@@ -140,7 +170,7 @@ PromptControls buildPromptBox(QMessageBox &box,
     box.setDetailedText(QObject::tr(
         "Full SHA-256:\n%1\n\n"
         "Full config file (.ants/verify.json):\n%2"
-    ).arg(shaHex, QString::fromUtf8(configBytes)));
+    ).arg(shaHex, revealHidden(QString::fromUtf8(configBytes))));
 
     auto *bTrustSha  = box.addButton(QObject::tr("Trust this SHA"),
                                      QMessageBox::AcceptRole);

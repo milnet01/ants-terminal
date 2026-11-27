@@ -7,7 +7,9 @@
 #include <QColor>
 #include <QDir>
 #include <QFile>
+#include <QStringList>
 #include <QTemporaryDir>
+#include <QtGlobal>
 
 #include <gtest/gtest.h>
 
@@ -56,6 +58,38 @@ TEST(UserThemeLoading, MistypedColourAndOversizedFile) {
 
     EXPECT_EQ(findTheme(themes, QStringLiteral("Huge")), nullptr)
         << "an oversized theme file was read and loaded";
+}
+
+namespace {
+QStringList g_warnings;
+void collectWarning(QtMsgType type, const QMessageLogContext &, const QString &msg) {
+    if (type == QtWarningMsg) g_warnings << msg;
+}
+}  // namespace
+
+// INV-3 (ANTS-6633) — a theme file that is valid JSON but not an object is
+// reported as "not a JSON object", never as a parse error that says
+// "no error occurred".
+TEST(UserThemeLoading, NonObjectJsonSaysWhy) {
+    QTemporaryDir cfg;
+    ASSERT_TRUE(cfg.isValid());
+    ants_test::XdgGuard g;
+    g.setTestMode(false);
+    g.setEnv("XDG_CONFIG_HOME", cfg.path().toUtf8());
+    const QString themesDir = cfg.path() + QStringLiteral("/ants-terminal/themes");
+    ASSERT_TRUE(QDir().mkpath(themesDir));
+    ASSERT_TRUE(writeTheme(themesDir, QStringLiteral("array.json"), "[1, 2]"));
+
+    g_warnings.clear();
+    const QtMessageHandler prior = qInstallMessageHandler(collectWarning);
+    (void)Themes::loadUserThemes();
+    qInstallMessageHandler(prior);
+
+    const QString warning = g_warnings.filter(QStringLiteral("array.json")).join(u'\n');
+    EXPECT_TRUE(warning.contains(QStringLiteral("not a JSON object")))
+        << "warning: " << warning.toStdString();
+    EXPECT_FALSE(warning.contains(QStringLiteral("no error occurred")))
+        << "warning: " << warning.toStdString();
 }
 
 // RC-36 (audit 2026-09-26) — a user theme named like a built-in replaces it:

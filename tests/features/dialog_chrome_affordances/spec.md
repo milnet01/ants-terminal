@@ -53,6 +53,12 @@ function dialogs need no `Config` plumbing).
   `new QDialog(` and every `QDialog name(` in a `src/*.cpp` file, outside
   a `//` comment, is followed before its function ends by a
   `DialogChrome::install(` call on that variable.
+- **INV-14 / D3 keeps the picked size when maximised (ANTS-6633).** Closing
+  a maximised or full-screen resizable+keyed dialog persists its normal
+  (un-maximised) size, not the screen-sized one.
+- **INV-15 / D4 on open, not on restore (ANTS-6633).** Restoring a
+  minimised dialog (a spontaneous Show) leaves it where the user moved it;
+  a fresh `show()` after `hide()` still re-centres it.
 
 ## Test scope
 
@@ -60,7 +66,10 @@ Behavioral, offscreen Qt. Synthetic `QShowEvent` / `QCloseEvent` drive INV-1
 through INV-7. INV-9 through INV-11 drive the dialog through its real
 lifecycle calls — `show()`, `reject()`, `accept()`, `close()` — with events
 processed between steps, because the defect they lock is about which of
-those calls actually deliver an event `DialogChrome` can act on. INV-8 is a
+those calls actually deliver an event `DialogChrome` can act on. INV-14 and
+INV-15 do the same with `showMaximized()`, `showMinimized()` and
+`showNormal()`; INV-14 skips where the platform plugin does not resize a
+maximised window. INV-8 is a
 source scrape of `~MainWindow`, because this bundle cannot build a
 `MainWindow` headless. INV-12 and INV-13 are source scrapes of the call
 sites. The global `Config` registration is reset to

@@ -9,6 +9,11 @@ built-in fallback (`#1E1E2E`), not an invalid colour.
 **INV-2 — an oversized theme file is skipped.** A `*.json` file larger than
 the size cap in `Themes::loadUserThemes` is not loaded.
 
+**INV-3 — a non-object theme file says why (ANTS-6633).** A `*.json` file
+that is valid JSON but not an object (an array) is reported with a warning
+that says it is not a JSON object, never a parse error reading "no error
+occurred".
+
 ## Rationale
 
 `parseColor` returned `QColor(string)` for any string, and an invalid `QColor`
@@ -26,3 +31,5 @@ it), writes theme files under `ants-terminal/themes/`, and calls
 
 - **ANTS-5082:** mistyped colours became black and theme files had no size
   cap. Locked by this spec.
+- **ANTS-6633:** a valid non-object theme file was reported as a parse
+  error with the text "no error occurred". Locked by INV-3.

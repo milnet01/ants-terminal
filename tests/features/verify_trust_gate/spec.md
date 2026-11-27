@@ -88,3 +88,8 @@ Source scrapes of `ModalClient::showPrompt`: the prompt is a modal
 - **MD-2** The prompt carries an "auto-re-prompt if the file changes"
   checkbox, checked by default, and "Trust this repo" passes its state to
   `addTrustedRepo` as `untilShaChanges`.
+- **MD-3 (ANTS-6633)** A character that prints nothing — a control other
+  than newline and tab, a format character such as a bidi override
+  (CVE-2021-42574) or zero-width space, a line or paragraph separator — is
+  shown as `<U+XXXX>` in the first-command preview and in the full config,
+  never passed through raw. Checked on the dialog `buildPromptBox` builds.

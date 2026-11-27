@@ -16,18 +16,25 @@ namespace {
 // Process-global instance pointer. Owned by qApp when installed; null
 // when not. setActive() is the only mutator.
 DialogShowTracer *s_tracer = nullptr;
+
+// A control character (a newline in a shell's OSC title) is written as
+// \xNN, so one show is always one log line.
+QString visible(const QString &s) {
+    QString out;
+    out.reserve(s.size());
+    for (const QChar c : s) {
+        if (c.category() == QChar::Other_Control)
+            out += QStringLiteral("\\x%1").arg(int(c.unicode()), 2, 16, QLatin1Char('0'));
+        else
+            out += c;
+    }
+    return out;
+}
 }  // namespace
 
 DialogShowTracer::DialogShowTracer(QObject *parent) : QObject(parent) {}
 
-bool DialogShowTracer::eventFilter(QObject *obj, QEvent *ev) {
-    if (ev->type() != QEvent::Show) return false;
-    auto *w = qobject_cast<QWidget *>(obj);
-    if (!w) return false;
-    // Windows only (a widget with no parent is always one) — embedded
-    // children are uninteresting and would flood the log.
-    if (!w->isWindow()) return false;
-
+QString DialogShowTracer::showLine(const QWidget *w) {
     const QString cls    = QString::fromLatin1(w->metaObject()->className());
     const QString name   = w->objectName().isEmpty() ? "<unnamed>" : w->objectName();
     const QString title  = w->windowTitle().isEmpty() ? "<no-title>" : w->windowTitle();
@@ -39,14 +46,27 @@ bool DialogShowTracer::eventFilter(QObject *obj, QEvent *ev) {
     const QString parName = par && !par->objectName().isEmpty()
         ? par->objectName() : QStringLiteral("<unnamed>");
 
-    const QString line = QString(
+    // One multi-arg .arg(), so a %N inside a title is never filled in by a
+    // later call.
+    return QStringLiteral(
         "[ANTS_TRACE_DIALOGS %1] show: cls=%2 obj=%3 title=\"%4\" "
         "geom=%5x%6+%7+%8 parent=%9/%10")
-        .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs))
-        .arg(cls, name, title)
-        .arg(geom.width()).arg(geom.height())
-        .arg(geom.x()).arg(geom.y())
-        .arg(parCls, parName);
+        .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs),
+             visible(cls), visible(name), visible(title),
+             QString::number(geom.width()), QString::number(geom.height()),
+             QString::number(geom.x()), QString::number(geom.y()),
+             visible(parCls), visible(parName));
+}
+
+bool DialogShowTracer::eventFilter(QObject *obj, QEvent *ev) {
+    if (ev->type() != QEvent::Show) return false;
+    auto *w = qobject_cast<QWidget *>(obj);
+    if (!w) return false;
+    // Windows only (a widget with no parent is always one) — embedded
+    // children are uninteresting and would flood the log.
+    if (!w->isWindow()) return false;
+
+    const QString line = showLine(w);
 
     std::fprintf(stderr, "%s\n", qUtf8Printable(line));
     std::fflush(stderr);

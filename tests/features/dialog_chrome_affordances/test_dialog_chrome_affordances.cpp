@@ -14,11 +14,13 @@
 #include <QCloseEvent>
 #include <QDialog>
 #include <QDir>
+#include <QPoint>
 #include <QRegularExpression>
 #include <QShowEvent>
 #include <QSize>
 #include <QSizeGrip>
 #include <QStringList>
+#include <QWidget>
 
 #include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
@@ -330,4 +332,67 @@ TEST(DialogChromeAffordances, INV13_EveryPlainDialogInstallsChrome) {
         }
     }
     EXPECT_GT(dialogs, 0) << "the scan found no plain QDialog";
+}
+
+// INV-14 (ANTS-6633) — closing a maximised dialog saves the size the user
+// picked, not the screen-sized one (D3).
+TEST(DialogChromeAffordances, INV14_MaximisedCloseSavesPickedSize) {
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // restored on scope exit
+    Config cfg;
+    ConfigGuard cg(&cfg);
+
+    QDialog dlg;
+    DialogChrome::install(&dlg, QString(), /*resizable=*/true,
+                          QStringLiteral("MaxMe"));
+    const QSize picked(320, 240);
+    dlg.show();
+    QApplication::processEvents();
+    dlg.resize(picked);
+    QApplication::processEvents();
+    dlg.showMaximized();
+    QApplication::processEvents();
+    if (dlg.size() == picked)
+        GTEST_SKIP() << "this platform plugin does not resize a maximised window";
+
+    dlg.close();
+    QApplication::processEvents();
+
+    const QSize saved = cfg.dialogSize(QStringLiteral("MaxMe"));
+    EXPECT_EQ(saved, picked)
+        << "a maximised close saved " << saved.width() << "x" << saved.height()
+        << ", expected the picked " << picked.width() << "x" << picked.height();
+}
+
+// INV-15 (ANTS-6633) — restoring a minimised dialog leaves it where the
+// user moved it; a fresh open still re-centres it (D4).
+TEST(DialogChromeAffordances, INV15_UnminimiseKeepsMovedPosition) {
+    QWidget parent;
+    parent.setGeometry(100, 100, 600, 400);
+    parent.show();
+    QApplication::processEvents();
+
+    QDialog dlg(&parent);
+    DialogChrome::install(&dlg, QString(), /*resizable=*/true,
+                          QStringLiteral("MoveMe"));
+    dlg.resize(200, 150);
+    dlg.show();
+    QApplication::processEvents();
+    const QPoint moved = dlg.pos() - QPoint(60, 40);
+    dlg.move(moved);
+    QApplication::processEvents();
+    ASSERT_EQ(dlg.pos(), moved) << "the platform plugin ignored move()";
+
+    dlg.showMinimized();
+    QApplication::processEvents();
+    dlg.showNormal();
+    QApplication::processEvents();
+    EXPECT_EQ(dlg.pos(), moved)
+        << "un-minimising re-centred a dialog the user had moved";
+
+    dlg.hide();
+    QApplication::processEvents();
+    dlg.show();
+    QApplication::processEvents();
+    EXPECT_NE(dlg.pos(), moved) << "a fresh open no longer re-centres (D4)";
 }

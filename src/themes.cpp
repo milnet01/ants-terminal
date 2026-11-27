@@ -359,9 +359,13 @@ std::vector<Theme> Themes::loadUserThemes() {
         QJsonParseError err{};
         QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
         if (!doc.isObject()) {
-            qWarning("Ants: user theme %s failed to parse: %s (byte offset %d)",
-                     qUtf8Printable(filePath),
-                     qUtf8Printable(err.errorString()), err.offset);
+            if (err.error == QJsonParseError::NoError)
+                qWarning("Ants: user theme %s is not a JSON object",
+                         qUtf8Printable(filePath));
+            else
+                qWarning("Ants: user theme %s failed to parse: %s (byte offset %d)",
+                         qUtf8Printable(filePath),
+                         qUtf8Printable(err.errorString()), err.offset);
             // Rotate the bad file to .corrupt.<epoch> so:
             // (a) the user's data survives (forensic copy on disk);
             // (b) the next launch doesn't keep skipping it silently —

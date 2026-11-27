@@ -78,7 +78,8 @@ void UpdateDialog::buildOfferPage(SelfUpdate::InstallKind kind) {
     auto *v = new QVBoxLayout(m_offerPage);
     const QString version = m_release.version();
     auto *headline = wrappedLabel(tr("<b>Version %1 is available</b> (you have %2).")
-                                      .arg(version, runningVersion()), m_offerPage);
+                                      .arg(version.toHtmlEscaped(), runningVersion()),
+                                  m_offerPage);
     headline->setTextFormat(Qt::RichText);
     v->addWidget(headline);
 
@@ -91,10 +92,12 @@ void UpdateDialog::buildOfferPage(SelfUpdate::InstallKind kind) {
     buttons->addStretch();
     if (kind == SelfUpdate::InstallKind::ReadOnlyDir) {
         const QString dir = QFileInfo(qEnvironmentVariable("APPIMAGE")).absolutePath();
-        v->insertWidget(1, wrappedLabel(
+        auto *readOnly = wrappedLabel(
             tr("Ants Terminal cannot update itself here, because it cannot write "
                "to %1. Download the new version from the release page instead.")
-                .arg(dir), m_offerPage));
+                .arg(dir), m_offerPage);
+        readOnly->setTextFormat(Qt::PlainText);  // a path is never markup
+        v->insertWidget(1, readOnly);
         auto *page = new QPushButton(tr("Open release page"), m_offerPage);
         auto *closeBtn = new QPushButton(tr("Close"), m_offerPage);
         connect(page, &QPushButton::clicked, this, [this] {

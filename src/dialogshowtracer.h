@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QObject>
+#include <QString>
 
 class QEvent;
+class QWidget;
 
 // 0.7.58 (2026-04-30 ANTS-1054 follow-up) — runtime-toggleable dialog
 // spawn tracer. When active, an instance is installed as an event
@@ -27,6 +29,10 @@ public:
     explicit DialogShowTracer(QObject *parent = nullptr);
 
     bool eventFilter(QObject *obj, QEvent *ev) override;
+
+    // The log line for one window's Show. A control character in a name
+    // or title is written as \xNN, so the line is always one line.
+    static QString showLine(const QWidget *w);
 
     // Install (on=true) or uninstall (on=false) the tracer on the
     // current QApplication. No-op if the state already matches.

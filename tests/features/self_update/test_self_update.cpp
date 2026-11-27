@@ -22,8 +22,10 @@
 
 #include "selfupdate.h"
 #include "secureio.h"
+#include "updatedialog.h"
 
 #include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
 
@@ -32,6 +34,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QLabel>
 #include <QNetworkReply>
 #include <QProcess>
 #include <QRegularExpression>
@@ -850,4 +853,47 @@ TEST(SelfUpdate, Ants6513SmallDownloadsCapped) {
     const QString body = dlg.mid(at, end - at);
     EXPECT_TRUE(body.contains(QStringLiteral("capReply(reply, SelfUpdate::kMaxSmallAssetBytes)")));
     EXPECT_TRUE(body.contains(QStringLiteral("SelfUpdate::overCap(reply)")));
+}
+
+// ANTS-6633 — a stalled download gives up on its own: every request the
+// updater builds carries a transfer timeout, so a connection that stops
+// sending data fails instead of spinning the progress bar forever.
+TEST(SelfUpdate, Ants6633RequestTimesOutAStalledTransfer) {
+    const QNetworkRequest req = SelfUpdate::makeRequest(QUrl(QStringLiteral(
+        "https://github.com/milnet01/ants-terminal/releases/download/v0.8.0/a.AppImage")));
+    EXPECT_GT(req.transferTimeout(), 0) << "the request has no transfer timeout";
+}
+
+namespace {
+QLabel *labelContaining(const QWidget &w, const QString &needle) {
+    for (QLabel *l : w.findChildren<QLabel *>())
+        if (l->text().contains(needle)) return l;
+    return nullptr;
+}
+}  // namespace
+
+// ANTS-6633 — the offer page shows the release's version and the AppImage
+// folder as text: markup in a release tag or a path is shown as written,
+// never rendered.
+TEST(SelfUpdate, Ants6633OfferShowsMarkupAsText) {
+    {
+        UpdateDialog::Release rel;
+        rel.tag = QStringLiteral("v9.0.0<img src=x>");
+        UpdateDialog dlg(QString(), rel, SelfUpdate::InstallKind::Updatable);
+        QLabel *headline = labelContaining(dlg, QStringLiteral("is available"));
+        ASSERT_NE(headline, nullptr) << "no offer headline";
+        EXPECT_TRUE(headline->text().contains(QStringLiteral("9.0.0&lt;img src=x&gt;")))
+            << "the version is not escaped: " << headline->text().toStdString();
+    }
+    {
+        ants_test::XdgGuard env;  // restores APPIMAGE on scope exit
+        env.setEnv("APPIMAGE", "/opt/<b>apps</b>/Ants.AppImage");
+        UpdateDialog::Release rel;
+        rel.tag = QStringLiteral("v9.0.0");
+        UpdateDialog dlg(QString(), rel, SelfUpdate::InstallKind::ReadOnlyDir);
+        QLabel *why = labelContaining(dlg, QStringLiteral("cannot update itself"));
+        ASSERT_NE(why, nullptr) << "no read-only explanation";
+        EXPECT_EQ(why->textFormat(), Qt::PlainText)
+            << "the folder path can be read as markup: " << why->text().toStdString();
+    }
 }
