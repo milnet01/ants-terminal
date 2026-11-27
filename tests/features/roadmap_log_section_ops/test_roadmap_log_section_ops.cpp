@@ -178,6 +178,38 @@ size_t at(const std::string &md, const char *needle) {
     return p;
 }
 
+// ANTS-6951 — files a level-2 section of docs/roadmap/0.5.md between Parent
+// and Child in store order. It renders in its own file, so ROADMAP.md keeps
+// Child under Parent, but a walk over the store's order meets it inside
+// Parent's subtree.
+bool interleaveOtherFileSection(const Fx &fx) {
+    auto store = openStore(RoadmapStore::Access::Interactive);
+    if (!store) return false;
+    QString err;
+    const auto rows = store->listSectionsOrdered(fx.projectId, &err);
+    if (!rows) { ADD_FAILURE() << "listSectionsOrdered: " << err.toStdString(); return false; }
+    int childPos = -1;
+    for (const auto &s : *rows)
+        if (s.slug == QLatin1String("child")) childPos = s.position;
+    if (childPos < 0) { ADD_FAILURE() << "the fixture has no child section"; return false; }
+    for (const auto &s : *rows) {
+        if (s.position >= childPos
+            && !store->updateSection(s.sectionId, s.title, s.level, s.position + 1,
+                                     s.parentId, &err)) {
+            ADD_FAILURE() << "updateSection: " << err.toStdString();
+            return false;
+        }
+    }
+    const auto id = store->addSection(fx.projectId, QStringLiteral("0-5-elsewhere"),
+                                      QStringLiteral("Elsewhere"), 2, childPos,
+                                      std::nullopt, &err);
+    if (!id || !store->setSectionSource(*id, QStringLiteral("docs/roadmap/0.5.md"), &err)) {
+        ADD_FAILURE() << "filing the other file's section: " << err.toStdString();
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 TEST(RoadmapLogSectionOps, DeleteEmptySectionReturnsWhatItHeld) {
@@ -263,4 +295,66 @@ TEST(RoadmapLogSectionOps, MoveRefusals) {
     EXPECT_EQ(rc.cmdRoadmapLogMoveSectionForTest(both).object()
                   .value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
     EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
+}
+
+// ---- ANTS-6951: INV-3 and INV-4 skip another file's section inside a subtree
+
+TEST(RoadmapLogSectionOps, DeleteSeesSubsectionsPastAnotherFilesSection) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    ASSERT_TRUE(interleaveOtherFileSection(fx));
+    RemoteControl rc(nullptr);
+    const QJsonObject resp =
+        rc.cmdRoadmapLogDeleteSectionForTest(sectionReq(fx.root, QStringLiteral("parent"))).object();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("section_has_subsections"))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+TEST(RoadmapLogSectionOps, MoveAfterStepsPastAnotherFilesSection) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    ASSERT_TRUE(interleaveOtherFileSection(fx));
+    RemoteControl rc(nullptr);
+    QJsonObject req = sectionReq(fx.root, QStringLiteral("later"));
+    req[QStringLiteral("after_section")] = QStringLiteral("parent");
+    const QJsonObject resp = rc.cmdRoadmapLogMoveSectionForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_FALSE(has(md, "## Elsewhere")) << "the other file's section is not in ROADMAP.md";
+    EXPECT_LT(at(md, "### Child"), at(md, "## Later"))
+        << "the move stopped at the other file's section and adopted Child";
+}
+
+TEST(RoadmapLogSectionOps, MoveTakesSubsectionsPastAnotherFilesSection) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    ASSERT_TRUE(interleaveOtherFileSection(fx));
+    RemoteControl rc(nullptr);
+    QJsonObject req = sectionReq(fx.root, QStringLiteral("parent"));
+    req[QStringLiteral("before_section")] = QStringLiteral("work");
+    const QJsonObject resp = rc.cmdRoadmapLogMoveSectionForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("sections_moved")).toInt(), 2)
+        << "Parent and Child move; the other file's section stays";
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_LT(at(md, "## Parent"), at(md, "### Child"));
+    EXPECT_LT(at(md, "### Child"), at(md, "## Work")) << "Child was left behind";
+}
+
+TEST(RoadmapLogSectionOps, CreateSectionStepsPastAnotherFilesSection) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    ASSERT_TRUE(interleaveOtherFileSection(fx));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]    = fx.root;
+    req[QStringLiteral("op")]            = QStringLiteral("create_section");
+    req[QStringLiteral("after_section")] = QStringLiteral("parent");
+    req[QStringLiteral("level")]         = 2;
+    req[QStringLiteral("title")]         = QStringLiteral("Added");
+    const QJsonObject resp = rc.cmdRoadmapLogCreateSectionForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_LT(at(md, "### Child"), at(md, "## Added"))
+        << "the new section stopped at the other file's section and adopted Child";
 }

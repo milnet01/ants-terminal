@@ -1505,9 +1505,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
                 const auto ordered = store.listSectionsOrdered(projectId, err);
                 if (!ordered)
                     return false;
+                // ANTS-6951 — the anchor's own file only: a section stored in
+                // another file is skipped, as rcPastDeeper skips it, since it
+                // neither nests here nor ends the run.
                 QVector<int> levelsAfter, positionsAfter;
                 for (const auto &s : *ordered) {
-                    if (s.position <= afterRow->position)
+                    if (s.position <= afterRow->position
+                        || s.sourcePath != afterRow->sourcePath)
                         continue;
                     levelsAfter.append(s.level);
                     positionsAfter.append(s.position);
@@ -4144,25 +4148,32 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetLegend(const QJsonObject &req) {
     return QJsonDocument(env);
 }
 
-namespace {
-
-// The index just past the run, from `from`, of sections in `file` deeper than
-// `level`.
-int rcPastDeeper(const QVector<RoadmapStore::SectionRow> &rows, int from,
-                 const std::optional<QString> &file, int level) {
-    while (from < rows.size() && rows.at(from).sourcePath == file
-           && rows.at(from).level > level)
-        ++from;
-    return from;
+// The index just past the last section in `file` deeper than `level`, walking
+// from `from` up to the next section in `file` at `level` or shallower; `from`
+// when none is deeper. ANTS-6951 — a section stored in another file is
+// skipped, not a stop: each file nests on its own, so it neither ends the run
+// nor belongs to it.
+int rcdetail::rcPastDeeper(const QVector<RoadmapStore::SectionRow> &rows, int from,
+                           const std::optional<QString> &file, int level) {
+    int end = from;
+    for (int i = from; i < rows.size(); ++i) {
+        if (rows.at(i).sourcePath != file) continue;
+        if (rows.at(i).level <= level) break;
+        end = i + 1;
+    }
+    return end;
 }
 
-// ANTS-4958 — a section's subtree in document order: the section itself and
-// every following section of the same file deeper than it. Nesting is
-// inferred from (level, position), so that is exactly what the render would
-// nest under it.
-int rcSubtreeEnd(const QVector<RoadmapStore::SectionRow> &ordered, int at) {
+// ANTS-4958 — the end of a section's subtree in document order: the section
+// itself and every following section of the same file deeper than it lie
+// before this index. Nesting is inferred from (level, position), so that is
+// exactly what the render would nest under it. Another file's sections inside
+// the range are not part of the subtree.
+int rcdetail::rcSubtreeEnd(const QVector<RoadmapStore::SectionRow> &ordered, int at) {
     return rcPastDeeper(ordered, at + 1, ordered.at(at).sourcePath, ordered.at(at).level);
 }
+
+namespace {
 
 int rcIndexOfSlug(const QVector<RoadmapStore::SectionRow> &ordered, const QString &slug) {
     for (int i = 0; i < ordered.size(); ++i)
@@ -4284,12 +4295,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
     const int anchorAt = rcIndexOfSlug(ordered, anchor);
     if (anchorAt < 0)
         return rcSectionNotFound(store, projectId, anchor);
+    const RoadmapStore::SectionRow &moved = ordered.at(at);
     const int blockEnd = rcSubtreeEnd(ordered, at);
-    if (anchorAt >= at && anchorAt < blockEnd)
+    // The block that moves: the subtree's own-file rows. Another file's rows
+    // inside its range stay where they are (ANTS-6951).
+    const auto inBlock = [&](int i) {
+        return i >= at && i < blockEnd && ordered.at(i).sourcePath == moved.sourcePath;
+    };
+    if (inBlock(anchorAt))
         return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" is inside the section being moved")
                 .arg(anchor));
-    const RoadmapStore::SectionRow &moved = ordered.at(at);
     if (ordered.at(anchorAt).sourcePath != moved.sourcePath)
         return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" is in another roadmap file; "
@@ -4303,12 +4319,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
     // The order with the block taken out, then put back in its new place.
     QVector<RoadmapStore::SectionRow> rest;
     for (int i = 0; i < ordered.size(); ++i)
-        if (i < at || i >= blockEnd) rest.append(ordered.at(i));
+        if (!inBlock(i)) rest.append(ordered.at(i));
     int insertAt = rcIndexOfSlug(rest, anchor);
     if (!after.isEmpty())
         insertAt = rcPastDeeper(rest, insertAt + 1, moved.sourcePath, moved.level);
     QVector<RoadmapStore::SectionRow> next = rest.mid(0, insertAt);
-    for (int i = at; i < blockEnd; ++i) next.append(ordered.at(i));
+    for (int i = at; i < blockEnd; ++i)
+        if (inBlock(i)) next.append(ordered.at(i));
+    const int blockSize = int(next.size()) - insertAt;
     next += rest.mid(insertAt);
 
     QVector<int> values;
@@ -4344,7 +4362,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
     env[QStringLiteral("section")] = slug;
     env[after.isEmpty() ? QStringLiteral("before_section")
                         : QStringLiteral("after_section")] = anchor;
-    env[QStringLiteral("sections_moved")] = blockEnd - at;
+    env[QStringLiteral("sections_moved")] = blockSize;
     rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
     return QJsonDocument(env);
 }

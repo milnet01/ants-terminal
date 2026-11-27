@@ -504,12 +504,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     for (int i = 0; i < secs.size(); ++i) idxOf.insert(secs.at(i).sectionId, i);
     // A section's subtree: itself and the deeper sections after it in its file.
     const auto subtreeOf = [&](int idx) {
-        QSet<qint64> out{secs.at(idx).sectionId};
-        for (int j = idx + 1; j < secs.size(); ++j) {
-            if (secs.at(j).sourcePath != secs.at(idx).sourcePath) continue;
-            if (secs.at(j).level <= secs.at(idx).level) break;
-            out.insert(secs.at(j).sectionId);
-        }
+        QSet<qint64> out;
+        const int end = rcSubtreeEnd(secs, idx);
+        for (int j = idx; j < end; ++j)
+            if (secs.at(j).sourcePath == secs.at(idx).sourcePath)
+                out.insert(secs.at(j).sectionId);
         return out;
     };
 

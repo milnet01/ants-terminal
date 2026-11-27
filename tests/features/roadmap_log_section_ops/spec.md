@@ -22,6 +22,10 @@ their section.
 before a deeper one, or next to a section inside itself, refuses
 `bad_args` and writes nothing. So does passing both anchors.
 
+INV-3, INV-4 and `create_section` find a section's subsections in its own
+file only. A section stored in another file is skipped, not a stop: it
+neither ends the subtree nor moves with it.
+
 Both ops are store-only.
 
 ## Rationale
@@ -39,3 +43,6 @@ store and drives the two `*ForTest` seams.
 ## Regression history
 
 - **ANTS-4958:** no op deleted or reordered a section.
+- **ANTS-6951:** a section from another file between a section and its
+  subsections ended the subtree, so delete missed the subsections, a move
+  left them behind, and a new section adopted them.

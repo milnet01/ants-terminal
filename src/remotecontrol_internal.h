@@ -650,6 +650,11 @@ struct RlCounter {
 };
 RlCounter rlReadCounter(const QString &counterPath);
 QStringList rcSectionChildSlugs(const QVector<RoadmapIndex::Section> &index, const RoadmapIndex::Section &sec);
+// ANTS-6951 — the store-order subtree walk over listSectionsOrdered() rows;
+// a section stored in another file is skipped, not a stop.
+int rcPastDeeper(const QVector<RoadmapStore::SectionRow> &rows, int from,
+                 const std::optional<QString> &file, int level);
+int rcSubtreeEnd(const QVector<RoadmapStore::SectionRow> &ordered, int at);
 
 QJsonDocument rcSectionHasSubsectionsRefusal(const QString &slug, const QStringList &children);
 void rcProjectHeadlineOnly(QJsonArray &arr);
