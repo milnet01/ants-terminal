@@ -160,9 +160,14 @@ bool FenceTracker::feed(const QString &line) {
 QVector<CodeSpan> codeSpans(const QStringList &lines,
                             const QVector<bool> &fence) {
     QVector<CodeSpan> out;
-    const auto isBoundary = [&](int li) {
-        return fence.value(li) || lines.at(li).trimmed().isEmpty();
-    };
+    // A boundary is a fenced or blank line. `nextBoundary[l]` is the first
+    // boundary at or after line `l` (lines.size() when none), computed once so
+    // pass 2 tests a candidate without re-scanning the lines (ANTS-6634).
+    QVector<int> nextBoundary(lines.size() + 1, int(lines.size()));
+    for (int li = int(lines.size()) - 1; li >= 0; --li)
+        nextBoundary[li] = (fence.value(li) || lines.at(li).trimmed().isEmpty())
+                               ? li : nextBoundary[li + 1];
+    const auto isBoundary = [&](int li) { return nextBoundary[li] == li; };
 
     // Every backtick run outside a boundary line, in document order.
     struct Run { int line, col, len; bool used; };
@@ -212,12 +217,10 @@ QVector<CodeSpan> codeSpans(const QStringList &lines,
     // nothing — which is what makes one stray backtick harmless.
     for (int a = 0; a < runs.size(); ++a) {
         if (runs.at(a).used) continue;
+        const int stop = nextBoundary[runs.at(a).line + 1];
         for (int b = a + 1; b < runs.size(); ++b) {
             if (runs.at(b).line == runs.at(a).line) continue;
-            bool blocked = false;
-            for (int l = runs.at(a).line + 1; l <= runs.at(b).line; ++l)
-                if (isBoundary(l)) { blocked = true; break; }
-            if (blocked) break;
+            if (runs.at(b).line >= stop) break;
             if (runs.at(b).used || runs.at(b).len != runs.at(a).len) continue;
             pair(a, b);
             break;

@@ -679,6 +679,33 @@ TEST(DocIntegrity, HeadingSequenceMirrorRegionIsItsOwnScope) {
                            QStringLiteral("skips 2, 3, 4")));
 }
 
+// ANTS-6634 — a CRLF document reads as its LF twin. Lines were split on `\n`
+// with the `\r` kept, so the end-anchored MIRROR markers never matched and a
+// heading's closing `##` was never stripped from its slug.
+TEST(DocIntegrity, CrlfDocumentReadsAsItsLfTwin) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+
+    ASSERT_TRUE(writeFile(root + "/docs/m.md",
+                          "# Doc\r\n\r\n"
+                          "## 1. Delta one\r\n\r\n"
+                          "<!-- MIRROR BEGIN ~/.claude/standards/m.md -->\r\n\r\n"
+                          "## 1. Owner one\r\n\r\n"
+                          "<!-- MIRROR END -->\r\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/m.md"}),
+                        Kind::HeadingSequence), 0)
+        << "the CRLF mirror markers were not recognised";
+
+    ASSERT_TRUE(writeFile(root + "/docs/h.md",
+                          "# Doc\r\n\r\n"
+                          "## Setup ##\r\n\r\n"
+                          "See [setup](#setup).\r\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/h.md"}),
+                        Kind::DeadAnchor), 0)
+        << "the closing ## stayed in the CRLF heading's slug";
+}
+
 // ---- ANTS-3719 — ungranted_tool --------------------------------------------
 //
 // Requested by the claude_config session. A Claude Code skill declares its

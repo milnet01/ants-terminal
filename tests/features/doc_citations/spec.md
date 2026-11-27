@@ -164,6 +164,9 @@ overlay, outside that partition and outside `quotes_checked`;
   *Tests:* `DocCitations.Ants5054QuotationSharesOneReadPerTarget`,
   `DocCitations.Ants5054QuotationTargetOverSizeCapIsUnresolved`,
   `DocCitations.Ants5054QuotationReadsCountAgainstTheBudget`.
+- A target's folded text is kept only inside `maxCacheBytes`; past it, each
+  quotation reads the target again.
+  *Test:* `DocCitations.Ants6634FoldedTargetIsChargedToTheCacheCap`.
 - A quotation present in its target is `ok`, one genuinely absent is
   `not_found`, including across a hard wrap in the target — before and after
   the read path above changes.

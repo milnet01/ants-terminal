@@ -2232,6 +2232,50 @@ TEST(DocCitations, Ants5054QuotationSharesOneReadPerTarget) {
     ASSERT_EQ(0, expect_finish());
 }
 
+// ANTS-6634 — the folded body the quotation pass keeps per target is charged
+// to `Options::maxCacheBytes`. Before, it was held outside that cap, so every
+// attributed document's whole text stayed in memory for the call. Past the
+// cap nothing is kept: each quotation reads its target again, with the same
+// verdicts.
+TEST(DocCitations, Ants6634FoldedTargetIsChargedToTheCacheCap) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("docs/target6634.md"),
+             "# Target\n"
+             "\n"
+             "the first phrase that quote one will match exactly here\n");
+
+    DocCitations::Probe probe;
+    DocCitations::Options opts;
+    opts.quotes        = true;
+    opts.probe         = &probe;
+    opts.maxCacheBytes = 1;   // no folded body fits
+
+    const QString doc = fx.doc(
+        "`docs/target6634.md` says \"the first phrase that quote one will "
+        "match exactly here\".\n"
+        "\n"
+        "`docs/target6634.md` also says \"a phrase this target does not "
+        "contain at all, anywhere\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    expect(qs.size() == 2, "ANTS-6634: two quotations harvested", render(r));
+    if (qs.size() == 2) {
+        expect(qs.at(0).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("ok"),
+               "ANTS-6634: an uncached read still finds the phrase", render(r));
+        expect(qs.at(1).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("not_found"),
+               "ANTS-6634: and still misses the absent one", render(r));
+    }
+    // 1 is the uncharged cache; 2 is one read per quotation past the cap.
+    expect(probe.opens == 2,
+           "ANTS-6634: past maxCacheBytes the target is read again, not kept",
+           QStringLiteral("opens=%1").arg(probe.opens));
+    ASSERT_EQ(0, expect_finish());
+}
+
 // ANTS-5054 — a quotation's attributed target is checked against
 // `Options::maxTargetBytes` before it is opened, the same gate
 // `TargetReader::read` already applies on the citation path. Today's

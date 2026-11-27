@@ -943,7 +943,12 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
             text = QString::fromUtf8(f.read(opts.maxDocBytes));
             f.close();
         }
-        const QStringList lines = text.split('\n');
+        // ANTS-6634 — chop a CRLF document's `\r`, as the sibling engines do,
+        // so an end-anchored pattern (a MIRROR marker, a heading's `##`
+        // tail) matches its last character.
+        QStringList lines = text.split('\n');
+        for (QString &l : lines)
+            if (l.endsWith(QLatin1Char('\r'))) l.chop(1);
         const QVector<bool> fence = MarkdownScan::fenceMask(lines);
 
         DocData d;

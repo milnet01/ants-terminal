@@ -627,6 +627,15 @@ public:
         return true;
     }
 
+    // ANTS-6634 — charge text held outside m_cache (the quotation pass's
+    // folded bodies) to the same maxCacheBytes. False when it does not fit,
+    // and nothing is charged: the caller must not keep the text.
+    bool chargeCache(qint64 bytes) {
+        if (m_charge + bytes > m_opts.maxCacheBytes) return false;
+        m_charge += bytes;
+        return true;
+    }
+
 private:
     // One line onto the slice. A clip past the emitted prefix is real but
     // invisible to the caller, so it must not raise `text_clipped`.
@@ -1106,7 +1115,8 @@ static void dcQuotationPass(QJsonObject &out, const QString &rootCanonical,
     QJsonArray quotesOut;
     QHash<QString, int> qTally;
     // ANTS-5054 — each attributed document is read and folded once per
-    // call: resolved path → {read ok, folded body}.
+    // call, while the cache budget holds it: resolved path → {read ok,
+    // folded body}.
     QHash<QString, QPair<bool, QString>> foldedByPath;
     int harvested = 0;
     int skipped   = 0;
@@ -1329,27 +1339,33 @@ static void dcQuotationPass(QJsonObject &out, const QString &rootCanonical,
                 q[QStringLiteral("status")] = QStringLiteral("target_unresolved");
                 ++qTally[QStringLiteral("target_unresolved")];
             } else {
-                auto folded = foldedByPath.constFind(t.absPath);
-                if (folded == foldedByPath.constEnd()) {
+                QPair<bool, QString> folded{false, QString()};
+                const auto cached = foldedByPath.constFind(t.absPath);
+                if (cached != foldedByPath.constEnd()) {
+                    folded = *cached;
+                } else {
                     // ANTS-5054 — one read per document per call, inside
                     // the reader's read budget and size cap.
-                    QPair<bool, QString> entry{false, QString()};
                     if (reader.admitWholeRead(t.absPath)) {
                         QFile tf(t.absPath);
                         QString body;
                         if (tf.open(QIODevice::ReadOnly) &&
                             decodeChecked(tf.readAll(), &body))
-                            entry = {true, dcFoldWhitespace(body)};
+                            folded = {true, dcFoldWhitespace(body)};
                     }
-                    folded = foldedByPath.insert(t.absPath, entry);
+                    // ANTS-6634 — a folded body is held only inside the
+                    // reader's maxCacheBytes; past it, the next quotation
+                    // against this target reads it again.
+                    if (!folded.first || reader.chargeCache(2 * folded.second.size() + 40))
+                        foldedByPath.insert(t.absPath, folded);
                 }
-                if (folded->first) {
+                if (folded.first) {
                     // Fold whitespace on BOTH sides. Without this a
                     // hard-wrapped target reports not_found for a phrase
                     // that is present, which is the false negative that
                     // makes the hand-rolled version unsafe.
                     const bool found =
-                        folded->second.contains(dcFoldWhitespace(text));
+                        folded.second.contains(dcFoldWhitespace(text));
                     q[QStringLiteral("status")] = found
                         ? QStringLiteral("ok")
                         : QStringLiteral("not_found");

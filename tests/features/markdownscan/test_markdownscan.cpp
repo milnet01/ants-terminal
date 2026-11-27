@@ -4,6 +4,7 @@
 #include "markdownscan.h"
 
 #include <QChar>
+#include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
@@ -315,6 +316,28 @@ TEST(MarkdownScanSpans, UnmatchedRunAndFencedSpans) {
     // A run of 3 with no equal-length partner: the ``` here is inline text,
     // not a fence (it is mid-line), and nothing closes it.
     EXPECT_TRUE(spansOf(QStringList{QStringLiteral("a ```x` b")}).isEmpty());
+}
+
+// ANTS-6634 — pass 2's boundary test is computed once per line. Before, a
+// stray backtick above a large boundary-free block (a GFM table has no blank
+// lines) re-scanned every line up to each later run: about 4×10^8 line tests
+// for this 20 000-row table, seconds of work. Now it is linear. The verdict
+// is unchanged: the stray run pairs with nothing.
+TEST(MarkdownScanSpans, StrayBacktickAboveALargeTableIsLinear) {
+    constexpr int kRows = 20000;
+    QStringList lines{QStringLiteral("a stray ` backtick above the table")};
+    lines.reserve(kRows + 1);
+    for (int i = 0; i < kRows; ++i) lines << QStringLiteral("| `x` | y |");
+    const QVector<bool> fence = fenceMask(lines);
+
+    QElapsedTimer clock;
+    clock.start();
+    const QVector<CodeSpan> spans = codeSpans(lines, fence);
+    const qint64 ms = clock.elapsed();
+
+    ASSERT_EQ(spans.size(), kRows);
+    EXPECT_EQ(spans.first().startLine, 1) << "the stray run opened a span";
+    EXPECT_LT(ms, 1000) << "codeSpans took " << ms << " ms";
 }
 
 // ANTS-3740 — headings(): the ATX collector hoisted out of

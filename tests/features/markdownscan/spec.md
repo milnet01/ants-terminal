@@ -85,6 +85,11 @@ cover `fenceOpenerChar` and the masking policy through their own behaviour.
   fenced block, between → zero; a stray backtick → zero; `` `code` `` inside a
   fence → zero.
 
+  **The boundary test is computed once per line** (ANTS-6634), so a stray
+  backtick above a large boundary-free block costs linear time, not
+  runs × lines. *Test:* `MarkdownScanSpans.StrayBacktickAboveALargeTableIsLinear`
+  — a 20 000-row table under one stray run → one span per row, under a second.
+
   **The forward search runs in two passes, and the order is load-bearing**
   (ANTS-4598). Pass 1 pairs runs **within** a line; pass 2 joins what is left
   over **across** lines. A single sweep in document order let a run left over
