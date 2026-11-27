@@ -60,6 +60,11 @@ so its `${{ github.token }}` is not refused. Every step in ci.yml that runs
 from GitHub's cache store, and locally it would reach the real store through
 the developer's own `gh` login.
 
+**INV-8 — a step runs with GitHub's bash flags (ANTS-6630).** A step with no
+`shell:` key runs as GitHub's `bash -e`, without pipefail, so `false | true`
+passes. A step with `shell: bash` runs with `-eo pipefail`, so the same line
+fails the step.
+
 ## Not covered
 
 The podman legs (`tools/qt62-guard.sh`) run their own two-line compile inside

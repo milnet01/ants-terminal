@@ -194,6 +194,20 @@ with tempfile.TemporaryDirectory() as tmp:
           and "GitHub's cache store" in out,
           f"INV-7 a GitHub-only step is skipped, and says so (got {rc}: {out[-200:]})")
 
+    # INV-8 — no shell: key is GitHub's `bash -e` (no pipefail); an explicit
+    # `shell: bash` adds pipefail.
+    with open(wf, "w") as f:
+        f.write("jobs:\n  j:\n    steps:\n"
+                "      - name: default shell\n"
+                "        run: false | true; echo MARK-NOPIPEFAIL-RAN\n"
+                "      - name: explicit bash\n        if: always()\n        shell: bash\n"
+                "        run: false | true; echo MARK-PIPEFAIL-RAN\n")
+    rc, out = runner("run", "j", workflow=wf)
+    check("MARK-NOPIPEFAIL-RAN" in out,
+          f"INV-8 a step with no shell: key runs without pipefail (got {rc}: {out[-200:]})")
+    check(rc != 0 and "MARK-PIPEFAIL-RAN" not in out,
+          f"INV-8 a `shell: bash` step runs with pipefail (got {rc}: {out[-200:]})")
+
 # INV-7 — every ci.yml step that calls the cache prune is GitHub-only.
 prunes = [st for j in ci["jobs"].values() for st in j.get("steps", [])
           if "ci-prune-caches.sh" in str(st.get("run", ""))]

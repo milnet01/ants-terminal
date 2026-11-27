@@ -1842,6 +1842,23 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 60)
 
+    # ANTS-6630 — the roadmap corpus survey copes with a roadmap that holds no
+    # items; see tests/features/roadmap_corpus_survey/spec.md.
+    add_test(NAME roadmap_corpus_survey
+             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/roadmap_corpus_survey/test_roadmap_corpus_survey.py")
+    set_tests_properties(roadmap_corpus_survey PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60)
+
+    # ANTS-6630 — the token bench's bug test sees only the starting tests/;
+    # see tests/features/token_bench_restore/spec.md. Exits 77 without git.
+    add_test(NAME token_bench_restore
+             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/token_bench_restore/test_token_bench_restore.py")
+    set_tests_properties(token_bench_restore PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60
+        SKIP_RETURN_CODE 77)
+
     # ANTS-3794 — the weekly export's publish script and the backup records,
     # over throwaway git repos with a stub binary; see
     # tests/features/roadmap_export_publish/spec.md. Exits 77 when git, flock

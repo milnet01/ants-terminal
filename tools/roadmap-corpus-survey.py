@@ -250,7 +250,8 @@ def main():
     print("\nfield absence, per item")
     for f in ("Kind", "Source", "Layman"):
         missing = n - total["has_" + f]
-        print(f"  no {f:7s} {missing:6d}  ({missing * 100.0 / n:.0f}%)")
+        share = f"{missing * 100.0 / n:.0f}%" if n else "no items"
+        print(f"  no {f:7s} {missing:6d}  ({share})")
 
     print("\nstructures the model must survive")
     detail = total["status_no_id_no_headline"] - total["status_legend_lines"]

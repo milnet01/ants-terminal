@@ -170,6 +170,9 @@ def cost_usd(totals: dict) -> float | None:
 
 def bug_test_passes(workdir: Path, start: str, bug_test: str) -> bool:
     subprocess.run(["git", "checkout", "-q", start, "--", "tests"], cwd=workdir, check=True)
+    # checkout restores tracked files only; a file the run added (a conftest.py)
+    # would still change the test.
+    subprocess.run(["git", "clean", "-qfdx", "--", "tests"], cwd=workdir, check=True)
     result = subprocess.run(shlex.split(bug_test), cwd=workdir, capture_output=True, text=True)
     return result.returncode == 0
 

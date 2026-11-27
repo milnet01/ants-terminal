@@ -18,7 +18,8 @@ Test surfaces:
   real `packaging/obs/obs-status.sh` against an `osc` shim serving canned
   XML. Covers INV-18.
 - `test_release_pipeline.cpp` (features bundle): source-scrape of
-  `release.yml` and `release.sh`. Covers INV-17.
+  `release.yml` and `release.sh`. Covers INV-17. `release_behaviour_test.sh`
+  also runs `release.yml`'s tag step for INV-17's tag check.
 
 ## Invariants
 
@@ -92,7 +93,8 @@ Test surfaces:
   there is no such section.
 - **INV-17** `release.yml` has no RC handling (`is_rc`, `IS_RC`,
   `--prerelease`, `update_channel`); refuses a tag that is not exactly
-  `vX.Y.Z` (anchored pattern `^v[0-9]+\.[0-9]+\.[0-9]+$`); sets
+  `vX.Y.Z` (anchored pattern `^v[0-9]+\.[0-9]+\.[0-9]+$`, tested over the
+  whole value, so a multi-line tag is refused); sets
   `UPDATE_INFORMATION` with `gh-releases-zsync|milnet01|ants-terminal|latest|`;
   and creates the release with its files in one `gh release create`
   command (`"${UPLOADS[@]}"`) with notes from `packaging/release-notes.sh`.

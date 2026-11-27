@@ -51,6 +51,9 @@ jobs:
           OBS_BASE: https://download.opensuse.org/repositories/home:/milnet:/ants-terminal
           REHEARSAL: ${{ inputs.rehearsal }}
         run: |
+          # No shell: key, so GitHub runs this as `bash -e`. The script handles
+          # each failure itself, so -e is turned off (ANTS-6630).
+          set +e
           set -uo pipefail
           if [ "${REHEARSAL:-}" = "true" ]; then
             echo "::notice::REHEARSAL run: a red result here is a test, not an outage"
@@ -156,6 +159,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set +e  # as in the audit step: the exit code is read below
           set -uo pipefail
           python3 tools/check-dependency-pins.py
           rc=$?

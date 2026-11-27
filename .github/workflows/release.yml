@@ -15,12 +15,9 @@
 #     `gh release upload`. No `pull_request_target`, no self-hosted
 #     runners, no third-party secrets.
 #   • actions/* pinned by 40-char SHA with version tag for humans.
-#   • linuxdeploy is downloaded from its `continuous` channel — it does
-#     not cut tagged releases. Pinning to SHA via curl is impractical;
-#     we accept the supply-chain risk in exchange for upstream bug fixes
-#     (Qt6.x autodetection has improved several times). The downloaded
-#     binary is checksummed against the GitHub-served checksum file so
-#     a swapped artefact still fails fast.
+#   • linuxdeploy is downloaded from its `continuous` channel, unpinned
+#     and with no checksum to verify against; the download step says
+#     what stands in for one.
 #   • The AppImage is smoke-tested (`--version`, `--help`) before upload.
 
 name: Release artefacts
@@ -81,7 +78,9 @@ jobs:
           # vX.Y.Z and nothing else. Anything this workflow builds becomes
           # the public "latest" download and the target of every self-update,
           # so a tag of any other shape is refused here rather than shipped.
-          if ! printf '%s' "$REF" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          # [[ =~ ]] tests the whole value; grep would pass a multi-line tag
+          # whose first line is vX.Y.Z (ANTS-6630).
+          if ! [[ $REF =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::'${REF}' is not a release tag (vX.Y.Z); nothing is built."
             exit 1
           fi

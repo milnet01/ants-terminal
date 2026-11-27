@@ -41,8 +41,15 @@ replaces every network call. `--root <dir>` points the scan at a fixture tree.
 **INV-7 — it runs every day.** `.github/workflows/release-audit.yml` has a job
 that runs the script with `GH_TOKEN` set; a finding fails the job.
 
+**INV-8 — the audit steps survive GitHub's default shell (ANTS-6630).** A
+release-audit.yml step with no `shell:` key runs as `bash -e`. Run that way,
+the pins step still turns the script's exit 2 into a warning and exit 0, and
+the audit step still reports an unfetchable permanent link as not checked and
+a package listing with no ants-terminal package as an error.
+
 ## Test
 
 `test_dependency_pins.py` builds fixture trees and an upstream file, and
 checks each invariant's finding and exit code. INV-7 is a text check on the
-workflow. Red first: before the script exists, every case fails.
+workflow. INV-8 runs the two steps' scripts under `bash -e` with stub
+`python3`, `gh` and `curl` on PATH. Red first: before the script exists, every case fails.

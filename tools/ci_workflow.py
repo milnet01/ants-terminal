@@ -73,10 +73,14 @@ RUNNER_UNSET = ("DISPLAY", "WAYLAND_DISPLAY", "BASH_ENV", "ANTS_GATE_SKIPPED")
 # Prepended to every step. The step budgets in ci.yml are sized for the
 # GitHub runner, and a `timeout` that fires here SIGTERMs ninja, which
 # corrupts its deps log. The command runs unbounded; everything else in the
-# line is ci.yml's. GitHub's own bash flags follow it.
+# line is ci.yml's.
 PREAMBLE = ('timeout() { if [[ "${1:-}" == -* ]]; then command timeout "$@"; '
             'else shift; "$@"; fi; }\n')
-BASH = ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c"]
+# GitHub's bash flags: a step with no `shell:` key runs as `bash -e {0}`, with
+# no pipefail; only an explicit `shell: bash` adds --noprofile --norc and
+# pipefail.
+BASH_DEFAULT = ["bash", "-e", "-c"]
+BASH_EXPLICIT = ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c"]
 
 # Keys understood at each level. Anything else — defaults, strategy (matrix),
 # needs, container, services, continue-on-error — changes what GitHub runs,
@@ -127,7 +131,9 @@ class Refused(Exception):
 
 # One planned step. `detail` is the shell script when kind is "run", and the
 # reason it is skipped when kind is "skip". `always` runs it after a failure.
-Step = collections.namedtuple("Step", "name kind detail always env cwd")
+# `bash` is the command line that runs a "run" step's script.
+Step = collections.namedtuple("Step", "name kind detail always env cwd bash",
+                              defaults=(BASH_DEFAULT,))
 
 
 def load():
@@ -200,7 +206,8 @@ def plan(job_id):
             if var not in RUNNER_ENV:
                 raise Refused(f"{where}: no local meaning for ${var}")
         steps.append(Step(name, "run", expand(step["run"], where),
-                          cond == "always()", env, cwd))
+                          cond == "always()", env, cwd,
+                          BASH_EXPLICIT if "shell" in step else BASH_DEFAULT))
     return steps
 
 
@@ -218,7 +225,7 @@ def run(job_id):
             print("   ⊘ skipped — an earlier step failed", flush=True)
             continue
         started = time.monotonic()
-        rc = subprocess.run(BASH + [PREAMBLE + s.detail], cwd=s.cwd,
+        rc = subprocess.run(s.bash + [PREAMBLE + s.detail], cwd=s.cwd,
                             env={**base, **s.env}).returncode
         took = f"{time.monotonic() - started:.0f}s"
         if rc == 0:

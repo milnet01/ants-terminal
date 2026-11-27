@@ -21,13 +21,12 @@ depends=(
   'qt6-base'
   'lua'
   'hicolor-icon-theme'
+  # Wayland-native Quake-mode. CMake links it whenever it is found at build
+  # time, so the binary needs it to start. On Arch the CMake config and
+  # headers ship in the same package (no split -devel).
+  'layer-shell-qt'
 )
 optdepends=(
-  # Wayland-native Quake-mode (0.6.38). Without it, Wayland Quake falls
-  # back to the plain Qt toplevel path; X11 Quake is unaffected. Runtime
-  # library only — the CMake config and headers are bundled with the
-  # same package on Arch (no split -devel here).
-  'layer-shell-qt: Wayland-native Quake-mode anchoring'
   # ANTS-5617 — the bundled demoreel recorder (/usr/lib/ants-terminal/demoreel
   # on Arch, whose libexecdir is /usr/lib). Each is optional; `demoreel check`
   # names what is missing.
@@ -43,7 +42,6 @@ optdepends=(
 makedepends=(
   'cmake'
   'ninja'
-  'layer-shell-qt'
   # check() runs the full ctest suite. cited_by / workspace_search /
   # co_change_family shell out to rg with no skip path, so an absent
   # ripgrep FAILS those tests rather than skipping them (ANTS-4717).

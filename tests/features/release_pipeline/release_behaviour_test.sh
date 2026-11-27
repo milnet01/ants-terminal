@@ -2,7 +2,8 @@
 #
 # Behavioural conformance for tests/features/release_pipeline/spec.md
 # (INV-1 to INV-16, INV-19 to INV-21): drives the real packaging/release.sh and
-# packaging/release-notes.sh against throwaway git repos.
+# packaging/release-notes.sh against throwaway git repos. INV-17's tag check
+# runs release.yml's own tag step.
 #
 # Why this exists: ANTS-5577 retired the RC cadence for one `release` command.
 # The retired roll was a no-op when the version section already had entries,
@@ -717,6 +718,26 @@ commit_all "$D" "release 0.7.98"; git -C "$D" tag -a v0.7.98 -m "0.7.98"
 STUB_CI_RC=1 STUB_CI_NONE=1 run "$D" "${FULL[@]}"
 { [ "$RC" -eq 0 ] && has_otag "$D" v0.7.98 && ! gh_log "$D" | grep -qE 'ci\.yml|workflow run'; } \
     && ok "INV-21 resumed run does not ask about CI" || bad "INV-21 resume (rc=$RC): $OUT | $(gh_log "$D")"
+
+# ── INV-17 — release.yml's tag step refuses anything but exactly vX.Y.Z ──────
+# Runs the step's own script as GitHub runs a step with no shell: key.
+tag_step=$(awk '
+    /- name: Resolve target tag$/ { f = 1; next }
+    f && /^ *run: \|$/ { ind = match($0, /[^ ]/) + 1; r = 1; next }
+    r && NF && match($0, /[^ ]/) < ind { exit }
+    r { print substr($0, ind) }' "$ROOT/.github/workflows/release.yml")
+run_tag_step() {                    # $1 = the tag input → RC, OUT, the output file
+    TAG_OUT=$TMPROOT/tag-output; : > "$TAG_OUT"
+    OUT=$(INPUT_TAG="$1" GITHUB_OUTPUT="$TAG_OUT" bash -e -c "$tag_step" 2>&1); RC=$?
+}
+run_tag_step v1.2.3
+{ [ "$RC" -eq 0 ] && grep -qx 'version=1.2.3' "$TAG_OUT"; } \
+    && ok "INV-17 tag step accepts v1.2.3" || bad "INV-17 tag step v1.2.3 (rc=$RC): $OUT"
+run_tag_step $'v1.2.3\nversion=9.9.9'
+{ [ "$RC" -ne 0 ] && ! grep -q '9.9.9' "$TAG_OUT"; } \
+    && ok "INV-17 tag step refuses a multi-line tag" || bad "INV-17 multi-line tag passed (rc=$RC): $(cat "$TAG_OUT")"
+run_tag_step v1.2.3-rc1
+[ "$RC" -ne 0 ] && ok "INV-17 tag step refuses v1.2.3-rc1" || bad "INV-17 rc tag passed (rc=$RC)"
 
 echo
 echo "release_pipeline behavioural: PASS=$PASS FAIL=$FAIL"

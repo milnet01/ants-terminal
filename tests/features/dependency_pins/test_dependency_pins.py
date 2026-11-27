@@ -125,5 +125,59 @@ with open(os.path.join(ROOT, ".github", "workflows", "release-audit.yml")) as f:
 check("tools/check-dependency-pins.py" in audit and "GH_TOKEN" in audit,
       "INV-7 release-audit.yml runs the script with GH_TOKEN")
 
+
+def step_script(yml, name):
+    """The `run: |` body of the step called `name`, dedented."""
+    lines = yml.split("\n")
+    i = next(k for k, l in enumerate(lines) if l.strip() == f"- name: {name}")
+    while lines[i].strip() != "run: |":
+        i += 1
+    indent = len(lines[i]) - len(lines[i].lstrip()) + 2
+    body = []
+    for l in lines[i + 1:]:
+        if l.strip() and len(l) - len(l.lstrip()) < indent:
+            break
+        body.append(l[indent:])
+    return "\n".join(body)
+
+
+def run_step(script, stubs, env):
+    """Run a step as GitHub runs one with no shell: key (`bash -e`), with the
+    named commands replaced by stub scripts on PATH."""
+    d = tempfile.mkdtemp(prefix="audit-step-")
+    for cmd, body in stubs.items():
+        path = os.path.join(d, cmd)
+        with open(path, "w") as f:
+            f.write("#!/bin/sh\n" + body)
+        os.chmod(path, 0o755)
+    full = dict(os.environ, PATH=d + os.pathsep + os.environ["PATH"], **env)
+    p = subprocess.run(["bash", "-e", "-c", script], env=full, cwd=ROOT,
+                       capture_output=True, text=True, timeout=60)
+    return p.returncode, p.stdout + p.stderr
+
+
+# INV-8 — under GitHub's default `bash -e`, the pins step still reads the
+# script's exit 2 as a warning.
+rc, out = run_step(step_script(audit, "Check dependency pins against upstream"),
+                   {"python3": "echo UNCHECKED x; exit 2\n"}, {"GH_TOKEN": "t"})
+check(rc == 0 and "some pins could not be checked" in out,
+      f"INV-8 the pins step turns exit 2 into a warning under bash -e (rc={rc})")
+
+# INV-8 — the audit step reports an unfetchable permanent link as unchecked and
+# a listing with no package as an error, rather than dying on the first one.
+GH = ("case \"$1 $2\" in\n"
+      "  'release list') echo v1.2.3 ;;\n"
+      "  'release view') printf '%s\\n' Ants_Terminal-1.2.3-x86_64.AppImage "
+      "Ants_Terminal-1.2.3-x86_64.AppImage.zsync Ants_Terminal-x86_64.AppImage ;;\n"
+      "esac\n")
+CURL = ("for a; do case \"$a\" in *releases/latest/*) exit 6 ;; esac; done\n"
+        "echo '<html>no packages here</html>'\n")
+rc, out = run_step(step_script(audit, "Audit published downloads"),
+                   {"gh": GH, "curl": CURL},
+                   {"GH_TOKEN": "t", "REPO": "o/r", "OBS_BASE": "https://obs.invalid",
+                    "REHEARSAL": "false"})
+check(rc == 1 and "not checked" in out and "publishes no ants-terminal package" in out,
+      f"INV-8 the audit step reports each failure under bash -e (rc={rc}: {out[-300:]})")
+
 print(f"\n{len(failures)} failure(s)")
 sys.exit(1 if failures else 0)
