@@ -722,15 +722,12 @@ void LuaEngine::postUiUpdate(Update update) {
     if (wasEmpty) emit uiUpdatesPending();
 }
 
-// ANTS-1802 — push a QString as a length-counted Lua string. lua_pushstring
-// is NUL-terminated C-string semantics: it truncates at the first embedded
-// '\0'. Terminal output (m_recentOutput) is attacker-influenced, so a single
-// NUL byte in the shell's output would silently blind any plugin scanning
-// get_output. lua_pushlstring carries the exact byte count.
-static void pushQString(lua_State *L, const QString &s) {
-    const QByteArray ba = s.toUtf8();
-    lua_pushlstring(L, ba.constData(), static_cast<size_t>(ba.size()));
-}
+// ANTS-1802 — every string getter pushes a length-counted Lua string, never
+// lua_pushstring: that stops at the first embedded '\0', and terminal output
+// (m_recentOutput) is attacker-influenced, so one NUL byte would silently
+// blind any plugin scanning get_output. ANTS-5070 — each getter builds its
+// bytes in a scope and pushes them through pushBytesProtected, so a push
+// that runs out of memory raises only once the C++ buffer is gone.
 
 int LuaEngine::lua_ants_get_output(lua_State *L) {
     LuaEngine *engine = getEngine(L);
@@ -758,7 +755,12 @@ int LuaEngine::lua_ants_get_output(lua_State *L) {
 int LuaEngine::lua_ants_get_cwd(lua_State *L) {
     LuaEngine *engine = getEngine(L);
     if (engine) {
-        pushQString(L, engine->m_cwd);
+        bool pushed = false;
+        {
+            const QByteArray ba = engine->m_cwd.toUtf8();
+            pushed = pushBytesProtected(L, ba.constData(), static_cast<size_t>(ba.size()));
+        }
+        if (!pushed) return luaL_error(L, "ants.get_cwd: not enough memory");
     } else {
         lua_pushstring(L, "");
     }
@@ -1384,8 +1386,12 @@ void LuaEngine::setProjectListEntryCapForTest(int cap) {
 
 int LuaEngine::lua_project_root(lua_State *L) {
     LuaEngine *engine = getEngine(L);
-    const QByteArray r = engine ? engine->m_queryRoot.toUtf8() : QByteArray();
-    lua_pushlstring(L, r.constData(), static_cast<size_t>(r.size()));
+    bool pushed = false;
+    {
+        const QByteArray r = engine ? engine->m_queryRoot.toUtf8() : QByteArray();
+        pushed = pushBytesProtected(L, r.constData(), static_cast<size_t>(r.size()));
+    }
+    if (!pushed) return luaL_error(L, "project.root: not enough memory");
     return 1;
 }
 

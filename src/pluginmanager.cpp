@@ -302,7 +302,7 @@ void PluginManager::firePaletteAction(const QString &pluginName, const QString &
 void PluginManager::dispatchTo(const QString &pluginName, PluginEvent event,
                                const QString &data) {
     LuaEngine *engine = m_engines.value(pluginName, nullptr);
-    if (!engine || m_demoted.contains(engine)) return;
+    if (!mayReceive(engine, event)) return;
     QMetaObject::invokeMethod(engine, "dispatchEvent", Qt::QueuedConnection,
                               Q_ARG(int, int(event)), Q_ARG(QString, data));
 }
@@ -675,10 +675,8 @@ bool PluginManager::fireEvent(PluginEvent event, const QString &data) {
     // ANTS-1750 § 2.6 is not planned (ANTS-6770). ANTS-5107 — a plugin with no handler
     // for the event is not sent it. ANTS-4272 — nor one lacking the
     // permission the event needs.
-    const QString perm = permissionFor(event);
-    for (auto *engine : healthyEngines()) {
-        if (!engine->handlesEvent(event)) continue;
-        if (!perm.isEmpty() && !engine->hasPermission(perm)) continue;
+    for (auto *engine : std::as_const(m_engines)) {
+        if (!mayReceive(engine, event)) continue;
         QMetaObject::invokeMethod(engine, "dispatchEvent", Qt::QueuedConnection,
                                   Q_ARG(int, int(event)), Q_ARG(QString, data));
     }
@@ -697,11 +695,16 @@ QString PluginManager::permissionFor(PluginEvent e) {
     }
 }
 
-bool PluginManager::wants(PluginEvent e) const {
+bool PluginManager::mayReceive(LuaEngine *engine, PluginEvent e) const {
+    if (!engine || m_demoted.contains(engine)) return false;
+    if (!engine->handlesEvent(e)) return false;
     const QString perm = permissionFor(e);
-    for (auto *engine : healthyEngines()) {
-        if (engine->handlesEvent(e) && (perm.isEmpty() || engine->hasPermission(perm)))
-            return true;
+    return perm.isEmpty() || engine->hasPermission(perm);
+}
+
+bool PluginManager::wants(PluginEvent e) const {
+    for (auto *engine : std::as_const(m_engines)) {
+        if (mayReceive(engine, e)) return true;
     }
     return false;
 }

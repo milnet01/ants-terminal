@@ -87,8 +87,8 @@ public:
     void firePaletteAction(const QString &pluginName, const QString &actionId);
 
     // ANTS-1750 — targeted dispatch to one named plugin's worker (the
-    // queued twin of fireEvent's broadcast loop; it skips demoted engines
-    // as healthyEngines() does). The only supported entry into a worker
+    // queued twin of fireEvent's broadcast loop; it filters through
+    // mayReceive() as fireEvent does). The only supported entry into a worker
     // from the GUI thread; it queues and never blocks. Callers must NOT
     // use engineFor() to invoke a
     // lua_*-touching method on the GUI thread. firePaletteAction() and the
@@ -139,9 +139,12 @@ private:
     void loadPlugin(const PluginInfo &info);
     void unloadAll();
     void wireEngine(LuaEngine *engine);
-    // ANTS-1750 — loaded engines minus the demoted set; the broadcast +
-    // targeted dispatch filter.
+    // ANTS-1750 — loaded engines minus the demoted set.
     QList<LuaEngine *> healthyEngines() const;
+    // The one "may this engine receive `e`" check: loaded, not demoted,
+    // handles `e`, and holds permissionFor(e) where that is non-empty.
+    // fireEvent, wants and dispatchTo all use it.
+    bool mayReceive(LuaEngine *engine, PluginEvent e) const;
     // ANTS-1750 — posts Unload, shutdown and quit to the worker without
     // waiting. finishTeardown then waits; on a clean exit it destroys the
     // engine + thread, on timeout it detaches the pair into m_zombies. Keeps

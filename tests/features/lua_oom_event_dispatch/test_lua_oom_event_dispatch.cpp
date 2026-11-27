@@ -149,8 +149,8 @@ TEST(LuaOomEventDispatch, Inv5PushesAreProtected) {
 // ANTS-5070 — INV-6: a raise while lua_ants_warn's accumulating message is
 // alive longjmps past it (a real QString leak, LeakSanitizer-only). Guards
 // ants.get_output / ants.settings.get in the same fire since ANTS-5070
-// found the identical pattern in both (a live QString pushed via
-// pushQString).
+// found the identical pattern in both (a live QString's bytes pushed
+// while it was still in scope).
 //
 // ANTS-5070 names the trigger as an argument whose __tostring metamethod
 // errors. sandboxEnvironment()'s allowlist has neither setmetatable nor
