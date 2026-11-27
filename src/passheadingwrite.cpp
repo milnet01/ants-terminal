@@ -72,6 +72,11 @@ QString idForHead(const QRegularExpressionMatch &m) {
                                 m.captured(3).trimmed());
 }
 
+// Folds spacing and case only. Unlike RoadmapParse::normaliseHeadline it
+// keeps trailing punctuation: a pass heading's tail is free text, so a
+// locator that differs from it only in punctuation answers
+// bullet_not_found rather than writing to a pass it did not name exactly
+// (ANTS-6963).
 QString normaliseHeadline(const QString &s) {
     return s.simplified().toLower();
 }
