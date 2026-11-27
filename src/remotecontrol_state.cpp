@@ -515,12 +515,12 @@ struct ScopeClassification {
 }  // namespace
 
 // ANTS-1576 / ANTS-1625 — the report-name suffixes that mark a narrow run,
-// shared by classifyAuditScope and pickForeignReport. Case-sensitive: the
-// picker passes a lower-cased name, the classifier the name as it is.
+// shared by classifyAuditScope and pickForeignReport. Matched ignoring case
+// (ANTS-6956), so `-NARROW` is narrow to both.
 static bool hasNarrowReportSuffix(const QString &name) {
-    return name.contains(QStringLiteral("-postfix")) ||
-           name.contains(QStringLiteral("-single"))  ||
-           name.contains(QStringLiteral("-narrow"));
+    return name.contains(QStringLiteral("-postfix"), Qt::CaseInsensitive) ||
+           name.contains(QStringLiteral("-single"), Qt::CaseInsensitive)  ||
+           name.contains(QStringLiteral("-narrow"), Qt::CaseInsensitive);
 }
 
 static ScopeClassification classifyAuditScope(
@@ -595,7 +595,7 @@ static ForeignPick pickForeignReport(const QDir &cacheDir, const QString &glob) 
         // `pick_basis == "broadest_in_recency_window"` and
         // `scope == "narrow"` reads as the picker preferred broader
         // already and the chosen file still looks narrow.
-        c.narrow = hasNarrowReportSuffix(n.toLower());
+        c.narrow = hasNarrowReportSuffix(n);
         cands.append(c);
         if (c.mtimeMs > newestMs) newestMs = c.mtimeMs;
     }
@@ -2520,6 +2520,12 @@ QJsonObject rcdetail::aliasClash(const QJsonObject &req, const QString &verb,
     return o;
 }
 
+// ANTS-5513 / ANTS-6955 — docs/decisions/README.md is the ADR index, not a
+// decision. invariant_check and task_priors both skip it, ignoring case.
+static bool isDecisionsIndex(const QString &fname) {
+    return fname.compare(QStringLiteral("README.md"), Qt::CaseInsensitive) == 0;
+}
+
 QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // ANTS-4744 — `paths` is an alias for `files`.
     //
@@ -2612,9 +2618,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
             dir.entryList({glob},
                           QDir::Files | QDir::Readable, QDir::Name);
         for (const QString &fname : files) {
-            // ANTS-5513 — an index, not a decision, as task_priors treats it.
-            if (dirRel == kDecisionsDir && fname == QLatin1String("README.md"))
-                continue;
+            if (dirRel == kDecisionsDir && isDecisionsIndex(fname)) continue;
             ++counter;
             QFile f(absDir + QLatin1Char('/') + fname);
             QString text;
@@ -3340,8 +3344,7 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
                 {QStringLiteral("*.md")},
                 QDir::Files | QDir::Readable, QDir::Name);
             for (const QString &fname : files) {
-                if (fname.compare(QStringLiteral("README.md"),
-                                  Qt::CaseInsensitive) == 0) continue;
+                if (isDecisionsIndex(fname)) continue;
                 QFile f(dir.filePath(fname));
                 QString body;
                 if (!f.open(QIODevice::ReadOnly | QIODevice::Text) || !readSpecFile(f, body))

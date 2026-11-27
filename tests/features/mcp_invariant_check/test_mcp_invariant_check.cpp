@@ -699,6 +699,26 @@ TEST(McpInvariantCheck, Ants5513ReadsDecisionsBesideSpecs) {
     EXPECT_TRUE(env.value("scope_note").toString().contains(QStringLiteral("docs/decisions")));
 }
 
+// ANTS-6955 — the ADR index is skipped whatever its case, as task_priors skips
+// it. A lower-case readme.md used to be read as a decision here.
+TEST(McpInvariantCheck, Ants6955DecisionsIndexSkippedIgnoringCase) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString decisions = dir.path() + QStringLiteral("/docs/decisions");
+    ASSERT_TRUE(QDir().mkpath(decisions));
+    for (const char *name : {"0001-use-sqlite.md", "readme.md"}) {
+        QFile f(decisions + QLatin1Char('/') + QLatin1String(name));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("# A decision\n\nThe store lives in src/store.cpp.\n");
+    }
+
+    const QJsonObject env = runCheck(dir.path(), QStringLiteral("src/store.cpp"), QString());
+    EXPECT_EQ(env.value("decisions_scanned").toInt(), 1)
+        << QJsonDocument(env).toJson().toStdString();
+    ASSERT_EQ(env.value("matched_count").toInt(), 1);
+    EXPECT_EQ(env.value("matched_specs").toArray().at(0).toObject().value("path").toString(),
+              QStringLiteral("docs/decisions/0001-use-sqlite.md"));
+}
+
 // A project with ADRs and no specs read something, so its zero is not
 // scanned_nothing.
 TEST(McpInvariantCheck, Ants5513DecisionsAloneAreAScan) {

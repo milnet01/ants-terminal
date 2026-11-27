@@ -19,6 +19,12 @@
 
 #include "../../_support/expect.h"
 #include "auditengine.h"
+#include "remotecontrol.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
 
 #ifndef SRC_AUDIT_ENGINE_H_PATH
 #error "SRC_AUDIT_ENGINE_H_PATH compile definition required"
@@ -656,9 +662,9 @@ ScopeProbe probeScope(const QStringList &files, const QString &reportBase) {
     }
     const int distinct = seen.size();
     const bool narrowHint =
-        reportBase.contains(QStringLiteral("-postfix")) ||
-        reportBase.contains(QStringLiteral("-single"))  ||
-        reportBase.contains(QStringLiteral("-narrow"));
+        reportBase.contains(QStringLiteral("-postfix"), Qt::CaseInsensitive) ||
+        reportBase.contains(QStringLiteral("-single"), Qt::CaseInsensitive)  ||
+        reportBase.contains(QStringLiteral("-narrow"), Qt::CaseInsensitive);
     ScopeProbe out;
     out.files = preview;
     if (distinct == 1 && !narrowHint) out.scope = "single_file";
@@ -1077,4 +1083,31 @@ TEST(Ants2056, StalenessSignalWiredInHandler) {
         << "stale signal must be emitted after pick_basis (always-on tail), "
            "not inside the since_commit short-circuit";
     EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-6956 — the scope classifier reads the narrow suffixes ignoring case, as
+// the picker does. Drives the real handler: one cppcheck report naming one file,
+// called `-NARROW`, used to be tagged single_file by the classifier while the
+// picker already counted it narrow.
+TEST(Ants6956, UpperCaseNarrowSuffixClassifiesNarrow) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral(".audit_cache")));
+    QFile f(root + QStringLiteral("/.audit_cache/cppcheck-ozone-NARROW.xml"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<results version=\"2\"><cppcheck version=\"2.13.0\"/><errors>\n"
+            "<error id=\"uninitMemberVar\" severity=\"error\" msg=\"m\" verbose=\"m\">"
+            "<location file=\"src/foo.cpp\" line=\"42\" column=\"5\"/></error>\n"
+            "</errors></results>\n");
+    f.close();
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    RemoteControl rc(nullptr);
+    const QJsonObject env = rc.cmdLastAuditSummary(req).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(env.value(QStringLiteral("scope")).toString(), QStringLiteral("narrow"))
+        << "a -NARROW report naming one file is a narrow run, not single_file";
 }
