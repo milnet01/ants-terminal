@@ -212,22 +212,15 @@ EditResult appendStatus(const QString &content, const QString &text) {
     return r;
 }
 
-// ANTS-4353 — split a markdown table row into trimmed cells.
-static QStringList slRowCells(const QString &line) {
-    QString t = line.trimmed();
-    if (t.startsWith(QLatin1Char('|'))) t = t.mid(1);
-    if (t.endsWith(QLatin1Char('|')))   t.chop(1);
-    QStringList out;
-    for (const QString &c : t.split(QLatin1Char('|'))) out.append(c.trimmed());
-    return out;
-}
-
 // A `|---|---|` separator, which is what makes the block above it a HEADER
-// rather than a row that happens to contain pipes.
+// rather than a row that happens to contain pipes. ANTS-6613 — stricter than
+// MarkdownScan::isTableDelimiterRow on purpose: every cell must be non-empty
+// and hold only dashes and colons, so `| --- | |` opens no loop-log table.
+// Loosening it would change which tables append_loop writes into.
 static bool slIsTableSeparator(const QString &line) {
     const QString t = line.trimmed();
     if (!t.startsWith(QLatin1Char('|'))) return false;
-    for (const QString &c : slRowCells(line)) {
+    for (const QString &c : MarkdownScan::tableCells(line)) {
         if (c.isEmpty()) return false;
         for (const QChar ch : c) {
             if (ch != QLatin1Char('-') && ch != QLatin1Char(':')) return false;
@@ -240,7 +233,7 @@ static bool slIsTableSeparator(const QString &line) {
 // real labels in this corpus (a row hung off loop 4 that no review produced),
 // so the number is the leading digits and the suffix is ignored.
 static int slRowLoopNumber(const QString &line) {
-    const QStringList cells = slRowCells(line);
+    const QStringList cells = MarkdownScan::tableCells(line);
     if (cells.isEmpty()) return -1;
     QString lead;
     for (const QChar ch : cells.first()) {
@@ -286,7 +279,7 @@ static int slBulletOrder(const QString &a, const QString &b) {
 static EditResult appendTableRow(QStringList lines, int headerLine, int sepLine,
                                  int loopEnd, const QStringList &cells,
                                  bool ewn) {
-    const QStringList header = slRowCells(lines.at(headerLine));
+    const QStringList header = MarkdownScan::tableCells(lines.at(headerLine));
     if (cells.isEmpty()) {
         EditResult r;
         r.code = QStringLiteral("format_mismatch");
@@ -332,7 +325,7 @@ static EditResult appendTableRow(QStringList lines, int headerLine, int sepLine,
             ++next;
         const bool continues =
             next < loopEnd && next < lines.size() && isRow(next) &&
-            slRowCells(lines.at(next)).size() == header.size() &&
+            MarkdownScan::tableCells(lines.at(next)).size() == header.size() &&
             !(next + 1 < lines.size() && slIsTableSeparator(lines.at(next + 1)));
         if (!continues) break;   // the table ended
         i = next - 1;
@@ -605,7 +598,7 @@ EditResult appendLoop(const QString &content, const QString &label,
         if (!lines.at(i).trimmed().startsWith(QLatin1Char('|')) ||
             !slIsTableSeparator(lines.at(i + 1)))
             continue;
-        const QStringList header = slRowCells(lines.at(i));
+        const QStringList header = MarkdownScan::tableCells(lines.at(i));
         const QString column = header.isEmpty() ? QString() : header.first();
         if (headerLine < 0) {
             firstColumn = column;

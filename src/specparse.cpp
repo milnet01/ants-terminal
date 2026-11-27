@@ -109,12 +109,17 @@ InvariantsSection invariantsSection(const QString &body) {
     // document carrying both a real Invariants section and a heading that merely
     // mentions one (`## Why these invariants matter`), where the loose form alone
     // would take whichever came first.
+    // ANTS-6613 — the word matches in any case, as spec_log's
+    // findSectionHeading does: an `## INVARIANTS` section that append_inv
+    // writes into must be one its duplicate guard reads.
     static const QRegularExpression hdrRe(
-        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[Ii]nvariants\b.*$)"),
-        QRegularExpression::MultilineOption);
+        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?invariants\b.*$)"),
+        QRegularExpression::MultilineOption |
+            QRegularExpression::CaseInsensitiveOption);
     static const QRegularExpression hdrLooseRe(
-        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[^\n]*\b[Ii]nvariants\b.*$)"),
-        QRegularExpression::MultilineOption);
+        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[^\n]*\binvariants\b.*$)"),
+        QRegularExpression::MultilineOption |
+            QRegularExpression::CaseInsensitiveOption);
     InvariantsSection out;
     auto hdrM = hdrRe.match(body);
     if (!hdrM.hasMatch()) hdrM = hdrLooseRe.match(body);
@@ -165,7 +170,7 @@ QJsonObject parseSpecBody(const QString &body) {
     out["kind"]   = kind;
 
     // Locate the Invariants section. Accept `## N. Invariants`,
-    // `## Invariants`, `### Invariants`; the first letter in either case.
+    // `## Invariants`, `### Invariants`, in any case.
     QJsonArray invariants;
     const InvariantsSection sec = invariantsSection(body);
     if (sec.start >= 0) {
@@ -185,9 +190,16 @@ QJsonObject parseSpecBody(const QString &body) {
         // table masked it, because the lazy groups close on the same line first.
         // Found by ANTS-3662's `invariant_no_test` check, which is exactly the
         // defect it exists to report.
+        //
+        // ANTS-6613 — a cell is `.+?` that never splits an escaped `\|`, so it
+        // agrees with MarkdownScan::tableCells: in `| INV-1 | a \| b | t |`
+        // the body is `a \| b`, not `a \`. Without a `\|` it is plain `.+?`.
+        static const QString cell = QStringLiteral(R"(((?:\\\||(?!\\\|).)+?))");
         static const QRegularExpression tableRe(
             QStringLiteral(R"(^\|[ \t]*()") + SpecParse::invIdPattern() +
-                QStringLiteral(R"()[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*$)"),
+                QStringLiteral(R"()[ \t]*\|[ \t]*)") + cell +
+                QStringLiteral(R"([ \t]*\|[ \t]*)") + cell +
+                QStringLiteral(R"([ \t]*\|[ \t]*$)"),
             QRegularExpression::MultilineOption);
         // ANTS-3799 — both forms are parsed and merged by document position,
         // rather than the bullet branch being skipped whenever the table branch

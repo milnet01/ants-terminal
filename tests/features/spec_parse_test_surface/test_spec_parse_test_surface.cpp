@@ -375,3 +375,24 @@ TEST(SpecParseTestSurface, Ants6278TwoSpaceBulletEndsThePreviousBody) {
     expect(field(i1, "body") == QStringLiteral("Second claim."), "6278/second-body", render(i1));
     ASSERT_EQ(0, expect_finish());
 }
+
+// ANTS-6613 — an escaped `\|` inside a table cell stays in that cell, as
+// MarkdownScan::tableCells reads it, rather than ending the cell. Before the
+// fold the body came out as `a \` and the rest spilled into the test surface.
+TEST(SpecParseTestSurface, Ants6613EscapedPipeStaysInItsCell) {
+    expect_reset();
+    const auto p = parse(
+        withHeader(QStringLiteral(
+                       "| INV | Claim | Test surface |\n"
+                       "|---|---|---|\n"
+                       "| INV-1 | a \\| b | t |\n"))
+            .toUtf8()
+            .constData());
+
+    const auto i0 = inv(p, 0);
+    expect(field(i0, "body") == QStringLiteral("a \\| b"), "6613/body",
+           render(i0));
+    expect(field(i0, "test_surface") == QStringLiteral("t"),
+           "6613/test_surface", render(i0));
+    ASSERT_EQ(0, expect_finish());
+}

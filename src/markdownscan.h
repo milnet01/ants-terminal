@@ -247,4 +247,14 @@ private:
 // is — the same reason ANTS-3740 hoisted headingSlug.
 QString stripBlockquote(const QString &trimmedLine, int *depth = nullptr);
 
+// ANTS-6613 — a GFM table row's cells, trimmed, outer pipes dropped. An
+// escaped `\|` does not split a cell and stays in its text as `\|`; a caller
+// that wants the literal pipe unescapes it. One splitter, so the spec engines
+// cannot disagree about how many columns a row has.
+QStringList tableCells(const QString &line);
+
+// ANTS-6613 — a GFM delimiter row: starts with `|`, holds only pipes, dashes,
+// colons and whitespace, and at least one dash. An empty cell is allowed.
+bool isTableDelimiterRow(const QString &line);
+
 }  // namespace MarkdownScan

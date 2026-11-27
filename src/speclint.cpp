@@ -124,44 +124,12 @@ bool isCommandWithoutExpectation(const QString &clause) {
     return true;
 }
 
-// GFM row cells, honouring the `\|` escape — a spec that TABULATES table shapes
-// writes one, and splitting naively turns its single cell into nine.
-QStringList tableCells(const QString &line) {
-    QString s = line.trimmed();
-    if (s.startsWith(QLatin1Char('|'))) s = s.mid(1);
-    if (s.endsWith(QLatin1Char('|')) &&
-        !s.endsWith(QLatin1String("\\|")))
-        s.chop(1);
-
-    QStringList cells;
-    QString cur;
-    for (int i = 0; i < s.size(); ++i) {
-        const QChar c = s.at(i);
-        if (c == QLatin1Char('\\') && i + 1 < s.size() &&
-            s.at(i + 1) == QLatin1Char('|')) {
-            cur += QLatin1String("\\|");
-            ++i;
-        } else if (c == QLatin1Char('|')) {
-            cells.append(cur.trimmed());
-            cur.clear();
-        } else {
-            cur += c;
-        }
-    }
-    cells.append(cur.trimmed());
-    return cells;
-}
-
+// Row cells come from MarkdownScan::tableCells, which honours the `\|` escape:
+// a spec that TABULATES table shapes writes one, and splitting naively turns
+// its single cell into nine.
 bool isTableRow(const QString &line) {
     const QString s = line.trimmed();
     return s.startsWith(QLatin1Char('|')) && s.size() > 1;
-}
-
-bool isDelimiterRow(const QString &line) {
-    static const QRegularExpression re(
-        QStringLiteral(R"(^\|?[\s:|-]*-[\s:|-]*\|?$)"));
-    const QString s = line.trimmed();
-    return isTableRow(line) && re.match(s).hasMatch();
 }
 
 // ANTS-4127 — the spec's own `**Status:**` reduced to the single word § 2.5's
@@ -624,6 +592,17 @@ bool knownStatus(const QString &value) {
 }
 
 // Everything above the first `## ` heading, as spec-format.md § 3.2 scopes it.
+//
+// ANTS-6613 — not built on SpecParse::headerField / isHeaderBlockEnd, and
+// cannot be without changing its findings. headerField returns the FIRST
+// field of one known name; this check visits EVERY field line, any name, so
+// it sees a duplicate or an unknown field. Its block end and field scan skip
+// fenced lines, which headerField's do not, so a `## ` or `**Status:**` in a
+// fenced example in the header neither ends the block nor counts as a field.
+// Its wrapped value is the next line alone, enough for the first word that
+// the Status and Kind checks read; the stop rules differ from headerField's
+// (this one stops at any `**` or `#` start), so the two can disagree on
+// whether a field is empty.
 void checkHeaderBlock(const QStringList &lines, const QVector<bool> &fence,
                       const Options &opts, Sink &add) {
     static const QRegularExpression fieldRe(
@@ -659,7 +638,7 @@ void checkHeaderBlock(const QStringList &lines, const QVector<bool> &fence,
         const QString name = m.captured(1);
         QString value = m.captured(2).trimmed();
         if (value.isEmpty() && i + 1 < end) {
-            // SpecParse reads a wrapped value from the next line.
+            // A wrapped value: the next line (see the note above).
             const QString next = lines[i + 1].trimmed();
             if (!next.startsWith(QLatin1String("**")) &&
                 !next.startsWith(QLatin1Char('#')))
@@ -1008,15 +987,16 @@ void checkLoopRowOutcomes(const QStringList &lines, const QVector<bool> &fence,
                           Sink &add) {
     for (int i = 0; i + 1 < lines.size(); ++i) {
         if (i < fence.size() && fence[i]) continue;
-        if (!isTableRow(lines[i]) || isDelimiterRow(lines[i])) continue;
-        if (!isDelimiterRow(lines[i + 1])) continue;
-        const QStringList hdr = tableCells(lines[i]);
+        if (!isTableRow(lines[i]) || MarkdownScan::isTableDelimiterRow(lines[i]))
+            continue;
+        if (!MarkdownScan::isTableDelimiterRow(lines[i + 1])) continue;
+        const QStringList hdr = MarkdownScan::tableCells(lines[i]);
         if (hdr.isEmpty() || hdr.first() != QLatin1String("Loop")) continue;
 
         for (int j = i + 2; j < lines.size(); ++j) {
             if (j < fence.size() && fence[j]) break;
             if (!isTableRow(lines[j])) break;
-            const QStringList cells = tableCells(lines[j]);
+            const QStringList cells = MarkdownScan::tableCells(lines[j]);
             if (cells.size() < 2 || !cells.last().isEmpty()) continue;
             add(QStringLiteral("loop_row_no_outcome"), j + 1,
                 QStringLiteral("cold-eyes loop row %1 records no outcome")

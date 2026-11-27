@@ -6,6 +6,7 @@
 // to point at a document.
 
 #include "specconformance.h"
+#include "markdownscan.h"
 #include "mcprefusal.h"
 
 #include <QCryptographicHash>
@@ -41,25 +42,13 @@ QString stripTicks(const QString &raw) {
     return s;
 }
 
-// Split a GFM table row into trimmed cells, dropping the leading/trailing pipe.
+// A GFM table row's trimmed cells. GFM writes a pipe inside a cell, code spans
+// included, as `\|`, so the shared splitter keeps it whole and it is unescaped
+// here: the cell's text is the pattern input or expectation as written.
 QStringList cellsOf(const QString &line) {
-    QString s = line.trimmed();
-    if (s.startsWith(QLatin1Char('|'))) s.remove(0, 1);
-    if (s.endsWith(QLatin1Char('|'))) s.chop(1);
-    QStringList out;
-    for (const QString &c : s.split(QLatin1Char('|'))) out << c.trimmed();
+    QStringList out = MarkdownScan::tableCells(line);
+    for (QString &c : out) c.replace(QLatin1String("\\|"), QLatin1String("|"));
     return out;
-}
-
-bool isSeparatorRow(const QString &line) {
-    const QString s = line.trimmed();
-    if (!s.startsWith(QLatin1Char('|'))) return false;
-    for (const QChar c : s) {
-        if (c != QLatin1Char('|') && c != QLatin1Char('-') &&
-            c != QLatin1Char(':') && !c.isSpace())
-            return false;
-    }
-    return s.contains(QLatin1Char('-'));
 }
 
 // The outcome a run produces, in the § 2.4 encoding: "no match",
@@ -246,7 +235,8 @@ QJsonObject run(const QString &absPath, const Options &opt) {
             continue;
         }
         int row = hdr + 1;
-        if (row < lines.size() && isSeparatorRow(lines.at(row))) ++row;
+        if (row < lines.size() && MarkdownScan::isTableDelimiterRow(lines.at(row)))
+            ++row;
 
         for (; row < lines.size(); ++row) {
             const QString t = lines.at(row).trimmed();

@@ -367,4 +367,38 @@ QVector<Heading> HeadingScanner::finish() {
     return m_out;
 }
 
+QStringList tableCells(const QString &line) {
+    QString s = line.trimmed();
+    if (s.startsWith(QLatin1Char('|'))) s = s.mid(1);
+    if (s.endsWith(QLatin1Char('|')) &&
+        !s.endsWith(QLatin1String("\\|")))
+        s.chop(1);
+
+    QStringList cells;
+    QString cur;
+    for (int i = 0; i < s.size(); ++i) {
+        const QChar c = s.at(i);
+        if (c == QLatin1Char('\\') && i + 1 < s.size() &&
+            s.at(i + 1) == QLatin1Char('|')) {
+            cur += QLatin1String("\\|");
+            ++i;
+        } else if (c == QLatin1Char('|')) {
+            cells.append(cur.trimmed());
+            cur.clear();
+        } else {
+            cur += c;
+        }
+    }
+    cells.append(cur.trimmed());
+    return cells;
+}
+
+bool isTableDelimiterRow(const QString &line) {
+    static const QRegularExpression re(
+        QStringLiteral(R"(^\|?[\s:|-]*-[\s:|-]*\|?$)"));
+    const QString s = line.trimmed();
+    return s.startsWith(QLatin1Char('|')) && s.size() > 1 &&
+           re.match(s).hasMatch();
+}
+
 }  // namespace MarkdownScan
