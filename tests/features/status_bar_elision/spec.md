@@ -55,6 +55,13 @@ room.
    real construction of the slot and fails on one it cannot replay, so
    the test cannot drift from the real slot.
 
+7. **Markup is shown, never rendered.** An `ElidedLabel`'s text format is
+   `Qt::PlainText`, and when the text elides, a tooltip for text that Qt
+   would read as markup is that text escaped (`Qt::convertFromPlainText`).
+   Other text goes into the tooltip unchanged, so a bare `&` is not shown
+   as `&amp;`. The title bar is an `ElidedLabel`, and a program in the
+   terminal sets its text through OSC 0/2.
+
 ## Rationale
 
 User report (2026-09-29): the main window widened itself into a very
@@ -98,3 +105,5 @@ guaranteed to render in full.
   at maximumWidth). This spec + test lock the new policy.
 - **2026-09-29**: the uncapped status-message slot was found to widen
   the window (INV-6 added).
+- **ANTS-6625**: a window title holding markup was rendered as rich
+  text in the title bar (INV-7 added).

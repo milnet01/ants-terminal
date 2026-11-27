@@ -10,6 +10,7 @@
 #include <QScopeGuard>
 #include <QTemporaryFile>
 
+#include <atomic>
 #include <type_traits>
 
 KWinPositionTracker::KWinPositionTracker(QWidget *trackedWindow)
@@ -65,6 +66,14 @@ QString kwinCenterScript(qint64 pid) {
     ).arg(pid);
 }
 
+QString kwinScriptName(const QString &tag) {
+    static std::atomic<quint64> serial{0};
+    return QStringLiteral("ants_terminal_%1_%2_%3")
+        .arg(tag)
+        .arg(QCoreApplication::applicationPid())
+        .arg(++serial);
+}
+
 void runKWinScript(QObject *owner, const QString &kwinJs, const QString &tag) {
     // ANTS-1045 INV-4: bail before any temp-file write when KWin
     // isn't the active compositor. The KWin-script + dbus-send chain
@@ -99,12 +108,10 @@ void runKWinScript(QObject *owner, const QString &kwinJs, const QString &tag) {
         scriptPath = f.fileName();
     }
 
-    // RC-52 (audit 2026-09-26) — the KWin script name is per process, as the
-    // temp file is: under one fixed name, a second instance's unloadScript
-    // could drop the first's script mid-flight.
-    const QString scriptNameArg = QStringLiteral("string:ants_terminal_%1_%2")
-                                      .arg(tag)
-                                      .arg(QCoreApplication::applicationPid());
+    // RC-52 (audit 2026-09-26) — the KWin script name is per process and
+    // per call, as the temp file is: under a shared name, another run's
+    // unloadScript could drop this script mid-flight.
+    const QString scriptNameArg = QStringLiteral("string:") + kwinScriptName(tag);
     const auto unload = [scriptPath, scriptNameArg]() {
         QProcess::startDetached("dbus-send", {
             "--session", "--dest=org.kde.KWin", "--print-reply",

@@ -262,6 +262,7 @@ void GlobalShortcutsPortal::flushPending() {
                   QStringLiteral("Response"),
                   this,
                   SLOT(onBindShortcutsResponse(uint, QVariantMap, QDBusMessage)));
+    m_bindsInFlight.insert(reqPath);
 
     QList<PortalShortcut> shortcuts;
     shortcuts.reserve(m_pending.size());
@@ -298,15 +299,25 @@ void GlobalShortcutsPortal::flushPending() {
             QDBusPendingReply<QDBusObjectPath> r = *w;
             w->deleteLater();
             if (!r.isError()) return;  // success: wait for onBindShortcutsResponse
+            // After a timeout the bind already failed; don't fail it twice.
+            if (!m_bindsInFlight.remove(reqPath)) return;
             detachResponseSlots(reqPath);
             failPermanently(r.error().message());
         });
+    // A Response that never arrives fails the bind, as CreateSession's does.
+    QTimer::singleShot(kBindShortcutsTimeoutMs, this, [this, reqPath] {
+        if (!m_bindsInFlight.remove(reqPath)) return;
+        detachResponseSlots(reqPath);
+        failPermanently(QStringLiteral("BindShortcuts got no response within %1 s")
+                            .arg(kBindShortcutsTimeoutMs / 1000));
+    });
 }
 
 void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,
                                                     const QVariantMap &results,
                                                     const QDBusMessage &message) {
     Q_UNUSED(results);
+    m_bindsInFlight.remove(message.path());
     detachResponseSlots(message.path());
     if (response != 0) {
         failPermanently(QStringLiteral(

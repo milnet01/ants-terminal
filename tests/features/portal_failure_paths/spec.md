@@ -29,6 +29,12 @@ drops the pending binds, sets the latch and emits `sessionFailed(reason)`.
 No failure clears `m_sessionHandle`, so the destructor still closes a
 session that was created (`portal_session_close`).
 
+**INV-7 — BindShortcuts times out.** `flushPending` adds each request path
+to `m_bindsInFlight` and starts a `kBindShortcutsTimeoutMs` single-shot
+timer. The timer, the error reply and `onBindShortcutsResponse` each remove
+the path; the timer and the error reply fail the bind (INV-6) only when the
+path was still there, so a bind fails at most once.
+
 ## Rationale
 
 `CreateSession`'s reply was watched, but `BindShortcuts` was sent with a bare
@@ -60,3 +66,6 @@ beside `SRC_MAINWINDOW_CPP_PATH`, and checks the text.
 
 - **ANTS-5081:** the defects above. Locked by this spec.
 - **ANTS-6190:** the failure paths' differing clean-up. Locked by INV-6.
+- **ANTS-6625:** `BindShortcuts` had no timeout, so a portal that never
+  sent its Response left the shortcut unbound with no message. Locked by
+  INV-7.

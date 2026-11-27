@@ -29,10 +29,15 @@ QString kwinCenterScript(qint64 pid);
 
 // The one KWin scripting chain: write `kwinJs` to an unpredictable temp file,
 // then loadScript → start → unloadScript over dbus-send, removing the file on
-// every path. `tag` names the temp file (kwin_<tag>_ants_*) and, with the pid,
-// the registered script. A no-op when KWin is not the compositor. The async
-// processes are parented to `owner`.
+// every path. `tag` names the temp file (kwin_<tag>_ants_*) and, through
+// kwinScriptName(), the registered script. A no-op when KWin is not the
+// compositor. The async processes are parented to `owner`.
 void runKWinScript(QObject *owner, const QString &kwinJs, const QString &tag);
+
+// The name runKWinScript registers a script under: `tag`, the pid and a
+// per-call counter, so two overlapping runs with one tag (✥ clicked twice)
+// never share a name and unload each other's script.
+QString kwinScriptName(const QString &tag);
 
 // Tracks window position ourselves since Qt's pos()/moveEvent() are broken
 // for frameless windows on KWin compositor.

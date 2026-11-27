@@ -127,9 +127,11 @@ yellow, so a tab reading files looked like one waiting on the user.
    background)`, which returns the base palette entry unchanged when it
    already clears WCAG 3:1 against `background` (every dark theme), and
    otherwise lowers only the HSL *lightness* — preserving hue and
-   saturation — until the 3:1 floor is met. Contrast is monotonic in
-   lightness against a light background and black always clears a light
-   background, so a solution always exists. On the Light and
+   saturation — until the 3:1 floor is met. Against a background so dark
+   that even black fails 3:1 (luminance below 0.1, which a user theme can
+   set), it raises the lightness instead, to the lowest that clears the
+   floor; white always does there. Lightness only raises luminance, so
+   either search finds a solution. On the Light and
    Catppuccin-Latte themes all nine dots clear 3:1 against `bgSecondary`
    after adaptation; on dark themes the shipped appearance is unchanged
    (the base hex literals still render verbatim).
@@ -209,6 +211,10 @@ source-grep cannot verify.
   semi-transparent (alpha < 255) colour that is dark (low luminance) on a
   light `bg` and light (high luminance) on a dark `bg`, and is identical
   for every glyph (it takes no glyph argument — uniformity is structural).
+- INV-11 (behavioural, ANTS-6625) Mid-dark background. For every non-None
+  glyph and each `bg` against which even black fails 3:1 (`#404040`,
+  `#555555`), `contrastColor(glyph, bg)` clears 3:1 against `bg` and keeps
+  the base hue (skipping achromatic grey).
 
 ## Rationale
 

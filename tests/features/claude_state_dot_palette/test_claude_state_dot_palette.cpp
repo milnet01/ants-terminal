@@ -253,6 +253,31 @@ TEST(ClaudeStateDotPalette, ContrastAdaptation) {
 }
 
 
+// INV-11 (ANTS-6625) — a mid-dark background, where even black fails 3:1,
+// gets a lightened dot that clears the floor with its hue kept.
+TEST(ClaudeStateDotPalette, MidDarkBackgroundLightensTheDot) {
+    using Ind = ClaudeTabIndicator;
+    using G = Ind::Glyph;
+    const G glyphs[] = {G::Idle,     G::Thinking,  G::ToolUse,    G::Bash,
+                        G::Planning, G::Auditing,  G::Compacting, G::AwaitingInput,
+                        G::Background};
+    // Luminance about 0.05 and 0.09: black reaches only about 2.0 and 2.8.
+    for (const QColor &bg : {QColor("#404040"), QColor("#555555")}) {
+        ASSERT_LT(tContrast(QColor(Qt::black), bg), 3.0) << "precondition";
+        for (G g : glyphs) {
+            const QColor base = Ind::color(g);
+            const QColor adj = Ind::contrastColor(g, bg);
+            EXPECT_GE(tContrast(adj, bg), 3.0)
+                << "glyph " << static_cast<int>(g) << " on bg "
+                << bg.name().toStdString() << " contrast " << tContrast(adj, bg);
+            if (base.hslSaturation() > 0 && adj.hslHue() >= 0) {
+                EXPECT_EQ(adj.hslHue(), base.hslHue())
+                    << "hue drifted for glyph " << static_cast<int>(g);
+            }
+        }
+    }
+}
+
 // ANTS-5773 INV-10 — the Background glyph is pink, and its hue differs from
 // the prompt red and the auditing magenta, before and after adaptation.
 TEST(ClaudeStateDotPalette, Ants5773BackgroundIsItsOwnPink) {

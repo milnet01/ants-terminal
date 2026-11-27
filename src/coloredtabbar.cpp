@@ -102,19 +102,32 @@ QColor ClaudeTabIndicator::contrastColor(Glyph g, const QColor &background) {
     // lightness until the dot clears the 3:1 floor. Contrast is monotonic
     // in lightness against a light background, so binary-search the
     // highest (least-darkened) lightness <= the original that still
-    // passes — black always clears a light background, so a solution
-    // exists. State hue is unchanged, so "red = needs me" still holds.
-    //
-    // Precondition (true for every shipped theme): bgSecondary is either
-    // clearly light (lum > 0.8 — darkening the dot is the correct
-    // direction) or clearly dark (lum < 0.05 — the base already passes
-    // 3:1 and we early-returned above). No shipped theme sits in the
-    // mid-luminance band where the dot would instead need lightening. A
-    // user theme loaded from JSON sets bgSecondary freely and can; for it
-    // this would need to search both directions.
+    // passes. State hue is unchanged, so "red = needs me" still holds.
     const int h = qMax(0, base.hslHue());  // -1 (achromatic grey) -> 0
     const int s = base.hslSaturation();
     const int a = base.alpha();
+
+    // Black clears 3:1 only against a background of luminance above 0.1.
+    // A darker one (a user theme's bgSecondary can be any colour) needs the
+    // dot lightened instead: the lowest lightness above the original that
+    // is lighter than the background and clears the floor. White always
+    // does there, and lightness only raises luminance, so the search holds.
+    if (wcagContrast(QColor::fromHsl(h, s, 0, a), background) < kMinContrast) {
+        const double bgLum = wcagLuminance(background);
+        int lo = base.lightness(), hi = 255, best = 255;
+        while (lo <= hi) {
+            const int mid = (lo + hi) / 2;
+            const QColor c = QColor::fromHsl(h, s, mid, a);
+            if (wcagLuminance(c) > bgLum && wcagContrast(c, background) >= kMinContrast) {
+                best = mid;
+                hi = mid - 1;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return QColor::fromHsl(h, s, best, a);
+    }
+
     int lo = 0, hi = base.lightness(), best = 0;
     while (lo <= hi) {
         const int mid = (lo + hi) / 2;

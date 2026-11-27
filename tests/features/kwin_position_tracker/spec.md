@@ -182,6 +182,13 @@ defects, both fixed without changing the production contract:
   dbus chain still reads the file after `setPosition`
   returns).
 
+- **INV-7** (ANTS-6625) One script name per call. Two
+  `kwinScriptName(tag)` calls with one tag return different
+  names, each starting `ants_terminal_<tag>_<pid>_`. Under a name
+  shared by two overlapping runs (✥ clicked twice), the first
+  run's `unloadScript` could drop the second's script before it
+  ran.
+
 ## How to verify pre-fix code fails
 
 ```bash

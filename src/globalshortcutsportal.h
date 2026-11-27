@@ -33,6 +33,7 @@
 #include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QList>
+#include <QSet>
 #include <QString>
 #include <QTimer>
 #include <QVariantMap>
@@ -116,6 +117,10 @@ private:
     // would otherwise leave the session pending and queue every bind.
     static constexpr int kCreateSessionTimeoutMs = 30000;
     QTimer m_createSessionTimer;
+    // Each BindShortcuts request path whose Response, error reply or
+    // timeout has not arrived yet; whichever comes first removes it.
+    static constexpr int kBindShortcutsTimeoutMs = 30000;
+    QSet<QString> m_bindsInFlight;
     // ANTS-1152 — terminal-failure latch, set by failPermanently() on
     // every failed portal response or DBus reply error. Once latched, every
     // subsequent bindShortcut() call early-returns with a

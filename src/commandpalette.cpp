@@ -13,7 +13,9 @@ void GhostLineEdit::setGhostSuffix(const QString &suffix) {
 
 void GhostLineEdit::paintEvent(QPaintEvent *event) {
     QLineEdit::paintEvent(event);
-    if (m_ghost.isEmpty()) return;
+    // The suffix continues the text, so it shows only while the caret is at
+    // the end; with the caret moved left it would paint over typed text.
+    if (m_ghost.isEmpty() || cursorPosition() != text().length()) return;
 
     // Anchor the dimmed suffix to the right edge of the caret so the
     // completion sits flush against what the user typed. palette[Text]

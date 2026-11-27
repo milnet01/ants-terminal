@@ -45,7 +45,8 @@ protected:
 `paintEvent` calls `QLineEdit::paintEvent(event)` first, then opens a
 fresh `QPainter` and draws the ghost suffix at
 `cursorRect().right()+1` using `palette().color(QPalette::Text)` with
-`setAlphaF(0.45)`.
+`setAlphaF(0.45)`. It draws nothing unless the caret is at the end of the
+text: with the caret moved left, the suffix would cover typed characters.
 
 `CommandPalette::populateList(filter)` calls
 `CommandPalette::updateGhostCompletion(filter)` after the list is
@@ -91,6 +92,7 @@ The test runs under `QT_QPA_PLATFORM=offscreen`. It builds a
 | I8 | Sending `QKeyEvent(Tab)` to `m_input` when `ghostSuffix()` is empty leaves `m_input->text()` unchanged and the event is consumed (focus does not move — verified by `m_input->hasFocus()` remaining true). |
 | I9 | Source-grep on `src/commandpalette.cpp` — exactly one `setAlphaF(0.45` literal (the dimmed-text color), at least one `cursorRect(` reference (paint position anchor). |
 | I10 | Sending `QKeyEvent(Escape)` to `m_input` hides the palette and emits `closed()` — regression guard on existing dismiss behaviour. |
+| I11 | (ANTS-6625) An unfocused `GhostLineEdit` holding `"ind"` with the caret at position 1 renders the same image with the ghost `"ex Review"` set as without it; with the caret at the end the ghost changes the image. |
 
 The test verifies the failure mode by stashing the implementation,
 rebuilding, expecting non-zero exit, restoring, and confirming the

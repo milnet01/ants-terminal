@@ -280,3 +280,17 @@ TEST(KwinPositionTracker, Main) {
     return;
 }
 
+// INV-7 (ANTS-6625) — two runs with one tag register under different names,
+// so one run's unloadScript cannot drop the other's script mid-flight.
+TEST(KwinPositionTracker, ScriptNameIsUniquePerCall) {
+    const QString first = kwinScriptName(QStringLiteral("center"));
+    const QString second = kwinScriptName(QStringLiteral("center"));
+    EXPECT_NE(first, second) << "two runs with one tag share a KWin script name";
+    const QString prefix = QStringLiteral("ants_terminal_center_%1_")
+                               .arg(QCoreApplication::applicationPid());
+    for (const QString &name : {first, second}) {
+        EXPECT_TRUE(name.startsWith(prefix))
+            << "the name lost its tag or pid (RC-52): " << name.toStdString();
+    }
+}
+

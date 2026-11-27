@@ -16,14 +16,21 @@
 // explicit at every call site and avoids the hiding-non-virtual footgun.
 // The widget also exposes a full-text tooltip whenever the displayed text
 // had to be elided, so hover-inspection always reveals the whole string.
+//
+// The text is always plain: it can come from a program in the terminal (an
+// OSC 0/2 window title), so markup in it is shown, never rendered, in the
+// label and in the tooltip alike.
 
 #include <QLabel>
+#include <QTextDocument>
 #include <algorithm>
 #include <QResizeEvent>
 
 class ElidedLabel : public QLabel {
 public:
-    using QLabel::QLabel;
+    explicit ElidedLabel(QWidget *parent = nullptr) : QLabel(parent) {
+        setTextFormat(Qt::PlainText);
+    }
 
     void setFullText(const QString &text) {
         if (m_fullText == text) return;
@@ -111,7 +118,12 @@ private:
             displayed = fontMetrics().elidedText(m_fullText, m_elideMode, w);
         }
         QLabel::setText(displayed);
-        setToolTip(displayed != m_fullText ? m_fullText : QString());
+        // QToolTip renders whatever looks like markup, so escape such text.
+        QString tip;
+        if (displayed != m_fullText)
+            tip = Qt::mightBeRichText(m_fullText) ? Qt::convertFromPlainText(m_fullText)
+                                                  : m_fullText;
+        setToolTip(tip);
     }
 
     QString m_fullText;

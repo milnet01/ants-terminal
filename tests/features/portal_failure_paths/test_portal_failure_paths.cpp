@@ -129,3 +129,28 @@ TEST(PortalFailurePaths, EveryFailureCleansUpOneWay) {
     EXPECT_FALSE(src.contains(QStringLiteral("m_sessionHandle.clear()")))
         << "a failure drops the session handle, so the destructor never closes the session";
 }
+
+// INV-7 (ANTS-6625)
+TEST(PortalFailurePaths, BindShortcutsTimesOut) {
+    const QString src = portalSource();
+    const QString flush = functionBody(src,
+        QStringLiteral("void GlobalShortcutsPortal::flushPending()"));
+    ASSERT_FALSE(flush.isEmpty()) << "flushPending not found";
+    EXPECT_TRUE(flush.contains(QStringLiteral("m_bindsInFlight.insert(reqPath);")))
+        << "a bind is not recorded as in flight";
+    const int timer = flush.indexOf(QStringLiteral("QTimer::singleShot(kBindShortcutsTimeoutMs"));
+    ASSERT_GE(timer, 0)
+        << "BindShortcuts has no timeout, so a missing Response leaves the shortcut unbound silently";
+    const QString handler = flush.mid(timer);
+    EXPECT_TRUE(handler.contains(QStringLiteral("if (!m_bindsInFlight.remove(reqPath)) return;")))
+        << "the timeout fails a bind that already finished";
+    EXPECT_TRUE(handler.contains(QStringLiteral("failPermanently(")));  // INV-6
+    // The error-reply path must not fail a bind the timeout already failed.
+    EXPECT_EQ(flush.count(QStringLiteral("if (!m_bindsInFlight.remove(reqPath)) return;")), 2)
+        << "the error reply and the timeout do not share one outcome per bind";
+
+    const QString response = functionBody(src,
+        QStringLiteral("void GlobalShortcutsPortal::onBindShortcutsResponse("));
+    EXPECT_TRUE(response.contains(QStringLiteral("m_bindsInFlight.remove(message.path());")))
+        << "a Response that arrives does not cancel the timeout";
+}

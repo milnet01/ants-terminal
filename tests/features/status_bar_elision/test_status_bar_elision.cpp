@@ -332,6 +332,29 @@ TEST(StatusBarElision, UncappedMessageDoesNotWidenWindow) {
         << p3.branchShown.toStdString();
 }
 
+// Invariant 7 (ANTS-6625): markup in the text is shown, never rendered —
+// a program in the terminal sets the title bar's text through OSC 0/2.
+TEST(StatusBarElision, MarkupIsShownNotRendered) {
+    ElidedLabel lbl;
+    EXPECT_EQ(lbl.textFormat(), Qt::PlainText)
+        << "the label renders markup a terminal program put in its text";
+
+    lbl.setMaximumWidth(60);
+    lbl.resize(60, 20);
+    const QString markup = QStringLiteral("<b>bold</b> <img src=\"x.png\"> & a long title");
+    lbl.setFullText(markup);
+    ASSERT_NE(lbl.text(), markup) << "precondition: the text must elide";
+    EXPECT_NE(lbl.toolTip(), markup) << "the tooltip renders the markup";
+    EXPECT_TRUE(lbl.toolTip().contains(QStringLiteral("&lt;b&gt;bold&lt;/b&gt;")))
+        << "the tooltip does not escape the markup; actual: "
+        << lbl.toolTip().toStdString();
+
+    // Text that merely contains '&' stays as it is, so it is not shown as "&amp;".
+    const QString amp = QStringLiteral("Tom & Jerry - a title long enough to elide");
+    lbl.setFullText(amp);
+    EXPECT_EQ(lbl.toolTip(), amp);
+}
+
 
 }  // namespace
 

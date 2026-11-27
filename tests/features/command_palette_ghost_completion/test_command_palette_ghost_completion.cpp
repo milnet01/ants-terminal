@@ -1,11 +1,12 @@
 // Feature test: Command Palette ghost-text completion (0.7.42).
-// See spec.md for the user-facing contract and 10 invariants pinned
+// See spec.md for the user-facing contract and the invariants pinned
 // here. Builds GhostLineEdit + CommandPalette directly under
 // QT_QPA_PLATFORM=offscreen — no MainWindow, no PTY.
 
 #include <QApplication>
 #include <QAction>
 #include <QFile>
+#include <QImage>
 #include <QKeyEvent>
 #include <QSignalSpy>
 #include <QString>
@@ -193,4 +194,32 @@ TEST(CommandPaletteGhostCompletion, ClosedSlotReplacingActionsDoesNotRetarget) {
     EXPECT_EQ(chosenSpy.count(), 1) << "the selected action did not run";
     EXPECT_EQ(otherSpy.count(), 0) << "the action at the reused index ran instead";
     delete palette;
+}
+
+// I11 (ANTS-6625) — the ghost paints only while the caret is at the end of
+// the text; with the caret moved left it would paint over typed characters.
+// Unfocused, the line edit draws no caret, so two renders differ only by
+// the ghost.
+TEST(CommandPaletteGhostCompletion, GhostHiddenUnlessCaretAtEnd) {
+    GhostLineEdit edit;
+    edit.resize(300, 30);
+    edit.setText(QStringLiteral("ind"));
+    const auto render = [&edit] {
+        QImage img(edit.size(), QImage::Format_ARGB32);
+        img.fill(Qt::white);
+        edit.render(&img);
+        return img;
+    };
+
+    edit.setCursorPosition(1);
+    const QImage noGhostMid = render();
+    edit.setGhostSuffix(QStringLiteral("ex Review"));
+    EXPECT_TRUE(render() == noGhostMid)
+        << "the ghost paints with the caret mid-text, over the typed characters";
+
+    // Control: at the end the ghost does paint, so the check above is not vacuous.
+    edit.setCursorPosition(3);
+    const QImage ghostEnd = render();
+    edit.setGhostSuffix(QString());
+    EXPECT_FALSE(render() == ghostEnd) << "the ghost does not paint with the caret at the end";
 }
