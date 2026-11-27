@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **The Roadmap window shows how many items are done, in progress, planned, considered and dropped, beside its title; the counts follow the tab and filters you pick** (ANTS-6960)
+
 - **A new Claude Code session is told which Ants tools its project's recent sessions loaded, as one ready-made line that loads them all in a single call** (ANTS-5736)
 
 - **Help → Report an Issue opens GitHub's issue form with your system details filled in** (ANTS-6911)
@@ -24,6 +26,9 @@ for security-relevant changes.
   Folder so you can check it and attach it yourself.
 
 ### Changed
+
+- **Model switching, Lua plugins, the review engines and the Roadmap window each keep one copy of logic they used to repeat**
+  ANTS-6607, ANTS-6608, ANTS-6609, ANTS-6610.
 
 - **workspace_search, cited_by, co_change_family and the state verbs share one parse-budget check, one refusal builder and one suffix list.** (ANTS-6605)
 

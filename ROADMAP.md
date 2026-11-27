@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6958 -->
+<!-- ants-roadmap-id-high-water: ANTS=6961 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88902,6 +88902,19 @@ finish it and to make it the default rather than the alternative.
 
 ### 🎨 UI polish (user request 2026-09-04)
 
+- ✅ [ANTS-6960] **The Roadmap window shows a total per status beside its title.**
+  Beside "Ants Terminal — Roadmap", one count per status (✅ 🚧 📋 💭 🚫),
+  summed over the items the current tab and filters show (user choice
+  2026-11-27: per tab and per filter). Hot reload: it is drawn by the
+  terminal's own dialog, so it reaches a running terminal on its next
+  relaunch; it holds no state of its own, so it has no stop/start
+  control.
+  Shipped 35a61612; reaches a running terminal on its next relaunch.
+  **Layman:** The Roadmap window's title line shows how many items are done, in progress, planned, considered and dropped.
+  Kind: enhancement.
+  Source: user-request-2026-11-27.
+  Lanes: roadmap-dialog.
+
 ## Signs of success (docs/discovery.md, 2026-09-28)
 
 Items that deliver or measure the signs of success in docs/discovery.md.
@@ -98160,43 +98173,52 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: mcp-transport.
 
-- 📋 [ANTS-6607] **Fold the duplicated logic the 2026-11-06 reviews found in model-switching.**
+- ✅ [ANTS-6607] **Fold the duplicated logic the 2026-11-06 reviews found in model-switching.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1107 `src/modelswitchledger.cpp:298` (Medium)
   - row 1109 `src/modelnearmissledger.cpp:25` (Medium)
   - row 1111 `src/modelswitchledger.cpp:375-382` (Medium)
   - row 1115 `src/modelautoswitch.cpp:317-319` (Low)
   - row 1116 `src/modelrecommender.cpp:272-277` (Low)
+  Shipped 95753c1b: rows 1109, 1111, 1115, 1116 folded. Row 1107 left:
+  the two /model parsers read different inputs; follow-up ANTS-6959.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: model-switching.
 
-- 📋 [ANTS-6608] **Fold the duplicated logic the 2026-11-06 reviews found in plugins-lua.**
+- ✅ [ANTS-6608] **Fold the duplicated logic the 2026-11-06 reviews found in plugins-lua.**
   2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 199 `src/luaengine.cpp:719` (High)
   - row 1147 `src/pluginmanager.cpp:307` (Medium)
+  Shipped 307c4a8f: rows 199 and 1147 folded (pushQString removed;
+  PluginManager::mayReceive).
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: plugins-lua.
 
-- 📋 [ANTS-6609] **Fold the duplicated logic the 2026-11-06 reviews found in review-engines.**
+- ✅ [ANTS-6609] **Fold the duplicated logic the 2026-11-06 reviews found in review-engines.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1006 `src/indiereviewengine.cpp:907` (Medium)
   - row 1009 `src/coldeyesengine.cpp:393` (Medium)
   - row 1019 `src/debtsweepengine.cpp:2275` (Low)
   - row 1021 `src/debtsweepengine.cpp:599` (Low)
+  Shipped f9ae2a20: rows 1006, 1009, 1019 (comment remedy), 1021 folded.
+  Row 1019's other remedy (guidance lines for stale_todo,
+  dead_branch_after_return, dead_suppression, dep_pin_mismatch,
+  version_drift in triagePrompt) changes prompt text and is left.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: review-engines.
 
-- 📋 [ANTS-6610] **Fold the duplicated logic the 2026-11-06 reviews found in roadmap-dialog.**
+- ✅ [ANTS-6610] **Fold the duplicated logic the 2026-11-06 reviews found in roadmap-dialog.**
   3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 341 `src/roadmapdialog.cpp:1848` (Medium)
   - row 696 `src/roadmapdialog.cpp:216` (Medium)
   - row 697 `src/roadmapdialog.cpp:2217` (Medium)
+  Shipped d9f3fb89: row 696 folded; rows 341 and 697 were already fixed.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -98355,6 +98377,32 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: split from ANTS-6590 (rows 730, 738) 2026-11-25.
   Lanes: claude-integration.
   Splits-from: ANTS-6590.
+
+- 📋 [ANTS-6959] **Check whether the model-switch ledger ever sees a user's `/model` override.**
+  parseUserModelCommand (src/modelswitchledger.cpp, used by computeOutcome
+  for userOverrideWithin5) matches only plain `/model X` text in a user
+  turn. Claude Code records /model as <command-name> markup or a
+  system/local_command record (see modelTierFromLocalCommand and the
+  ANTS-6306/6917 notes). If userLineText does not turn that into
+  `/model X`, user overrides and overrideUndidDowngrade are never
+  counted. Check against a real transcript. If confirmed, fold the two
+  parsers (ANTS-6607 row 1107, left undone because a fold changes what
+  the ledger detects).
+  **Layman:** The model-switch history may never notice when you change the model yourself; this checks that.
+  Kind: investigate.
+  Source: ANTS-6607 helper 2026-11-27.
+  Lanes: model-switching.
+
+- 📋 [ANTS-6961] **Debt-sweep's triage prompt gives guidance for every detector whose findings are not auto-fixable.**
+  triagePrompt (src/debtsweepengine.cpp) names detectors by hand and has
+  no guidance line for stale_todo, dead_branch_after_return,
+  dead_suppression, dep_pin_mismatch or version_drift. Row 1019's first
+  remedy (2026-11-06 review); left out of ANTS-6609 because it changes
+  the prompt text.
+  **Layman:** The debt-sweep tool tells the AI how to handle each kind of finding; five kinds have no instructions yet.
+  Kind: fix.
+  Source: ANTS-6609 helper 2026-11-27.
+  Lanes: review-engines.
 
 ### Other bugs (2026-11-06 review)
 
