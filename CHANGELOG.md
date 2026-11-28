@@ -124,6 +124,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **In the AI Assistant, pressing Enter while a reply is arriving no longer cancels it, Insert Cmd stays off for a cut-off reply, and its confirmation says the command will run** (ANTS-6644)
+
+- **The model recommender counts "planning" and "planned" as planning words; `model_switch_stats` counts old records only for the project asked about and settles ties the same way every run** (ANTS-6644)
+
 - **`ants-mcpd` finds the running terminal even when a leftover socket from a crashed one looks newer, and `ants-mcpd --call` gives up after 15 minutes without a reply instead of hanging** (ANTS-6643)
 
 - **Roadmap fields cut to their length limit never end in half an emoji; cleaning leaked markup stays fast on broken input; `roadmap_log` appends take the id prefix from the project's declared id format** (ANTS-6643)
@@ -259,6 +263,8 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **The AI endpoint guard also blocks private and cloud-metadata IPv4 addresses hidden inside 6to4 (`2002::`) IPv6 addresses** (ANTS-6644)
 
 - **A folder whose `.git` file falsely claims to be another project's worktree is no longer treated as that project, so its roadmap writes stay its own** (ANTS-6643)
 

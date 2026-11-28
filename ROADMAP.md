@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7005 -->
+<!-- ants-roadmap-id-high-water: ANTS=7006 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99482,7 +99482,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-transport.
 
-- 📋 [ANTS-6644] **Fix the smaller bugs the 2026-11-06 reviews found in model-switching.**
+- 🚧 [ANTS-6644] **Fix the smaller bugs the 2026-11-06 reviews found in model-switching.**
   9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 255 `aidialog.cpp:349` (Medium)
   - row 256 `aidialog.cpp:104-106` (Medium)
@@ -99493,6 +99493,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 262 `modelrecommender.cpp:39-41` (Low)
   - row 1450 `src/modelnearmissledger.cpp:269-272` (Info)
   - row 1453 `src/modelnearmissledger.cpp:182-191` (Info)
+  2026-11-28 (b7b24b6a): rows 255-257, 261, 262, 1450, 1453 fixed; 260
+  not a bug (comment corrected: dropping the clear would remove the only
+  memory bound); suite 6872/6872. Row 259 waits on the user:
+  llmdispatcher's cancelAll() never calls `done` for an aborted job.
+  Latent: its only caller, ~ReviewDialogBase, disconnects first.
+  Options: (a) a runner that aborts still calls `done` with an error
+  (changes reviewdialogbase.cpp and the dispatcher spec); (b)
+  cancelAll() writes in-flight jobs off and ends the batch (the cap
+  stops counting cancelled jobs still running); (c) leave it until a
+  live cancel caller exists (recommended, then (a)).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99983,6 +99993,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: ANTS-6643 helper, 2026-11-28.
   Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-7006] **LlmClient::consumeLines drains a large backlog without a full-buffer remove on every tick.**
+  Found by the ANTS-6644 helper: draining a backlog near the 10 MiB cap
+  runs `remove(0, consumed)` over the whole buffer every 256-line tick
+  (src/llmclient.cpp), so the cost grows with the square of the backlog.
+  Keep a read offset and compact once per drain.
+  **Layman:** A flood of reply text from an AI server is processed more slowly than it needs to be.
+  Kind: perf.
+  Source: ANTS-6644 helper, 2026-11-28.
+  Lanes: model-switching.
 
 ### Readability (2026-11-06 review)
 
