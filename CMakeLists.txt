@@ -1809,6 +1809,15 @@ if(ANTS_TESTS)
         TIMEOUT 60
         SKIP_RETURN_CODE 77)
 
+    # ANTS-6656 — tools/check-roadmap.sh's --allow ids match literally; see
+    # tests/features/check_roadmap_allow/spec.md.
+    add_test(NAME check_roadmap_allow
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/check_roadmap_allow/test_check_roadmap_allow.sh")
+    set_tests_properties(check_roadmap_allow PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60
+        SKIP_RETURN_CODE 77)
+
     # ANTS-6631 — tools/vendor-grammars.sh keeps the vendored runtime when its
     # download fails; see tests/features/vendor_grammars_fetch/spec.md.
     add_test(NAME vendor_grammars_fetch

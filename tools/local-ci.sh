@@ -312,9 +312,12 @@ else
     # milliseconds. Unmeasurable (no ninja, no build.ninja) counts as unsafe:
     # an unmeasured build is exactly the one that gets killed. stderr is kept —
     # ninja reports a damaged deps file there, and that is a reading too.
+    # A marked tree is skipped below whatever it measures, so it is not
+    # measured: the regen would write a tree that is about to be refused.
     asan_dry=""
     asan_edges=""
-    if [[ -n "$asan_locked" ]] && command -v ninja >/dev/null 2>&1 \
+    if [[ -n "$asan_locked" && ! -f "$asan_marker" ]] \
+            && command -v ninja >/dev/null 2>&1 \
             && [[ -f "$asan_dir/build.ninja" ]]; then
         asan_dry="$(ninja -C "$asan_dir" -n 2>&1 || true)"
         asan_edges="$(grep -cE '^\[[0-9]+/[0-9]+\]' <<<"$asan_dry" || true)"

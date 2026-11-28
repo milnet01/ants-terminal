@@ -44,7 +44,10 @@ Two costs, and the second is the one that bites:
   (`<dir>/.ants-prepush-interrupted`), the leg is skipped regardless of
   edge count, and the message carries a single command that both heals the
   tree and clears the marker. An incremental result over a tree that took a
-  SIGTERM mid-ninja is a false pass, not a cheap one.
+  SIGTERM mid-ninja is a false pass, not a cheap one. A marked tree is not
+  measured either, so a pending CMake regen in it is not run; the case puts
+  a pending regen behind the marker. Red before ANTS-6656, which ran the
+  regen and then skipped.
 - **INV-5** — the skip paths still exit 0 (the push proceeds; CI remains
   the backstop) and the Release leg is unaffected in every case.
 - **INV-6** — a pending CMake regeneration is MEASURED, not skipped. When

@@ -176,6 +176,12 @@ check "message carries a clean-first heal command" \
       "$(grep -q -- '--clean-first' <<<"$out" && echo 0 || echo 1)"
 check "message names the marker so it can be cleared" \
       "$(grep -q '.ants-prepush-interrupted' <<<"$out" && echo 0 || echo 1)"
+# ANTS-6656 — a pending regen in the marked tree: nothing measures it.
+run_hook 3 regen
+check "the regen was NOT run in a marked tree (ANTS-6656)" \
+      "$(grep -q 'build.ninja' <<<"$ninja_calls" && echo 1 || echo 0)"
+check "and the marker skip still fires" \
+      "$(grep -q -- '--clean-first' <<<"$out" && echo 0 || echo 1)"
 rm -f "$repo/build-asan/.ants-prepush-interrupted"
 
 echo "INV-5 — the Release leg is unaffected and the hatch still short-circuits"

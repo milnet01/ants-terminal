@@ -60,20 +60,20 @@ if [ ! -f "$target" ]; then
     exit 2
 fi
 
-# Build a regex of allowed ids so the awk pass can skip them. The
-# CSV may be empty (caller passed --allow "").
-allow_regex=""
-if [ -n "$allow_csv" ]; then
-    # Escape any regex metachars in the ids; in practice they're
-    # bare PROJ-NNNN tokens but we don't want a stray dot to bite.
-    allow_regex=$(printf '%s' "$allow_csv" | sed 's/[]\.[^$*]/\\&/g; s/,/|/g')
-fi
+# The allowed ids are compared as whole strings, not as a regex, so no
+# character in an id can widen the match. They reach awk through the
+# environment: `awk -v` would strip backslashes. The CSV may be empty
+# (caller passed --allow "").
 
 # Extract bullet-position ids (the leading `- <status-emoji> [ID]`
 # pattern matches both ants-v1 bullets and the synthetic GFM
 # adapter's emitted bullets). Tally and print collisions.
 dupes=$(
-    awk -v allow="$allow_regex" '
+    CHECK_ROADMAP_ALLOW="$allow_csv" awk '
+        BEGIN {
+            n = split(ENVIRON["CHECK_ROADMAP_ALLOW"], ids, ",")
+            for (i = 1; i <= n; i++) if (ids[i] != "") allowed[ids[i]] = 1
+        }
         # Bullet start: `- ` (any non-space char takes the status
         # role — emoji width is 4 bytes UTF-8 so byte indices vary).
         # Match "[ID]" after the leading "- " token.
@@ -89,7 +89,7 @@ dupes=$(
             for (i = 1; i <= seen; i++) {
                 id = order[i]
                 bare = id; gsub(/^\[|\]$/, "", bare)
-                if (allow != "" && match(bare, "^(" allow ")$")) continue
+                if (bare in allowed) continue
                 printf "%s (%d occurrences)\n", id, count[id]
             }
         }
