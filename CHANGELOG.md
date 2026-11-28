@@ -124,6 +124,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`apply_edits`, `mutation_probe` and `build_target_for` no longer hang on a named pipe or device path, and `file_outline` with a filter and a zero or negative `max_symbols` uses the default budget instead of hanging** (ANTS-6642)
+
+- **`last_audit_summary`'s scope tag no longer depends on `top_n` and never calls a report with a future date fresh; `similar_code` gives no body for a name defined more than once; `read_log` names the debug log in its not-a-file refusal** (ANTS-6642)
+
 - **`amend_headline` refuses a line break and lanes are cleaned, so neither can add lines to ROADMAP.md; a pass-headings append refuses an id that exists** (ANTS-6641)
 
 - **A short roadmap note is no longer skipped because a body line contains it; flipping an item to its current status leaves it untouched; a failed write cannot be applied twice from its plan** (ANTS-6641)

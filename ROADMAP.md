@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7001 -->
+<!-- ants-roadmap-id-high-water: ANTS=7003 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99438,7 +99438,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6642] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-state-workspace.**
+- 🚧 [ANTS-6642] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-state-workspace.**
   15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 123 `remotecontrol_workspace.cpp:3323-3324` (Medium)
   - row 124 `remotecontrol_workspace.cpp:2764` (Medium)
@@ -99455,6 +99455,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1408 `src/remotecontrol_state.cpp:2967` (Info)
   - row 1409 `src/remotecontrol_state.cpp:547` (Info)
   - row 1410 `src/remotecontrol_state.cpp:3804` (Info)
+  2026-11-28 (f75a2804): rows 123, 126/1409, 127, 1400, 1401, 1407 fixed, 1408 doc fix; 1399, 1410 already fixed; 1403 is ANTS-6819; 1404 and 1406 moved to their own items; suite 6860/6860. Two rows wait on the user:
+  - Row 124 (read_region, read_regions and workspace_search return file text without secret blanking). Options: (a) blank secrets in read_region and read_regions only, under claude.mcp_redact_secrets, with a `redacted` count (recommended; the debug log is already scrubbed when written); (b) also workspace_search; (c) leave them verbatim and document it. Blanking changes what agents see in code they are about to edit.
+  - Row 125 (mutation_probe's test_command runs through `sh -c`). Options: (a) correct the comment so the verb is documented as running a command (recommended: an allowlist does not stop `python -c`, and the client can run commands through Bash already); (b) an argv[0] allowlist.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99941,6 +99944,24 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: ANTS-6641 helper, 2026-11-28.
   Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-7002] **spec_query gate_drift finds the loop log by its heading and reads the loop-log file the section links to.**
+  Split from ANTS-6642 row 1404 (too big). Measured 2026-11-28 by the
+  helper: 167 specs keep loop rows in ../reviews/<id>-loop-log.md, which
+  gate_drift never reads; a heading-only fix alone moved 19 specs to
+  "ungated", a false "never reviewed".
+  **Layman:** A check of which specs were reviewed misses the many specs that keep their review log in a separate file.
+  Kind: fix.
+  Source: ANTS-6642 helper, 2026-11-28.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-7003] **find_caller names where a capped walk stopped and the folders it never reached (walk_stopped_in, walk_unreached), as find_definition does.**
+  Split from ANTS-6642 row 1406 (too big: SymbolQuery::findCaller plus the
+  handler and schema).
+  **Layman:** A search for who calls a function says where it stopped looking when it hit its limit.
+  Kind: enhancement.
+  Source: ANTS-6642 helper, 2026-11-28.
+  Lanes: code-index-search.
 
 ### Readability (2026-11-06 review)
 
