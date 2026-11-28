@@ -99329,7 +99329,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-review-verbs.
 
-- 📋 [ANTS-6640] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-batch.**
+- 🚧 [ANTS-6640] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-batch.**
   13 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 112 `remotecontrol_roadmap_log_batch.cpp:1316-1317` (Medium)
   - row 113 `remotecontrol_roadmap_migrate.cpp:180` (Medium)
@@ -99344,6 +99344,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1395 `src/remotecontrol_roadmap_log_batch.cpp:1712-1717` (Info)
   - row 1396 `src/remotecontrol_roadmap_log_batch.cpp:2138-2150` (Info)
   - row 1397 `src/remotecontrol_roadmap_log_batch.cpp:1576-1584` (Info)
+  2026-11-28 (26babe21): rows 112, 113, 115, 116, 119, 1393-1396 fixed; 1392, 1397 already fixed; suite 6837/6837. Two rows wait on the user:
+  - Row 114 (a backslash before `|` in a bundle_row cell): the writer, the store render (roadmaprender.cpp escapes only `|`) and the migrate parser (roadmapmigrate.cpp reads only `\|`) must change together, or migration doubles every backslash. Options: (a) one shared escape-and-parse rule for all three (recommended); (b) leave it, since such cells are rare.
+  - Row 118 (`id_hint` has no upper limit; a hint near INT64_MAX overflows `++nextId` and raises the store's high-water). Single `op:"append"` has the same gap. Options: (a) refuse a hint more than 10^6 above the high-water on both append and append_batch (recommended; a new refusal on input that works today); (b) leave it.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

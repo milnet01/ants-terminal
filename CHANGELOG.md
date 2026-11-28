@@ -124,6 +124,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_log op:"create_section"` works on a store-served project that has no items yet, and its replies and `bundle_row`'s name their `op`** (ANTS-6640)
+
+- **`bundle_row` sorts correctly on the last column of a table whose rows have no closing `|`; `append_batch` warns about evidence only on bullets it filed; `repair_trailers` reports its history note on every real run** (ANTS-6640)
+
+- **`backfill_dates` reads only archive files in the roadmap archive folder, so an example bullet in a README there no longer dates an item** (ANTS-6640)
+
 - **`build_status`, `test_results` and `workflow_state` refuse a fractional or out-of-range number instead of storing 0; their refusals scrub the caller text they echo** (ANTS-6639)
 
 - **`indie_review_partition` names a `partition.json` override as its source, `indie_review_dispatch` accepts the computed lanes it reports, and `cold_eyes_brief` says when it ignored `doc_paths`** (ANTS-6639)
