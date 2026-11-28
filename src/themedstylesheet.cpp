@@ -37,6 +37,10 @@ QString buildAppStylesheet(const Theme &theme) {
     // QMessageBox/QInputDialog/etc.) as long as they were created with the
     // main window as their parent. Untagged QDialog must therefore stay
     // anchor-selected here and not rely on dialog-local setStyleSheet().
+    //
+    // Placeholders, filled by the .arg() call at the end in this order:
+    //   %1 bgPrimary    %2 bgSecondary    %3 textPrimary    %4 border
+    //   %5 accent       %6 textSecondary  %7 menuBarHighlightText(theme)
     return QString(
         "QMainWindow { background-color: %1; }"
         // The QMenuBar rules below are repeated in buildMenuBarStylesheet,
