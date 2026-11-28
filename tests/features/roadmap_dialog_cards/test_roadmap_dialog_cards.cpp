@@ -898,6 +898,14 @@ static int runMain(int argc, char **argv) {
         if (!RD::isValidAnchorTarget(QStringLiteral(
                 "ants-mcp-improvements-from-running-audit-2026-05-14")))
             fail("AnchorTarget", "valid long slug rejected");
+        // ANTS-6647 — slugifyHeading keeps letters of any script, so a
+        // non-ASCII section's own slug must pass or it can never open.
+        for (const char *heading : {"Café notes", "Ünïcode 2026", "日本語"}) {
+            const QString slug =
+                RoadmapIndex::slugifyHeading(QString::fromUtf8(heading));
+            if (!RD::isValidAnchorTarget(slug))
+                fail("AnchorTarget", "non-ASCII section slug rejected");
+        }
         // Hostile / malformed targets must be rejected.
         if (RD::isValidAnchorTarget(QStringLiteral("' OR 1=1 --")))
             fail("AnchorTarget", "SQL-ish injection accepted");

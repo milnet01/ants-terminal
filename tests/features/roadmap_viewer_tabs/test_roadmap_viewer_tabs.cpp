@@ -188,6 +188,33 @@ static int runMain() {
             fail("INV-11", "id:1042 should drop the [ANTS-9999] bullet");
     }
 
+    // INV-11b (ANTS-6647): leading zeros are ignored on both sides, and the
+    // `S` synthesis namespace is reachable, so padded ids below 1000 can be
+    // found. `id:512` must still not reach `[ANTS-1512]`.
+    {
+        const QString doc = QStringLiteral(
+            "## Section\n"
+            "- 📋 [ANTS-0512] **Padded item.** body.\n"
+            "- 📋 [ANTS-1512] **Longer item.** body.\n"
+            "- 📋 [DEMO-S0001] **Synthesis item.** body.\n");
+        const unsigned all = RoadmapDialog::filterFor(Preset::Full);
+        auto search = [&](const char *predicate) {
+            return ants_test::cardsAllOpen(
+                doc, all, {}, QStringLiteral("default"),
+                SortOrder::Document, QString::fromUtf8(predicate));
+        };
+        for (const char *p : {"id:0512", "id:512"}) {
+            const QString hit = search(p);
+            if (!qcontains(hit, "Padded item"))
+                fail("INV-11b", "a padded id should match [ANTS-0512]");
+            if (qcontains(hit, "Longer item"))
+                fail("INV-11b", "a 512 search must not match [ANTS-1512]");
+        }
+        const QString syn = search("id:S0001");
+        if (!qcontains(syn, "Synthesis item") || qcontains(syn, "Padded item"))
+            fail("INV-11b", "id:S0001 should match [DEMO-S0001] alone");
+    }
+
     // INV-12: Dialog default size ≥ 1100x720; geometry persistence wired.
     // Per debt-sweep finding 2.2: parse the resize() literal and
     // assert numerically rather than matching a single magic-number

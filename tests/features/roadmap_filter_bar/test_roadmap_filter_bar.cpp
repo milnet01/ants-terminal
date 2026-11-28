@@ -14,12 +14,15 @@
 #include "../../_support/xdg_guard.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QPushButton>
 #include <QString>
 #include <QTabBar>
 #include <QTemporaryDir>
@@ -214,6 +217,63 @@ TEST(RoadmapFilterBar, ControlsAreKeyboardReachable) {
     EXPECT_NE(btn(dlg, "roadmap-filter-kind-button")->menu(), nullptr);
     EXPECT_EQ(btn(dlg, "roadmap-filter-reset-button")->menu(), nullptr)
         << "reset is an action, not a popup";
+}
+
+// ANTS-6647 — the checkboxes live in popup menus, which are other windows, so
+// Tab walks the buttons that stand in for them. The next widget Tab reaches
+// after each control is the next one along the row, in reading order.
+TEST(RoadmapFilterBar, TabWalksTheFilterRowInReadingOrder) {
+    Harness h;
+    Config cfg;
+    RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+
+    const auto nextTabStop = [](QWidget *from) -> QWidget * {
+        for (QWidget *w = from->nextInFocusChain(); w && w != from;
+             w = w->nextInFocusChain())
+            if (w->focusPolicy() & Qt::TabFocus) return w;
+        return nullptr;
+    };
+    const QList<QWidget *> order = {
+        dlg.findChild<QLineEdit *>(QStringLiteral("roadmap-search-box")),
+        dlg.findChild<QComboBox *>(QStringLiteral("roadmap-density-combo")),
+        btn(dlg, "roadmap-toc-toggle-button"),
+        btn(dlg, "roadmap-filter-status-button"),
+        btn(dlg, "roadmap-filter-kind-button"),
+        btn(dlg, "roadmap-filter-reset-button"),
+        dlg.findChild<QListWidget *>(QStringLiteral("roadmap-toc")),
+    };
+    for (QWidget *w : order) ASSERT_NE(w, nullptr);
+    for (int i = 1; i < order.size(); ++i)
+        EXPECT_EQ(nextTabStop(order[i - 1]), order[i])
+            << "Tab from " << order[i - 1]->objectName().toStdString()
+            << " should reach " << order[i]->objectName().toStdString();
+}
+
+// ANTS-6647 — Reset View asks for a second click within three seconds. A
+// timeout left from an earlier arm must not disarm a later one, or the
+// confirming click is taken as a first click.
+TEST(RoadmapFilterBar, ReArmedResetViewStaysArmedForItsOwnWindow) {
+    Harness h;
+    Config cfg;
+    RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+    auto *reset = dlg.findChild<QPushButton *>(QStringLiteral("roadmap-reset-button"));
+    ASSERT_NE(reset, nullptr);
+    const auto pump = [](int ms) {
+        QElapsedTimer t;
+        t.start();
+        while (t.elapsed() < ms) QCoreApplication::processEvents();
+    };
+    const QString atRest = reset->text();
+
+    reset->click();                       // arm at t = 0
+    ASSERT_NE(reset->text(), atRest) << "the first click must arm";
+    pump(1500);
+    reset->click();                       // confirm
+    ASSERT_EQ(reset->text(), atRest) << "the second click must confirm";
+    reset->click();                       // arm again at t = 1.5 s
+    pump(1900);                           // t = 3.4 s: the first arm's 3 s is past
+    EXPECT_NE(reset->text(), atRest)
+        << "the first arm's timeout disarmed the second arm early";
 }
 
 namespace {

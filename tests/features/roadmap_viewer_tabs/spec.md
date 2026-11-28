@@ -61,6 +61,9 @@ existing parser / renderer (no parser change — pure presentation layer):
 - **INV-11** Search predicate `"id:1042"` against a doc with two
   bullets — one labelled `[ANTS-1042]` (different headline), one
   not — keeps only the `[ANTS-1042]` bullet.
+- **INV-11b** Leading zeros are ignored on both sides: `"id:0512"` and
+  `"id:512"` both keep `[ANTS-0512]` and drop `[ANTS-1512]`.
+  `"id:S0001"` keeps `[DEMO-S0001]` alone. *(ANTS-6647)*
 - **INV-12** Dialog default size is at least 1100×720 (asserted
   numerically against the parsed `resize(W, H)` literal — not via
   string-match, so a future polish bump can't silently break the

@@ -506,18 +506,24 @@ QString currentWorkTint() {
         .arg(c.red()).arg(c.green()).arg(c.blue());
 }
 
-// Extract the four-digit numeric suffix of an `[ANTS-NNNN]` token from
-// `predicate` if it has the form `id:NNNN` (case-insensitive on the
-// `id:` prefix). Returns -1 if not an id-shorthand predicate.
-int parseIdShorthand(const QString &predicate) {
-    if (predicate.size() < 4) return -1;
+// If `predicate` has the form `id:NNNN` or `id:SNNNN` (case-insensitive),
+// return a pattern matching the `-NNNN]` tail of an `[<prefix>-NNNN]` token,
+// any leading zeros on either side ignored, so `id:512` and `id:0512` both
+// find `[ANTS-0512]`. Returns an empty string otherwise.
+QString idShorthandPattern(const QString &predicate) {
     if (!predicate.startsWith(QStringLiteral("id:"), Qt::CaseInsensitive))
-        return -1;
-    const QStringView digits = QStringView{predicate}.mid(3).trimmed();
-    if (digits.isEmpty()) return -1;
-    bool ok = false;
-    const int n = digits.toString().toInt(&ok);
-    return ok ? n : -1;
+        return QString();
+    QStringView digits = QStringView{predicate}.mid(3).trimmed();
+    const bool synthesis = digits.startsWith(u'S', Qt::CaseInsensitive);
+    if (synthesis) digits = digits.mid(1);
+    if (digits.isEmpty()) return QString();
+    for (const QChar ch : digits)
+        if (ch < u'0' || ch > u'9') return QString();
+    while (digits.size() > 1 && digits.front() == u'0') digits = digits.mid(1);
+    // The leading '-' and the closing bracket anchor it, so `-42]` won't
+    // match `-142]` or `-420]`.
+    return QStringLiteral("-") + (synthesis ? QStringLiteral("S") : QString())
+         + QStringLiteral("0*") + digits.toString() + QStringLiteral("\\]");
 }
 
 }  // namespace
@@ -921,16 +927,13 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         (sortOrder == SortOrder::DescendingChronological)
             ? reverseTopLevelSections(markdownText)
             : markdownText;
-    const int idShorthand = parseIdShorthand(searchPredicate);
-    const QString idMarker =
-        idShorthand >= 0
-            // ANTS-1660 — match `[<prefix>-NNNN]` for any prefix via the
-            // `-NNNN]` suffix (the leading '-' + close bracket anchor it so
-            // `-42]` won't match `-142]`/`-420]`). ANTS-NNNN still matches.
-            ? QStringLiteral("-%1]").arg(idShorthand)
-            : QString();
+    // ANTS-1660 — match `[<prefix>-NNNN]` for any prefix via the `-NNNN]`
+    // suffix.
+    const QString idPattern = idShorthandPattern(searchPredicate);
+    const bool idSearch = !idPattern.isEmpty();
+    const QRegularExpression idMarker(idPattern);
     const QString plainSearch =
-        (idShorthand >= 0) ? QString() : searchPredicate.trimmed();
+        idSearch ? QString() : searchPredicate.trimmed();
 
     const Theme &th = Themes::byName(themeName);
     const QString currentColor =
@@ -1008,7 +1011,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         }
 
         // Search predicate
-        if (!idMarker.isEmpty()) {
+        if (idSearch) {
             if (!rec.body.contains(idMarker)) return false;
         }
         if (!plainSearch.isEmpty()) {
@@ -1346,7 +1349,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             !rec.headline.contains(plainSearch, Qt::CaseInsensitive) &&
             !rec.layman.contains(plainSearch, Qt::CaseInsensitive);
         const bool idJumpToThisCard =
-            !idMarker.isEmpty() && rec.body.contains(idMarker);
+            idSearch && rec.body.contains(idMarker);
         const bool expanded = opts.expandedItems.contains(rec.id)
                               || predicateOnlyInBody
                               || idJumpToThisCard;
@@ -2404,16 +2407,23 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // modals.
     auto *resetBtn = new QPushButton(tr("Reset View"), this);
     resetBtn->setObjectName(QStringLiteral("roadmap-reset-button"));
-    connect(resetBtn, &QPushButton::clicked, this, [this, resetBtn]() {
+    // One timer, restarted on each arm and stopped on confirm, so the
+    // timeout of an earlier arm cannot disarm a later one.
+    auto *disarmTimer = new QTimer(resetBtn);
+    disarmTimer->setSingleShot(true);
+    disarmTimer->setInterval(3000);
+    connect(disarmTimer, &QTimer::timeout, resetBtn, [resetBtn]() {
+        resetBtn->setText(tr("Reset View"));
+    });
+    connect(resetBtn, &QPushButton::clicked, this, [this, resetBtn, disarmTimer]() {
         // First click: warn. Second click: do it.
         const QString armed = tr("Reset View (click again to confirm)");
         if (resetBtn->text() != armed) {
             resetBtn->setText(armed);
-            QTimer::singleShot(3000, resetBtn, [resetBtn]() {
-                resetBtn->setText(tr("Reset View"));
-            });
+            disarmTimer->start();
             return;
         }
+        disarmTimer->stop();
         resetBtn->setText(tr("Reset View"));
         m_expandedItems.clear();
         m_expandedSections.clear();
@@ -2436,19 +2446,17 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // ANTS-1350 (lane-6 L-1) — explicit, deterministic keyboard tab order.
     // Without this the order is creation-order-incidental and shuffles silently
     // whenever a widget is inserted. Chain the focusable controls in reading
-    // order; the Kind checkboxes follow the file-scope kKinds table so their
-    // order is stable (not QHash-iteration order). Buttons come last.
+    // order. The status and Kind checkboxes live in popup menus, which are
+    // other windows that setTabOrder cannot reach, so their buttons stand in
+    // for them. Buttons come last.
     {
         QList<QWidget *> tabChain;
         if (m_tabs)             tabChain << m_tabs.data();
         if (m_searchBox)        tabChain << m_searchBox.data();
-        for (QCheckBox *cb : statusBoxes())
-            if (cb) tabChain << cb;
         if (m_densityCombo)     tabChain << m_densityCombo.data();
-        for (const KindEntry &k : kKinds) {
-            if (QCheckBox *cb = m_kindCheckboxes.value(QString::fromLatin1(k.value)))
-                tabChain << cb;
-        }
+        for (QToolButton *b : {m_tocToggleBtn.data(), m_statusFilterBtn.data(),
+                               m_kindFilterBtn.data(), m_resetFiltersBtn.data()})
+            if (b) tabChain << b;
         if (m_toc)    tabChain << m_toc.data();
         if (m_viewer) tabChain << m_viewer.data();
         tabChain << refreshBtn << resetBtn << closeBtn;
@@ -2908,17 +2916,14 @@ void RoadmapDialog::showViewerContextMenu(const QPoint &pos) {
 bool RoadmapDialog::isValidAnchorTarget(const QString &target) {
     // ANTS-1276 — accept only the shape the dialog's own hrefs emit: a
     // roadmap item ID (e.g. ANTS-1145, MAME_CURATOR-7) or a section
-    // slug (e.g. performance-2), both drawn from [A-Za-z0-9_-]. Bound
-    // the length so a pathological-but-charset-clean target can't bloat
-    // the persisted config either.
+    // slug (e.g. performance-2): letters, digits, `-` and `_`. Letters and
+    // digits are any script's, as RoadmapIndex::slugifyHeading keeps them,
+    // so a section headed `## Café` opens. Bound the length so a
+    // pathological-but-charset-clean target can't bloat the persisted
+    // config either.
     if (target.isEmpty() || target.size() > 200) return false;
     for (const QChar ch : target) {
-        const char16_t u = ch.unicode();
-        const bool ok = (u >= u'A' && u <= u'Z')
-                     || (u >= u'a' && u <= u'z')
-                     || (u >= u'0' && u <= u'9')
-                     || u == u'-' || u == u'_';
-        if (!ok) return false;
+        if (!ch.isLetterOrNumber() && ch != u'-' && ch != u'_') return false;
     }
     return true;
 }
@@ -2962,7 +2967,7 @@ void RoadmapDialog::handleAnchorClicked(const QUrl &link) {
     // ANTS-1276 — validate the target before it lands in the
     // expanded-state sets, which serialise verbatim to Config on disk.
     // The hrefs this dialog renders only ever carry a roadmap item ID
-    // or a section slug, both drawn from [A-Za-z0-9_-]. A hostile
+    // or a section slug, both made of letters, digits, `-` and `_`. A hostile
     // ROADMAP.md shipping `ants://expand/' OR 1=1 --` (htmlEscape leaves
     // `'` alone) would otherwise persist arbitrary attacker strings
     // into the user's config. Reject anything outside that charset or

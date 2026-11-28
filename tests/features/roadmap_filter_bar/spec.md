@@ -33,6 +33,8 @@ chrome change rather than a rewrite, and the first row below is what proves it.
 | `FiltersAreRememberedPerProject` | Reopening the dialog on a roadmap, with a fresh `Config` as after a relaunch, restores that project's last tab and the tab's Kind filter; another project's roadmap opens at its own defaults. |
 | `OpenSectionsAreRememberedPerProject` | A section opened in one project's roadmap is open when that project is reopened with a fresh `Config`, and a same-named section in another project's roadmap stays closed. The open cards and the per-tab scroll anchors are saved with them, per project (ANTS-5214). |
 | `ControlsAreKeyboardReachable` | The three buttons take strong focus and the two filter buttons carry a menu, so the collapse costs no keyboard access. |
+| `TabWalksTheFilterRowInReadingOrder` | Tab goes search box → density combo → Contents → Status → Kind → Reset filters → contents pane. The checkboxes sit in popup menus, other windows that a tab order cannot reach, so their buttons take their places in it (ANTS-6647). |
+| `ReArmedResetViewStaysArmedForItsOwnWindow` | Reset View armed, confirmed and armed again is still armed after the first arm's three seconds, so a timeout left from an earlier arm cannot turn the confirming click into a first click (ANTS-6647). |
 
 ## What is NOT locked
 

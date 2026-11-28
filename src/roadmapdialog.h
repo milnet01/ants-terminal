@@ -96,7 +96,7 @@ public:
     // ANTS-1276 — anchor-target validator (exposed static so the
     // feature test can exercise it without a dialog instance). The
     // expanded-state sets persisted to Config only ever hold a roadmap
-    // item ID or a section slug; reject anything outside [A-Za-z0-9_-]
+    // item ID or a section slug; reject anything but letters, digits, - and _
     // or implausibly long so a hostile ROADMAP.md anchor can't inject
     // arbitrary strings into the user's config.
     static bool isValidAnchorTarget(const QString &target);
