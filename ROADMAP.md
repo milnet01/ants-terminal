@@ -98939,7 +98939,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: changelog-feedback.
 
-- 🚧 [ANTS-6625] **Fix the smaller bugs the 2026-11-06 reviews found in chrome-widgets.**
+- ✅ [ANTS-6625] **Fix the smaller bugs the 2026-11-06 reviews found in chrome-widgets.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 284 `titlebar.cpp:101` (Medium)
   - row 285 `coloredtabbar.cpp:319` (Medium)
@@ -98961,6 +98961,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-27: row 1314's comment fix is in
   /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/DEC-pin-tooltip.diff,
   not yet applied; it also closes ANTS-5840 row 569.
+  2026-11-28 (bacc6b29): row 1314 shipped: the title-bar comments say no
+  tooltip shows the full title. Every row is closed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99081,7 +99083,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: config-session-project.
 
-- 🚧 [ANTS-6630] **Fix the smaller bugs the 2026-11-06 reviews found in dev-python-ci-packaging.**
+- ✅ [ANTS-6630] **Fix the smaller bugs the 2026-11-06 reviews found in dev-python-ci-packaging.**
   7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 455 `release-audit.yml:145-152` (Medium)
   - row 456 `release.yml:172-176` (Medium)
@@ -99101,6 +99103,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/DEC-pin-tooltip.diff
   (linuxdeploy 1-alpha-20251107-1, plugin-qt 1-alpha-20250213-1,
   sha256-checked; dependency_pins INV-9), not yet applied.
+  2026-11-28 (bacc6b29): row 456 shipped: linuxdeploy and its Qt plugin
+  are pinned to tagged releases and sha256-checked (dependency_pins
+  INV-9). Every row is closed. The plugin pin is older than the
+  continuous build used before; the next release run checks it end to
+  end.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -111776,7 +111783,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: chrome-widgets.
 
-- 📋 [ANTS-5840] **src/titlebar.h:44: the comment promises the full title is readable in the tooltip.**
+- ✅ [ANTS-5840] **src/titlebar.h:44: the comment promises the full title is readable in the tooltip.**
   Lead L05-C4 from the readability review of 2026-10-22, lane chrome-widgets.
   Location: src/titlebar.h:44
   the comment promises the full title is readable in the tooltip. But `m_titleLabel` has `WA_TransparentForMouseEvents` (`titlebar.cpp:38`), so tooltip events probably never reach it. Searched: none; not run.
@@ -111785,6 +111792,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   readability fixes land (user, 2026-10-22).
   The 2026-11-06 reviews also found this: row 569 `src/titlebar.h:44`.
   Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-28 (bacc6b29): confirmed: the label ignores the mouse, so the
+  tooltip never showed. Per the user's 2026-11-27 decision on ANTS-6625
+  row 1314, no tooltip; the comments now say so (also row 569).
   **Layman:** A possible bug in the tab bar, side panels and other window parts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

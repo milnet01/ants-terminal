@@ -222,6 +222,8 @@ for security-relevant changes.
 
 ### Security
 
+- **The release build takes linuxdeploy and its Qt plugin from fixed, tagged releases and checks each download's sha256 before running it** (ANTS-6630)
+
 - **`get_session_info` replies are framed as data, like every other verb that returns content from outside the server** (ANTS-6626)
 
 - **`read_log` leaves out the debug log's keystroke (`input`) and `pty` lines, which can hold typed passwords, unless `include_input_pty` is true; the count comes back as `input_pty_omitted`** (ANTS-6632)
