@@ -170,11 +170,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     QStringList skippedIds;
     QVector<RlBodyWrite> bodyPlan;
     int stripSkipped = 0;
+    int runsStripped = 0;      // trailing-run strips planned into bodyPlan
     int repeatsStripped = 0;   // ANTS-4543 — the subset of bodyPlan that is repeats
     QStringList stripSkippedIds;
     QVector<qint64> clearPlan;   // ANTS-4595
     QStringList clearedIds;
-    int placeholderLines = 0, placeholderBodies = 0;
+    int placeholderLines = 0;
 
     for (auto it = items->constBegin(); it != items->constEnd(); ++it) {
         const qint64 pk = it.key();
@@ -194,7 +195,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
             clearedIds.append(w.id);
             if (removed > 0) {
                 placeholderLines += removed;
-                ++placeholderBodies;
                 bodyPlan.push_back({pk, w.body, *cleared});
                 // The strip pass below judges the body as stored, and this
                 // write already replaces it.
@@ -264,6 +264,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
                 stripSkippedIds.append(w.id);
             } else if (stripped) {
                 bodyPlan.push_back({pk, w.body, *stripped});
+                ++runsStripped;
             } else if (!skippedHere && plan.size() == planBefore) {
                 // ANTS-4543 — a repeated mid-body declaration, which no
                 // trailing run covers. Judged on the same terms.
@@ -350,8 +351,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     env[QStringLiteral("chars_recovered")]  = double(charsRecovered);
     env[QStringLiteral("skipped")]          = skipped;
     if (stripRuns) {
-        env[QStringLiteral("runs_stripped")] =
-            int(bodyPlan.size()) - repeatsStripped - placeholderBodies;
+        env[QStringLiteral("runs_stripped")] = runsStripped;
         env[QStringLiteral("repeats_stripped")] = repeatsStripped;   // ANTS-4543
         env[QStringLiteral("strip_skipped")] = stripSkipped;
         // A far higher cap than skipped_ids': every id here is an item somebody

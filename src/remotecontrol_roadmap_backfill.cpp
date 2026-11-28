@@ -126,6 +126,8 @@ QString rlPassIdOf(const QString &line) {
 // shipped (done / shipped / completed, or ✅).
 bool rlPassStatusIsDone(const QString &line) {
     if (!RoadmapParse::passStatusLinePattern().match(line).hasMatch()) return false;
+    // The block parser reads a Status line only under a pass heading, so a
+    // placeholder one is put first; its id is never read.
     const auto rec = RoadmapParse::parsePassHeadingBlock(
         {QStringLiteral("#### Pass 0.0"), line});
     return rec && rec->status == QString::fromUtf8(RoadmapParse::kEmojiDone);
