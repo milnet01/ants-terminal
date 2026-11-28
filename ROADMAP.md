@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6993 -->
+<!-- ants-roadmap-id-high-water: ANTS=6996 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94170,6 +94170,35 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: self-found-2026-11-18.
   Lanes: git_state.
+
+### Ants MCP feedback from CC sessions — 2026-11-28 triage
+
+- 📋 [ANTS-6994] **source_scrapes names a Python reader that opens a file through os.path.join(ROOT, "<file>") and checks literals with `in src`.**
+  LottoTracker: with skip_walks:true, tools/verify_paths.py was not listed
+  as a reader of paths.py; it does open(os.path.join(ROOT, "paths.py")).read()
+  and checks a literal with `in src`. Treat that as a read and report its
+  `in src` literals as anchors.
+  **Layman:** A tool that lists which tests read a file missed one written in a common Python style.
+  Kind: fix.
+  Source: LottoTracker feedback 2026-11-28.
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6995] **roadmap_log create_section accepts before_section, as move_section does.**
+  LottoTracker: placing a new section ahead of the first one needs
+  create_section then move_section before_section:"core".
+  **Layman:** A new roadmap section can be placed first in one step instead of two.
+  Kind: enhancement.
+  Source: LottoTracker feedback 2026-11-28.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6996] **roadmap_query body_match can return context lines around each match.**
+  LottoTracker: body_match:"(y)" returns only the line naming (y), not the
+  later lines recording whether it was resolved. Add an optional
+  context count (or return each paragraph that mentions the match).
+  **Layman:** A roadmap search can show the lines around each hit, so checking one list item needs one query, not two.
+  Kind: enhancement.
+  Source: LottoTracker feedback 2026-11-28.
+  Lanes: mcp-roadmap-query-log.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
