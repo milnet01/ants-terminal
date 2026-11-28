@@ -10,6 +10,7 @@
 #include <QCryptographicHash>
 
 #include <algorithm>
+#include <cctype>
 #include <clocale>
 #include <cwchar>
 #include <cstdio>
@@ -22,7 +23,7 @@
 // ANTS-5076 — the opt-in SGR log is buffered (no flush per line, it ran once
 // per underlined character) and stops growing past kDebugSgrLogCapBytes.
 static constexpr long kDebugSgrLogCapBytes = 32L * 1024 * 1024;
-#define DBGLOG(fmt, ...) do { if (m_debugLog && m_debugFile && ftell(m_debugFile) < kDebugSgrLogCapBytes) { fprintf(m_debugFile, fmt "\n" __VA_OPT__(,) __VA_ARGS__); } } while(0)
+#define DBGLOG(fmt, ...) do { if (m_debugLog && m_debugFile && ftell(m_debugFile.get()) < kDebugSgrLogCapBytes) { fprintf(m_debugFile.get(), fmt "\n" __VA_OPT__(,) __VA_ARGS__); } } while(0)
 
 void TerminalGrid::setDebugLog(bool enabled) {
     m_debugLog = enabled;
@@ -31,12 +32,13 @@ void TerminalGrid::setDebugLog(bool enabled) {
                       + "/ants-terminal";
         QDir().mkpath(dir);
         QString path = dir + "/debug_sgr.log";
-        m_debugFile = fopen(path.toUtf8().constData(), "w");
-        if (m_debugFile)
-            fprintf(m_debugFile, "=== Ants Terminal SGR debug log ===\n");
+        if (FILE *f = fopen(path.toUtf8().constData(), "w")) {
+            // The last grid holding the handle closes it.
+            m_debugFile.reset(f, [](FILE *p) { fclose(p); });
+            fprintf(f, "=== Ants Terminal SGR debug log ===\n");
+        }
     } else if (!enabled && m_debugFile) {
-        fclose(m_debugFile);
-        m_debugFile = nullptr;
+        m_debugFile.reset();
     }
 }
 
@@ -389,7 +391,7 @@ int TerminalGrid::promptRegionIndexById(quint64 id) const {
 std::pair<int, int> TerminalGrid::promptRegionOutputLines(int index) const {
     const auto &regions = promptRegions();
     const PromptRegion &pr = regions[index];
-    const int first = (pr.outputStartLine > 0) ? pr.outputStartLine : pr.endLine + 1;
+    const int first = (pr.outputStartLine >= 0) ? pr.outputStartLine : pr.endLine + 1;
     const int end = (index + 1 < static_cast<int>(regions.size()))
                         ? regions[index + 1].startLine
                         : scrollbackSize() + rows();
@@ -682,6 +684,23 @@ void TerminalGrid::handleCsi(const VtAction &a) {
         return (idx < static_cast<int>(p.size()) && p[idx] > 0) ? p[idx] : def;
     };
 
+    // A private marker or intermediate makes a different sequence:
+    // `CSI ? Pi;Pa;Pv S` is XTSMGRAPHICS, not SU, and `CSI ? Pm r` / `s`
+    // restore and save private modes. Only the finals that read the marker
+    // themselves take one. `CSI ? J` / `? K` (DECSED/DECSEL) erase as ED/EL
+    // do, since no cell is ever protected here.
+    switch (a.finalChar) {
+    case 'm': case 'p': case 'h': case 'l': case 'c':
+    case 'q': case 'g': case 'n': case 'u':
+        break;
+    case 'J': case 'K':
+        if (!a.intermediate.empty() && a.intermediate != "?") return;
+        break;
+    default:
+        if (!a.intermediate.empty()) return;
+        break;
+    }
+
     switch (a.finalChar) {
     case 'A': moveCursor(-param(0), 0); break;
     case 'B': moveCursor(param(0), 0); break;
@@ -958,8 +977,10 @@ void TerminalGrid::handleCsi(const VtAction &a) {
     case 'n':
         if (a.intermediate.empty()) {
             if (!p.empty() && p[0] == 6 && m_responseCallback) {
-                // CPR: Cursor Position Report
-                std::string r = "\x1B[" + std::to_string(m_cursorRow + 1)
+                // CPR: Cursor Position Report. Under DECOM the row is
+                // relative to the scroll region, as CUP reads it.
+                const int row = m_originMode ? m_cursorRow - m_scrollTop : m_cursorRow;
+                std::string r = "\x1B[" + std::to_string(row + 1)
                               + ";" + std::to_string(m_cursorCol + 1) + "R";
                 sendQueryResponse(r);
             } else if (!p.empty() && p[0] == 5 && m_responseCallback) {
@@ -1090,7 +1111,15 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             const QColor cfgBg     = m_defaultBg;
             const int cfgScrollback = m_maxScrollback;
             const int cfgScrollbackMib = m_maxScrollbackMib;  // ANTS-4534 INV-4
+            // The opt-in SGR debug log, and the pause the widget sets while
+            // the user is scrolled up, belong to the terminal, not the stream.
+            auto debugFile = m_debugFile;
+            const bool debugLog = m_debugLog;
+            const bool insertPaused = m_scrollbackInsertPaused;
             *this = TerminalGrid(m_rows, m_cols);
+            m_debugFile = std::move(debugFile);
+            m_debugLog = debugLog;
+            m_scrollbackInsertPaused = insertPaused;
             m_responseCallback        = std::move(responseCb);
             m_clipboardCallback       = std::move(clipboardCb);
             m_bellCallback            = std::move(bellCb);
@@ -1142,10 +1171,11 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
 
     // ANTS-1663 — a payload that overflowed the parser's 10 MiB accumulator was
     // silently truncated. The byte-exact consumers (OSC 8 hyperlink URI, OSC 52
-    // base64 clipboard) would otherwise act on a corrupt prefix: a half URI or
-    // garbage clipboard bytes. Refuse the directive outright. Other OSC numbers
+    // base64 clipboard, OSC 1337 inline image) would otherwise act on a corrupt
+    // prefix: a half URI, garbage clipboard bytes, or half an image, which the
+    // parse worker already refuses. Refuse the directive outright. Other OSC numbers
     // (title, colour query, progress) degrade gracefully on truncation.
-    if (truncated && (oscNum == "8" || oscNum == "52")) return;
+    if (truncated && (oscNum == "8" || oscNum == "52" || oscNum == "1337")) return;
 
     // OSC 0 or OSC 2 — window title
     if ((oscNum == "0" || oscNum == "2") && semi != std::string::npos) {
@@ -1519,6 +1549,15 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
     // multi-MB body here is either a mistake or an attempt to spam the
     // freedesktop notification daemon. Clamp aggressively before forwarding.
     else if (oscNum == "9" && semi != std::string::npos && m_notifyCallback) {
+        // ConEmu's other subcommands, 1 to 12 then `;` or the end (9;9 is
+        // its cwd report), are not messages. `9;42` still is.
+        const size_t numEnd = payload.find_first_not_of("0123456789", semi + 1);
+        const size_t digits = (numEnd == std::string::npos ? payload.size() : numEnd) - semi - 1;
+        if (digits >= 1 && digits <= 2 &&
+            (numEnd == std::string::npos || payload[numEnd] == ';')) {
+            const int sub = std::stoi(payload.substr(semi + 1, digits));
+            if (sub >= 1 && sub <= 12) return;
+        }
         if (!takeNotifyQuota()) return;
         constexpr int kMaxNotifyBody = 1024;
         QString body = stripC1Controls(QString::fromUtf8(payload.c_str() + semi + 1).left(kMaxNotifyBody));
@@ -1607,6 +1646,10 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
         pos += key.size() + 1;
         auto end = params.find(';', pos);
         std::string val = (end != std::string::npos) ? params.substr(pos, end - pos) : params.substr(pos);
+        // A bare number is cells; `100px`, `50%` and `auto` are not, and
+        // leave the default size.
+        if (val.empty() || val.find_first_not_of("0123456789") != std::string::npos)
+            return -1;
         try { return std::stoi(val); }
         catch (...) { DBGLOG("OSC 1337 param '%s' int-parse failed: '%s'", key.c_str(), val.c_str()); return -1; }
     };
@@ -1995,6 +2038,12 @@ void TerminalGrid::deleteChars(int count) {
     markScreenDirty(m_cursorRow);
     auto &row = screenRow(m_cursorRow);
     count = std::min(count, m_cols - m_cursorCol);
+    // A wide pair cut by either edge of the deleted run loses its other half;
+    // links on the deleted cells go, links to their right move left with
+    // their text.
+    breakWidePairsAround(m_cursorRow, m_cursorCol, m_cursorCol + count);
+    dropHyperlinkSpans(m_cursorRow, m_cursorCol, m_cursorCol + count);
+    m_screenLines[m_cursorRow].hyperlinks.shiftFrom(m_cursorCol + count, -count, m_cols);
     row.erase(row.begin() + m_cursorCol, row.begin() + m_cursorCol + count);
     while (static_cast<int>(row.size()) < m_cols) {
         Cell c;
@@ -2038,6 +2087,10 @@ void TerminalGrid::insertBlanks(int count) {
     blank.codepoint = ' ';
     blank.attrs.fg = m_defaultFg;
     blank.attrs.bg = eraseBg();
+    // Blanks inserted inside a wide pair split it: both halves go. Links to
+    // the right move with their text; one the insert splits goes.
+    breakWidePairsAround(m_cursorRow, m_cursorCol, m_cursorCol);
+    m_screenLines[m_cursorRow].hyperlinks.shiftFrom(m_cursorCol, count, m_cols);
     row.insert(row.begin() + m_cursorCol, count, blank);
     row.resize(m_cols);
     // Shift combining chars — see deleteChars() for rationale.
@@ -2062,6 +2115,12 @@ void TerminalGrid::insertBlanks(int count) {
                 comb.ensure().insert(std::move(nh));
             }
         }
+    }
+    // A wide lead pushed into the last column has lost its continuation.
+    if (row[m_cols - 1].isWideChar) {
+        row[m_cols - 1].codepoint = ' ';
+        row[m_cols - 1].isWideChar = false;
+        comb.erase(m_cols - 1);
     }
 }
 
@@ -2497,12 +2556,19 @@ void TerminalGrid::enterAltScreen(int mode) {
             c.attrs = CellAttrs{};
             c.attrs.fg = m_defaultFg;
             c.attrs.bg = m_defaultBg;
+            c.isWideChar = false;
+            c.isWideCont = false;
         }
+        line.softWrapped = false;
         line.combining.clear();
         line.hyperlinks.clear();
     }
     m_inlineImages.clear();
     m_promptRegions.clear();
+    // Each screen has its own Kitty keyboard stack; the alternate one
+    // starts empty.
+    m_mainKittyKeyFlags = std::exchange(m_kittyKeyFlags, 0);
+    m_mainKittyKeyStack = std::exchange(m_kittyKeyStack, {});
     // Bytes for the just-cleared images are still
     // referenced by m_altInlineImages (saved above) so
     // they remain allocated until alt-screen exit;
@@ -2549,6 +2615,8 @@ void TerminalGrid::exitAltScreen() {
     m_altScreen.clear();
     m_altInlineImages.clear();
     m_altPromptRegions.clear();
+    m_kittyKeyFlags = std::exchange(m_mainKittyKeyFlags, 0);
+    m_kittyKeyStack = std::exchange(m_mainKittyKeyStack, {});
     // Restored m_inlineImages above; recompute so the
     // budget reflects only the images still referenced.
     recomputeImageBudget();
@@ -2975,6 +3043,10 @@ void TerminalGrid::resize(int rows, int cols) {
                 if (c.codepoint != ' ' && c.codepoint != 0) return false;
             return tl.combining.empty();
         };
+        // Blank rows at the bottom give way first, so a shrink does not push
+        // the prompt into scrollback to keep empty rows below it.
+        while (static_cast<int>(reflowed.size()) > rows && isBlankLine(reflowed.back()))
+            reflowed.pop_back();
         // The overflow is moved out front-to-back and erased in one call;
         // erasing the front one line at a time was quadratic in the
         // overflow, which a narrowing resize makes large.
@@ -3220,9 +3292,11 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
         return;
     }
 
-    // Find the 'q' that starts Sixel data
+    // Find the 'q' that starts Sixel data. Only `[0-9;]*q` opens Sixel; any
+    // other DCS with a `q` in it (XTGETTCAP `+q`, say) is not an image.
     size_t qpos = payload.find('q');
     if (qpos == std::string::npos) return;
+    if (payload.find_first_not_of("0123456789;") != qpos) return;
 
     // Parse raster attributes if present
     size_t dataStart = qpos + 1;
@@ -3533,6 +3607,16 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
     int more = 0; // Chunking: 1 = more data coming
     if (params.count('m')) more = safeStoi(params['m']);
 
+    // A reply goes only to a command that named its image (`i=` or `I=`);
+    // `q=1` silences the OK replies and `q=2` the errors too.
+    const int quiet = params.count('q') ? safeStoi(params['q']) : 0;
+    const bool named = params.count('i') || params.count('I');
+    auto reply = [&](const char *status) {
+        const bool ok = std::strcmp(status, "OK") == 0;
+        if (!m_responseCallback || !named || quiet >= (ok ? 1 : 2)) return;
+        sendQueryResponse("\x1B_Gi=" + std::to_string(imageId) + ";" + status + "\x1B\\");
+    };
+
     // Handle chunked transmission
     if (more == 1) {
         if (m_kittyChunkBuffer.empty()) m_kittyChunkId = imageId;
@@ -3572,50 +3656,42 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
 
     // Handle actions
     if (action == 'd') {
-        // Delete
+        // Delete. A lowercase selector removes placements and keeps the
+        // image data; uppercase frees the data as well. `a`/`A` take every
+        // placement, `i`/`I` those of image `i=`. Other selectors are not
+        // handled.
         char deleteType = 'a';
         if (params.count('d')) deleteType = params['d'][0];
-        if (deleteType == 'a') {
+        const char kind = static_cast<char>(std::tolower(static_cast<unsigned char>(deleteType)));
+        const bool freeData = deleteType != kind;
+        if (kind == 'a' || (kind == 'i' && imageId > 0)) {
             // ANTS-1166: Kitty's "delete all" must only remove
             // Kitty-protocol display entries. Wiping m_inlineImages
             // wholesale would let a hostile PTY frame
             // (`\e_Ga=d,d=a;\e\\`) erase Sixel + iTerm2 images
             // cross-protocol — visual-context redaction.
-            m_kittyImages.clear();
-            m_kittyImageOrder.clear();
-            m_inlineImages.erase(
-                std::remove_if(m_inlineImages.begin(), m_inlineImages.end(),
-                               [](const InlineImage &i) {
-                                   return i.origin == InlineImage::Origin::Kitty;
-                               }),
-                m_inlineImages.end());
+            const bool all = kind == 'a';
+            std::erase_if(m_inlineImages, [all, imageId](const InlineImage &i) {
+                return i.origin == InlineImage::Origin::Kitty &&
+                       (all || i.kittyId == imageId);
+            });
+            if (freeData && all) {
+                m_kittyImages.clear();
+                m_kittyImageOrder.clear();
+            } else if (freeData) {
+                m_kittyImages.erase(imageId);
+                std::erase(m_kittyImageOrder, imageId);
+            }
             // Recompute budget rather than reset(); Sixel + iTerm2
             // entries that survived still own their bytes.
             recomputeImageBudget();
-        } else if (deleteType == 'i' && imageId > 0) {
-            auto delIt = m_kittyImages.find(imageId);
-            if (delIt != m_kittyImages.end()) {
-                m_kittyImages.erase(delIt);
-                auto it = std::find(m_kittyImageOrder.begin(), m_kittyImageOrder.end(), imageId);
-                if (it != m_kittyImageOrder.end()) m_kittyImageOrder.erase(it);
-                // A displayed copy may still hold the pixels.
-                recomputeImageBudget();
-            }
         }
-        // Send response
-        if (m_responseCallback) {
-            std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";OK\x1B\\";
-            sendQueryResponse(resp);
-        }
+        reply("OK");
         return;
     }
 
     if (action == 'q') {
-        // Query — respond with OK
-        if (m_responseCallback) {
-            std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";OK\x1B\\";
-            sendQueryResponse(resp);
-        }
+        reply("OK");  // Query
         return;
     }
 
@@ -3684,11 +3760,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
     }
 
     if (image.isNull() && action != 'p') {
-        // Failed to decode — send error response
-        if (m_responseCallback) {
-            std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";ENODATA\x1B\\";
-            sendQueryResponse(resp);
-        }
+        reply("ENODATA");  // failed to decode
         return;
     }
 
@@ -3729,6 +3801,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
             img.cellHeight = displayImg.height();
             img.pixelSized = true;
             img.origin = InlineImage::Origin::Kitty;
+            img.kittyId = imageId;
 
             // Use cols/rows if specified (cell units override pixel
             // sizing). ANTS-1169: clamp to MAX_IMAGE_DIM so a hostile
@@ -3751,9 +3824,5 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         }
     }
 
-    // Send OK response
-    if (m_responseCallback) {
-        std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";OK\x1B\\";
-        sendQueryResponse(resp);
-    }
+    reply("OK");
 }

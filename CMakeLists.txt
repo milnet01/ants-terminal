@@ -2397,6 +2397,8 @@ if(ANTS_TESTS)
                 tests/features/vtparser_csi_ignore/test_csi_ignore.cpp
                 # ANTS-1828/1829 — inline-image budget + iTerm2 base64 hardening.
                 tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp
+                # ANTS-6653 — the smaller terminal-grid fixes from the 2026-11-06 reviews.
+                tests/features/terminalgrid_review_fixes_2026_11_06/test_terminalgrid_review_fixes.cpp
                 # ANTS-1841 — terminalwidget hot-path hygiene (source-scrape).
                 tests/features/terminalwidget_hotpath_perf/test_terminalwidget_hotpath_perf.cpp
                 # ANTS-2024 — theme-change DeferredDelete flush ordering guard.

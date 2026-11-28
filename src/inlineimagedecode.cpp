@@ -35,8 +35,19 @@ QByteArray decodeBase64Strict(std::string_view b64) {
     return res.decoded;
 }
 
+const char *sniffAllowedFormat(const QByteArray &bytes) {
+    if (bytes.startsWith("\x89PNG\r\n\x1a\n")) return "PNG";
+    if (bytes.startsWith("\xFF\xD8\xFF")) return "JPEG";
+    if (bytes.startsWith("GIF87a") || bytes.startsWith("GIF89a")) return "GIF";
+    return nullptr;
+}
+
 QImage decodeBytes(const QByteArray &bytes, const char *format, int maxDim) {
     if (bytes.isEmpty()) return QImage();
+    // Untrusted bytes never reach Qt's format guessing, which would hand them
+    // to every installed image plugin (TIFF, SVG, kimageformats).
+    if (!format) format = sniffAllowedFormat(bytes);
+    if (!format) return QImage();
     // A "compression bomb" can declare 100k x 100k in a header under 1 KB;
     // QImage::loadFromData would allocate for that before any check ran.
     // QImageReader::size() reads the header only.

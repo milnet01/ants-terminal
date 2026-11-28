@@ -52,9 +52,13 @@ using KittyKeys = std::unordered_map<char, std::string>;
 QByteArray decodeBase64Strict(std::string_view b64);
 
 // Peek the declared size with QImageReader, decode only when it is within
-// `maxDim`, and re-check the result. Null on any failure. `format` may be
-// null to let Qt detect it.
+// `maxDim`, and re-check the result. Null on any failure. A null `format`
+// takes PNG, JPEG or GIF from the bytes' signature and refuses anything else.
 QImage decodeBytes(const QByteArray &bytes, const char *format, int maxDim);
+
+// "PNG", "JPEG" or "GIF" when `bytes` opens with that format's signature,
+// else null.
+const char *sniffAllowedFormat(const QByteArray &bytes);
 
 // Split an OSC 1337 `File=` payload into its key block and base64 text.
 // False when it is not an inline (`inline=1`) image.

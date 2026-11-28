@@ -178,6 +178,25 @@ public:
         });
         if (m_spans->empty()) m_spans.reset();
     }
+    // For a character insert or delete at `fromCol`: moves every span that
+    // starts there or later by `delta` columns and drops one the edit
+    // splits. A span pushed off the row's `cols` is dropped, one pushed
+    // partly off is clipped.
+    void shiftFrom(int fromCol, int delta, int cols) {
+        if (!m_spans) return;
+        std::erase_if(*m_spans, [fromCol](const HyperlinkSpan &sp) {
+            return sp.startCol < fromCol && sp.endCol >= fromCol;
+        });
+        for (HyperlinkSpan &sp : *m_spans) {
+            if (sp.startCol < fromCol) continue;
+            sp.startCol += delta;
+            sp.endCol = std::min(sp.endCol + delta, cols - 1);
+        }
+        std::erase_if(*m_spans, [cols](const HyperlinkSpan &sp) {
+            return sp.startCol >= cols || sp.endCol < sp.startCol;
+        });
+        if (m_spans->empty()) m_spans.reset();
+    }
     // Moves the spans out, leaving the list empty.
     Spans take() {
         Spans out = m_spans ? std::move(*m_spans) : Spans{};
@@ -233,6 +252,7 @@ struct InlineImage {
     int cellHeight = 0; // height in cells (or pixels if pixelSized)
     bool pixelSized = false; // true for Sixel/Kitty (dimensions are pixels, not cells)
     Origin origin = Origin::ITerm2;
+    uint32_t kittyId = 0;  // a Kitty placement's image id (`i=`), 0 if none
 };
 
 // Shell integration (OSC 133) prompt region
@@ -843,6 +863,10 @@ private:
     // Kitty keyboard protocol
     int m_kittyKeyFlags = 0;              // Current enhancement flags
     std::vector<int> m_kittyKeyStack;     // Push/pop stack of flag levels
+    // The main screen's flags and stack, held while the alternate screen is
+    // up: the protocol gives each screen its own.
+    int m_mainKittyKeyFlags = 0;
+    std::vector<int> m_mainKittyKeyStack;
 
     // Desktop notification callback (OSC 9/777)
     NotifyCallback m_notifyCallback;
@@ -1098,7 +1122,9 @@ private:
 
     // Debug logging
     bool m_debugLog = false;
-    FILE *m_debugFile = nullptr;
+    // Shared, not owned outright: the grid is copyable, and the last copy
+    // closes the file.
+    std::shared_ptr<FILE> m_debugFile;
 
     // Buffer/resource limits
     static constexpr int MAX_INLINE_IMAGES = 100;
