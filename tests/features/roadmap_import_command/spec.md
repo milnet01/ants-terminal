@@ -32,6 +32,9 @@ so without one no session could find the project.
   store's `UNIQUE` columns refuse it and nothing half-restored remains.
 - **INV-4** — bad arguments exit **2** and create no store: an export file
   that cannot be read, or a root that is not an existing directory.
+- **INV-5** (ANTS-6648) — a project lookup whose query fails exits **2** and
+  names the lookup; it is not read as an absent project, so the import never
+  reaches `rebuildProject()`. *Test:* `Inv5FailedLookupStopsTheImport`.
 
 ## After a restore
 

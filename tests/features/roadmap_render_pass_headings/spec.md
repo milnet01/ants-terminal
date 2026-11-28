@@ -91,6 +91,10 @@ INV-3 and INV-4 are boundary pins and hold in both states.
   reader (`parsePassHeadingBlock`) decides what a line means.
   *Test:* `Inv7AuthorsStatusLineIsTheSlot`.
 
+- **ANTS-6648** — a store read whose project-row lookup FAILS refuses
+  `StoreFailed`; it is not read as the ants-v1 dialect. An absent row still
+  means ants-v1. *Test:* `Ants6648FailedDialectLookupIsAStoreFailure`.
+
 INV-5, INV-6 and INV-7 went red against the pre-fix render and pass after.
 
 The harness deletes the seed file before rendering. Without that, a render that

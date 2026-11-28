@@ -83,3 +83,8 @@ file is in.
   INV-1's fixture plus a `DEMO-0005` bullet, assert the row sits below 5,
   then drop that bullet from the file; each op's new id is `DEMO-0006`.
   *Breaks when:* an op reads the row alone — it then issues `DEMO-0002`.
+- **INV-8** (ANTS-6648) — `RoadmapFoldIn::allocateIds` and `peekIds`
+  refuse (return no ids) when the floor plus the ids asked for passes
+  `INT_MAX`. *Test:* `Ants6648FoldInRefusesAFloorPastIntMax` raises the
+  store's high-water to 3,000,000,000. *Breaks when:* the floor is cast to
+  `int` — the next id is then negative.

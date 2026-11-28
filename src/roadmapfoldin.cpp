@@ -47,8 +47,23 @@ QString counterPathAsGiven(const QString &projectPath) {
     return QDir(projectPath).filePath(QStringLiteral(".roadmap-counter"));
 }
 
+// The roadmap's path relative to the project: the .ants/project.json `roadmap`
+// override where it names a file, as roadmap_log's findRoadmapUnder() reads it,
+// else ROADMAP.md. RoadmapWrite::commitAndRender() requires its caller to
+// resolve the override (roadmapwrite.h), and this is the fold-in's resolution.
+QString roadmapRelPath(const QString &projectPath) {
+    const QString canon = QFileInfo(projectPath).canonicalFilePath();
+    if (!canon.isEmpty()) {
+        if (const auto rm = ProjectSettings::load(canon).roadmap) {
+            if (QFileInfo(QDir(canon).filePath(*rm)).isFile())
+                return QDir::cleanPath(*rm);
+        }
+    }
+    return QStringLiteral("ROADMAP.md");
+}
+
 QString roadmapPath(const QString &projectPath) {
-    return QDir(projectPath).filePath(QStringLiteral("ROADMAP.md"));
+    return QDir(projectPath).filePath(roadmapRelPath(projectPath));
 }
 
 // ANTS-1342: returns true iff resolving counterPath_ (or, if it doesn't
@@ -84,8 +99,8 @@ bool counterStaysInProject(const QString &projectPath,
         canonProject + QStringLiteral("/.roadmap-counter");
 }
 
-// ANTS-1342 sibling: same guard for ROADMAP.md. The file MUST exist
-// (insertBlock is meaningless on a non-existent ROADMAP.md), so the
+// ANTS-1342 sibling: same guard for the roadmap file. The file MUST exist
+// (insertBlock is meaningless on a non-existent roadmap), so the
 // "doesn't exist yet" branch above doesn't apply here.
 bool roadmapStaysInProject(const QString &projectPath,
                            const QString &roadmapPath_) {
@@ -94,7 +109,7 @@ bool roadmapStaysInProject(const QString &projectPath,
     if (canonProject.isEmpty()) return false;
     const QString canon = QFileInfo(roadmapPath_).canonicalFilePath();
     if (canon.isEmpty()) return false;
-    return canon == canonProject + QStringLiteral("/ROADMAP.md");
+    return canon == canonProject + QLatin1Char('/') + roadmapRelPath(projectPath);
 }
 
 // ANTS-5087 — how many times a SYSTEMICALLY failing flock is retried,
@@ -346,7 +361,7 @@ static QString sniffPrefixFromText(const QString &roadmap,
 QString sniffIdPrefix(const QString &projectPath, const QString &fallback) {
     const QString root = QFileInfo(projectPath).canonicalFilePath();
     if (root.isEmpty()) return fallback;
-    QFile f(root + QStringLiteral("/ROADMAP.md"));
+    QFile f(roadmapPath(root));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return fallback;
     return sniffPrefixFromText(QString::fromUtf8(f.readAll()), fallback);
 }
@@ -471,7 +486,7 @@ qint64 corpusHighWater(const QString &projectPath, const QString &prefix,
         if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
         return QString::fromUtf8(f.readAll());
     };
-    const QString roadmap = readFile(root + QStringLiteral("/ROADMAP.md"));
+    const QString roadmap = readFile(roadmapPath(root));
 
     // Resolve the prefix: sniff the dominant bracketed counter-style id
     // (e.g. "[ANTS-3450]" → "ANTS") from ROADMAP.md when the caller didn't
@@ -667,7 +682,14 @@ QList<int> allocateIds(const QString &projectPath, int n, LockWait wait,
         }
     }
 
-    current = static_cast<int>(qMax<qint64>(current, allocationFloor(projectPath)));
+    // ANTS-6648 — the store's floor is 64-bit. One the int ids cannot hold is
+    // refused, not truncated into negative or reissued ids.
+    const qint64 lowest = qMax<qint64>(current, allocationFloor(projectPath));
+    if (lowest > std::numeric_limits<int>::max() - n) {
+        cleanup();
+        return {};
+    }
+    current = static_cast<int>(lowest);
 
     QList<int> ids;
     ids.reserve(n);
@@ -702,7 +724,9 @@ QList<int> peekIds(const QString &projectPath, int n) {
     // refusal so the caller's counter_failed path fires identically.
     if (insp.state != CounterState::Ok &&
         insp.state != CounterState::EmptyOrAbsent) return {};
-    const int base = static_cast<int>(qMax<qint64>(insp.value, allocationFloor(projectPath)));
+    const qint64 lowest = qMax<qint64>(insp.value, allocationFloor(projectPath));
+    if (lowest > std::numeric_limits<int>::max() - n) return {};   // as allocateIds
+    const int base = static_cast<int>(lowest);
     QList<int> ids;
     ids.reserve(n);
     for (int i = 1; i <= n; ++i) ids.append(base + i);
@@ -928,7 +952,14 @@ private:
     // none gets the next. A held id refuses: putItem() would overwrite the row.
     bool writeItems(QString *err) {
         // No prefix row is ordinary: migration writes one only when it allocates.
-        QString prefix = m_store.idPrefixFor(m_projectId, err).value_or(QString());
+        // A FAILED read is not, and refuses rather than sniffing the file.
+        QString prefixErr;
+        const auto stored = m_store.idPrefixFor(m_projectId, &prefixErr);
+        if (!stored && !prefixErr.isEmpty()) {
+            if (err) *err = prefixErr;
+            return false;
+        }
+        QString prefix = stored.value_or(QString());
         if (prefix.isEmpty()) prefix = sniffIdPrefix(m_root);
         const QString idLead = prefix + QLatin1Char('-');
         qint64 highest = m_store.allocationFloor(m_projectId, prefix, err);

@@ -213,3 +213,17 @@ TEST(roadmap_parser_pass_emoji_status, Ants5761TwoWordInProgress) {
                   QStringLiteral("done"), QStringLiteral("done")),
               QString::fromUtf8("- **Status**: \xE2\x9C\x85 Done (2026-10-01). Lanes: ui."));
 }
+
+// ANTS-6648 — a Status line holding decoration alone (`**`) keeps it when
+// flipped, as a line with a word keeps it. The fallback read any leading run
+// as an emoji and replaced `**` with a status glyph.
+TEST(roadmap_parser_pass_emoji_status, Ants6648DecorationOnlyStatusKeepsDecoration) {
+    const auto r = PassHeadingWrite::flipPassStatus(
+        QStringLiteral("#### Pass 7.1 A\n- **Status**: **\n- An item bullet.\n"),
+        QStringLiteral("PASS-7-1"), QString(), QStringLiteral("done"));
+    ASSERT_TRUE(r.ok);
+    EXPECT_TRUE(r.markdown.contains(QStringLiteral("- **Status**: ** done\n")))
+        << r.markdown.toStdString();
+    EXPECT_FALSE(r.markdown.contains(kShipped))
+        << "the decoration was replaced by a status glyph:\n" << r.markdown.toStdString();
+}

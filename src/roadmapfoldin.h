@@ -12,7 +12,8 @@
 //
 //   insertBlock(projectPath, releaseBlockHeading, block)
 //       Insert `block` (a fully-formed `### …` fold-in subsection per
-//       roadmap-format.md § 3.8) into <projectPath>/ROADMAP.md on the
+//       roadmap-format.md § 3.8) into the project's roadmap (its
+//       .ants/project.json `roadmap` override, else ROADMAP.md) on the
 //       line immediately following the line whose text exactly equals
 //       `releaseBlockHeading`. Returns false if the heading isn't
 //       found OR any IO fails. ROADMAP.md's existing permissions are
@@ -89,7 +90,7 @@ qint64 maxDeclaredId(const QString &text, const QString &prefix);
 // Scans, for `prefix`-NNNN ids, the three committed files that between
 // them retain every allocated id even after bullets migrate out of
 // ROADMAP.md:
-//   • ROADMAP.md          — live bullets
+//   • ROADMAP.md          — live bullets (or the `roadmap` override)
 //   • CHANGELOG.md        — shipped items folded out of the roadmap
 //   • docs/roadmap/*.md   — whole minors rotated out (roadmap_log rotate_minor)
 // This lets `.roadmap-counter` be a pure, untracked local cache:
@@ -127,7 +128,7 @@ QHash<QString, QString> archivedIds(const QString &projectPath,
                                     const QSet<QString> &wanted);
 
 // ANTS-3473 — the project's dominant counter-style ID prefix, sniffed
-// from <projectPath>/ROADMAP.md (the most frequent `[PREFIX-NNNN]`
+// from the project's roadmap, as insertBlock resolves it (the most frequent `[PREFIX-NNNN]`
 // bracketed token, e.g. "FIBR" for a finbreak roadmap; dominance-by-count
 // shrugs off strays like "[UTF-8]"). The fold-in ID renderers use this so
 // a fold-in into a non-Ants project stamps that project's prefix instead

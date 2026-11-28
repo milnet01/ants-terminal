@@ -90,3 +90,10 @@ keyword and reads it as 🚧; it read the word `in` as 📋. A flip by
 either route replaces both words, so `in progress. Lanes: ui, docs.`
 flipped to done becomes `done. Lanes: ui, docs.`, not `done progress`.
 *Test:* `Ants5761TwoWordInProgress`.
+
+## ANTS-6648 — a decoration-only Status line keeps its decoration
+
+A Status line whose value is decoration alone (`- **Status**: **`) keeps
+it when `flipPassStatus` writes a status: `**` becomes `** done`, never a
+status glyph, the rule a line with a word already follows.
+*Test:* `Ants6648DecorationOnlyStatusKeepsDecoration`.

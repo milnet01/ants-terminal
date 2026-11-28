@@ -534,11 +534,20 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
     // ANTS-5087 — the dialect decides how each item is RENDERED, and a record
     // is defined against the rendered text (§ 2.1.1). Read once here, from the
     // same project column the render's own Options::dialect is filled from.
-    // An unreadable row is not a refusal: an empty dialect takes the ants-v1
-    // branch, which is what every project took before ANTS-4803.
+    // An ABSENT row takes the ants-v1 branch, which is what every project took
+    // before ANTS-4803. A FAILED lookup refuses, as RoadmapWrite's dialectOf()
+    // does: read as ants-v1, a pass-headings project's records would come from
+    // text its file does not contain.
     QString dialect;
-    if (const auto project = store.readProject(projectId, nullptr))
-        dialect = project->sourceFormat;
+    {
+        QString lookupErr;
+        if (const auto project = store.readProject(projectId, &lookupErr))
+            dialect = project->sourceFormat;
+        else if (!lookupErr.isEmpty())
+            return fail(ReadError::StoreFailed,
+                        QStringLiteral("could not read project %1: %2")
+                            .arg(projectId).arg(lookupErr));
+    }
 
     // Step 0 — the item count, for the ceiling gate. A COUNT(*) reads no row
     // (ANTS-6049; this was a listItems() of every item's keys and headline).

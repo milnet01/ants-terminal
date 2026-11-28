@@ -1195,12 +1195,21 @@ int RoadmapExport::runImportCommand(const QString &storePath, const QString &fil
     // ANTS-5366 § 2.6 — the readers that see deregistered rows, so a row
     // holding BOTH this root and this slug while deregistered is the same
     // project returning, and the restore revives it rather than refusing.
+    // ANTS-6648 — a FAILED lookup is not "absent": the readers set `err` only
+    // when the query failed, and the import does not go on past one.
+    err.clear();
     const auto byRoot = store.readProjectByRoot(
         canonicalRoot, &err, RoadmapStore::Visibility::IncludeDeregistered);
+    if (!byRoot && !err.isEmpty())
+        return failWith(2, QStringLiteral("cannot look up %1 in %2: %3")
+                               .arg(canonicalRoot, storePath, err));
     const auto bySlug = slug.isEmpty()
         ? std::optional<RoadmapStore::ProjectRow>()
         : store.readProjectBySlug(slug, &err,
                                   RoadmapStore::Visibility::IncludeDeregistered);
+    if (!bySlug && !err.isEmpty())
+        return failWith(2, QStringLiteral("cannot look up project \"%1\" in %2: %3")
+                               .arg(slug, storePath, err));
     const bool holdsBoth = byRoot && bySlug && byRoot->projectId == bySlug->projectId;
     qint64 reviveId = 0;
     if (holdsBoth && !byRoot->deregisteredAt.isEmpty()) {

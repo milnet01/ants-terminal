@@ -23,6 +23,7 @@
 #include "roadmaprender.h"
 #include "roadmapsource.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <gtest/gtest.h>
 
@@ -30,6 +31,8 @@
 #include <QDir>
 #include <QFile>
 #include <QIODevice>
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QString>
 #include <QStringLiteral>
 #include <QTemporaryDir>
@@ -349,6 +352,49 @@ TEST(RoadmapRenderPassHeadings, Ants5087StoreRecordsMatchTheRenderedFile) {
             << "record " << i << " claims a composed trailer line, but this "
                "dialect writes none";
     }
+}
+
+// ANTS-6648 — a FAILED dialect lookup is a store failure. bulletsFromStore()
+// discarded the error and read the project as ants-v1, so a pass-headings
+// project's records came from text its file does not contain. RoadmapWrite's
+// dialectOf() was fixed for this under ANTS-5087; this copy was not.
+TEST(RoadmapRenderPassHeadings, Ants6648FailedDialectLookupIsAStoreFailure) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QDir dir(tmp.path());
+    const QString root = dir.filePath(QStringLiteral("p"));
+    ASSERT_TRUE(QDir().mkpath(root));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), QByteArray(kSeed)));
+
+    auto store = openStore(dir.filePath(QStringLiteral("p-store.sqlite")));
+    ASSERT_TRUE(store);
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    ASSERT_TRUE(disc) << err.toStdString();
+    const auto plan = RoadmapMigrate::planFrom(
+        *disc, QStringLiteral("Demo"), QStringLiteral("demo"));
+    RoadmapMigrateLoad::Options lopts;
+    lopts.changedAt   = QStringLiteral("2026-09-18T10:00:00Z");
+    lopts.projectRoot = root;
+    const auto loaded = RoadmapMigrateLoad::load(*store, plan, lopts);
+    ASSERT_TRUE(loaded.ok) << loaded.error.toStdString();
+
+    // The project row becomes unreadable; the item, section and element
+    // tables the rest of the read uses are untouched.
+    {
+        QSqlQuery q(RoadmapStoreTestAccess::db(*store));
+        ASSERT_TRUE(q.exec(QStringLiteral("ALTER TABLE project RENAME TO project_gone")))
+            << q.lastError().text().toStdString();
+    }
+
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    err.clear();
+    const auto fromStore = RoadmapSource::bulletsFromStore(
+        *store, loaded.projectId, /*includeArchive=*/false, &why, &err);
+    EXPECT_FALSE(fromStore.has_value())
+        << "a failed project lookup was read as the ants-v1 dialect";
+    EXPECT_EQ(why, RoadmapSource::ReadError::StoreFailed);
+    EXPECT_FALSE(err.isEmpty());
 }
 
 // INV-5 (ANTS-5230) — a rendered pass-headings file carries no ants-v1 format

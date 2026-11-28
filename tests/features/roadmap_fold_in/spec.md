@@ -44,6 +44,9 @@ and AuditEngine::templateRoadmapFoldInBlock.
 - INV-8: `insertBlock(path, heading, block)`:
   (a) heading found → block inserted on the line after.
   (b) heading not found → return false, file unchanged byte-for-byte.
+  (c) (ANTS-6648) the file is the `.ants/project.json` `roadmap`
+  override where that names a file, else `ROADMAP.md`.
+  *Test:* `Ants6648InsertHonoursTheRoadmapOverride`.
 - INV-8b (amended by ANTS-6353): `findActiveReleaseHeading` returns
   roadmap-format.md § 3.5.4's active release. That is the lowest version
   `##` block, compared as integers, holding a workable 📋 or 🚧 item. A

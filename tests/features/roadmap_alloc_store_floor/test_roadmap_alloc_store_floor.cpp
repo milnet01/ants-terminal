@@ -593,3 +593,32 @@ TEST(RoadmapAllocStoreFloor, Ants5087FoldInUnmigratedAllocatesUnchanged) {
         << "with no store row the file's high-water is the only floor";
     EXPECT_EQ(ids.last(), 3);
 }
+
+// ANTS-6648 — the store floor is 64-bit and the fold-in ids are int. A floor
+// the ids cannot hold is refused; it was truncated, so the next id came out
+// negative.
+TEST(RoadmapAllocStoreFloor, Ants6648FoldInRefusesAFloorPastIntMax) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+
+    qint64 allocated = 0;
+    ASSERT_TRUE(migrate(root, &allocated));
+    {
+        auto store = openStore(RoadmapStore::Access::Bulk);
+        ASSERT_TRUE(store);
+        QString err;
+        const auto proj = store->readProjectByRoot(root, &err);
+        ASSERT_TRUE(proj) << err.toStdString();
+        ASSERT_TRUE(store->raiseIdHighWater(proj->projectId, QStringLiteral("DEMO"),
+                                            qint64{3'000'000'000}, &err))
+            << err.toStdString();
+    }
+
+    EXPECT_TRUE(RoadmapFoldIn::allocateIds(root, 1).isEmpty())
+        << "a floor past INT_MAX was truncated into an id";
+    EXPECT_TRUE(RoadmapFoldIn::peekIds(root, 1).isEmpty())
+        << "the dry-run preview must refuse as the allocation does";
+}

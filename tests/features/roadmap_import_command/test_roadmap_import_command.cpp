@@ -6,10 +6,13 @@
 
 #include "roadmapexport.h"
 #include "roadmapstore.h"
+#include "../../_support/roadmapstoreaccess.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QTextStream>
 
@@ -177,4 +180,28 @@ TEST(RoadmapImportCommand, Inv4BadArgumentsCreateNoStore) {
     EXPECT_EQ(runImport(storePath, goldenAlpha(), tmp.path() + QStringLiteral("/no-such-dir")), 2);
     EXPECT_EQ(runImport(storePath, goldenAlpha(), goldenAlpha()), 2) << "a file is not a root";
     EXPECT_FALSE(QFileInfo::exists(storePath));
+}
+
+// INV-5 (ANTS-6648) — a project lookup whose QUERY fails stops the import with
+// exit 2, naming the lookup. It was read as "absent", and the import went on
+// to rebuildProject(), where the UNIQUE columns were the only guard left.
+TEST(RoadmapImportCommand, Inv5FailedLookupStopsTheImport) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString storePath = tmp.path() + QStringLiteral("/roadmap.sqlite");
+    const QString root = tmp.path() + QStringLiteral("/root");
+    ASSERT_TRUE(QDir().mkpath(root));
+    {
+        RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
+                           RoadmapStore::Access::Bulk);
+        QString err;
+        ASSERT_TRUE(store.open(&err)) << err.toStdString();
+        QSqlQuery q(RoadmapStoreTestAccess::db(store));
+        ASSERT_TRUE(q.exec(QStringLiteral("ALTER TABLE project RENAME TO project_gone")))
+            << q.lastError().text().toStdString();
+    }
+
+    QString printed;
+    EXPECT_EQ(runImport(storePath, goldenAlpha(), root, &printed), 2) << printed.toStdString();
+    EXPECT_TRUE(printed.contains(QStringLiteral("cannot look up"))) << printed.toStdString();
 }

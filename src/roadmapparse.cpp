@@ -2621,10 +2621,14 @@ std::optional<BulletRecord> parseAntsV1Bullet(const QStringList &lines,
     int i = 0;
     QString prose;
     const QString body = collectBulletBody(lines, i, head, &prose);
-    // ANTS-3771 — carried through so INV-6 is testable. `gfmHere` is false
-    // here by construction, so the declaration cannot reach the branch it
-    // governs; that is the invariant, stated as code rather than as a promise.
-    fillBulletRecord(rec, head, body, /*gfmHere=*/false, CompiledIdFormat(fmt));
+    // ANTS-3771 — `fmt` is taken so INV-6 is testable. `gfmHere` is false here
+    // by construction, so the declaration cannot reach the branch it governs;
+    // that is the invariant, stated as code rather than as a promise.
+    // ANTS-6648 — and so it is not compiled: the store read calls this once per
+    // item, and compiling a pattern nothing reads cost a regex build each time.
+    Q_UNUSED(fmt);
+    static const CompiledIdFormat kUndeclared{IdFormat{}};
+    fillBulletRecord(rec, head, body, /*gfmHere=*/false, kUndeclared);
     rec.bodyProse = std::move(prose);   // ANTS-4557 — same field, same rule, store side
     return rec;
 }

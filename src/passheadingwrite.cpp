@@ -262,26 +262,18 @@ WriteResult flipPassStatus(const QString &markdown,
             r.changedLine = statusLine;   // already this status: unchanged
         }
     } else {
-        // INV-5 — rewrite the value preserving the line's style. A fallback:
-        // it runs only when rewriteStatusWord() found no Status line with a
-        // word or glyph in this block, so the line at `statusLine` is
-        // content-free.
+        // INV-5 — a fallback: it runs only when rewriteStatusWord() found no
+        // Status line with a word or a status glyph in this block, so the line
+        // at `statusLine` is empty or holds decoration alone (`**`). ANTS-6648
+        // — decoration is kept, as rewriteStatusWord() keeps it, and the
+        // keyword follows it; it is never replaced by an emoji.
         const QRegularExpressionMatch pm =
             passStatusLinePattern().match(lines.at(statusLine));
         const QString prefix = pm.captured(1);
-        const QRegularExpressionMatch vm =
-            passStatusValuePattern().match(pm.captured(2).trimmed());
-        const bool hasEmoji   = !vm.captured(1).isEmpty();
-        const bool hasKeyword = !vm.captured(2).isEmpty();
-        QString newValue;
-        if (hasEmoji && hasKeyword) {
-            newValue = emoji + QChar(' ') + capitaliseFirst(keyword);
-        } else if (hasEmoji) {
-            newValue = emoji;
-        } else {
-            newValue = keyword;
-        }
-        lines[statusLine] = prefix + newValue;
+        const QString lead =
+            passStatusValuePattern().match(pm.captured(2).trimmed()).captured(1);
+        lines[statusLine] =
+            prefix + (lead.isEmpty() ? keyword : lead + QChar(' ') + keyword);
         r.changedLine = statusLine;
     }
 

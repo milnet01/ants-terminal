@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QByteArray>
 #include <QDateTime>
@@ -597,6 +598,29 @@ TEST(RoadmapFoldIn, RoadmapSymlinkEscapeRefused) {
         QStringLiteral("### foo\n")));
     // B's ROADMAP.md must be untouched.
     EXPECT_EQ(slurp(bRm), rm);
+}
+
+// INV-8c (ANTS-6648) — insertBlock writes the file the project's
+// .ants/project.json `roadmap` override names, as roadmap_log does. It wrote
+// a hard-coded ROADMAP.md, so a project keeping its roadmap elsewhere refused.
+TEST(RoadmapFoldIn, Ants6648InsertHonoursTheRoadmapOverride) {
+    ants_test::XdgGuard guard;   // the store lookup must not reach the real store
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME",
+                 QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString proj = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(QDir().mkpath(proj + QStringLiteral("/docs")));
+    ASSERT_TRUE(QDir().mkpath(proj + QStringLiteral("/.ants")));
+    writeFile(proj, ".ants/project.json", "{\"roadmap\": \"docs/plan.md\"}\n");
+    writeFile(proj, "docs/plan.md", "## 0.7.99 — t (target: 2026-05)\n");
+
+    EXPECT_TRUE(RoadmapFoldIn::insertBlock(
+        proj, QStringLiteral("## 0.7.99 — t (target: 2026-05)"),
+        QStringLiteral("### foo\n")));
+    EXPECT_TRUE(slurp(QDir(proj).filePath("docs/plan.md")).contains("### foo"))
+        << "the block did not land in the override's file";
+    EXPECT_FALSE(QFileInfo::exists(QDir(proj).filePath("ROADMAP.md")));
 }
 
 // ===========================================================================
