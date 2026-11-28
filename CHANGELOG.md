@@ -124,6 +124,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Review briefs pull only the roadmap notes that match each spec, inline the files of a folder a lane names, fence the roadmap slice as data, and handle merged lanes name by name** (ANTS-6646)
+
+- **Debt-sweep no longer flags every changelog line in a young repository, matches whole roadmap ids, and will not remove an unused-variable marker for the wrong variable; review results show each lane's context** (ANTS-6646)
+
+- **In the roadmap viewer, `id:` searches find zero-padded and synthesis ids, non-English section headings open and close, Tab follows the filter row in order, and Reset View stays armed for its full three seconds** (ANTS-6647)
+
 - **A plugin whose `manifest.json` or `init.lua` is a named pipe no longer freezes the terminal or its plugin thread** (ANTS-6645)
 
 - **Plugin threads have room for Lua's deepest allowed recursion, and a plugin that catches its own timeout no longer has its next event cut short** (ANTS-6645)

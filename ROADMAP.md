@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7007 -->
+<!-- ants-roadmap-id-high-water: ANTS=7010 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99528,7 +99528,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: plugins-lua.
 
-- 📋 [ANTS-6646] **Fix the smaller bugs the 2026-11-06 reviews found in review-engines.**
+- ✅ [ANTS-6646] **Fix the smaller bugs the 2026-11-06 reviews found in review-engines.**
   13 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 383 `coldeyesdialog.cpp:188-189` (Medium)
   - row 384 `indiereviewengine.cpp:913` (Medium)
@@ -99543,18 +99543,23 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 397 `filecontentcache.h:45` (Low)
   - row 1434 `src/indiereviewengine.cpp:985` (Info)
   - row 1435 `src/indiereviewengine.cpp:904` (Info)
+  2026-11-28 (96c09afc): rows 383, 384, 388-393, 395, 396, 397, 1434
+  fixed; 1435 already fixed; suite 6889/6889. Follow-ups filed as
+  separate items.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: review-engines.
 
-- 📋 [ANTS-6647] **Fix the smaller bugs the 2026-11-06 reviews found in roadmap-dialog.**
+- ✅ [ANTS-6647] **Fix the smaller bugs the 2026-11-06 reviews found in roadmap-dialog.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 338 `roadmapdialog.cpp:501` (Medium)
   - row 339 `roadmapdialog.cpp:2858-2864` (Medium)
   - row 340 `roadmapdialog.cpp:1564` (Low)
   - row 342 `roadmapdialog.cpp:2394-2410` (Low)
   - row 344 `roadmapdialog.cpp:2365` (Low)
+  2026-11-28 (a44d3991): rows 338, 339, 342, 344 fixed; row 340 moved to
+  its own item; suite 6889/6889.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -100019,6 +100024,30 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: ANTS-6645 helper, 2026-11-28.
   Lanes: plugins-lua.
+
+- 📋 [ANTS-7008] **Fence the indie-review brief's lane header (name, summary, source list from partition.json) as data.**
+  Left after ANTS-6646 row 389, which fenced the ROADMAP slice.
+  **Layman:** Part of a review brief still mixes project text with instructions.
+  Kind: fix.
+  Source: ANTS-6646/6647 helpers, 2026-11-28.
+  Lanes: review-engines.
+
+- 📋 [ANTS-7009] **The review-engine spec-id keyword match is whole-word, so ants-0042 does not match ANTS-00420.**
+  inlineRelevantSections matches keywords as substrings; ANTS-6646 row 383
+  added the spec id as a keyword.
+  **Layman:** A review can pull in notes for a different item whose number starts the same way.
+  Kind: fix.
+  Source: ANTS-6646/6647 helpers, 2026-11-28.
+  Lanes: review-engines.
+
+- 📋 [ANTS-7010] **Make the roadmap parser, the Contents pane and the cards view skip headings and bullets inside multi-line HTML comments, together.**
+  Split from ANTS-6647 row 340 (too big): parseBullets (roadmapparse.cpp),
+  extractToc and headingSlugsInWalkOrder do not track comments; hiding a
+  heading only in renderCardsHtml would orphan its bullets (INV-16).
+  **Layman:** Roadmap text inside a hidden comment still shows up as sections and cards.
+  Kind: fix.
+  Source: ANTS-6646/6647 helpers, 2026-11-28.
+  Lanes: roadmap-dialog.
 
 ### Readability (2026-11-06 review)
 
