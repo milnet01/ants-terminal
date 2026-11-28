@@ -359,6 +359,27 @@ TEST(ProjectSettingsVerb, MissWithRootSourceSuggestsWholeRoot) {
     EXPECT_FALSE(s.reason.isEmpty());
 }
 
+// INV-17 (ANTS-6668) — root source still counts when the subdirectory walk
+// spends the whole file budget (kDetectFileCeiling, 20000). Pre-fix the root
+// listing was skipped at budget 0, so rootLevel stayed 0 and the miss
+// suggested ["lib"], leaving main.c out of the index.
+TEST(ProjectSettingsVerb, Ants6668RootSourceCountsPastTheBudget) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/main.c", cFile("main"));
+    ASSERT_TRUE(QDir().mkpath(root + "/lib"));
+    for (int i = 0; i < 20000; ++i) {
+        QFile f(root + QStringLiteral("/lib/f%1.c").arg(i));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    }
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    EXPECT_EQ(s.defaultSourceCount, 0);   // a miss
+    ASSERT_TRUE(s.sourceRoots.has_value());
+    EXPECT_EQ(*s.sourceRoots, QStringList{QStringLiteral(".")});
+    EXPECT_EQ(s.totalSourceCount, 20001);
+}
+
 // INV-15 — ANTS-3369: detect() always sets a non-empty reason even when
 // there is no suggestion (empty repo here; the present / no-override
 // branches are covered by INV-2 / INV-1). nullopt sourceRoots — not an

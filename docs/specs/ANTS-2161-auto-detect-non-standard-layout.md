@@ -86,8 +86,8 @@ namespace ProjectSettings {
     // third_party/ third-party/ deps/ external/ extern) the Python
     // virtualenv / cache names (venv/ env/ __pycache__/ — ANTS-3393;
     // .venv caught by the dot rule) and any *-deps / *-prefix suffix
-    // (ANTS-3357); INV-11 — capped at
-    // kDetectFileCeiling files total.
+    // (ANTS-3357); INV-11 — the subdirectory walk is capped at
+    // kDetectFileCeiling files; the root's own files are always counted.
     // When the default src/+tests/ walk would index fewer than kMissRatio
     // of the repo's source (a "miss"), the suggestion depends on where the
     // uncovered source sits:
@@ -414,8 +414,9 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
   names `node_modules`/`dist`/`target`/`vendor`/`out`/`third_party`/
   `third-party`/`deps`/`external`/`extern`, the Python virtualenv / cache
   names `venv`/`env`/`__pycache__` (ANTS-3393; `.venv` via the dot rule),
-  and any `*-deps`/`*-prefix` suffix; ANTS-3357), caps at
-  `kDetectFileCeiling`, and never reads outside `rootCanonical`.
+  and any `*-deps`/`*-prefix` suffix; ANTS-3357), caps its subdirectory
+  walk at `kDetectFileCeiling` while always counting the root's own files
+  (one listing; ANTS-6668), and never reads outside `rootCanonical`.
   (`isNoiseDir` is the single source of truth for the skip set — now
   exported (`projectsettings.h`) and shared by `codebase_index`'s
   `walkSubtree` so both prune the same trees; INV-16's `excluded` echo is

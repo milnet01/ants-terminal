@@ -251,3 +251,4 @@ returns zero verified findings.
   5 new struct fields, detect aux-population, verb serialisation, and the
   `op:init`→`applyWrite` routing) are the implementation TODO, resolved by the
   implementing commit.
+- **impl ANTS-6668 (2026-11-28)** — Not a review loop; no reviewer was dispatched. INV-11 and the detect() comment now say the root's own files are counted even after the subdirectory walk spends kDetectFileCeiling, matching the fix that ProjectSettingsVerb.Ants6668RootSourceCountsPastTheBudget locks (seen red on the old code).

@@ -512,14 +512,15 @@ Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux) {
 
     // Files directly at the repo root (depth 0) — counted toward the total;
     // on a miss, rootLevel>0 drives a whole-root ["."] suggestion so they are
-    // covered (ANTS-3390, INV-12/INV-17).
+    // covered (ANTS-3390, INV-12/INV-17). Counted even when the subdirectory
+    // walk spent the budget: the budget caps that recursive walk, and this is
+    // one directory listing. Skipping it would hide root source from the
+    // ["."] branch and suggest subdirectories that leave it unindexed.
     int rootLevel = 0;
-    if (budget > 0) {
-        const QFileInfoList files =
-            root.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
-        for (const QFileInfo &fi : files)
-            if (CodebaseIndex::isIndexableFile(fi)) ++rootLevel;
-    }
+    const QFileInfoList rootFiles =
+        root.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
+    for (const QFileInfo &fi : rootFiles)
+        if (CodebaseIndex::isIndexableFile(fi)) ++rootLevel;
 
     int total = rootLevel, srcCount = 0, testsCount = 0;
     for (const auto &p : dirCounts) {

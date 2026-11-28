@@ -42,6 +42,9 @@ the ANTS-2160 suite used for its consumer-wiring check.
 - **INV-17** (ANTS-3390) — a miss with source loose AT the repo root
   (`rootLevel>0`) → whole-root `source_roots:["."]` (subsumes the depth-0
   files + subdirs); `retroarch.c`+`libretro-common/x.c` → `["."]`, total 2.
+  Root files count even when the subdirectory walk spends the whole
+  `kDetectFileCeiling` budget (ANTS-6668): `main.c` + 20000 files in `lib/`
+  → `["."]`, total 20001 (`Ants6668RootSourceCountsPastTheBudget`).
 - **INV-19** (ANTS-3588) — a `source_roots` suggestion ALSO proposes the
   conventional aux layout keys present on disk. Positive: `engine/` (≥2 `.c`,
   a miss) + `tests/`, `docs/`, `docs/specs/`, `ROADMAP.md`, `CHANGELOG.md`
