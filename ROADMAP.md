@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7013 -->
+<!-- ants-roadmap-id-high-water: ANTS=7014 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99135,6 +99135,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   clamp trace's max_bytes to the 4 MiB family ceiling (recommended, as
   the other read verbs do; INV-26's 64 MiB paging test in ANTS-5734
   would be rewritten to fit) or leave it unclamped.
+  Decision (user, 2026-11-28): row 180: clamp trace's max_bytes to
+  the 4 MiB family ceiling; rewrite INV-26's 64 MiB paging test
+  (ANTS-5734) to fit.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99233,6 +99236,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-28: row 441 shipped in 70ef7440 (read_log leaves out debug-log
   input/pty lines unless include_input_pty:true; count in
   input_pty_omitted; ANTS-1855 INV-15).
+  Decision (user, 2026-11-28): row 438: keep the behaviour; the spec
+  says one oversized line can overrun the time budget. Row 1464: after
+  a failed rotation, stop file logging and say so once on stderr.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99253,6 +99259,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   buttons respond? If not, file replacing modal QMessageBox prompts with
   the non-modal pattern; if so, narrow the warnings in aboutdialogs.cpp
   and dialogfocus.h.
+  2026-11-28: the user will check the trust prompt's buttons the next
+  time it appears on the real KWin Wayland desktop. Rows 230 and 1320
+  still wait on that sighting.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99270,6 +99279,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   document vanished mid-run, amending INV-47 in ANTS-3636 and the
   feature spec (recommended; only doc_lint sees a difference), or (b)
   keep INV-47 and have doc_lint's second pass report check_failed.
+  Decision (user, 2026-11-28): row 372 option (a): check() refuses
+  read_failed when the document vanished mid-run; amend INV-47 in
+  ANTS-3636 and the feature spec.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99322,6 +99334,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   bug; suite 6821/6821 and an ASan e2e run clean. Open: rows 69 and 70
   wait on the user (options in the notes above); row 62 is too big and
   is recorded above.
+  Decision (user, 2026-11-28): row 69: add Q_OBJECT to
+  StayOpenOnToggleFilter (mainwindow_internal.h in the target's
+  sources), keep the in-place deletes, and ask claude-config for a
+  qt.md carve-out. Row 70: fold the tr() retrofit into ANTS-1080.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99417,6 +99433,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-28 (26babe21): rows 112, 113, 115, 116, 119, 1393-1396 fixed; 1392, 1397 already fixed; suite 6837/6837. Two rows wait on the user:
   - Row 114 (a backslash before `|` in a bundle_row cell): the writer, the store render (roadmaprender.cpp escapes only `|`) and the migrate parser (roadmapmigrate.cpp reads only `\|`) must change together, or migration doubles every backslash. Options: (a) one shared escape-and-parse rule for all three (recommended); (b) leave it, since such cells are rare.
   - Row 118 (`id_hint` has no upper limit; a hint near INT64_MAX overflows `++nextId` and raises the store's high-water). Single `op:"append"` has the same gap. Options: (a) refuse a hint more than 10^6 above the high-water on both append and append_batch (recommended; a new refusal on input that works today); (b) leave it.
+  Decision (user, 2026-11-28): row 114 option (a): one shared
+  escape-and-parse rule for the bundle_row writer, roadmaprender.cpp
+  and roadmapmigrate.cpp. Row 118 option (a): refuse an id_hint more
+  than 10^6 above the high-water on both append and append_batch.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99458,6 +99478,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   store path refuses that. Options: (a) refuse in-batch duplicates and
   change those two tests to distinct passes (recommended); (b) keep
   allowing them on the file path.
+  Decision (user, 2026-11-28): row 101 option (a): refuse in-batch
+  duplicate ids on every path; change
+  Ants4354CallLevelPassIsTheBatchFallback and
+  Ants6372CallLevelStatusIsTheBatchFallback to distinct passes.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99483,6 +99507,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-28 (f75a2804): rows 123, 126/1409, 127, 1400, 1401, 1407 fixed, 1408 doc fix; 1399, 1410 already fixed; 1403 is ANTS-6819; 1404 and 1406 moved to their own items; suite 6860/6860. Two rows wait on the user:
   - Row 124 (read_region, read_regions and workspace_search return file text without secret blanking). Options: (a) blank secrets in read_region and read_regions only, under claude.mcp_redact_secrets, with a `redacted` count (recommended; the debug log is already scrubbed when written); (b) also workspace_search; (c) leave them verbatim and document it. Blanking changes what agents see in code they are about to edit.
   - Row 125 (mutation_probe's test_command runs through `sh -c`). Options: (a) correct the comment so the verb is documented as running a command (recommended: an allowlist does not stop `python -c`, and the client can run commands through Bash already); (b) an argv[0] allowlist.
+  Decision (user, 2026-11-28): row 124 option (a): blank secrets in
+  read_region and read_regions only, under claude.mcp_redact_secrets,
+  with a `redacted` count; workspace_search stays verbatim. Row 125
+  option (a): correct the comment so mutation_probe is documented as
+  running a command; no allowlist.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99528,9 +99557,24 @@ keeps the reviewer's remedy, which is a claim to check before building.
   cancelAll() writes in-flight jobs off and ends the batch (the cap
   stops counting cancelled jobs still running); (c) leave it until a
   live cancel caller exists (recommended, then (a)).
+  Decision (user, 2026-11-28): row 259 option (c): leave it until a
+  live cancel caller exists, then do (a). Filed as a follow-up item;
+  this row is closed here.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: model-switching.
+
+- 📋 [ANTS-7014] **Make an aborted LLM dispatcher job still report done, once a live cancel caller exists.**
+  llmdispatcher's cancelAll() never calls `done` for an aborted job.
+  Latent today: its only caller, ~ReviewDialogBase, disconnects first.
+  User decision 2026-11-28 (option c then a): start this only when
+  something calls cancelAll() on a live, connected batch. Then a runner
+  that aborts still calls `done` with an error; update
+  reviewdialogbase.cpp and the dispatcher spec.
+  **Layman:** If an AI review job is cancelled mid-run, it should still say it finished, with an error.
+  Kind: review-fix.
+  Source: ANTS-6644 row 259, user decision 2026-11-28.
   Lanes: model-switching.
 
 - 🚧 [ANTS-6645] **Fix the smaller bugs the 2026-11-06 reviews found in plugins-lua.**
@@ -99548,6 +99592,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   terminal.read, as other permissioned functions are, and update
   PLUGINS.md (recommended: nothing can depend on it yet); (b) return ""
   without terminal.read; (c) leave it until the output feed lands.
+  Decision (user, 2026-11-28): row 1455 option (a): ants.get_output
+  is exposed only to plugins granted terminal.read; update PLUGINS.md.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
