@@ -486,7 +486,9 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
         if (m_tabSwitcherActions) {
             QTimer::singleShot(0, this, [this] {
                 rebuildCommandPalette();
-                delete m_tabSwitcherActions;
+                // Not replaced here, so qt.md's replace-at-once carve-out
+                // does not apply: let the event loop delete it.
+                if (m_tabSwitcherActions) m_tabSwitcherActions->deleteLater();
                 m_tabSwitcherActions = nullptr;
             });
         }
