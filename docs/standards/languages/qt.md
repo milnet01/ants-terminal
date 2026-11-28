@@ -47,7 +47,11 @@ Qt's own convention, which its headers, docs and every example follow:
 - New-style connections: `connect(sender, &Class::signal, receiver,
   &Class::slot)`. Never the `SIGNAL()` / `SLOT()` macros.
 - `QOverload<...>::of(...)` to disambiguate an overloaded signal.
-- Parent-child ownership — never manually `delete` a parented child.
+- Parent-child ownership — let the parent delete its children. Delete a
+  parented child by hand only to replace it at once: the old one must be
+  gone before the next statement, and only the parent's own pointer holds
+  it. Null that pointer straight after. Inside the child's own signal or
+  event handler, use `deleteLater()` instead.
 - `Q_OBJECT` on every `QObject` subclass, without exception.
 - `QPointer<T>` for non-owning references to a `QObject` whose lifetime
   you do not control.
@@ -100,7 +104,7 @@ were verified against the installed `clazy`.
 | `tr()` around every user-visible string | **`Partial:`** `clazy`'s `tr-non-literal` catches a `tr()` given a non-literal. **Nothing** catches the omission this rule is actually about — a user-visible string never wrapped at all is ordinary code, and the section says retrofitting is many times the work |
 | `QWeakPointer<T>` → `QPointer<T>` for QObject lifetime | **nothing** — the section says so outright: it still compiles, so only a reader catches it |
 | Casing — Qt's convention, including the `m_` prefix | **`Partial:`** `clang-tidy`'s `readability-identifier-naming`, and only where the project configures it — see `cpp.md`'s row, which this inherits |
-| Parent-child ownership — never `delete` a parented child | **nothing that decides it.** A double free may surface under ASan at runtime; the idiom itself is not checked |
+| Parent-child ownership — `delete` a parented child only to replace it at once | **nothing that decides it.** A double free may surface under ASan at runtime; the idiom itself is not checked |
 | `QSaveFile` for atomic writes; `QStringLiteral` / `QStringView` | **`Partial:`** `clazy`'s `qstring-allocations` level reaches some implicit `QString` construction. **Nothing** checks the `QSaveFile` rule — a `QFile` with `Truncate` is valid code |
 | Owner-only permissions on config or secrets | **nothing, and this is the row to worry about.** The section says Qt has no single call for it, so the helper's name is local — there is no symbol to grep and no check to write without knowing the project's own |
 
