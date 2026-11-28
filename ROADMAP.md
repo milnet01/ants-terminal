@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6990 -->
+<!-- ants-roadmap-id-high-water: ANTS=6993 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99308,7 +99308,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6639] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-review-verbs.**
+- ✅ [ANTS-6639] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-review-verbs.**
   11 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 355 `remotecontrol_review.cpp:1111-1120` (Medium)
   - row 359 `remotecontrol_coldeyes.cpp:885` (Low)
@@ -99321,6 +99321,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1413 `src/remotecontrol_review.cpp:465` (Info)
   - row 1414 `src/remotecontrol_review.cpp:1032` (Info)
   - row 1415 `src/remotecontrol_coldeyes.cpp:745` (Info)
+  2026-11-28 (d76e4d8a): rows 355, 359-363, 1411, 1412, 1414, 1415
+  fixed; 1413 not a bug; suite 6832/6832. New defects filed as separate
+  items.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99830,6 +99833,33 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: perf.
   Source: review-code 2026-11-06 (ANTS-6638 row 188).
   Lanes: mcp-infra.
+
+- 📋 [ANTS-6991] **cold_eyes_brief echoes caller text unscrubbed in doc_paths_rejected[].path and in an ad-hoc lane's name.**
+  Found while fixing ANTS-6639 row 361, which scrubbed the other echoes in
+  src/remotecontrol_coldeyes.cpp through ceSanitiseEcho.
+  **Layman:** One review tool repeats back what it was sent without cleaning out hidden control characters.
+  Kind: fix.
+  Source: ANTS-6639 helper, 2026-11-28.
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6992] **verify_changes matches orphaned sources by basename when the git top level and the project root differ.**
+  addedSources paths are relative to the git top level, but
+  findUnreferencedSources reads CMake files from the project root
+  (src/remotecontrol_review.cpp). Check whether a project whose clone sits
+  below its root (repo_root) gets false matches.
+  **Layman:** A check for new code files nothing builds may compare only file names, not folders, in some project layouts.
+  Kind: investigate.
+  Source: ANTS-6639 helper, 2026-11-28.
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6993] **An empty .indie-review/partition.json is named as the partition source although derivePartition skipped it.**
+  indie_review_partition sets path (and now partition_source "override")
+  when the file exists, whether or not it held lanes
+  (src/remotecontrol_review.cpp, overrideUsed).
+  **Layman:** The review tool can say its lane list came from a file that was in fact empty and ignored.
+  Kind: fix.
+  Source: ANTS-6639 helper, 2026-11-28.
+  Lanes: mcp-review-verbs.
 
 ### Readability (2026-11-06 review)
 

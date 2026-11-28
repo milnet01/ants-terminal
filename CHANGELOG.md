@@ -124,6 +124,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`build_status`, `test_results` and `workflow_state` refuse a fractional or out-of-range number instead of storing 0; their refusals scrub the caller text they echo** (ANTS-6639)
+
+- **`indie_review_partition` names a `partition.json` override as its source, `indie_review_dispatch` accepts the computed lanes it reports, and `cold_eyes_brief` says when it ignored `doc_paths`** (ANTS-6639)
+
+- **`verify_changes` lists new code files inside a new, untracked folder as orphaned, and its cache keeps time on a clock a system time change cannot move** (ANTS-6639)
+
 - **Token-usage counts left behind by a helper that stopped mid-save are picked up by the next one, and the spill folder keeps to its size limit when several Ants processes clean it at once** (ANTS-6638)
 
 - **Closing a tab asks about running programs in every split pane, not only the focused one** (ANTS-6636)
@@ -233,6 +239,8 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **`verify_changes cache_only` never opens a trust prompt; an untrusted config answers `cache_miss`** (ANTS-6639)
 
 - **Secret blanking also catches JSON-style `"password": "..."` values, `Authorization: Basic` headers and the password in a `user:password@` web address** (ANTS-6638)
 
