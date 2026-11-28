@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6989 -->
+<!-- ants-roadmap-id-high-water: ANTS=6990 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99287,7 +99287,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6638] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-infra.**
+- ✅ [ANTS-6638] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-infra.**
   7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 184 `src/secretredact.h:179` (Medium)
   - row 185 `src/mcpspill.cpp:73-92` (Medium)
@@ -99301,6 +99301,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   185, 190 fixed; 186, 192, 1448 already fixed), not yet applied. Row
   188 too big: write the undeclared-argument ledger off the GUI thread
   (buffer, flush on a timer and at shutdown).
+  2026-11-28 (6bf9337e): rows 184, 185, 190 fixed; 186, 192, 1448
+  already fixed; suite 6822/6822. Row 188 moved to ANTS-6990.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99818,6 +99820,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   **Layman:** The "Add to allowlist" button could save a rule that Claude Code then flags with a warning at start-up. It now refuses such a rule and says why.
   Kind: fix.
   Source: user-request-2026-11-13.
+
+- 📋 [ANTS-6990] **Write the undeclared-argument ledger off the GUI thread.**
+  Split from ANTS-6638 row 188 (`src/mcpundeclaredargs.cpp:40-43`, Low):
+  each undeclared argument is written to the ledger file on the thread
+  that serves the call. Buffer the rows and flush them on a timer and at
+  shutdown. Details: docs/reviews/close-findings-2026-11-06.md row 188.
+  **Layman:** When a program sends Ants an option it does not know, Ants notes it in a file right away, which can briefly slow the window; write those notes in the background instead.
+  Kind: perf.
+  Source: review-code 2026-11-06 (ANTS-6638 row 188).
+  Lanes: mcp-infra.
 
 ### Readability (2026-11-06 review)
 

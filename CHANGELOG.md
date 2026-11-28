@@ -124,6 +124,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Token-usage counts left behind by a helper that stopped mid-save are picked up by the next one, and the spill folder keeps to its size limit when several Ants processes clean it at once** (ANTS-6638)
+
 - **Closing a tab asks about running programs in every split pane, not only the focused one** (ANTS-6636)
 
 - **Claude's question dot clears only on the tab whose session answered; a background split's exit keeps the current tab; Escape or closing the dialog cancels a pending relaunch** (ANTS-6636)
@@ -231,6 +233,8 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **Secret blanking also catches JSON-style `"password": "..."` values, `Authorization: Basic` headers and the password in a `user:password@` web address** (ANTS-6638)
 
 - **Desktop notifications pass their title and text to `notify-send` as plain text, never as options or markup** (ANTS-6636)
 
