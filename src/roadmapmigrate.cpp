@@ -75,33 +75,6 @@ bool isSeparatorRow(const QString &line) {
     return rx.match(line).hasMatch();
 }
 
-// Cells split on UNESCAPED pipes, and `\|` restores a literal `|` — so the
-// store holds the author's text rather than its GFM spelling, and this is the
-// exact inverse of the render's escapeCell() (ANTS-3832). A naive split() put
-// `a \` and `b` in the store for a cell reading `a | b`, which no render could
-// have put back.
-QStringList tableCells(const QString &line) {
-    QString t = line.trimmed();
-    t.chop(1);
-    t.remove(0, 1);
-    QStringList out;
-    QString cur;
-    for (int i = 0; i < t.size(); ++i) {
-        const QChar c = t.at(i);
-        if (c == QLatin1Char('\\') && i + 1 < t.size() && t.at(i + 1) == QLatin1Char('|')) {
-            cur.append(QLatin1Char('|'));
-            ++i;
-        } else if (c == QLatin1Char('|')) {
-            out.append(cur.trimmed());
-            cur.clear();
-        } else {
-            cur.append(c);
-        }
-    }
-    out.append(cur.trimmed());
-    return out;
-}
-
 // § 2.11 recognises the legend exactly as tools/roadmap-corpus-survey.py
 // counts it, so the spec and its own oracle cannot disagree: a status-marked
 // bullet § 2.4 rejects, whose text begins with a status word and is under 160
@@ -859,7 +832,9 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
             for (int k = ln; k <= end; ++k) {
                 if (isSeparatorRow(lines.at(k - 1))) continue;
                 QJsonArray cells;
-                for (const QString &c : tableCells(lines.at(k - 1)))
+                // The store holds the author's text, not its GFM spelling:
+                // tableRowCells() inverts the render's escaping (ANTS-6640).
+                for (const QString &c : RoadmapParse::tableRowCells(lines.at(k - 1)))
                     cells.append(c);
                 if (header.isEmpty() && rows.isEmpty()) {
                     header = cells;

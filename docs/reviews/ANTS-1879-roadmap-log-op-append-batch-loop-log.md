@@ -134,3 +134,7 @@ The two specs are now considered implementation-ready (spec draft
 → ready for sign-off). Loops 1–4 have converged on a stable
 surface: every CRITICAL/HIGH finding raised across the four loops
 has been fixed and not resurfaced cold.
+
+### amend-6640 (2026-11-28)
+
+Not a review loop; no reviewer was dispatched (user decisions 2026-11-28, ANTS-6640 row 118 and ANTS-6641 row 101). An id_hint more than 10^6 above the highest id skips bad_args; a second bullet naming a pass an earlier bullet took skips id_taken on the file route too. Tests seen red on the old code, then green.

@@ -166,15 +166,18 @@ reader:
 - **each row is spelled `| a | b |`** — leading `"| "`, `" | "` between cells,
   trailing `" |"`. The row syntax is part of the contract because the
   migration's reader is what has to invert it;
-- every cell with a literal `|` spelled `\|`, which the migration's
-  `tableCells()` inverts. **The escaping must be invertible or INV-1 fails on
-  the first pipe-bearing cell**, which is also why a newline is *not* escaped
-  here: `<br>` is not invertible (a re-load reads it as literal text), so a
+- every cell spelled by `RoadmapParse::escapeTableCell()`: a literal `|` as
+  `\|`, and a `\` before a `\` or a `|` doubled; any other `\` stays single.
+  The migration reads rows with `RoadmapParse::tableRowCells()`, its inverse,
+  and `bundle_row`'s file writer uses the same escape. **The escaping must be
+  invertible or INV-1 fails on the first pipe-bearing cell**, which is also
+  why a newline is *not* escaped here: `<br>` is not invertible (a re-load reads it as literal text), so a
   newline is folded at the write boundary — `roadmap_log`'s `bundle_row`,
   ANTS-3809 § 2.2 — and never reaches the render.
 
-**Invertibility is exact for pipes and deliberately not claimed for surrounding
-whitespace, which is a third hazard and not a gap.** `tableCells()` trims every
+**Invertibility is exact for pipes and backslashes and deliberately not claimed
+for surrounding whitespace, which is a third hazard and not a gap.**
+`tableRowCells()` trims every
 cell it reads, and `bundle_row` trims every cell it writes, so leading and
 trailing whitespace is **not part of a cell's value** anywhere in the system:
 it cannot be stored through a supported write path, and a hand-inserted one is

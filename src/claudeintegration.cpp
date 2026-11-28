@@ -2533,7 +2533,7 @@ QJsonObject ClaudeIntegration::mcpToolsList(const QJsonObject &request) {
             {QStringLiteral("roadmap_log/field"), QStringLiteral("amend_field: layman, kind, source, lanes or evidence; or section, to move the item.")},
             {QStringLiteral("roadmap_log/force"), QStringLiteral("append: file a bullet whose headline matches an existing item.")},
             {QStringLiteral("roadmap_log/header"), QStringLiteral("bundle_row: column names; creates the table when the section has none.")},
-            {QStringLiteral("roadmap_log/id_hint"), QStringLiteral("append: explicit id number; must exceed the counter.")},
+            {QStringLiteral("roadmap_log/id_hint"), QStringLiteral("append: explicit id number; must exceed the counter, by at most 10^6 over the highest id.")},
             {QStringLiteral("roadmap_log/id_prefix"), QStringLiteral("append: id prefix (e.g. \"DOOM\"); default sniffed from existing ids, else the folder name.")},
             {QStringLiteral("roadmap_log/id_strategy"), QStringLiteral("counter (default) or stable_prefix, which needs stable_id.")},
             {QStringLiteral("roadmap_log/intro_body"), QStringLiteral("create_section: intro prose for the new section.")},

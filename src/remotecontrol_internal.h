@@ -421,6 +421,12 @@ LocateOutcome rlLocateTarget(RoadmapStore &store, qint64 projectId,
                              const QStringList &fileIds,
                              const QStringList &fileHeadlines);
 qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &prefix);
+// ANTS-6640 — how far above the high-water an id_hint may sit. A hint near
+// INT64_MAX overflows the next allocation and raises the high-water for good,
+// so append and append_batch refuse it bad_args with this message. Callers
+// check `hint - highWater > kIdHintMaxJump` after refusing hint <= highWater.
+extern const qint64 kIdHintMaxJump;
+QString rlIdHintTooHighMessage(qint64 hint, qint64 highWater);
 // ANTS-3863 § 2.4 — the one helper BELOW the seam this item touches. `text` is
 // consulted only on the last fallback, after an explicit id_prefix and the
 // store's own idPrefixFor() have both come up empty, so the common migrated

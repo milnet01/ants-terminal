@@ -403,7 +403,7 @@ what keeps the store holding only what a GFM row can carry (ANTS-3832).
 **Surrounding whitespace is the third case, and it is neither kept nor
 escaped: each cell is trimmed here.** So "the store holds the author's text"
 is exact for pipes and means *the author's trimmed text* for the edges. That
-matches the reader — the migration's `tableCells()` trims every cell it parses
+matches the reader — the migration's `tableRowCells()` trims every cell it parses
 — which is why ANTS-3758 § 2.2 states the render's inverse relationship as
 exact for pipes and as agreement about what a cell's value is for whitespace.
 Leading and trailing spaces are not part of a cell anywhere in the system, so
@@ -449,8 +449,8 @@ that pins the id explicitly, and the markdown path refuses `id_taken` when the
 hint is at or below the highest existing id for that prefix. On a migrated
 project the comparison floor is the same one allocation uses —
 `max(idHighWater(), corpusHighWater())` — so a hint above it is honoured and
-`raiseIdHighWater()` records it, and a hint at or below it is `id_taken`. The
-rule is unchanged; the comparison's right-hand side moves, and so does the code
+`raiseIdHighWater()` records it, and a hint at or below it is `id_taken`. A
+hint more than 10^6 above it is `bad_args` (ANTS-6640). The rule is unchanged; the comparison's right-hand side moves, and so does the code
 at that site.
 
 **`append_batch` allocates contiguously from one read.** `first_id + i` over the

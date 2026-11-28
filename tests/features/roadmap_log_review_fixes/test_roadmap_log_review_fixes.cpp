@@ -303,6 +303,104 @@ TEST(RoadmapLogReviewFixes, Row101PassFileAppendRefusesATakenDesignator) {
               QStringLiteral("id_taken")) << dump(r3);
 }
 
+// INV-4 — row 101: two bullets in one batch naming one pass, on both backends.
+TEST(RoadmapLogReviewFixes, Row101PassBatchRefusesAnInBatchDuplicate) {
+    for (const bool migrate : {false, true}) {
+        const char *backend = migrate ? "store: " : "file: ";
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seed(guard, tmp, QByteArray(kPass), migrate);
+        ASSERT_FALSE(root.isEmpty());
+
+        QJsonObject batch = call(root, QStringLiteral("append_batch"));
+        batch[QStringLiteral("section")] = QStringLiteral("active");
+        batch[QStringLiteral("status")]  = QStringLiteral("planned");
+        batch[QStringLiteral("pass")]    = QStringLiteral("1.6");
+        QJsonObject a, b;
+        a[QStringLiteral("headline")] = QStringLiteral("First 1.6.");
+        b[QStringLiteral("headline")] = QStringLiteral("Second 1.6.");
+        batch[QStringLiteral("bullets")] = QJsonArray{a, b};
+        const QJsonObject r = logOf(batch);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << backend << dump(r);
+        EXPECT_EQ(r.value(QStringLiteral("applied_count")).toInt(), 1) << backend << dump(r);
+        const QJsonArray skipped = r.value(QStringLiteral("skipped")).toArray();
+        ASSERT_EQ(skipped.size(), 1) << backend << dump(r);
+        EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("bullet_index")).toInt(), 1)
+            << backend << dump(r);
+        EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+                  QStringLiteral("id_taken")) << backend << dump(r);
+
+        QFile f(root + QStringLiteral("/ROADMAP.md"));
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+        EXPECT_EQ(QString::fromUtf8(f.readAll()).count(QStringLiteral("#### Pass 1.6 ")), 1)
+            << backend << "one designator, one heading";
+    }
+}
+
+// INV-16 — row 118: an id_hint more than 10^6 above the high-water (7 here)
+// refuses bad_args on append and skips bad_args on append_batch; one exactly
+// 10^6 above is accepted. Both backends.
+TEST(RoadmapLogReviewFixes, Row118IdHintFarAboveTheHighWaterRefuses) {
+    for (const bool migrate : {false, true}) {
+        const char *backend = migrate ? "store: " : "file: ";
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seed(guard, tmp, antsV1(), migrate);
+        ASSERT_FALSE(root.isEmpty());
+        if (!migrate)
+            ASSERT_TRUE(writeFile(root + QStringLiteral("/.roadmap-counter"), "7\n"));
+
+        const auto bullet = [] {
+            QJsonObject b;
+            b[QStringLiteral("status")]   = QStringLiteral("planned");
+            b[QStringLiteral("headline")] = QStringLiteral("Hinted.");
+            b[QStringLiteral("kind")]     = QStringLiteral("fix");
+            b[QStringLiteral("source")]   = QStringLiteral("test");
+            b[QStringLiteral("layman")]   = QStringLiteral("A hint check.");
+            return b;
+        };
+        const auto append = [&](qint64 hint) {
+            QJsonObject r = bullet();
+            r[QStringLiteral("caller_cwd")] = root;
+            r[QStringLiteral("op")]         = QStringLiteral("append");
+            r[QStringLiteral("section")]    = QStringLiteral("work");
+            r[QStringLiteral("id_hint")]    = hint;
+            r[QStringLiteral("dry_run")]    = true;
+            return logOf(r);
+        };
+        const auto appendBatch = [&](qint64 hint) {
+            QJsonObject r = call(root, QStringLiteral("append_batch"));
+            r[QStringLiteral("section")] = QStringLiteral("work");
+            r[QStringLiteral("dry_run")] = true;
+            QJsonObject b = bullet();
+            b[QStringLiteral("id_hint")] = hint;
+            r[QStringLiteral("bullets")] = QJsonArray{b};
+            return logOf(r);
+        };
+
+        const qint64 tooHigh = 7 + 1000001;
+        const QJsonObject r1 = append(tooHigh);
+        EXPECT_FALSE(r1.value(QStringLiteral("ok")).toBool()) << backend << dump(r1);
+        EXPECT_EQ(codeOf(r1), QStringLiteral("bad_args")) << backend << dump(r1);
+
+        const QJsonObject r2 = append(tooHigh - 1);
+        EXPECT_TRUE(r2.value(QStringLiteral("ok")).toBool()) << backend << dump(r2);
+
+        const QJsonObject r3 = appendBatch(tooHigh);
+        // A dry run reports would_apply_count; applied_count is always 0.
+        EXPECT_EQ(r3.value(QStringLiteral("would_apply_count")).toInt(), 0) << backend << dump(r3);
+        const QJsonArray skipped = r3.value(QStringLiteral("skipped")).toArray();
+        ASSERT_EQ(skipped.size(), 1) << backend << dump(r3);
+        EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_args")) << backend << dump(r3);
+
+        const QJsonObject r4 = appendBatch(tooHigh - 1);
+        EXPECT_EQ(r4.value(QStringLiteral("would_apply_count")).toInt(), 1) << backend << dump(r4);
+    }
+}
+
 // INV-5 — row 102.
 TEST(RoadmapLogReviewFixes, Row102LanesAreSanitised) {
     ants_test::XdgGuard guard;

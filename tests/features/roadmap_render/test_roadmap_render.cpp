@@ -392,7 +392,7 @@ TEST(RoadmapRender, Inv10ElementInterleaving) {
 // re-load files it as narration and the round-trip fails.
 //
 // The cell carrying a literal `|` is the half that pins the escaping: it must
-// be spelled `\|` and it must be what the migration's tableCells() inverts,
+// be spelled `\|` and it must be what the migration's tableRowCells() inverts,
 // or INV-1 fails on the first pipe-bearing cell instead of on the payload.
 TEST(RoadmapRender, Inv1TableRendersAsGfm) {
     auto f = makeFixture();
@@ -416,6 +416,33 @@ TEST(RoadmapRender, Inv1TableRendersAsGfm) {
         << "table not serialised as GFM:\n" << text.toStdString();
     EXPECT_FALSE(text.contains(QStringLiteral("\"header\"")))
         << "raw payload JSON reached the file:\n" << text.toStdString();
+}
+
+// ANTS-6640 — a `\` before a `|` is doubled, so a cell holding `a\|b` keeps its
+// backslash; a lone `\` stays single. The migration's reader gives back both
+// cells as stored.
+TEST(RoadmapRender, Ants6640BackslashCellsRoundTrip) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    QString err;
+    const auto sec = f->store->addSection(f->projectId, QStringLiteral("s"), QStringLiteral("S"), 2, 1, std::nullopt, &err);
+    ASSERT_TRUE(sec);
+    ASSERT_TRUE(f->store->addElement(
+        *sec, 0, QStringLiteral("table"),
+        QStringLiteral(R"({"header":["Lane","Note"],"rows":[["re","a\\|b"],["path","C:\\x"]]})"),
+        &err)) << err.toStdString();
+
+    ASSERT_TRUE(RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err))
+        << err.toStdString();
+    const QString text = readAll(f->liveAbs());
+    const QString reRow = QStringLiteral("| re | a\\\\\\|b |");
+    const QString pathRow = QStringLiteral("| path | C:\\x |");
+    EXPECT_TRUE(text.contains(reRow + QLatin1Char('\n') + pathRow))
+        << "backslash not escaped as the shared rule says:\n" << text.toStdString();
+    EXPECT_EQ(RoadmapParse::tableRowCells(reRow),
+              (QStringList{QStringLiteral("re"), QStringLiteral("a\\|b")}));
+    EXPECT_EQ(RoadmapParse::tableRowCells(pathRow),
+              (QStringList{QStringLiteral("path"), QStringLiteral("C:\\x")}));
 }
 
 // INV-1's other half — a payload the store accepted but the render cannot turn

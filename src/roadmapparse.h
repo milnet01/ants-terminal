@@ -505,6 +505,18 @@ ConvertedLinks convertedLinksIn(const QString &body);
 // Case-sensitive: these lines are the render's own output.
 QString stripTrailingTrailerLines(const QString &body);
 
+// ANTS-6640 — the one GFM table-cell spelling, shared by bundle_row's file
+// writer, the store render and the migration's reader. A `|` is spelled `\|`
+// and a `\` before a `\` or a `|` is doubled, so a cell holding `a\|b` keeps
+// its backslash. Any other `\` stays single, so a lone one round-trips as
+// written.
+QString escapeTableCell(const QString &text);
+
+// The inverse over one row: cells split on unescaped pipes, `\\` reads as `\`,
+// `\|` as `|`, any other `\` is kept. The outer pipes are dropped and every
+// cell is trimmed.
+QStringList tableRowCells(const QString &line);
+
 // Pure helper: parse `markdownText` into top-level status-emoji bullets.
 // Dispatches on detectRoadmapFormat(). Result is read-only; used by the
 // `roadmap-query` IPC verb to feed Claude a structured snapshot without

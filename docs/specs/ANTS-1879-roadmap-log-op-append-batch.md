@@ -144,6 +144,8 @@ sequence must remain contiguous — see INV-6).
   — parity (ANTS-1877).
 - `id_taken` — `id_hint` ≤ current counter (only honoured on the
   first bullet).
+- `bad_args` — `id_hint` more than 10^6 above the highest existing id;
+  the bullet is skipped (ANTS-6640).
 - `headline_empty`, `bad_status`, `bad_kind` — per-bullet validation
   failure surfaces in `skipped[]` (not a hard refusal).
 - `roadmap_write_failed` / `counter_write_failed` — atomic-commit

@@ -2628,4 +2628,47 @@ std::optional<BulletRecord> parseAntsV1Bullet(const QStringList &lines,
     rec.bodyProse = std::move(prose);   // ANTS-4557 — same field, same rule, store side
     return rec;
 }
+
+QString escapeTableCell(const QString &text) {
+    QString out;
+    out.reserve(text.size() + 8);
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        const QChar c = text.at(i);
+        if (c == QLatin1Char('|')) {
+            out += QLatin1String("\\|");
+        } else if (c == QLatin1Char('\\') && i + 1 < text.size() &&
+                   (text.at(i + 1) == QLatin1Char('\\') ||
+                    text.at(i + 1) == QLatin1Char('|'))) {
+            out += QLatin1String("\\\\");
+        } else {
+            out += c;
+        }
+    }
+    return out;
+}
+
+QStringList tableRowCells(const QString &line) {
+    QString t = line.trimmed();
+    if (t.startsWith(QLatin1Char('|'))) t.remove(0, 1);
+    QStringList out;
+    QString cur;
+    bool endedOnPipe = false;
+    for (qsizetype i = 0; i < t.size(); ++i) {
+        const QChar c = t.at(i);
+        endedOnPipe = false;
+        if (c == QLatin1Char('\\') && i + 1 < t.size() &&
+            (t.at(i + 1) == QLatin1Char('\\') || t.at(i + 1) == QLatin1Char('|'))) {
+            cur += t.at(i + 1);
+            ++i;
+        } else if (c == QLatin1Char('|')) {
+            out.append(cur.trimmed());
+            cur.clear();
+            endedOnPipe = true;
+        } else {
+            cur += c;
+        }
+    }
+    if (!endedOnPipe) out.append(cur.trimmed());
+    return out;
+}
 }  // namespace RoadmapParse

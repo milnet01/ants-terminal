@@ -406,23 +406,17 @@ bool hasMarkerInHead(const QString &text) {
 // § 2.2 used to say) writes raw JSON where the rows belong.
 //
 // The separator row is delimiter rather than content, so the migration never
-// stored one and it is synthesised here. A literal `|` in a cell is spelled
-// `\|`, which the migration's tableCells() inverts exactly — the escaping has
-// to be invertible or INV-1's round-trip fails on the first pipe-bearing cell.
-// A newline cannot be spelled in a GFM row invertibly at all, which is why it
-// is folded to `<br>` at the WRITE boundary (roadmap_log's bundle_row) and
-// never reaches here.
-QString escapeCell(const QString &cell) {
-    QString s = cell;
-    s.replace(QLatin1Char('|'), QLatin1String("\\|"));
-    return s;
-}
-
+// stored one and it is synthesised here. A cell is spelled by
+// RoadmapParse::escapeTableCell(), which the migration's reader inverts
+// exactly — the escaping has to be invertible or INV-1's round-trip fails on
+// the first pipe-bearing cell. A newline cannot be spelled in a GFM row
+// invertibly at all, which is why it is folded to `<br>` at the WRITE boundary
+// (roadmap_log's bundle_row) and never reaches here.
 QString tableRow(const QJsonArray &cells) {
     QStringList out;
     out.reserve(int(cells.size()));
     for (const QJsonValue &c : cells)
-        out.append(escapeCell(c.toString()));
+        out.append(RoadmapParse::escapeTableCell(c.toString()));
     return QStringLiteral("| ") + out.join(QStringLiteral(" | ")) + QStringLiteral(" |");
 }
 

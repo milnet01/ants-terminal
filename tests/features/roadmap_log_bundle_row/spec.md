@@ -44,7 +44,8 @@ so it lives only here (no `docs/specs/ANTS-1691.md`).
   `bad_case` + `canonical_slug` (parity with create_section).
 - **INV-4** pipe escaping — a `|` inside any cell becomes `\|` in the
   emitted row; the row's column count is unchanged (no split on the
-  literal `|`).
+  literal `|`). A `\` before a `\` or a `|` is doubled, so a cell holding
+  `a\|b` is written `a\\\|b` (ANTS-6640, the store render's rule).
 - **INV-5** newline escaping — a `\n` inside any cell becomes `<br>`
   (Markdown table cells cannot contain a raw newline).
 - **INV-6** `column_mismatch` — when the table exists, `cells.size()`

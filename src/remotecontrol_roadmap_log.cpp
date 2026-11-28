@@ -322,6 +322,10 @@ QJsonDocument rlAppendToStore(const RlAppendInput &in, RoadmapStore &store,
                                    "(%3) — pick a value > %3 or omit "
                                    "the hint")
                         .arg(hint).arg(prefix).arg(highWater));
+            if (hint - highWater > kIdHintMaxJump)
+                return rlErr(QStringLiteral("bad_args"),
+                    QStringLiteral("roadmap_log: ") +
+                        rlIdHintTooHighMessage(hint, highWater));
             allocated = hint;
         }
         // ANTS-6738 — the width the prefix's ids already use.
@@ -1155,6 +1159,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                                    "> %3 or omit the hint")
                         .arg(newId).arg(pfx).arg(maxFileId));
             }
+            const qint64 highWater = std::max(counter, maxFileId);
+            if (newId - highWater > kIdHintMaxJump)
+                return rlErr(QStringLiteral("bad_args"),
+                    QStringLiteral("roadmap_log: ") +
+                        rlIdHintTooHighMessage(newId, highWater));
         } else if (maxFileId >= newId) {
             // Counter lagged the file: skip past the live max so we never
             // write a duplicate, and let the counter rewrite below self-heal.

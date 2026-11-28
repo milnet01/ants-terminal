@@ -1662,10 +1662,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRowForTest(
 QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     // Escape one cell for safe placement inside a GFM table: a literal
     // `|` would otherwise open a new column, and a raw newline is illegal
-    // in a table cell. Backslash-escape pipes; fold newlines to <br>.
+    // in a table cell. Escape as the store render does (ANTS-6640); fold
+    // newlines to <br>.
     auto escapeCell = [](const QString &raw) {
-        QString s = raw;
-        s.replace(QStringLiteral("|"), QStringLiteral("\\|"));
+        QString s = RoadmapParse::escapeTableCell(raw);
         s.replace(QStringLiteral("\r\n"), QStringLiteral("<br>"));
         s.replace(QChar('\n'), QStringLiteral("<br>"));
         s.replace(QChar('\r'), QStringLiteral("<br>"));
@@ -3077,6 +3077,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                                          "highest live id %2 (counter %3, "
                                          "file max %4)").arg(hint)
                               .arg(effCounter).arg(counter).arg(maxFileId));
+                    continue;
+                }
+                if (hint - effCounter > kIdHintMaxJump) {
+                    skip(QStringLiteral("bad_args"),
+                         rlIdHintTooHighMessage(hint, effCounter));
                     continue;
                 }
                 nextId = hint;

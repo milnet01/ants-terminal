@@ -11,6 +11,7 @@
 #include <QStringList>
 #include <QTemporaryDir>
 #include "remotecontrol.h"
+#include "roadmapparse.h"   // ANTS-6640 — the shared cell reader
 
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
@@ -172,6 +173,23 @@ TEST(RoadmapLogBundleRow, Inv4PipeEscaping) {
         if (newRow[i] == '|' && (i == 0 || newRow[i - 1] != '\\'))
             ++unescaped;
     EXPECT_EQ(unescaped, 5) << "4-column row must have 5 unescaped pipes";
+}
+
+// INV-4 (ANTS-6640) — a `\` before a `|` is doubled, as the store render does,
+// so the cell reads back as written; a lone `\` stays single.
+TEST(RoadmapLogBundleRow, Inv4BackslashBeforePipeIsDoubled) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), roadmapWithTable());
+    RemoteControl rc(nullptr);
+    const QStringList row{"80", "ddd444", "a\\|b", "C:\\x"};
+    const auto out = rc.cmdRoadmapLogBundleRowForTest(
+        baseReq(dir.path(), row)).object();
+    ASSERT_TRUE(out["ok"].toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    const QString md = readRoadmap(dir.path());
+    const QString written = QStringLiteral("| 80 | ddd444 | a\\\\\\|b | C:\\x |");
+    EXPECT_NE(md.indexOf(written), -1) << md.toStdString();
+    EXPECT_EQ(RoadmapParse::tableRowCells(written), row);
 }
 
 // INV-5 — newline escaping → <br>.

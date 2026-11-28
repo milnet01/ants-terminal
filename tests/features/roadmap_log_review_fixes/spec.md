@@ -1,7 +1,7 @@
 # roadmap_log_review_fixes — the smaller roadmap_query / roadmap_log fixes
 
-Contract for ANTS-6641: the rows of
-`docs/reviews/close-findings-2026-11-06.md` queued under it that changed
+Contract for ANTS-6641, and for ANTS-6640's row 118: the rows of
+`docs/reviews/close-findings-2026-11-06.md` queued under them that changed
 behaviour. Each case drives the verb through `cmdRoadmapLog` or
 `cmdRoadmapQueryForTest` with `XDG_DATA_HOME` in the case's own temporary
 folder, so no case reads or writes the machine's roadmap store. A store case
@@ -21,7 +21,9 @@ migrates its fixture into that sandboxed store first.
 - **INV-4** (row 101) — a pass-headings file append refuses a designator the
   file already holds, `id_taken`; `append_batch` skips it with that code; a
   dry run names the id `would_be_id`, not `id`. Case
-  `Row101PassFileAppendRefusesATakenDesignator`.
+  `Row101PassFileAppendRefusesATakenDesignator`. On the file and the store,
+  an `append_batch` bullet naming a pass an earlier bullet in the batch took
+  is skipped `id_taken`. Case `Row101PassBatchRefusesAnInBatchDuplicate`.
 - **INV-5** (row 102) — a `lanes` element is sanitised as an `evidence` one
   is, on append and on `amend_field`: a newline or comma folds to a space.
   Case `Row102LanesAreSanitised`.
@@ -52,3 +54,7 @@ migrates its fixture into that sandboxed store first.
 - **INV-15** (row 1390, ANTS-5923) — a caller in a subdirectory of an
   unmigrated project reads the root's declared id format, on the list path and
   the section path. Case `Row1390SubdirectoryCallerReadsTheRootDeclaration`.
+- **INV-16** (ANTS-6640 row 118) — an `id_hint` more than 10^6 above the
+  high-water refuses `bad_args` on `append` and is skipped `bad_args` on
+  `append_batch`, on the file and the store; one exactly 10^6 above is
+  accepted. Case `Row118IdHintFarAboveTheHighWaterRefuses`.

@@ -385,7 +385,9 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
     QJsonArray applied, skipped;
     QStringList renderedBlocks;
     const bool useSeparator = rcPassBlocksUseSeparator(markdown);  // ANTS-4117
-    const QSet<QString> taken = rcPassIdsIn(markdown);             // ANTS-6641
+    // ANTS-6641 — the file's ids, then each one this batch accepts, so two
+    // bullets naming one pass cannot both apply.
+    QSet<QString> taken = rcPassIdsIn(markdown);
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
     for (int i = 0; i < bullets.size(); ++i) {
         PassAppendItem it = rcRenderPassBullet(
@@ -405,6 +407,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
             skipped.append(s);
             continue;
         }
+        taken.insert(it.synthId);
         renderedBlocks << it.block;
         QJsonObject a;
         a["bullet_index"] = i;
@@ -2332,6 +2335,16 @@ qint64 rcdetail::rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
                                  const QString &prefix) {
     QString ignored;
     return store.allocationFloor(projectId, prefix, &ignored);
+}
+
+namespace rcdetail {
+constexpr qint64 kIdHintMaxJump = 1000000;   // ANTS-6640
+}  // namespace rcdetail
+
+QString rcdetail::rlIdHintTooHighMessage(qint64 hint, qint64 highWater) {
+    return QStringLiteral("id_hint %1 is more than %2 above the high-water %3 "
+                          "— pick a value of at most %4 or omit the hint")
+        .arg(hint).arg(kIdHintMaxJump).arg(highWater).arg(highWater + kIdHintMaxJump);
 }
 
 // § 2.3 — the prefix idHighWater() is keyed on. idPrefixFor() takes the place

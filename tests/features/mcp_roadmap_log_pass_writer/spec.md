@@ -35,8 +35,9 @@ design spec's INV-1..16 and from the format-mismatch test's INVs).
   lands in `skipped[]` while valid entries commit; an all-invalid batch
   leaves the file untouched. The call-level `pass` (ANTS-4354) and
   `status` (ANTS-6372) are each the fallback for a bullet naming none; a
-  bullet's own value wins. Cases `Ants4354…` and `Ants6372…`, and the
-  store route's `RoadmapPassStoreWrite.Ants6372…`.
+  bullet's own value wins. Two bullets cannot name one pass: the later is
+  skipped `id_taken`. Cases `Ants4354…` and `Ants6372…`, and the store
+  route's `RoadmapPassStoreWrite.Ants6372…`.
 - **INV-15** — `op:append` into an empty section inserts the block under
   the section heading.
 - **INV-16** — a stray `pass` arg on a GFM/ants-v1 roadmap is ignored,

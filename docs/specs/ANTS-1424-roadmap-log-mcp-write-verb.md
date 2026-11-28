@@ -100,6 +100,7 @@ hard to type for some assistants. The verb writes the emoji.
 counter = read(.roadmap-counter)
 if (id_hint is set):
     if (id_hint <= counter): return {ok:false, code:"id_taken"}
+    if (id_hint - counter > 10^6): return {ok:false, code:"bad_args"}
     new_id = id_hint
 else:
     new_id = counter + 1
@@ -159,6 +160,8 @@ is the file's last).
 - `bad_section` — section slug not found in ROADMAP.md.
 - `headline_empty` — headline arg present but empty.
 - `id_taken` — `id_hint` ≤ current counter.
+- `bad_args` — `id_hint` more than 10^6 above the highest existing id
+  (ANTS-6640).
 - `counter_read_failed` — `.roadmap-counter` unreadable.
 - `counter_write_failed` — atomic rewrite failed.
 - `roadmap_write_failed` — ROADMAP.md write failed.

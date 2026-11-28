@@ -579,18 +579,18 @@ TEST(McpRoadmapLogPassWriter, Ants4354CallLevelPassIsTheBatchFallback) {
         return b;
     };
 
-    // Top-level `pass`, no per-bullet ones — the call the schema led callers
-    // to make, and the one that used to write nothing at all.
+    // Top-level `pass` on a bullet naming none — the call the schema led
+    // callers to make, and the one that used to write nothing at all.
     QJsonObject batch = baseReq(tmp.path());
     batch[QStringLiteral("section")] = QStringLiteral("active");
     batch[QStringLiteral("pass")]    = QStringLiteral("2.1");
     QJsonArray bs;
-    bs.append(mk(QString(), QStringLiteral("Shares the call's pass.")));
-    bs.append(mk(QString(), QStringLiteral("So does this one.")));
+    bs.append(mk(QString(), QStringLiteral("Takes the call's pass.")));
     // …and a per-bullet pass still WINS over the call-level one, so a batch
     // of N passes can name N designators. That is the property the op exists
-    // for, and sharing one is the degenerate case rather than the only one.
+    // for. Two bullets cannot share one: a designator names one item.
     bs.append(mk(QStringLiteral("2.2"), QStringLiteral("Names its own.")));
+    bs.append(mk(QStringLiteral("2.3"), QStringLiteral("So does this one.")));
     batch[QStringLiteral("bullets")] = bs;
 
     const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(batch).object();
@@ -599,10 +599,10 @@ TEST(McpRoadmapLogPassWriter, Ants4354CallLevelPassIsTheBatchFallback) {
     EXPECT_EQ(out.value(QStringLiteral("skipped_count")).toInt(), 0);
 
     const QByteArray md = readFile(rmPath(tmp.path()));
-    EXPECT_TRUE(md.contains("#### Pass 2.1 Shares the call's pass."));
-    EXPECT_TRUE(md.contains("#### Pass 2.1 So does this one."));
+    EXPECT_TRUE(md.contains("#### Pass 2.1 Takes the call's pass."));
     EXPECT_TRUE(md.contains("#### Pass 2.2 Names its own."))
         << "a per-bullet pass must override the call-level fallback";
+    EXPECT_TRUE(md.contains("#### Pass 2.3 So does this one."));
 
     // With neither, the refusal now says where the field can go — the old
     // message named a parameter the caller had no slot to satisfy.
@@ -636,6 +636,7 @@ TEST(McpRoadmapLogPassWriter, Ants6372CallLevelStatusIsTheBatchFallback) {
     QJsonObject a, b;
     a[QStringLiteral("headline")] = QStringLiteral("Takes the call's status.");
     b[QStringLiteral("headline")] = QStringLiteral("Names its own.");
+    b[QStringLiteral("pass")]     = QStringLiteral("2.2");
     b[QStringLiteral("status")]   = QStringLiteral("in-progress");
     batch[QStringLiteral("bullets")] = QJsonArray{a, b};
 
@@ -646,6 +647,6 @@ TEST(McpRoadmapLogPassWriter, Ants6372CallLevelStatusIsTheBatchFallback) {
     const QByteArray md = readFile(rmPath(tmp.path()));
     EXPECT_TRUE(md.contains("#### Pass 2.1 Takes the call's status.\n- **Status**: todo"))
         << md.toStdString();
-    EXPECT_TRUE(md.contains("#### Pass 2.1 Names its own.\n- **Status**: in-progress"))
+    EXPECT_TRUE(md.contains("#### Pass 2.2 Names its own.\n- **Status**: in-progress"))
         << md.toStdString();
 }
