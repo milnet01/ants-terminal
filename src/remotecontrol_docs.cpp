@@ -283,6 +283,10 @@ static QStringList boundedMdWalk(const QString &rootCanonical,
 }
 
 // ANTS-3601 — pure: a validated `rawPath` → sorted project-relative doc set.
+// Despite the name, this is the one document walk every docs verb shares:
+// doc_integrity, doc_symbols, spec_lint (and specLintSiblingInvNumbers),
+// doc_dedup and doc_lint. A change here changes all of them; so does a change
+// to the DocIntegrity::Options caps those verbs read as `walk`.
 QStringList RemoteControl::docIntegrityEnumerate(const QString &rootCanonical,
                                                  const QString &rawPath,
                                                  const QString &docsDirDefault,
@@ -1026,11 +1030,11 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     const bool staged = req.value(QStringLiteral("staged")).toBool(false);
     const bool scoped = !since.isEmpty() || staged;
     if (!since.isEmpty() && staged)
-        return QJsonDocument(gitErr("bad_mode_combo",
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_mode_combo"),
             QStringLiteral("spec_lint: since and staged:true are exclusive")));
     if (!since.isEmpty() &&
         (!isValidRange(since) || since.contains(QLatin1String(".."))))
-        return QJsonDocument(gitErr("bad_args",
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("spec_lint: since must be a single git ref")));
     SpecLintScope scope;
     if (scoped) {
@@ -1484,7 +1488,7 @@ QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
     const auto excludedHeadings =
         DocDedup::excludedHeadingsArg(req.value(QStringLiteral("exclude_headings")));
     if (!excludedHeadings)
-        return QJsonDocument(gitErr("bad_args",
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("doc_dedup: exclude_headings must be an array of non-blank heading texts")));
     opts.excludedHeadings = *excludedHeadings;
 
@@ -2268,7 +2272,7 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     // index copy. Refused before any git runs.
     const bool staged = req.value(QStringLiteral("staged")).toBool();
     if (staged && wantFix)
-        return QJsonDocument(gitErr("bad_mode_combo",
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_mode_combo"),
             QStringLiteral("doc_lint: staged:true and fix:true are exclusive")));
 
     // ANTS-5293 — "path" is today's rule; "auto" reads each document's Genre:
@@ -2325,7 +2329,7 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     const auto excludedHeadings =
         DocDedup::excludedHeadingsArg(req.value(QStringLiteral("exclude_headings")));
     if (!excludedHeadings)
-        return QJsonDocument(gitErr("bad_args",
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("doc_lint: exclude_headings must be an array of non-blank heading texts")));
     opts.dedup.excludedHeadings = *excludedHeadings;
 

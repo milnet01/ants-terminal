@@ -556,8 +556,10 @@ QJsonObject run(const QString &rootIn, const QJsonObject &args)
             ++nMiss;
         else if (result == QLatin1String("outside_allowed"))
             ++nOutside;
-        else
+        else if (result == QLatin1String("not_run"))
             ++nNotRun;
+        else  // a new result kind needs its own count here and in `counts`
+            Q_ASSERT_X(false, "quotation_check", "result kind with no count");
         finding[QStringLiteral("index")] = int(i);
         finding[QStringLiteral("path")] = path;
         if (hasRef)

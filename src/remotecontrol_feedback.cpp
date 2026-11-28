@@ -1,5 +1,8 @@
-// ANTS-3833 TU 10/25 — feedback_*, spec_log and audit_* verbs, git_state's
-// ops, and the project-wide caller_cwd resolver ants::resolveCallerCwdRoot.
+// ANTS-3833 TU 10/25 — feedback_*, spec_log and audit_* verbs; git_state's
+// ops and their helpers (gitErr, gitFailure, isValidRange); and the
+// project-wide root resolvers: resolveRootCanonical,
+// ants::resolveCallerCwdRoot, requiredCallerCwd, ServerCwdRootProvider and
+// expandGlobalConfigSentinel.
 #include "remotecontrol.h"
 #include "mcprefusal.h"
 #include "remotecontrol_internal.h"

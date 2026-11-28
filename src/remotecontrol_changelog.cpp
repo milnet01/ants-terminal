@@ -1089,24 +1089,13 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         // The closed section's content, because a caller wants it as release
         // notes immediately — otherwise they re-read the file they just wrote.
         //
-        // ANTS-4561 — CAPPED, because on the projects that most need this verb
-        // the section is enormous. A big `[Unreleased]` is the symptom of a
-        // project that has been skipping the promotion step, and Vestige's had
-        // reached ~11,100 lines: the reply came back at 621,306 characters on
-        // one line, over the tool-result ceiling, so the one changelog edit
-        // every release makes could not be performed by the verb that owns it.
-        // dry_run did not help — it renders the same body — and the verb had
-        // no fields / compact / max_bytes to opt out with.
-        //
-        // Default-on rather than opt-in, per this project's rule that a
-        // token-saving knob ships enabled with an off switch: the callers who
-        // hit this are precisely the ones who do not know to ask. Truncation
-        // is ANNOUNCED and says how to get the rest, so a caller can never
-        // mistake a clipped body for the whole section.
+        // ANTS-4561 — capped by default, because a large `[Unreleased]` made
+        // the reply too big for a tool result. A cut body says so and how to
+        // read the rest.
         {
             const QByteArray fullBody = res.released_body.toUtf8();
-            // A max_body_bytes outside [kMinCap, kMaxCap] is moved to the
-            // nearer bound, and the reply does not say so.
+            // max_body_bytes: default 16384; 0 or less = no cap; any other
+            // value is moved into [2000, 1 MiB] and the reply does not say so.
             constexpr qint64 kDefaultCap = 16384;
             constexpr qint64 kMinCap     = 2000;
             constexpr qint64 kMaxCap     = 1048576;   // 1 MiB
