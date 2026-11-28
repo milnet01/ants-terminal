@@ -1075,6 +1075,10 @@ void SettingsDialog::populatePluginsTab() {
     layout->addStretch(1);
 }
 
+// A Highlights colour button keeps its colour here, empty for none, so
+// applySettings never reads the "Default" / "None" label back as a colour.
+static constexpr char kHighlightColour[] = "highlightColour";
+
 void SettingsDialog::addHighlightRow(const QString &pattern, const QString &fg,
                                       const QString &bg, bool enabled) {
     int row = m_highlightTable->rowCount();
@@ -1084,12 +1088,15 @@ void SettingsDialog::addHighlightRow(const QString &pattern, const QString &fg,
 
     // FG color button
     auto *fgBtn = new QPushButton(fg.isEmpty() ? "Default" : fg);
+    fgBtn->setProperty(kHighlightColour, fg);
     if (!fg.isEmpty())
         fgBtn->setStyleSheet(QString("background-color: %1; color: white;").arg(fg));
     connect(fgBtn, &QPushButton::clicked, this, [this, fgBtn]() {
-        QColor c = QColorDialog::getColor(QColor(fgBtn->text()), this, "Foreground Color");
+        QColor c = QColorDialog::getColor(
+            QColor(fgBtn->property(kHighlightColour).toString()), this, "Foreground Color");
         if (c.isValid()) {
             fgBtn->setText(c.name());
+            fgBtn->setProperty(kHighlightColour, c.name());
             fgBtn->setStyleSheet(QString("background-color: %1; color: white;").arg(c.name()));
         }
     });
@@ -1097,12 +1104,15 @@ void SettingsDialog::addHighlightRow(const QString &pattern, const QString &fg,
 
     // BG color button
     auto *bgBtn = new QPushButton(bg.isEmpty() ? "None" : bg);
+    bgBtn->setProperty(kHighlightColour, bg);
     if (!bg.isEmpty())
         bgBtn->setStyleSheet(QString("background-color: %1; color: white;").arg(bg));
     connect(bgBtn, &QPushButton::clicked, this, [this, bgBtn]() {
-        QColor c = QColorDialog::getColor(QColor(bgBtn->text()), this, "Background Color");
+        QColor c = QColorDialog::getColor(
+            QColor(bgBtn->property(kHighlightColour).toString()), this, "Background Color");
         if (c.isValid()) {
             bgBtn->setText(c.name());
+            bgBtn->setProperty(kHighlightColour, c.name());
             bgBtn->setStyleSheet(QString("background-color: %1; color: white;").arg(c.name()));
         }
     });
@@ -1447,9 +1457,9 @@ void SettingsDialog::applySettings() {
         if (!isUsablePattern(pattern)) continue;
         obj["pattern"] = pattern;
         auto *fgBtn = qobject_cast<QPushButton *>(m_highlightTable->cellWidget(row, 1));
-        obj["fg"] = (fgBtn && fgBtn->text() != "Default") ? fgBtn->text() : "";
+        obj["fg"] = fgBtn ? fgBtn->property(kHighlightColour).toString() : QString();
         auto *bgBtn = qobject_cast<QPushButton *>(m_highlightTable->cellWidget(row, 2));
-        obj["bg"] = (bgBtn && bgBtn->text() != "None") ? bgBtn->text() : "";
+        obj["bg"] = bgBtn ? bgBtn->property(kHighlightColour).toString() : QString();
         auto *check = qobject_cast<QCheckBox *>(m_highlightTable->cellWidget(row, 3));
         obj["enabled"] = check ? check->isChecked() : true;
         highlights.append(obj);

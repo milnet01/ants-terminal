@@ -474,6 +474,11 @@ QDialog *show(QWidget *parent,
         quint64 &currentGeneration = *generation;
         state->generation = ++currentGeneration;   // ANTS-5059
 
+    // Still inside runProbes, though indented one level shallow: finalize
+    // and runAsync are built afresh every refresh round, around that
+    // round's `state`. Per-dialog state goes above runProbes. The lambda
+    // closes at `};  // close runProbes lambda`.
+    //
     // Finalizer: called once per probe. When pending hits 0, render
     // the full HTML.
     auto finalize = [state, dlgGuard, viewerGuard, copyGuard,
@@ -883,7 +888,8 @@ QDialog *show(QWidget *parent,
         }
     };
 
-    // Spawn one async QProcess per probe. Each one writes into its
+    // Spawn one async QProcess per probe (still inside runProbes, so one
+    // runAsync per refresh round). Each one writes into its
     // slot on the shared ProbeState when it finishes, then calls
     // finalize(). No blocking on the UI thread.
     // ANTS-5059 — parented to the dialog, not the caller: closing it kills
