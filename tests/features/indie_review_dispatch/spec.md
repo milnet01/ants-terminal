@@ -33,6 +33,7 @@ covered by the manual recipe in the spec § 7.2, not in CI.
 - **G-17 / probe accessor declared.** `inFlightCountForTest()` declared in `indiereviewdispatcher.h`.
 - **G-18 / plaintext-prompt warning key.** `cmdIndieReviewDispatch` sets the success envelope's `warning` from `LlmClient::plaintextPromptWarning(endpoint, dr.apiKey)`, after the refusal-branch return, and sets no other key named `warning`. See `docs/specs/ANTS-5010-plaintext-prompt-warning.md` § 2.5 and § 3 INV-5 — this handler needs a `MainWindow`, so the check is a source-grep rather than a behavioural test.
 - **G-19 / worker never marshals (ANTS-5024).** The provider joins its worker with `QThread::wait()` on the GUI thread, so `cmdIndieReviewDispatch` calls none of `resolveRootCanonical`, `resolveCallerCwdRoot`, `ants::onGuiThread` or `m_main->`. The provider passes the root it resolved on the GUI thread as `cmdIndieReviewDispatch(args, canon)`. A marshal from that worker is a blocking queued call the parked GUI thread never serves. Source-grep with comments stripped: reproducing the hang needs a live `MainWindow`.
+- **G-20 / same lanes as the partition verb (ANTS-6639).** `cmdIndieReviewDispatch` resolves lanes as `cmdIndieReviewPartition` does: `derivePartition`, then `deriveComputedPartition` when that yields one lane or none, before checking requested names. A lane named in a derived partition reply is therefore not refused as unknown. Source-grep: a behavioural run needs AI settings and an endpoint.
 
 ### ANTS-5018 — shared AI egress checks
 

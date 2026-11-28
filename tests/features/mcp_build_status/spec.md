@@ -36,6 +36,12 @@ top-level `CMakeLists.txt`. Re-uses the existing
 defs; needs a new `SRC_BUILDCACHE_H_PATH` compile def added in the
 same block.
 
+## ANTS-6639 — exit_code hygiene
+
+Run through `cmdBuildStatus` on a scratch root: an `exit_code` that is not
+a whole number in `int` range (`1.5`, `4294967297`) refuses `bad_args`; it
+is never recorded as exit 0. (Ants6639NonIntegerExitCodeRefused)
+
 ## Out of scope
 
 - Runtime correctness of the parser (regex hits, error-line capture,

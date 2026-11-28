@@ -51,3 +51,12 @@ itself on a scratch root:
   `runner` it parses as that runner and refuses output that is not its;
   an unknown `runner`, or `runner` on `op:"read"`, refuses `bad_args`. A
   record with no `runner` key reads back as `ctest`.
+
+## ANTS-6639 — argument hygiene
+
+- An `exit_code` that is not a whole number in `int` range (`1.5`,
+  `4294967297`) refuses `bad_args`; it is never recorded as exit 0.
+  (Ants6639NonIntegerExitCodeRefused)
+- The `detail` echoed in a `detail_not_found` error goes through
+  `ceSanitiseEcho`: control characters become `?`.
+  (Ants6639DetailEchoIsSanitised)

@@ -360,3 +360,36 @@ TEST(McpTestResults, Ants5503Inv8OldRecordIsCtest) {
     EXPECT_EQ(out.value(QStringLiteral("runner")).toString(), QStringLiteral("ctest"));
     EXPECT_EQ(out.value(QStringLiteral("nothing_ran")), QJsonValue(false));
 }
+
+// ANTS-6639 — an exit_code that is not a whole int is refused, never
+// recorded as the 0 that toInt() answers for it.
+TEST(McpTestResults, Ants6639NonIntegerExitCodeRefused) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    RemoteControl rc(nullptr);
+    for (const double bad : {1.5, 4294967297.0}) {
+        QJsonObject req = recordReq(QString::fromUtf8(kPassingCtest));
+        req[QStringLiteral("exit_code")] = bad;
+        const QJsonObject out = callTestResults(rc, td.path(), req);
+        EXPECT_EQ(out.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_args")) << bad << dump(out);
+    }
+}
+
+// ANTS-6639 — the `detail` echo in detail_not_found is scrubbed.
+TEST(McpTestResults, Ants6639DetailEchoIsSanitised) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(callTestResults(rc, td.path(),
+                                recordReq(QString::fromUtf8(kPassingCtest)))
+                    .value(QStringLiteral("ok")).toBool());
+    QJsonObject read;
+    read[QStringLiteral("detail")] = QStringLiteral("a\x01" "b");
+    const QJsonObject out = callTestResults(rc, td.path(), read);
+    EXPECT_EQ(out.value(QStringLiteral("code")).toString(),
+              QStringLiteral("detail_not_found")) << dump(out);
+    const QString error = out.value(QStringLiteral("error")).toString();
+    EXPECT_TRUE(error.contains(QStringLiteral("a?b"))) << dump(out);
+    EXPECT_FALSE(error.contains(QChar(0x01))) << dump(out);
+}

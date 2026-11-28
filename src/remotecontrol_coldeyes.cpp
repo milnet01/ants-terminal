@@ -12,6 +12,7 @@
 #include "sessionmemoryengine.h"
 #include "testrescache.h"
 #include "testrunners.h"
+#include <QDeadlineTimer>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -80,8 +81,9 @@ QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
     }
 
     // INV-12 mtime-cache (5 s TTL). Cache hit needs path+scope match
-    // AND stamp within TTL. Miss → regenerate.
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // AND stamp within TTL. Miss → regenerate. The stamp is on the
+    // monotonic clock, so a wall-clock step back cannot keep it fresh.
+    const qint64 now = QDeadlineTimer::current().deadline();
     if (m_coldEyesCachePath != root || m_coldEyesCacheScope != scope
         || now - m_coldEyesCacheStampMs > kColdEyesCacheTtlMs) {
         m_coldEyesCache       = ColdEyesEngine::derivePartition(root, scope);
@@ -180,7 +182,7 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     // Reuse the partition cache (INV-12). On miss, regenerate with
     // Default scope — the caller wants a specific lane and didn't pass
     // a scope arg here, so Default is the right baseline.
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 now = QDeadlineTimer::current().deadline();
     if (m_coldEyesCachePath != root
         || m_coldEyesCacheScope != ColdEyesEngine::Scope::Default
         || now - m_coldEyesCacheStampMs > kColdEyesCacheTtlMs) {
@@ -195,6 +197,10 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     for (const auto &l : m_coldEyesCache.lanes) {
         if (l.name == laneName) { match = &l; break; }
     }
+    // ANTS-6639 — a lane the partition names keeps its own docs; the reply
+    // says so rather than dropping the caller's doc_paths silently.
+    const bool docPathsIgnored = match
+        && !req.value(QStringLiteral("doc_paths")).toArray().isEmpty();
     // ANTS-1508 — lane-agnostic fallback: if the caller passes a lane
     // name not in the cached partition AND an explicit `doc_paths`
     // array, synthesise an ad-hoc Lane on the fly. Anchors each path
@@ -386,6 +392,9 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     // valid). Non-empty entries are an accuracy signal for the caller.
     if (!rejectedDocPaths.isEmpty())
         env["doc_paths_rejected"] = rejectedDocPaths;
+    if (docPathsIgnored)
+        env["doc_paths_ignored"] = QStringLiteral(
+            "lane is in the partition, so its own doc_paths were used");
     return QJsonDocument(env);
 }
 
@@ -411,6 +420,9 @@ namespace rcdetail {
 namespace {
 enum class CallerDir { Ok, Missing, NotDir };
 }  // namespace
+// ANTS-6639 — a caller_cwd echoed in a refusal goes through ceSanitiseEcho,
+// with room for a whole path.
+constexpr int kPathEchoCap = 256;
 static CallerDir canonicalCallerDir(const QString &raw, QString *canon) {
     *canon = QFileInfo(raw).canonicalFilePath();
     if (canon->isEmpty()) return CallerDir::Missing;
@@ -500,7 +512,8 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
             QJsonObject env = smErr(
                 QStringLiteral("cwd_bad"),
                 QStringLiteral("session_memory: caller_cwd \"%1\" %2")
-                    .arg(rawCaller, dir == CallerDir::Missing
+                    .arg(ceSanitiseEcho(rawCaller, kPathEchoCap),
+                         dir == CallerDir::Missing
                         ? QStringLiteral("does not exist")
                         : QStringLiteral("is not a directory")),
                 opRaw, QString());
@@ -697,7 +710,10 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
     // Validate required fields: step (int) and phase (non-empty string).
     const QJsonValue stepVal = req.value(QStringLiteral("step"));
     const QString    phase   = req.value(QStringLiteral("phase")).toString();
-    if (!stepVal.isDouble() || phase.isEmpty()) {
+    // ANTS-6639 — toInt() answers 0 for a fraction or a value past int, so a
+    // round trip that changes the value refuses rather than storing it.
+    if (!stepVal.isDouble() || stepVal.toDouble() != stepVal.toInt()
+        || phase.isEmpty()) {
         return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("workflow_state: set requires step (int) "
                            "and phase (non-empty string)")));
@@ -706,7 +722,7 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
 
     // Build the stored value; always overwrite updated_at_ms with server clock.
     QJsonObject state;
-    state[QStringLiteral("step")]          = static_cast<int>(stepVal.toDouble());
+    state[QStringLiteral("step")]          = stepVal.toInt();
     state[QStringLiteral("phase")]         = phase;
     state[QStringLiteral("notes")]         = notes;
     state[QStringLiteral("updated_at_ms")] = static_cast<double>(nowMs);
@@ -780,12 +796,15 @@ QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
     // H2 / M3: isDir gate prevents /etc/passwd-style false hits.
     const QString rawCaller = req.value(QStringLiteral("caller_cwd")).toString();
     QString cwd;
-    if (canonicalCallerDir(rawCaller, &cwd) != CallerDir::Ok) {
+    const CallerDir dir = canonicalCallerDir(rawCaller, &cwd);
+    if (dir != CallerDir::Ok) {
         QJsonObject env;
         env["ok"]    = false;
-        env["error"] = QStringLiteral(
-            "project_layout: caller_cwd \"%1\" is not a directory")
-                .arg(rawCaller);
+        env["error"] = QStringLiteral("project_layout: caller_cwd \"%1\" %2")
+            .arg(ceSanitiseEcho(rawCaller, kPathEchoCap),
+                 dir == CallerDir::Missing
+                     ? QStringLiteral("does not exist")
+                     : QStringLiteral("is not a directory"));
         env["code"]  = QStringLiteral("cwd_bad");
         // ANTS-1566 — concrete JSON snippet so the caller can copy
         // the exact arguments shape (mirrors session_memory + RcGate
@@ -902,7 +921,9 @@ QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
     if (op == QLatin1String("record")) {
         // Validate args.
         const QJsonValue exitV = req.value(QStringLiteral("exit_code"));
-        if (!exitV.isDouble()) {
+        // ANTS-6639 — toInt() answers 0 for a fraction or a value past int,
+        // which would record a failed build as exit 0.
+        if (!exitV.isDouble() || exitV.toDouble() != exitV.toInt()) {
             return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("build_status: \"exit_code\" must be an "
@@ -992,7 +1013,7 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
                                "on op=record (read-only argument)")));
         }
         const QJsonValue exitV = req.value(QStringLiteral("exit_code"));
-        if (!exitV.isDouble()) {
+        if (!exitV.isDouble() || exitV.toDouble() != exitV.toInt()) {
             return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("test_results: \"exit_code\" must be "
@@ -1092,7 +1113,7 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
         return QJsonDocument(mcp::refusal(
             QStringLiteral("detail_not_found"),
             QStringLiteral("test_results: \"%1\" not in failing_tests[]")
-                .arg(detail)));
+                .arg(ceSanitiseEcho(detail))));
     }
     QJsonObject env = TestResCache::toJsonWire(*loaded);
     env["ok"] = true;

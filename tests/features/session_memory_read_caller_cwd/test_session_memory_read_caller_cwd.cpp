@@ -147,6 +147,19 @@ TEST(session_memory_read_caller_cwd, ReadRefusalsRun) {
     expectBad(call("project_layout", file),
               QStringLiteral("project_layout: caller_cwd \"%1\" is not a directory")
                   .arg(file));
+    // ANTS-6639 — project_layout tells a missing path from a file, as
+    // session_memory does, and both scrub control characters in the echo.
+    expectBad(call("project_layout", missing),
+              QStringLiteral("project_layout: caller_cwd \"%1\" does not exist")
+                  .arg(missing));
+    const QString ctrl = tmp.filePath(QStringLiteral("no\x01pe"));
+    const QString scrubbed = tmp.filePath(QStringLiteral("no?pe"));
+    expectBad(call("session_memory", ctrl),
+              QStringLiteral("session_memory: caller_cwd \"%1\" does not exist")
+                  .arg(scrubbed));
+    expectBad(call("project_layout", ctrl),
+              QStringLiteral("project_layout: caller_cwd \"%1\" does not exist")
+                  .arg(scrubbed));
 }
 
 // INV-5 — project_layout follows the same canonicalise+isDir path.

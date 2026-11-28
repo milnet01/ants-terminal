@@ -32,13 +32,19 @@ verb" (cross-session reports). This is a symmetry follow-up to ANTS-3375.
   and the hint are emitted only when the deriver yields ≤1 lane, mirroring
   `cmdColdEyesPartition`'s `lanes.size() <= 1` gate — never on a healthy
   multi-lane partition.
+- **Regression (ANTS-6639) — the source is named right.** A sparse reply
+  whose lanes came from `.indie-review/partition.json` says
+  `partition_source:"override"`, not `"module_map"`. Run through
+  `cmdIndieReviewPartition` on a scratch root
+  (Ants6639OneLaneOverrideIsNamedOverride).
 
 ## Test scope
 
 Source-scrape against the remotecontrol TUs, scoped to the
-`cmdIndieReviewPartition` function body (the wrapper needs a MainWindow, so
-a runtime drive is out of scope — this mirrors how the sibling
+`cmdIndieReviewPartition` function body (this mirrors how the sibling
 `mcp_cold_eyes` sparse-hint test greps `cmdColdEyesPartition`). The
+ANTS-6639 regression runs the handler with an `ants::ServerCwdRootProvider`
+and no MainWindow. The
 existing `mcp_cold_eyes` test is updated in the same change to scope its
 lookup to `cmdColdEyesPartition` (a second `sparse_partition_hint` now
 precedes it in file order).

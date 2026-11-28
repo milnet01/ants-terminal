@@ -1,13 +1,23 @@
 // ANTS-3567 — feature-conformance test: cmdIndieReviewPartition emits a
 // sparse_partition_hint pointing at indie_review_brief's source_paths[] ad-hoc
 // mode (ANTS-3375) + the .indie-review/partition.json override, mirroring
-// cmdColdEyesPartition's ANTS-1634a hint. Source-scrape harness (the wrapper
-// needs a MainWindow, so it is greped like the sibling mcp_cold_eyes test).
+// cmdColdEyesPartition's ANTS-1634a hint. Mostly a source-scrape harness, like
+// the sibling mcp_cold_eyes test; the ANTS-6639 case runs the handler.
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
 
 #include <gtest/gtest.h>
+
+#include "remotecontrol.h"
+#include "rootprovider.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
 
 #include <string>
 
@@ -83,4 +93,33 @@ TEST(indie_review_partition_sparse_hint, Ants4846RejectedOverrideIsReported) {
     expect(body.find("overrideRejected.isEmpty() &&") != std::string::npos,
            "ANTS-4846: `path` names the override only when it was used");
     EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-6639 — run for real: a one-lane .indie-review/partition.json is
+// reported as the override, not the module map.
+TEST(indie_review_partition_sparse_hint, Ants6639OneLaneOverrideIsNamedOverride) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const auto write = [&](const QString &rel, const QByteArray &body) {
+        const QString p = QDir(tmp.path()).filePath(rel);
+        QDir().mkpath(QFileInfo(p).absolutePath());
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    };
+    write(QStringLiteral("src/a.cpp"), "int a() { return 0; }\n");
+    write(QStringLiteral(".indie-review/partition.json"),
+          R"({"version":1,"lanes":[{"name":"core","summary":"s",)"
+          R"("sourcePaths":["src/a.cpp"]}]})");
+
+    ants::ServerCwdRootProvider roots;
+    RemoteControl rc(nullptr, nullptr, &roots);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    const QJsonObject out = rc.cmdIndieReviewPartition(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("sparse_partition")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("partition_source")).toString(),
+              QStringLiteral("override"))
+        << QJsonDocument(out).toJson().toStdString();
 }

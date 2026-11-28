@@ -3,11 +3,13 @@
 // docs/specs/ANTS-1359-verify-changes-session-build-cache.md.
 
 #include "remotecontrol.h"
+#include "verifytrust.h"
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
 #include <QByteArray>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -562,6 +564,107 @@ TEST(VerifyChangesBuildCache, ForceAndCacheOnlyIncompatible) {
     EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
               QStringLiteral("incompatible_args"));
     EXPECT_EQ(rc.verifyCacheSizeForTest(), 0);
+}
+
+namespace {
+
+// A trust client over a test file whose prompt only counts, and denies.
+class CountingPromptClient : public VerifyTrust::FilePersistedTrustClient {
+public:
+    using VerifyTrust::FilePersistedTrustClient::FilePersistedTrustClient;
+    int prompts = 0;
+
+protected:
+    VerifyTrust::Decision prompt(const QString &, const QString &shaHex,
+                                 const QByteArray &) override {
+        ++prompts;
+        return {VerifyTrust::Outcome::UntrustedFellBack, shaHex};
+    }
+};
+
+// The trust client is skipped while ANTS_VERIFY_TRUST_AUTOTRUST is "1".
+struct AutotrustUnset {
+    const QByteArray saved = qgetenv("ANTS_VERIFY_TRUST_AUTOTRUST");
+    const bool had = qEnvironmentVariableIsSet("ANTS_VERIFY_TRUST_AUTOTRUST");
+    AutotrustUnset() { qunsetenv("ANTS_VERIFY_TRUST_AUTOTRUST"); }
+    ~AutotrustUnset() {
+        if (had) qputenv("ANTS_VERIFY_TRUST_AUTOTRUST", saved);
+    }
+};
+
+const QByteArray kTrueBuild =
+    R"({"build": {"command": "/bin/true", "format": "plain"}})";
+
+}  // namespace
+
+// ANTS-6639 — cache_only skips the caller_cwd gate, so a probe of a config
+// nobody has trusted answers cache_miss and never prompts.
+TEST(VerifyChangesBuildCache, Ants6639CacheOnlyProbeNeverPrompts) {
+    AutotrustUnset autotrust;
+    QTemporaryDir tmp, trustDir;
+    ASSERT_TRUE(tmp.isValid() && trustDir.isValid());
+    ASSERT_TRUE(initGitProject(tmp.path()));
+    writeVerifyJson(tmp.path(), kTrueBuild);
+
+    RemoteControl rc(nullptr);
+    auto client = std::make_unique<CountingPromptClient>(
+        trustDir.filePath(QStringLiteral("verify-trust.json")));
+    CountingPromptClient *counter = client.get();
+    rc.setVerifyTrustClient(std::move(client));
+
+    QJsonObject extra;
+    extra[QStringLiteral("cache_only")] = true;
+    const QJsonObject env = runVerify(rc, tmp.path(), extra);
+    EXPECT_TRUE(env.value(QStringLiteral("cache_miss")).toBool());
+    EXPECT_EQ(counter->prompts, 0) << "a cache_only probe must not prompt";
+}
+
+// ANTS-6639 — the probe still reads trust: a trusted config's cached run hits.
+TEST(VerifyChangesBuildCache, Ants6639CacheOnlyProbeHitsTrustedRun) {
+    AutotrustUnset autotrust;
+    QTemporaryDir tmp, trustDir;
+    ASSERT_TRUE(tmp.isValid() && trustDir.isValid());
+    ASSERT_TRUE(initGitProject(tmp.path()));
+    writeVerifyJson(tmp.path(), kTrueBuild);
+
+    RemoteControl rc(nullptr);
+    auto client = std::make_unique<CountingPromptClient>(
+        trustDir.filePath(QStringLiteral("verify-trust.json")));
+    ASSERT_TRUE(client->addTrustedSha(QString::fromLatin1(
+        QCryptographicHash::hash(kTrueBuild, QCryptographicHash::Sha256).toHex())));
+    CountingPromptClient *counter = client.get();
+    rc.setVerifyTrustClient(std::move(client));
+
+    const QJsonObject first = runVerify(rc, tmp.path());
+    ASSERT_FALSE(first.value(QStringLiteral("verify_untrusted")).toBool(true));
+    ASSERT_EQ(rc.verifyCacheSizeForTest(), 1);
+
+    QJsonObject extra;
+    extra[QStringLiteral("cache_only")] = true;
+    const QJsonObject env = runVerify(rc, tmp.path(), extra);
+    EXPECT_TRUE(env.value(QStringLiteral("cache_hit")).toBool());
+    EXPECT_EQ(counter->prompts, 0);
+}
+
+// ANTS-6639 — git lists a new untracked folder as one `?? dir/` entry; a
+// source file inside it is still reported when no CMake file names it.
+TEST(VerifyChangesBuildCache, Ants6639SourceInUntrackedDirIsOrphaned) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(initGitProject(tmp.path()));
+    writeVerifyJson(tmp.path(), kTrueBuild);
+    const QString added = QDir(tmp.path()).filePath(QStringLiteral("newmod/extra.cpp"));
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(added).absolutePath()));
+    QFile f(added);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("int extra() { return 1; }\n");
+    f.close();
+
+    RemoteControl rc(nullptr);
+    const QJsonObject env = runVerify(rc, tmp.path());
+    EXPECT_TRUE(env.value(QStringLiteral("orphaned_sources")).toArray()
+                    .contains(QJsonValue(QStringLiteral("newmod/extra.cpp"))))
+        << QJsonDocument(env).toJson().toStdString();
 }
 
 // ---------------------------------------------------------------------------

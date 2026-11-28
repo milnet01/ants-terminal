@@ -37,7 +37,9 @@ Value shape: `{step:int, phase:str, notes:str[], updated_at_ms:float64}`.
   name"}`. (An *absent* skill is INV-11, not this — the regex message only
   describes a non-conforming value.)
 - **INV-8** `step` and `phase` are required on `set`. Missing either →
-  `{ok:false, code:"bad_args"}`.
+  `{ok:false, code:"bad_args"}`. So is a `step` that is not a whole number
+  in `int` range, such as `1.5` or `1e300` (ANTS-6639;
+  Ants6639NonIntegerStepRefused).
 - **INV-9** Stored value payload ≤ 4 KiB (serialised). Exceeding →
   `{ok:false, code:"payload_too_large"}`.
 - **INV-10** Keys stored as `wf.<skill>` (dot separator). They appear

@@ -18,6 +18,7 @@
 #include "debuglog.h"
 #include <QTimeZone>
 #include "fileoutline.h"   // ANTS-4814 — enclosing-symbol grouping
+#include <QDeadlineTimer>
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
@@ -144,8 +145,9 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
         rej["reason"] = overrideRejected;
         env["map_rejected"] = QJsonArray{rej};
     }
-    if (overrideRejected.isEmpty() &&
-        QFileInfo(root + QStringLiteral("/.indie-review/partition.json")).exists()) {
+    const bool overrideUsed = overrideRejected.isEmpty() &&
+        QFileInfo(root + QStringLiteral("/.indie-review/partition.json")).exists();
+    if (overrideUsed) {
         env["path"] = QStringLiteral(".indie-review/partition.json");
     } else {
         // ANTS-1292: module map lives in docs/subsystems.md when present.
@@ -249,8 +251,10 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
         // to verify the wrong thing, and nothing in the envelope separated
         // "no such heading" from "heading found, nothing derived from it".
         env["map_lane_count"] = mapLaneCount;
+        // ANTS-6639 — derivePartition answers from the override first.
         env["partition_source"] =
             derived ? QStringLiteral("computed")
+                    : overrideUsed ? QStringLiteral("override")
                     : (mapLaneCount > 0 ? QStringLiteral("module_map")
                                         : QStringLiteral("none"));
         // ANTS-3567 — symmetry with cmdColdEyesPartition's sparse_partition_hint
@@ -772,8 +776,14 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
                                    // — § 3.3 footgun.
     }
 
-    // Resolve lanes via derivePartition.
-    const auto allLanes = IndieReviewEngine::derivePartition(root);
+    // Resolve lanes via derivePartition. ANTS-6639 — with the same computed
+    // fallback indie_review_partition reports (ANTS-3709), so a lane name
+    // from its reply is known here too.
+    auto allLanes = IndieReviewEngine::derivePartition(root);
+    if (allLanes.size() <= 1) {
+        const auto computed = IndieReviewEngine::deriveComputedPartition(root);
+        if (computed.size() > allLanes.size()) allLanes = computed;
+    }
     if (allLanes.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("no_lanes"),
         QStringLiteral("indie_review_dispatch: partition resolved empty "
@@ -998,6 +1008,11 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
         QStringLiteral(".cpp"), QStringLiteral(".cc"),
         QStringLiteral(".cxx"), QStringLiteral(".c++"),
         QStringLiteral(".c")};
+    const auto isSource = [](const QString &path) {
+        for (const QString &ext : kSrcExt)
+            if (path.endsWith(ext, Qt::CaseInsensitive)) return true;
+        return false;
+    };
     const QList<QByteArray> toks = statusRaw.split('\0');
     constexpr int kMaxUntrackedWalk = 10000;   // ANTS-6522 — files, all folders
     int untrackedWalked = 0;
@@ -1029,19 +1044,18 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
                     inner.append(it.next());
                 }
                 inner.sort();
-                for (const QString &f : std::as_const(inner))
+                for (const QString &f : std::as_const(inner)) {
                     statusHash.addData(f.toUtf8() + stampOf(QFileInfo(f)));
+                    // ANTS-6639 — its files are added sources too.
+                    if (x == '?' && y == '?' && isSource(f))
+                        s.addedSources.append(QDir(topLevel).relativeFilePath(f));
+                }
             }
         }
         const bool added = (x == 'A' || y == 'A' || (x == '?' && y == '?'));
         if (!added) continue;
         const QString path = QString::fromUtf8(t.mid(3));
-        for (const QString &ext : kSrcExt) {
-            if (path.endsWith(ext, Qt::CaseInsensitive)) {
-                s.addedSources.append(path);
-                break;
-            }
-        }
+        if (isSource(path)) s.addedSources.append(path);
     }
     s.statusSha = QString::fromUtf8(statusHash.result().toHex().left(16));
 
@@ -1151,7 +1165,7 @@ QJsonObject RemoteControl::tryGetVerifyCacheForTest(
 void RemoteControl::putVerifyCacheForTest(
         const QString &key, const QJsonObject &response) {
     VerifyChangesCacheEntry e;
-    e.stampMs  = QDateTime::currentMSecsSinceEpoch();
+    e.stampMs  = QDeadlineTimer::current().deadline();
     e.key      = key;
     e.response = response;
     if (!m_verifyCache.contains(key)) {
@@ -1228,6 +1242,18 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     if (autoTrustEnv != "1") {
         opts.trustClient = m_verifyTrustClient.get();
     }
+    // ANTS-6639 — a cache_only probe skips the caller_cwd gate, so it must
+    // never prompt. It reads the same trust file through the base client,
+    // which cannot prompt. An untrusted run is never cached, so a config this
+    // does not trust is a cache_miss.
+    std::optional<VerifyTrust::FilePersistedTrustClient> probePeek;
+    VerifyTrust::AlwaysDenyClient probeDeny;
+    if (probe && opts.trustClient) {
+        const auto *real =
+            dynamic_cast<VerifyTrust::FilePersistedTrustClient *>(opts.trustClient);
+        if (real) opts.trustClient = &probePeek.emplace(real->trustFilePath());
+        else      opts.trustClient = &probeDeny;
+    }
 
     // Step 5 — pre-run git snapshot.
     const VerifyGitSnapshot preSnapshot = collectGitSnapshot(root);
@@ -1256,7 +1282,9 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
         ? verifyCacheKey(root, preSnapshot, cfgSource, probedUntrusted,
                          autoTrustEnv, canonOpts)
         : QString();
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    // ANTS-6639 — monotonic, so a wall-clock step back cannot keep an entry
+    // fresh.
+    const qint64 nowMs = QDeadlineTimer::current().deadline();
 
     // Step 8 — cache lookup (skip on force_refresh).
     if (cacheable && !force) {

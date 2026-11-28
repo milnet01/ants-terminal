@@ -30,7 +30,12 @@ gate by op: reads honour `caller_cwd` directly; writes keep RcGate.
 - **INV-5 / project_layout follows same pattern.** `cmdProjectLayout`
   also canonicalises + isDir-checks caller_cwd directly; no RcGate
   body call. Source anchor: `ANTS-1404 + ANTS-1435 — caller_cwd
-  anchoring` in `the remotecontrol TUs::cmdProjectLayout`.
+  anchoring` in `the remotecontrol TUs::cmdProjectLayout`. Like
+  session_memory, its refusal says "does not exist" for a missing path
+  and "is not a directory" for a file (ANTS-6639).
+- **Regression (ANTS-6639) / echo hygiene.** The caller_cwd echoed in
+  session_memory's and project_layout's `cwd_bad` error goes through
+  `ceSanitiseEcho`: a control character becomes `?`. (ReadRefusalsRun)
 - **INV-6 / Contract registry includes session_memory as Required.**
   `callerCwdContractFor("session_memory")` returns `Required` so
   dispatcher refuses empty `caller_cwd` upstream. Source anchor:

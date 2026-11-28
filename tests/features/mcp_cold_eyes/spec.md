@@ -11,7 +11,7 @@ strings, args extraction, INV-11 echo hygiene, provider lambdas.
 
 ANTS-5485 removed `cold_eyes_cross_doc_diff` and `cold_eyes_fold_in`.
 
-## Cases (REG-1..REG-7)
+## Cases (REG-1..REG-8)
 
 | # | Case | Asserts |
 |---|---|---|
@@ -22,3 +22,4 @@ ANTS-5485 removed `cold_eyes_cross_doc_diff` and `cold_eyes_fold_in`.
 | REG-5 | INV-11 echo hygiene on bad scope + lane | `ceSanitiseEcho`, called directly: caps at 64 and turns control characters into `?` |
 | REG-6 | Cache members declared in header (INV-12) | `m_coldEyesCache`, `m_coldEyesCacheStampMs`, `kColdEyesCacheTtlMs` |
 | REG-7 | Provider lambdas forward args (INV-9) | `cmdColdEyesPartition(args)` etc. wired in `mainwindow.cpp` |
+| REG-8 | `doc_paths` on a lane the partition names (ANTS-6639) | run through `cmdColdEyesBrief`: the lane keeps its own docs and the reply carries `doc_paths_ignored`; without `doc_paths` there is no note |

@@ -33,7 +33,14 @@ Behavioural feature test for the session-scoped cache wrapping
   success. (ForceRefreshBypassesLookup, ForceRefreshInsertsItsResult)
 - **INV-9 (cache_only + incompatible-args)** — `cache_only:true` on a
   miss returns the cache_miss envelope without running gates; both
-  flags together return `incompatible_args`.
+  flags together return `incompatible_args`. A probe never prompts for
+  trust: it reads the trust file through a client that cannot prompt, so
+  an untrusted config is a `cache_miss` and a trusted one still hits
+  (ANTS-6639; Ants6639CacheOnlyProbeNeverPrompts,
+  Ants6639CacheOnlyProbeHitsTrustedRun).
+- **Regression (added sources)** — a `.cpp` inside a new untracked folder,
+  which git lists as one `?? dir/` entry, reaches `orphaned_sources`
+  (ANTS-6639; Ants6639SourceInUntrackedDirIsOrphaned).
 - **INV-11 (reentrancy)** — flag set across a call; a synthetic
   second call mid-flight returns `verify_in_flight`.
 

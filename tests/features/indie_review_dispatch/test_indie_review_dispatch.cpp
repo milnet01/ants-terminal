@@ -415,6 +415,26 @@ TEST(IndieReviewDispatch, G18_PlaintextPromptWarningKey) {
            "from plaintextPromptWarning";
 }
 
+// G-20 (ANTS-6639) — dispatch resolves lanes as indie_review_partition does,
+// computed fallback included, so a lane name from a derived partition reply
+// is known. Source-grep: a behavioural run needs AI settings and an endpoint.
+TEST(IndieReviewDispatch, G20_LanesIncludeComputedFallback) {
+    const std::string handler =
+        ants_test::slurpFunctionBody(
+            ants_test::slurpRemoteControl(),
+            "RemoteControl::cmdIndieReviewDispatch");
+    ASSERT_FALSE(handler.empty());
+    const auto mapPos  = handler.find("IndieReviewEngine::derivePartition(root)");
+    const auto calcPos = handler.find("IndieReviewEngine::deriveComputedPartition(root)");
+    const auto refuse  = handler.find("unknown lane");
+    ASSERT_NE(mapPos, std::string::npos);
+    ASSERT_NE(calcPos, std::string::npos)
+        << "G-20: dispatch must compute the fallback partition";
+    ASSERT_NE(refuse, std::string::npos);
+    EXPECT_LT(mapPos, calcPos);
+    EXPECT_LT(calcPos, refuse) << "G-20: lanes resolve before names are checked";
+}
+
 // G-19 (ANTS-5024) — the provider runs cmdIndieReviewDispatch on a worker and
 // joins it with QThread::wait() on the GUI thread. A GUI-thread marshal from
 // that worker is a blocking queued call the parked GUI thread never serves, so

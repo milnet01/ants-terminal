@@ -10,6 +10,12 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include "remotecontrol.h"
+
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
+
 #ifndef ANTS_CLAUDEINTEGRATION_SOURCES
 #error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
@@ -223,4 +229,23 @@ TEST(McpBuildStatus, WiringContract) {
            "Token-cost ledger must carry "
            "{QStringLiteral(\"build_status\"), {500, 2000}}");
     EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-6639 — an exit_code that is not a whole int is refused, never
+// recorded as the 0 that toInt() answers for it.
+TEST(McpBuildStatus, Ants6639NonIntegerExitCodeRefused) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    RemoteControl rc(nullptr);
+    for (const double bad : {1.5, 4294967297.0}) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = td.path();
+        req[QStringLiteral("op")]         = QStringLiteral("record");
+        req[QStringLiteral("exit_code")]  = bad;
+        req[QStringLiteral("output")]     = QStringLiteral("ninja: build stopped\n");
+        const QJsonObject out = rc.cmdBuildStatus(req).object();
+        EXPECT_EQ(out.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_args"))
+            << bad << QJsonDocument(out).toJson().toStdString();
+    }
 }

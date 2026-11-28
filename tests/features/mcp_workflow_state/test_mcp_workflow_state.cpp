@@ -2,7 +2,15 @@
 // See tests/features/mcp_workflow_state/spec.md.
 
 #include <gtest/gtest.h>
+#include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QScopeGuard>
+#include <QTemporaryDir>
+
+#include "remotecontrol.h"
+#include "rootprovider.h"
 
 #include "../../_support/srcgrep.h"
 
@@ -103,4 +111,40 @@ TEST(McpWorkflowState, Inv10DotPrefixNotSlash) {
         << "slash separator must not be used (not valid in key charset)";
     EXPECT_TRUE(txt.contains("\"wf.\"") || txt.contains("wf."))
         << "dot separator wf.<skill> must be used";
+}
+
+// ANTS-6639 — op:set refuses a step that is not a whole int (a fraction, or
+// 1e300, whose conversion to int was undefined), and stores a whole one.
+// The store is a scratch dir; the write gate wants the server's own cwd.
+TEST(McpWorkflowState, Ants6639NonIntegerStepRefused) {
+    QTemporaryDir store;
+    ASSERT_TRUE(store.isValid());
+    const bool had = qEnvironmentVariableIsSet("ANTS_SESSION_MEMORY_DIR");
+    const QByteArray saved = qgetenv("ANTS_SESSION_MEMORY_DIR");
+    qputenv("ANTS_SESSION_MEMORY_DIR", store.path().toUtf8());
+    const auto restore = qScopeGuard([&] {
+        if (had) qputenv("ANTS_SESSION_MEMORY_DIR", saved);
+        else     qunsetenv("ANTS_SESSION_MEMORY_DIR");
+    });
+
+    ants::ServerCwdRootProvider roots;
+    RemoteControl rc(nullptr, nullptr, &roots);
+    auto set = [&](const QJsonValue &step) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = QDir::currentPath();
+        req[QStringLiteral("op")]         = QStringLiteral("set");
+        req[QStringLiteral("skill")]      = QStringLiteral("ants6639");
+        req[QStringLiteral("phase")]      = QStringLiteral("p");
+        req[QStringLiteral("step")]       = step;
+        return rc.cmdWorkflowState(req).object();
+    };
+    for (const double bad : {1.5, 1e300}) {
+        const QJsonObject out = set(bad);
+        EXPECT_EQ(out.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_args"))
+            << bad << QJsonDocument(out).toJson().toStdString();
+    }
+    const QJsonObject ok = set(3);
+    EXPECT_TRUE(ok.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(ok).toJson().toStdString();
 }

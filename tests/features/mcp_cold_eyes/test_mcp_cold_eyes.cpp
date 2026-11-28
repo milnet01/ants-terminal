@@ -4,7 +4,17 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include "remotecontrol.h"
+#include "rootprovider.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QString>
+#include <QTemporaryDir>
 
 #include <string>
 
@@ -236,4 +246,43 @@ TEST(McpColdEyes, Ants1634PriorLoopFixesExtractedInHandler) {
         << "INV-12: handler must call assembleBriefManifest";
     EXPECT_NE(body.find("priorFixes"), std::string::npos)
         << "INV-12: handler must forward priorFixes";
+}
+
+// REG-8 (ANTS-6639) — doc_paths passed for a lane the partition already
+// names are ignored, and the reply says so.
+TEST(McpColdEyes, Ants6639DocPathsIgnoredOnAKnownLane) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const auto write = [&](const QString &rel, const QByteArray &body) {
+        const QString p = QDir(tmp.path()).filePath(rel);
+        QDir().mkpath(QFileInfo(p).absolutePath());
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    };
+    write(QStringLiteral("docs/a.md"), "# A\n\nText.\n");
+    write(QStringLiteral("docs/b.md"), "# B\n\nText.\n");
+    write(QStringLiteral(".cold-eyes/partition.json"),
+          R"({"version":1,"lanes":[{"name":"L","summary":"s",)"
+          R"("doc_paths":["docs/a.md"]}]})");
+
+    ants::ServerCwdRootProvider roots;
+    RemoteControl rc(nullptr, nullptr, &roots);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("lane")]       = QStringLiteral("L");
+    QJsonObject out = rc.cmdColdEyesBrief(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_FALSE(out.contains(QStringLiteral("doc_paths_ignored")));
+
+    req[QStringLiteral("doc_paths")] = QJsonArray{QStringLiteral("docs/b.md")};
+    out = rc.cmdColdEyesBrief(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_TRUE(out.contains(QStringLiteral("doc_paths_ignored")))
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("doc_paths")).toArray(),
+              QJsonArray{QStringLiteral("docs/a.md")})
+        << "the lane keeps its own docs";
 }
