@@ -115,6 +115,7 @@ The AppImage streams to disk and is hashed as it arrives, so memory holds one ne
 | INV-10 | `SelfUpdate.Ants6513SmallDownloadsCapped` |
 
 Regression tests with no INV of their own:
+`SelfUpdate.Ants6474FailedSyncKeepsTheOriginal` (a failed sync keeps the original),
 `SelfUpdate.Ants6633RequestTimesOutAStalledTransfer` (a stalled download gives up)
 and `SelfUpdate.Ants6633OfferShowsMarkupAsText` (the offer shows markup as text).
 

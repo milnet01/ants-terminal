@@ -254,10 +254,11 @@ TEST(McpVerbOffthreadGuard, Main) {
     expect(bodyAfter(ci, "ClaudeIntegration::~ClaudeIntegration() {")
                    .find("shutdownDispatchWorker()") != std::string::npos,
            "INV-7/destructor-runs-the-teardown");
-    // ANTS-5090 — ~MainWindow never stops the worker itself. It is joined
-    // from ~ClaudeIntegration, and Qt deletes children in creation order, so
-    // RemoteControl outlives the join only while ClaudeIntegration is the
-    // earlier child. rcDelegate calls m_remoteControl from the worker.
+    // ANTS-5090 — the worker is joined from ~ClaudeIntegration, and
+    // RemoteControl must outlive the join. ~MainWindow deletes
+    // ClaudeIntegration, then RemoteControl (ANTS-6636); creation order,
+    // checked below, is the backstop if those deletes ever go.
+    // rcDelegate calls m_remoteControl from the worker.
     {
         const size_t chrome = mw.find("    setupStatusBarChrome();");
         const size_t rc = mw.find("m_remoteControl = new RemoteControl(");

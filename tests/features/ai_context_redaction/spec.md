@@ -128,7 +128,7 @@ contract break):
 | Basic header (ANTS-6638) | `[Bb]asic\s+[A-Za-z0-9+/]{16,}={0,2}` — replace `Basic <b64>` with `[REDACTED:basic_auth]` | `basic_auth` |
 | URL password (ANTS-6638) | `scheme://user:password@` — replace the password only | `url_credentials` |
 | Generic secret assignment | `(?i)(api[_-]?key\|token\|password\|passwd\|secret)['"]?\s*[:=]\s*['"]?\S{8,}['"]?` — replace value only; the optional quote after the keyword covers JSON's `"password": "…"` (ANTS-6638) | `generic_secret` |
-| PEM private key block | `-----BEGIN [^-]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END [^-]*PRIVATE KEY(?: BLOCK)?-----` (multi-line) | `private_key` |
+| PEM private key block | `-----BEGIN [^\-\n]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END [^\-\n]*PRIVATE KEY(?: BLOCK)?-----` (multi-line) | `private_key` |
 
 Precedence: higher-specificity patterns match first
 (`sk-ant-…` before `sk-…`, `github_pat_…` before the classic `ghp_`
