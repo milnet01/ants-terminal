@@ -239,6 +239,22 @@ TEST(ProjectLayoutEngine, Ants6629IsStaleWhenDiscoveredFileIsDeleted) {
     EXPECT_TRUE(PLE::isStale(env, env.scannedAtMs + 5));
 }
 
+// INV-3c (ANTS-6987) — a roadmap declared in .ants/project.json is probed,
+// so editing it makes the cache stale before the TTL. The scan time is
+// backdated as in IsStaleOnMtimeAdvance; no other probed path exists.
+TEST(ProjectLayoutEngine, Ants6987IsStaleOnDeclaredRoadmapEdit) {
+    QTemporaryDir td;
+    writeFile(td.path() + "/.ants/project.json", R"({"roadmap": "PLAN.md"})");
+    writeFile(td.path() + "/PLAN.md", "# Plan\n");
+    auto env = PLE::scanLayout(td.path());
+    ASSERT_EQ(env.roadmap.path, QStringLiteral("PLAN.md"));
+    EXPECT_TRUE(env.probedPaths.contains(QStringLiteral("PLAN.md")));
+    EXPECT_FALSE(PLE::isStale(env, env.scannedAtMs + 5));
+    env.scannedAtMs -= 2000;
+    writeFile(td.path() + "/PLAN.md", "# Plan (edited)\n");
+    EXPECT_TRUE(PLE::isStale(env, QDateTime::currentMSecsSinceEpoch()));
+}
+
 // INV-4 — TTL invalidation: a cached envelope older than ttlDays
 // is stale even if nothing changed on disk.
 TEST(ProjectLayoutEngine, IsStaleOnTtlExpiry) {

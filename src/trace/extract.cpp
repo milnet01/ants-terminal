@@ -304,14 +304,16 @@ std::shared_ptr<const FileRows> extractRows(const QString &langId, const TSQuery
             if (!part.isEmpty()) d.scope << part;
         }
     }
-    // Function definitions directly inside a class are methods.
+    // Function definitions directly inside a class are methods. The class
+    // ranges are collected once, so each function scans only those.
+    QVector<ByteRange> classRanges;
+    for (const DefRow &c : std::as_const(rows->defs))
+        if (c.kind == QLatin1String("class")) classRanges.append(c.node);
     for (DefRow &d : rows->defs) {
         if (d.kind != QLatin1String("function")) continue;
-        for (const DefRow &c : std::as_const(rows->defs))
-            if (c.kind == QLatin1String("class") && strictlyInside(d.node, c.node)) {
-                d.kind = QStringLiteral("method");
-                break;
-            }
+        if (std::any_of(classRanges.cbegin(), classRanges.cend(),
+                        [&](const ByteRange &r) { return strictlyInside(d.node, r); }))
+            d.kind = QStringLiteral("method");
     }
     return rows;
 }

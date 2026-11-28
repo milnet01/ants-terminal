@@ -12,6 +12,11 @@ Test contract for ANTS-6631. `tools/vendor-grammars.sh` runs `fetch` inside
   deleted the vendored runtime before the copy failed.
 - **INV-2** (control) — a good download replaces the runtime and pins the
   tarball's hash.
+- **INV-3 (ANTS-6987)** — when the `jq` rewrite that pins the hash fails
+  under `--pin`, the script exits non-zero, names the failure, and leaves
+  `third_party/tree-sitter/` as it was. Red before ANTS-6987, which went on
+  to replace the runtime. The case puts a stub `jq` on `PATH` that fails
+  only that rewrite.
 
 ## Test plan
 

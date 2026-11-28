@@ -233,7 +233,14 @@ else
     ANTS_PUSH_GATE=1 python3 "$runner" run build-test
 fi
 job_rc=$?
-if (( job_rc != 0 )); then
+if [[ "$job_in_image" == 1 ]] && (( job_rc == 4 )); then
+    echo >&2
+    echo "pre-push: CI's build-test image could not run the job — push blocked." >&2
+    echo "          podman, a lock, a marker or a cache directory failed (the" >&2
+    echo "          error is above); the code was not built or tested." >&2
+    echo "          ('git push --no-verify' to override.)" >&2
+    exit 1
+elif (( job_rc != 0 )); then
     echo >&2
     echo "pre-push: ci.yml's build-test job FAILED locally — push blocked." >&2
     echo "          Fix the failure above (or 'git push --no-verify' to override)." >&2

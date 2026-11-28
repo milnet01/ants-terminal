@@ -25,6 +25,10 @@ The `ProjectLayoutEngine` surface:
 - **INV-3b / Deletion invalidation (ANTS-6629).** Deleting a file the
   scan found makes `isStale` true, so `roadmap_found:true` does not
   outlive the file until TTL.
+- **INV-3c / Declared roadmap invalidation (ANTS-6987).** A roadmap
+  declared in `.ants/project.json` is in `probedPaths`, so editing it
+  makes `isStale` true before TTL. Red before ANTS-6987, which probed
+  only the heuristic candidates.
 - **INV-4 / TTL invalidation.** `isStale(cached,
   scannedAtMs + (ttl_days + 1) * 86400000)` is true regardless
   of mtime state.

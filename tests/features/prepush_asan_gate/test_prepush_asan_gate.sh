@@ -403,6 +403,24 @@ run_hook 0
 check "control: a compile failure is still a floor violation" \
       "$([[ $rc -ne 0 ]] && grep -q 'FLOOR violation' <<<"$out" && echo 0 || echo 1)"
 unset STUB_QT62_RC
+
+echo "INV-15 — a build-test image that could not run the job is not reported as a job failure (ANTS-6987)"
+# The stub guard now exits STUB_JOB_RC for the job run itself; its warm
+# check and the Qt 6.2 legs pass.
+printf '#!/bin/bash\n[[ " $* " == *" --run-job "* && " $* " != *" --check-warm "* ]] && exit "${STUB_JOB_RC:-0}"\nexit 0\n' \
+    > "$repo/tools/qt62-guard.sh"
+export STUB_JOB_RC=4
+run_hook 0
+check "the image's own failure blocks the push" "$([[ $rc -ne 0 ]] && echo 0 || echo 1)"
+check "and says the job could not run" \
+      "$(grep -q 'could not run the job' <<<"$out" && echo 0 || echo 1)"
+check "and does not call it a job failure" \
+      "$(grep -q 'build-test job FAILED' <<<"$out" && echo 1 || echo 0)"
+export STUB_JOB_RC=1
+run_hook 0
+check "control: a failing job is still reported as a job failure" \
+      "$([[ $rc -ne 0 ]] && grep -q 'build-test job FAILED' <<<"$out" && echo 0 || echo 1)"
+unset STUB_JOB_RC
 rm -f "$repo/tools/qt62-guard.sh" "$tmp/bin/podman"
 
 if [[ $failures -gt 0 ]]; then

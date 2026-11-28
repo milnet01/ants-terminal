@@ -180,6 +180,19 @@ rc, out = run_step(step_script(audit, "Audit published downloads"),
 check(rc == 1 and "not checked" in out and "publishes no ants-terminal package" in out,
       f"INV-8 the audit step reports each failure under bash -e (rc={rc}: {out[-300:]})")
 
+# INV-8 (ANTS-6987) — a release whose assets cannot be listed is unchecked, not
+# reported as missing every asset.
+GH_VIEW_FAILS = ("case \"$1 $2\" in\n"
+                 "  'release list') echo v1.2.3 ;;\n"
+                 "  'release view') echo 'HTTP 502' >&2; exit 1 ;;\n"
+                 "esac\n")
+rc, out = run_step(step_script(audit, "Audit published downloads"),
+                   {"gh": GH_VIEW_FAILS, "curl": CURL},
+                   {"GH_TOKEN": "t", "REPO": "o/r", "OBS_BASE": "https://obs.invalid",
+                    "REHEARSAL": "false"})
+check("is missing" not in out and "assets — not checked" in out,
+      f"INV-8 an unlistable release reads as not checked (rc={rc}: {out[-300:]})")
+
 # INV-9 — release.yml takes each linuxdeploy AppImage from a tagged release and
 # checks its sha256 before anything runs it. The stub curl logs each URL and
 # writes junk, so the real sha256sum must refuse both files and stop the step.

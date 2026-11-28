@@ -254,8 +254,10 @@ void scanRoadmap(const QString &cwd, RoadmapInfo &out,
     QString rel;
     QString full;
     // ANTS-2160 — a declared roadmap in .ants/project.json wins over the
-    // heuristic candidates; the enrichment below then runs on it.
+    // heuristic candidates; the enrichment below then runs on it. It is
+    // probed like a candidate, so isStale() sees an edit to it.
     if (const auto rm = ProjectSettings::load(cwd).roadmap) {
+        probed.append(*rm);
         const QString c = cwd + QLatin1Char('/') + *rm;
         if (QFileInfo(c).isFile()) { rel = *rm; full = c; discovered.append(*rm); }
     }

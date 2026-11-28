@@ -72,7 +72,8 @@ fetch() {
             return 1
         fi
         local tmp="$work/manifest.json"
-        jq "$path.sha256 = \"$got\"" "$manifest" > "$tmp" && cp "$tmp" "$manifest"
+        { jq "$path.sha256 = \"$got\"" "$manifest" > "$tmp" && cp "$tmp" "$manifest"; } \
+            || { echo "vendor-grammars: $name sha256 not written to the manifest" >&2; return 1; }
         echo "vendor-grammars: $name pinned sha256 $got" >&2
     elif [ "$want" != "$got" ]; then
         echo "vendor-grammars: $name sha256 mismatch: manifest $want, fetched $got" >&2

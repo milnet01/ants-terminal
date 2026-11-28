@@ -76,16 +76,20 @@ jobs:
 
           # --- 1. the GitHub release actually carries its artefacts ---------
           echo "GitHub release assets:"
-          NAMES=$(gh release view "${TAG}" --repo "$REPO" --json assets --jq '.assets[].name')
-          echo "${NAMES}"
-          for want in "Ants_Terminal-${VER}-x86_64.AppImage" \
-                      "Ants_Terminal-${VER}-x86_64.AppImage.zsync" \
-                      "Ants_Terminal-x86_64.AppImage"; do
-            if ! printf '%s\n' "${NAMES}" | grep -Fxq "${want}"; then
-              echo "::error::${TAG} is missing ${want}"
-              fail=1
-            fi
-          done
+          if ! NAMES=$(gh release view "${TAG}" --repo "$REPO" --json assets --jq '.assets[].name'); then
+            echo "::warning::could not list ${TAG}'s assets — not checked"
+            unchecked=1
+          else
+            echo "${NAMES}"
+            for want in "Ants_Terminal-${VER}-x86_64.AppImage" \
+                        "Ants_Terminal-${VER}-x86_64.AppImage.zsync" \
+                        "Ants_Terminal-x86_64.AppImage"; do
+              if ! printf '%s\n' "${NAMES}" | grep -Fxq "${want}"; then
+                echo "::error::${TAG} is missing ${want}"
+                fail=1
+              fi
+            done
+          fi
 
           # --- 2. the permanent link resolves to a real binary -------------
           # Checked by fetching bytes, not by asking whether a file is listed:

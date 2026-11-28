@@ -79,6 +79,24 @@ check "the tarball's hash is pinned" \
       "$([[ "$(jq -r .runtime.sha256 "$manifest")" == "$(sha256sum "$tmp/ts.tar.gz" | cut -d' ' -f1)" ]] \
          && echo 0 || echo 1)"
 
+echo "a failed manifest rewrite under --pin stops the fetch (ANTS-6987)"
+# The stub jq fails only the rewrite that pins a hash; every read is real.
+real_jq=$(command -v jq)
+cat > "$tmp/bin/jq" <<EOF
+#!/bin/bash
+[[ "\$*" == *".sha256 = "* ]] && exit 5
+exec "$real_jq" "\$@"
+EOF
+chmod +x "$tmp/bin/jq"
+setup
+STUB_TARBALL="$tmp/ts.tar.gz" run
+rm -f "$tmp/bin/jq"
+check "exit non-zero (got $rc)" "$([[ $rc -ne 0 ]] && echo 0 || echo 1)"
+check "the old runtime is still there" \
+      "$([[ -f "$tree/third_party/tree-sitter/kept.txt" ]] && echo 0 || echo 1)"
+check "the failure is named" \
+      "$(grep -q 'not written to the manifest' <<<"$out" && echo 0 || echo 1)"
+
 if [[ $failures -gt 0 ]]; then
     echo "FAILED: $failures assertion(s)"
     echo "$out"

@@ -45,7 +45,9 @@ that runs the script with `GH_TOKEN` set; a finding fails the job.
 release-audit.yml step with no `shell:` key runs as `bash -e`. Run that way,
 the pins step still turns the script's exit 2 into a warning and exit 0, and
 the audit step still reports an unfetchable permanent link as not checked and
-a package listing with no ants-terminal package as an error.
+a package listing with no ants-terminal package as an error. A failing
+`gh release view` reads as assets not checked, not as every asset missing
+(ANTS-6987; red before it).
 
 **INV-9 — linuxdeploy is pinned and checked before it runs (ANTS-6630).**
 release.yml's linuxdeploy download step fetches both x86_64 AppImages

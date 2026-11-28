@@ -140,6 +140,12 @@ not as a Qt 6.2 floor violation; exit 1 is still reported as the violation.
 The case puts a stub guard in the fixture repo and a stub `podman` on
 `PATH`. Red before ANTS-6631, which reported every failure as a violation.
 
+**INV-15 (ANTS-6987)** — when the build-test job runs in CI's image and
+`tools/qt62-guard.sh --job build-test --run-job` exits 4, the push is blocked
+with a message saying the image could not run the job, not as a build-test
+job failure; exit 1 is still reported as the job failure. The case reuses
+INV-14's stubs. Red before ANTS-6987, which reported exit 4 as a job failure.
+
 **INV-12** — `tools/asan-nightly.sh` builds the tree incrementally; a tree
 carrying the interrupted marker is rebuilt with `--clean-first` and the
 marker cleared; a held tree is left alone and the script exits 0. Red before
