@@ -27,6 +27,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **trace caps max_bytes at 4 MiB, like the other read verbs (ANTS-6628).**
+
+- **roadmap_log append and append_batch refuse an id_hint more than 1,000,000 above the highest id, so a stray hint cannot push every later id far ahead (ANTS-6640).**
+
+- **mutation_probe's description says plainly that it runs whatever command it is given (ANTS-6642).**
+
 - **The ANTS-1111 spec describes the Fold actionable step as built: one release-heading text box for the whole actionable set** (ANTS-6980)
 
 - **The command gutter shows success and failure in the same green and red as the command stripe** (ANTS-6971)
@@ -123,6 +129,14 @@ for security-relevant changes.
   The next query reads the files again.
 
 ### Fixed
+
+- **A roadmap table cell holding a backslash before a pipe keeps its backslash through bundle_row, the store render and migration (ANTS-6640).**
+
+- **On a pass-headings roadmap file, append_batch skips a second bullet naming a pass an earlier bullet in the same batch took, with id_taken (ANTS-6641).**
+
+- **A debug log that cannot be rotated stops file logging and says so once on stderr, instead of reopening the file on every write; Clear Log File turns it back on (ANTS-6632).**
+
+- **doc_lint reports check_failed for a document deleted during its run, instead of reporting it as checked clean (ANTS-6634).**
 
 - **Review briefs pull only the roadmap notes that match each spec, inline the files of a folder a lane names, fence the roadmap slice as data, and handle merged lanes name by name** (ANTS-6646)
 
@@ -273,6 +287,10 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **read_region and read_regions hide secrets and private keys when claude.mcp_redact_secrets is on, and say how many they hid (ANTS-6642).**
+
+- **ants.get_output is available only to plugins granted terminal.read, the same permission as the output and line events (ANTS-6645).**
 
 - **The AI endpoint guard also blocks private and cloud-metadata IPv4 addresses hidden inside 6to4 (`2002::`) IPv6 addresses** (ANTS-6644)
 

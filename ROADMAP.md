@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7014 -->
+<!-- ants-roadmap-id-high-water: ANTS=7022 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99103,7 +99103,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: claude-session-widgets.
 
-- 🚧 [ANTS-6628] **Fix the smaller bugs the 2026-11-06 reviews found in code-index-search.**
+- ✅ [ANTS-6628] **Fix the smaller bugs the 2026-11-06 reviews found in code-index-search.**
   25 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 160 `findsources.cpp:338` (Medium)
   - row 161 `duplicateblocks.cpp:181` (Medium)
@@ -99138,6 +99138,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Decision (user, 2026-11-28): row 180: clamp trace's max_bytes to
   the 4 MiB family ceiling; rewrite INV-26's 64 MiB paging test
   (ANTS-5734) to fit.
+  2026-11-28 (50e22568): row 180 fixed: trace clamps max_bytes to
+  4 MiB (ANTS-5734 INV-29). Every row is closed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99202,7 +99204,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: dev-shell-tools.
 
-- 🚧 [ANTS-6632] **Fix the smaller bugs the 2026-11-06 reviews found in diagnostics-logging.**
+- ✅ [ANTS-6632] **Fix the smaller bugs the 2026-11-06 reviews found in diagnostics-logging.**
   15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 432 `buildcache.cpp:200` (Medium)
   - row 435 `readlog.cpp:163` (Medium)
@@ -99239,6 +99241,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Decision (user, 2026-11-28): row 438: keep the behaviour; the spec
   says one oversized line can overrun the time budget. Row 1464: after
   a failed rotation, stop file logging and say so once on stderr.
+  2026-11-28 (bc8412d6): row 438 documented (ANTS-1855 INV-13); row
+  1464 fixed: a failed rotation stops file logging with one stderr
+  line. Every row is closed. Follow-up: ANTS-7018.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99267,7 +99272,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: dialog-chrome-theme.
 
-- 🚧 [ANTS-6634] **Fix the smaller bugs the 2026-11-06 reviews found in doc-engines.**
+- ✅ [ANTS-6634] **Fix the smaller bugs the 2026-11-06 reviews found in doc-engines.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 370 `doccitations.cpp:1106` (Medium)
   - row 371 `markdownscan.cpp:222-227` (Low)
@@ -99282,6 +99287,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Decision (user, 2026-11-28): row 372 option (a): check() refuses
   read_failed when the document vanished mid-run; amend INV-47 in
   ANTS-3636 and the feature spec.
+  2026-11-28 (bc8412d6): row 372 fixed: check() refuses read_failed
+  on a vanished document (INV-47 amended). Every row is closed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99338,6 +99345,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   StayOpenOnToggleFilter (mainwindow_internal.h in the target's
   sources), keep the in-place deletes, and ask claude-config for a
   qt.md carve-out. Row 70: fold the tr() retrofit into ANTS-1080.
+  2026-11-28 (bc8412d6): row 69's Q_OBJECT part fixed. Row 62 moved
+  to ANTS-7015; row 70 folded into ANTS-1080. Left: the qt.md
+  carve-out for the two in-place deletes, asked of claude-config
+  (message 2651); close this item when it lands, or rewrite the two
+  call sites if refused.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99415,7 +99427,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-review-verbs.
 
-- 🚧 [ANTS-6640] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-batch.**
+- ✅ [ANTS-6640] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-batch.**
   13 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 112 `remotecontrol_roadmap_log_batch.cpp:1316-1317` (Medium)
   - row 113 `remotecontrol_roadmap_migrate.cpp:180` (Medium)
@@ -99437,12 +99449,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   escape-and-parse rule for the bundle_row writer, roadmaprender.cpp
   and roadmapmigrate.cpp. Row 118 option (a): refuse an id_hint more
   than 10^6 above the high-water on both append and append_batch.
+  2026-11-28 (6151f4ef): rows 114 and 118 fixed (shared table-cell
+  escape; id_hint cap). Every row is closed. Follow-ups: ANTS-7020,
+  7021.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-roadmap-batch.
 
-- 🚧 [ANTS-6641] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-query-log.**
+- ✅ [ANTS-6641] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-query-log.**
   22 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 97 `remotecontrol_roadmap_query_verb.cpp:1059-1065` (Medium)
   - row 98 `ROADMAP.md` (Medium)
@@ -99482,12 +99497,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   duplicate ids on every path; change
   Ants4354CallLevelPassIsTheBatchFallback and
   Ants6372CallLevelStatusIsTheBatchFallback to distinct passes.
+  2026-11-28 (6151f4ef): row 101 fixed: in-batch duplicate passes
+  skip id_taken on the file route. Every row is closed (row 103 has
+  its own item).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-roadmap-query-log.
 
-- 🚧 [ANTS-6642] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-state-workspace.**
+- ✅ [ANTS-6642] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-state-workspace.**
   15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 123 `remotecontrol_workspace.cpp:3323-3324` (Medium)
   - row 124 `remotecontrol_workspace.cpp:2764` (Medium)
@@ -99512,6 +99530,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   with a `redacted` count; workspace_search stays verbatim. Row 125
   option (a): correct the comment so mutation_probe is documented as
   running a command; no allowlist.
+  2026-11-28 (50e22568): row 124 fixed (read_region/read_regions
+  redact under claude.mcp_redact_secrets); row 125 fixed (comment and
+  docs). Every row is closed. Follow-ups: ANTS-7016, 7017.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99536,7 +99557,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-transport.
 
-- 🚧 [ANTS-6644] **Fix the smaller bugs the 2026-11-06 reviews found in model-switching.**
+- ✅ [ANTS-6644] **Fix the smaller bugs the 2026-11-06 reviews found in model-switching.**
   9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 255 `aidialog.cpp:349` (Medium)
   - row 256 `aidialog.cpp:104-106` (Medium)
@@ -99560,6 +99581,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Decision (user, 2026-11-28): row 259 option (c): leave it until a
   live cancel caller exists, then do (a). Filed as a follow-up item;
   this row is closed here.
+  2026-11-28: row 259 moved to ANTS-7014 by the user's decision.
+  Every row is closed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99577,7 +99600,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6644 row 259, user decision 2026-11-28.
   Lanes: model-switching.
 
-- 🚧 [ANTS-6645] **Fix the smaller bugs the 2026-11-06 reviews found in plugins-lua.**
+- ✅ [ANTS-6645] **Fix the smaller bugs the 2026-11-06 reviews found in plugins-lua.**
   6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 197 `pluginmanager.cpp:482-504` (Medium)
   - row 198 `pluginmanager.cpp:645` (Medium)
@@ -99594,6 +99617,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   without terminal.read; (c) leave it until the output feed lands.
   Decision (user, 2026-11-28): row 1455 option (a): ants.get_output
   is exposed only to plugins granted terminal.read; update PLUGINS.md.
+  2026-11-28 (bc8412d6): row 1455 fixed: ants.get_output needs
+  terminal.read (ANTS-4272 INV-10). Every row is closed. Follow-up:
+  ANTS-7019.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -100119,6 +100145,84 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: ANTS-6646/6647 helpers, 2026-11-28.
   Lanes: roadmap-dialog.
+
+- 📋 [ANTS-7015] **Keep claimed ants-mcpd usage snapshots when the config save fails.**
+  ANTS-6636 row 62, too big for that bundle. Config::save() reports
+  success or failure; on failure the fold of claimed snapshots is
+  undone. Amend ANTS-5311 § 5 to match.
+  **Layman:** If saving settings fails, usage numbers already counted are not lost.
+  Kind: review-fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: mainwindow.
+
+- 📋 [ANTS-7016] **Blank secrets in find_definition include_body and similar_code bodies too.**
+  Both return file text through ReadRegion::extract with no
+  redaction (sqAttachBody; similar_code). ANTS-6642 row 124's
+  decision named only read_region and read_regions; ask the user
+  before widening it.
+  **Layman:** Two more code-reading tools should hide passwords the way read_region now does.
+  Kind: security.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-7017] **Blank a private-key block whose BEGIN marker sits past read_region's per-line cut.**
+  read_region cuts a line longer than max_bytes+1 at read time, so a
+  BEGIN marker past the cut is missed and the key body on later lines
+  comes back unblanked; a secret split by the cut can leak a short
+  prefix. Needs a line over 512 KiB by default.
+  **Layman:** A key on a very long line could slip past the new secret hiding.
+  Kind: security.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-7018] **Keep file logging on when another instance holds debug.log.lock past the wait.**
+  Since ANTS-6632 row 1464, a log still over the cap after the reopen
+  turns file logging off until Clear. A lock holder that outlasts the
+  wait leaves the log over the cap, so it trips the same rule. Tell a
+  lock timeout apart from a failed rotation.
+  **Layman:** A stuck second terminal should not switch the debug log off.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-7019] **Guard PLUGINS.md Example 2's ants.get_output call for plugins without terminal.read.**
+  Example 2 calls ants.get_output(5) unguarded; without the grant the
+  function is absent (ANTS-4272 INV-10), so the call raises a Lua
+  error. Add `if ants.get_output then` or say the manifest needs it.
+  **Layman:** A plugin example should check the function exists before calling it.
+  Kind: doc-fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-7020] **Keep an escaped pipe at the end of a bundle_row row when counting columns.**
+  bundle_row's column counter chops any trailing `|`, even an escaped
+  `\|`. Old edge case, seen while building ANTS-6640 row 114.
+  **Layman:** A table row ending in an escaped bar is miscounted.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-7021] **Warn on a fresh roadmap migration when a table cell holds a double backslash.**
+  Since ANTS-6640 row 114, migration reads `\\` as `\`, so the first
+  render rewrites such a cell, and a cell `\\|` (old bundle_row's
+  writing of `\|`) splits into two columns. Store-backed roadmaps are
+  unaffected. Report such cells in the migrate reply so they can be
+  checked.
+  **Layman:** Moving an old roadmap file into the database could quietly change some table cells.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-7022] **Write spec_log append_loop rows before a log's closing doc-examples marker, in the log's own row shape.**
+  On docs/reviews/ANTS-3636-doc-citations-resolve-doc-s-loop-log.md
+  (rows are bold-label paragraphs inside a doc-examples region), op
+  append_loop wrote a `- **label** —` bullet after
+  `<!-- doc-examples: end -->`, outside the region (reported
+  row_order:ambiguous). Fixed by hand in bc8412d6.
+  **Layman:** The tool that adds a line to a spec's review log put it in the wrong place.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: mcp-spec.
 
 ### Readability (2026-11-06 review)
 
@@ -116440,6 +116544,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   either session how they ran it before starting. This sends UI strings
   to those services, which the user has allowed for translation review;
   never send anything else.
+  2026-11-28 (user decision, ANTS-6636 row 70): also wrap the main
+  window's user-visible strings in tr() (menu labels, "Theme: %1",
+  "Failed to start shell!" and others in src/mainwindow*.cpp).
 
 - 💭 [ANTS-1081] **Right-to-left text support.**
   Bidirectional text in the grid.
