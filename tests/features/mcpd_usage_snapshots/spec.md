@@ -19,6 +19,7 @@ invariants are the ones this directory tests, by the names given there.
   `Ants6850ForwardsTheWholeReport`
 - INV-13 `Ants5776RawSideCountsThisSessionOnly`,
   `Ants5776OverlayAddsRawSide`
+- INV-14 `Ants6638OrphanedClaimAdopted`
 
 INV-8 and INV-9 hold of the code before ANTS-5311 and are regression
 guards, proved red by mutation. Every case works in a temporary directory,

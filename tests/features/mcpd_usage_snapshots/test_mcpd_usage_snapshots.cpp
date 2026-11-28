@@ -30,6 +30,7 @@
 
 #include <fcntl.h>
 #include <sys/file.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 using namespace TokenUsageEngine;
@@ -345,6 +346,37 @@ TEST(McpdUsageSnapshots, ConcurrentClaimOnce) {
     releaseClaimed(dir, deadC, locksC);
     EXPECT_TRUE(QDir(dir).entryList(QDir::Files).isEmpty())
         << QDir(dir).entryList(QDir::Files).join(QLatin1Char(' ')).toStdString();
+}
+
+// INV-14 (ANTS-6638) — a `<stem>.claimed-<pid>` left by a reader that died
+// before releaseClaimed is adopted and folded once; one whose pid is alive
+// is left alone.
+TEST(McpdUsageSnapshots, Ants6638OrphanedClaimAdopted) {
+    QTemporaryDir tmp;
+    const QString dir = tmp.path();
+    const pid_t child = ::fork();
+    ASSERT_GE(child, 0);
+    if (child == 0) ::_exit(0);
+    ASSERT_EQ(::waitpid(child, nullptr, 0), child);   // reaped: its pid is gone
+    const QString orphan = QStringLiteral("16-16.claimed-%1").arg(child);
+    const QString live = QStringLiteral("17-17.claimed-%1").arg(::getppid());
+    writeSnapshot(dir, QStringLiteral("16-16"), {{QStringLiteral("read_region"), counter(2, 100, 0)}},
+                  {}, /*withLock=*/false);
+    writeSnapshot(dir, QStringLiteral("17-17"), {{QStringLiteral("read_region"), counter(1, 1, 1)}},
+                  {}, /*withLock=*/false);
+    ASSERT_TRUE(QFile::rename(dir + QStringLiteral("/16-16.json"), dir + QLatin1Char('/') + orphan));
+    ASSERT_TRUE(QFile::rename(dir + QStringLiteral("/17-17.json"), dir + QLatin1Char('/') + live));
+
+    PeerUsage deadA, deadB;
+    QList<int> locksA, locksB;
+    readPeerSnapshots(dir, true, &deadA, &locksA);
+    EXPECT_EQ(deadA.sessions, 1) << "the dead claimant's snapshot was not adopted";
+    EXPECT_EQ(deadA.stems, QStringList{QStringLiteral("16-16")});
+    releaseClaimed(dir, deadA, locksA);
+    EXPECT_EQ(QDir(dir).entryList(QDir::Files), QStringList{live});
+    readPeerSnapshots(dir, true, &deadB, &locksB);
+    EXPECT_EQ(deadB.sessions, 0) << "an adopted claim was folded again";
+    releaseClaimed(dir, deadB, locksB);
 }
 
 // INV-11 (ANTS-5262) — through ants-mcpd, token_usage's session fields are

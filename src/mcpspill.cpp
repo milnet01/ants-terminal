@@ -84,7 +84,11 @@ void evict(const QString &keepHandle) {
         if (count <= kSpillMaxFiles && total <= kSpillMaxBytes) break;
         if (fi.fileName() == keepBase) continue;   // identity carve-out (INV-7)
         const qint64 sz = fi.size();
-        if (QFile::remove(fi.absoluteFilePath())) {
+        // ANTS-6638 — the terminal and each ants-mcpd evict this folder, so a
+        // failed remove may mean another process removed the file first; it
+        // still left the caps.
+        if (QFile::remove(fi.absoluteFilePath())
+            || !QFileInfo::exists(fi.absoluteFilePath())) {
             total -= sz;
             --count;
         }

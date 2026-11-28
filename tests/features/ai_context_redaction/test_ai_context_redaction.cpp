@@ -226,6 +226,22 @@ TEST(AiContextRedaction, Main) {
           QStringLiteral("sneakyvalue123"),
           QStringLiteral("generic_secret"),
           QStringLiteral("api_key:") },
+        // ANTS-6638 — the quote closing a JSON key used to stop the match.
+        { "Generic_secret_json",
+          QStringLiteral("{\"password\": \"hunter22xyzlong\"}"),
+          QStringLiteral("hunter22xyzlong"),
+          QStringLiteral("generic_secret"),
+          QStringLiteral("{\"password\": \"") },
+        { "Basic_header",
+          QStringLiteral("curl -H \"Authorization: Basic dXNlcjpwYXNzd29yZDEyMw==\""),
+          QStringLiteral("dXNlcjpwYXNzd29yZDEyMw"),
+          QStringLiteral("basic_auth"),
+          QStringLiteral("Authorization: ") },
+        { "URL_credentials",
+          QStringLiteral("git clone https://alice:s3cr3tpassw0rd@example.com/repo.git"),
+          QStringLiteral("s3cr3tpassw0rd"),
+          QStringLiteral("url_credentials"),
+          QStringLiteral("@example.com/repo.git") },
         { "PEM_private_key_multiline",
           QStringLiteral("$ cat ~/.ssh/id_rsa\n"
                          "-----BEGIN RSA PRIVATE KEY-----\n"
@@ -265,6 +281,8 @@ TEST(AiContextRedaction, Main) {
         { "uuid",                    QStringLiteral("550e8400-e29b-41d4-a716-446655440000") },
         { "commit_sha_40hex",        QStringLiteral("a1b2c3d4e5f6789012345678901234567890abcd") },
         { "prose_about_tokens",      QStringLiteral("please set your api token in the config") },
+        { "prose_basic_auth",        QStringLiteral("use Basic authentication for the proxy") },
+        { "url_with_port",           QStringLiteral("http://localhost:8080/path?q=1") },
     };
 
     for (const auto &nc : negatives) {

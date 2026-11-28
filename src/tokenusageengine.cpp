@@ -19,6 +19,7 @@
 
 #include <cerrno>
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -381,6 +382,13 @@ QString claimedSuffix() {
     return QStringLiteral(".claimed-%1").arg(QCoreApplication::applicationPid());
 }
 
+// True when no process has this pid. A reused pid reads as alive, which only
+// delays adopting its claim.
+bool pidIsGone(qint64 pid) {
+    return pid > 0 && pid <= std::numeric_limits<pid_t>::max()
+           && ::kill(static_cast<pid_t>(pid), 0) != 0 && errno == ESRCH;
+}
+
 }  // namespace
 
 QString peerSnapshotDir() {
@@ -531,6 +539,8 @@ PeerUsage readPeerSnapshots(const QString &dir, bool claimDead,
                             PeerUsage *dead, QList<int> *heldLocks) {
     static const QRegularExpression rxJson(QStringLiteral("^([0-9]+-[0-9]+)\\.json$"));
     static const QRegularExpression rxLock(QStringLiteral("^([0-9]+-[0-9]+)\\.lock$"));
+    static const QRegularExpression rxClaimed(
+        QStringLiteral("^([0-9]+-[0-9]+)\\.claimed-([0-9]+)$"));
     PeerUsage all;
     const QDir d(dir);
     const QStringList names = d.entryList(QDir::Files | QDir::System | QDir::Hidden,
@@ -552,6 +562,28 @@ PeerUsage readPeerSnapshots(const QString &dir, bool claimDead,
                 QFile::remove(path);
                 ::close(fd);
             }
+            continue;
+        }
+        // ANTS-6638 — a claim left by a reader that died between its rename
+        // and releaseClaimed. Renamed to this reader's suffix, so one reader
+        // adopts it; a crash after the save folds it again, as § 5 accepts.
+        if (const auto cm = rxClaimed.match(name); cm.hasMatch()) {
+            if (!claimDead || !dead || !heldLocks) continue;
+            const qint64 pid = cm.captured(2).toLongLong();
+            if (pid == QCoreApplication::applicationPid() || !pidIsGone(pid)) continue;
+            const QString stem = cm.captured(1);
+            const QString orphan = d.filePath(name);
+            const QString claimed = d.filePath(stem + suffix);
+            if (!QFile::rename(orphan, claimed)) continue;   // adopted elsewhere
+            QHash<QString, ToolCounter> tools;
+            QHash<QString, qint64> bytes;
+            QString why;
+            if (!readSnapshotFile(claimed, &tools, &bytes, &why)) {
+                QFile::rename(claimed, orphan);
+                continue;
+            }
+            addSnapshotTo(all, stem, tools, bytes);
+            addSnapshotTo(*dead, stem, tools, bytes);
             continue;
         }
         const auto jm = rxJson.match(name);

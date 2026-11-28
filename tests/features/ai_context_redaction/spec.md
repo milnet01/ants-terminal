@@ -125,7 +125,9 @@ contract break):
 | Stripe live key | `(sk\|rk)_live_[A-Za-z0-9]{24,}` | `stripe` |
 | JWT | `eyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}` | `jwt` |
 | Bearer header | `(?i)bearer\s+\S{20,}` — replace `bearer <token>` with `[REDACTED:bearer]` | `bearer` |
-| Generic secret assignment | `(?i)(api[_-]?key\|token\|password\|passwd\|secret)\s*[:=]\s*['"]?\S{8,}['"]?` — replace value only | `generic_secret` |
+| Basic header (ANTS-6638) | `[Bb]asic\s+[A-Za-z0-9+/]{16,}={0,2}` — replace `Basic <b64>` with `[REDACTED:basic_auth]` | `basic_auth` |
+| URL password (ANTS-6638) | `scheme://user:password@` — replace the password only | `url_credentials` |
+| Generic secret assignment | `(?i)(api[_-]?key\|token\|password\|passwd\|secret)['"]?\s*[:=]\s*['"]?\S{8,}['"]?` — replace value only; the optional quote after the keyword covers JSON's `"password": "…"` (ANTS-6638) | `generic_secret` |
 | PEM private key block | `-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----` (multi-line) | `private_key` |
 
 Precedence: higher-specificity patterns match first

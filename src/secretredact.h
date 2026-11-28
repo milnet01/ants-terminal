@@ -169,15 +169,24 @@ inline const std::vector<Rule> &rules()
         // "Authorization: Bearer [REDACTED:bearer]".
         { QRegularExpression(QStringLiteral("\\b[Bb]earer\\s+\\S{20,}")),
           QStringLiteral("bearer"), 0 },
+        // ANTS-6638 — Basic header, redacted whole as Bearer is.
+        { QRegularExpression(QStringLiteral("\\b[Bb]asic\\s+[A-Za-z0-9+/]{16,}={0,2}")),
+          QStringLiteral("basic_auth"), 0 },
+        // ANTS-6638 — the password in a URL's `user:password@`; the user
+        // name and host are kept.
+        { QRegularExpression(QStringLiteral(
+              "\\b[A-Za-z][A-Za-z0-9+.\\-]*://[^\\s/:@]*:([^\\s/@]+)@")),
+          QStringLiteral("url_credentials"), 1 },
 
         // Generic secret assignment. Redacts only the value (capture
         // group 1) so `API_KEY=xxx` becomes `API_KEY=[REDACTED:...]`,
         // preserving the variable name. The value character class
         // (`A-Za-z0-9+/=_\-.`) deliberately excludes whitespace,
         // quotes, and shell metacharacters so we don't slurp the rest
-        // of a command line.
+        // of a command line. ANTS-6638 — a quote may close the keyword,
+        // so the JSON form `"password": "…"` matches too.
         { QRegularExpression(QStringLiteral(
-              "(?i)(?:api[_-]?key|token|password|passwd|secret)\\s*[:=]\\s*['\"]?([A-Za-z0-9+/=_\\-\\.]{8,})['\"]?")),
+              "(?i)(?:api[_-]?key|token|password|passwd|secret)['\"]?\\s*[:=]\\s*['\"]?([A-Za-z0-9+/=_\\-\\.]{8,})['\"]?")),
           QStringLiteral("generic_secret"), 1 },
     };
     return kRules;
