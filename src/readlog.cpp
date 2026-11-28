@@ -49,6 +49,20 @@ bool prefixGE(const QString &line, const QString &since) {
     return QStringView(line).mid(1, close - 1) >= since;
 }
 
+// ANTS-6632 — a debug-log line of the `input` or `pty` category:
+// `[timestamp] <category padded to 8>  <message>` (DebugLog::write).
+bool isInputPtyLine(const QString &line) {
+    if (!line.startsWith(QLatin1Char('['))) return false;
+    const int close = line.indexOf(QLatin1String("] "));
+    if (close < 1) return false;
+    const QStringView rest = QStringView(line).mid(close + 2);
+    const auto isCategory = [&rest](QLatin1String name) {
+        return rest.startsWith(name)
+            && (rest.size() == name.size() || rest.at(name.size()) == QLatin1Char(' '));
+    };
+    return isCategory(QLatin1String("input")) || isCategory(QLatin1String("pty"));
+}
+
 // ANTS-5707 — where a line sits against private-key blocks, which span
 // lines that SecretRedact::scrub sees one at a time (spec § 2.6 step 6).
 enum class Pem { Outside, Inside, HeadPending };
@@ -220,6 +234,7 @@ QJsonObject filter(const QString &path, const Options &opts) {
     qint64 keptBytes = 0;
     qint64 cursorPos = startOffset;  // advances past each COMPLETE line
     int oversizeSkipped = 0;         // lines longer than maxBytes (B-INV-11)
+    int inputPtyOmitted = 0;         // ANTS-6632 — input/pty lines left out
 
     // ANTS-5110 — a wall-clock budget, so a huge log cannot hold the worker.
     // Checked between lines, so `cursor` resumes the scan; after every line,
@@ -279,6 +294,7 @@ QJsonObject filter(const QString &path, const Options &opts) {
         const QString line = QString::fromUtf8(raw);
         const Pem pem = opts.redactSecrets ? pems.classify(line, kept)
                                            : Pem::Outside;
+        if (opts.omitInputPty && isInputPtyLine(line)) { ++inputPtyOmitted; continue; }
         if (haveContains && !line.contains(contains)) continue;
         if (haveInc && !incRe.match(line).hasMatch()) continue;
         if (haveExc && excRe.match(line).hasMatch()) continue;
@@ -352,6 +368,7 @@ QJsonObject filter(const QString &path, const Options &opts) {
     }
     if (capClamped) env["bytes_cap_clamped"] = true;
     if (redacted > 0) env["redacted"] = redacted;
+    if (inputPtyOmitted > 0) env["input_pty_omitted"] = inputPtyOmitted;
     env["cursor"] = QString::number(cursorPos);
     if (cursorStale) {
         env["cursor_stale"] = true;

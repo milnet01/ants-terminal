@@ -61,6 +61,11 @@ rcDelegate(rc, &RemoteControl::cmdReadLog))` dispatch in
   with an empty `check.resolved` (`src/pathvalidation.h` — "empty
   if it does not exist") → the handler returns `{ok:false,
   code:"not_found"}`. Read from `check.resolved` otherwise.
+- `include_input_pty` (boolean, optional, default false). When the target
+  is the debug log (the default, or a `path` resolving to `debug.log` or
+  `debug.log.1`), lines of the `input` and `pty` categories are left out:
+  they can hold typed passwords, which `SecretRedact` cannot recognise.
+  `true` returns them (ANTS-6632). Other logs are not filtered.
 
 ### 2.2 Filters (applied per line, in this order)
 
@@ -110,6 +115,7 @@ An invalid `include`/`exclude` pattern → `{ok:false, code:"bad_args"}`
   //   either sets truncated:true
   "bytes_cap_clamped": false,// present iff max_bytes exceeded the 4 MiB ceiling
   "redacted": 2,             // present iff > 0: secrets blanked in lines (2.6 step 6)
+  "input_pty_omitted": 3,    // present iff > 0: debug-log input/pty lines left out (2.1)
   "cursor": "1184022"        // opaque byte offset after last read (see 2.5)
   // since_cursor mode may also add: "cursor_stale": true,
   //   "stale_reason": "rotated" | "malformed_cursor"
@@ -202,7 +208,9 @@ A single call applies these stages in this exact order:
    offset and read only appended bytes (§ 2.5).
 2. **Per-line filters** (§ 2.2), tested in order `contains` → `include`
    → `exclude` → `since`. A line survives only if it passes every set
-   filter.
+   filter. Before them, a debug-log `input` or `pty` line is left out
+   unless `include_input_pty` is true (§ 2.1); it counts in `scanned`
+   and `input_pty_omitted`, not in `matched`.
 3. **`tail`** — keep the last N survivors (under `since_cursor`, the last
    N of the delta's survivors).
 4. **Byte cap** (§ 2.3) — applied streaming via the drop-oldest deque, so
@@ -319,6 +327,12 @@ window across `since_cursor` polls.
   A second fixture holds a private-key block whose middle lines a filter
   keeps: they return as `[REDACTED:private_key]`; and a `since_cursor`
   read starting mid-block returns no key line raw.
+- **INV-15** — A read of the debug log leaves out `input` and `pty`
+  lines and counts them in `input_pty_omitted`; `include_input_pty:true`
+  returns them (ANTS-6632). *Breaks when:* a typed password in an
+  `input` line reaches the caller's transcript. *Tests:*
+  `McpReadLog.Ants6632InputPtyLinesAreLeftOut`,
+  `McpReadLog.Ants6632DebugLogDefaultOmitsInputLines`.
 
 ## 4. RAM / build cost
 
@@ -347,8 +361,8 @@ match-everything filter cannot balloon the deque. `max_bytes` (with the
 Feature test: `tests/features/mcp_read_log/` (label `features;fast`),
 compiled into a test bundle (not a standalone — see
 `tests/features/README.md`). Covers INV-1, INV-2, INV-3, INV-4, INV-5,
-INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-13 and INV-14
-against fixture log files in a `QTemporaryDir`;
+INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-13, INV-14
+and INV-15 against fixture log files in a `QTemporaryDir`;
 INV-3/INV-11/INV-12/INV-14 add source-scrape assertions against the
 RemoteControl sources, `claudeintegration.cpp`, `mcpprojection.cpp`
 and `mcptoolregistry.cpp`. Per the project convention, verify each test fails

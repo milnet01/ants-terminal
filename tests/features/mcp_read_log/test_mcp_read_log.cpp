@@ -4,7 +4,9 @@
 // See spec.md + docs/specs/ANTS-1855-read-log-mcp-tool-filter.md.
 
 #include "../../_support/expect.h"
+#include "debuglog.h"
 #include "readlog.h"
+#include "remotecontrol.h"
 #include "secretredact.h"
 
 #include <cstdio>
@@ -12,7 +14,9 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 #include <QByteArray>
+#include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -96,7 +100,7 @@ TEST(McpReadLog, WiringContract) {
 
     const char *props[] = {
         "\"include\"", "\"exclude\"", "\"contains\"", "\"since\"",
-        "\"tail\"", "\"max_bytes\"", "\"since_cursor\"",
+        "\"tail\"", "\"max_bytes\"", "\"since_cursor\"", "\"include_input_pty\"",
     };
     for (const char *p : props) {
         char label[64]; std::snprintf(label, sizeof label, "W2 prop %s", p);
@@ -472,4 +476,58 @@ TEST(McpReadLog, PgpPrivateKeyBlockIsRedacted) {
     QString cut = key.mid(2).join('\n');
     EXPECT_EQ(SecretRedact::scrubCutPemHead(cut), 1);
     EXPECT_FALSE(cut.contains("lQOYBGkeybodyone"));
+}
+
+// B-INV-15 (ANTS-6632) — the input and pty categories, which can hold typed
+// passwords, are left out when omitInputPty is set and counted in
+// input_pty_omitted. A line that only mentions "input" is kept.
+TEST(McpReadLog, Ants6632InputPtyLinesAreLeftOut) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QStringList log = {
+        "[2026-11-27T10:00:00.000] input     char 'h' 'u' 'n' 't' 'e' 'r' '2'",
+        "[2026-11-27T10:00:01.000] pty       read 9 bytes: hunter2\\r",
+        "[2026-11-27T10:00:02.000] claude    input box focused",
+    };
+    const QString p = writeLog(d, "debug.log", log);
+    ReadLog::Options omit; omit.omitInputPty = true;
+    const QJsonObject env = ReadLog::filter(p, omit);
+    EXPECT_EQ(linesOf(env), QStringList{log.last()});
+    EXPECT_EQ(env.value("input_pty_omitted").toInt(), 2);
+    EXPECT_EQ(env.value("scanned").toInt(), 3);
+
+    const QJsonObject all = ReadLog::filter(p, ReadLog::Options{});
+    EXPECT_EQ(linesOf(all), log);
+    EXPECT_FALSE(all.contains("input_pty_omitted"));
+}
+
+// B-INV-15 (ANTS-6632) — through cmdReadLog: a default read of the debug log
+// leaves the input line out; include_input_pty:true returns it.
+TEST(McpReadLog, Ants6632DebugLogDefaultOmitsInputLines) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::XdgGuard guard;
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath("data").toUtf8());
+    guard.setEnv("XDG_CONFIG_HOME", QDir(tmp.path()).filePath("config").toUtf8());
+    const QString logPath = DebugLog::logFilePath();
+    ASSERT_TRUE(logPath.startsWith(tmp.path())) << logPath.toStdString();
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(logPath).path()));
+    const QString inputLine =
+        "[2026-11-27T10:00:00.000] input     char 'h' 'u' 'n' 't' 'e' 'r' '2'";
+    const QString normalLine = "[2026-11-27T10:00:01.000] claude    state idle";
+    {
+        QFile f(logPath);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write((inputLine + "\n" + normalLine + "\n").toUtf8());
+    }
+
+    RemoteControl rc(nullptr);
+    const QJsonObject def = rc.cmdReadLog(QJsonObject{}).object();
+    ASSERT_TRUE(def.value("ok").toBool()) << def.value("error").toString().toStdString();
+    EXPECT_EQ(linesOf(def), QStringList{normalLine});
+    EXPECT_EQ(def.value("input_pty_omitted").toInt(), 1);
+
+    const QJsonObject asked =
+        rc.cmdReadLog(QJsonObject{{"include_input_pty", true}}).object();
+    EXPECT_EQ(linesOf(asked), (QStringList{inputLine, normalLine}));
 }

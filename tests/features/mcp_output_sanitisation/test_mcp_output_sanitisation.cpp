@@ -198,10 +198,9 @@ TEST(McpOutputSanitisationWiring, DispatchSiteCallsHelper) {
         << "control-plane bypass gate missing at dispatch site";
 }
 
-// REG-4 — control-plane exempt set is exactly {get_session_info,
-// token_usage}. The literal must mention both names; the test fails
-// loudly if a future change adds or removes an exemption without
-// updating the test.
+// REG-4 — control-plane exempt set is exactly {token_usage, tool_info}.
+// get_session_info is wrapped (ANTS-6626). The test fails loudly if a
+// future change adds or removes an exemption without updating the test.
 TEST(McpOutputSanitisationWiring, ControlPlaneExemptSetExact) {
     const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
@@ -210,10 +209,17 @@ TEST(McpOutputSanitisationWiring, ControlPlaneExemptSetExact) {
     // 600-char window that also read the wrap conditional after it.
     const std::string window = ants_test::regionBetween(ci, "isControlPlane", ";");
     ASSERT_FALSE(window.empty());
-    EXPECT_NE(window.find("\"get_session_info\""), std::string::npos)
-        << "control-plane bypass missing get_session_info entry";
     EXPECT_NE(window.find("\"token_usage\""), std::string::npos)
         << "control-plane bypass missing token_usage entry";
+    EXPECT_NE(window.find("\"tool_info\""), std::string::npos)
+        << "control-plane bypass missing tool_info entry";
+    EXPECT_EQ(window.find("\"get_session_info\""), std::string::npos)
+        << "get_session_info is exempt from the wrap again (ANTS-6626)";
+    std::size_t names = 0;
+    for (std::size_t p = window.find("toolName =="); p != std::string::npos;
+         p = window.find("toolName ==", p + 1))
+        ++names;
+    EXPECT_EQ(names, 2u) << "control-plane exempt set is not exactly two names";
 }
 
 // REG-5 — the ANTS-1294 wrap stays discoverable to future tool authors.

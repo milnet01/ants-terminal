@@ -18,7 +18,7 @@ dispatch are locked by source-scrape.
 - **W2 (INV-11)** — `read_log` is in mcpprojection's compaction table
   (`mcpprojection.cpp`) and the tools/list schema registers `read_log`
   with `path`/`include`/`exclude`/`contains`/`since`/`tail`/`max_bytes`/
-  `since_cursor`/`fields` + `registerToolProvider("read_log", …Required…)`
+  `since_cursor`/`include_input_pty`/`fields` + `registerToolProvider("read_log", …Required…)`
   in `mcptoolregistry.cpp`.
 - **B-INV-4** — `include`/`exclude` regex: a line is kept iff it matches
   `include` and not `exclude`; invalid regex → `bad_args`.
@@ -53,12 +53,18 @@ dispatch are locked by source-scrape.
   as key-block markers (ANTS-6632). The byte cap counts the scrubbed text.
   `cmdReadLog` sets the option from `claude.mcp_redact_secrets` on each
   call (ANTS-1855 INV-14, ANTS-5707).
+- **B-INV-15** — on the debug log, lines of the `input` and `pty`
+  categories (which can hold typed passwords) are left out and counted in
+  `input_pty_omitted`; a line that only mentions "input" is kept, and
+  `include_input_pty:true` returns them. Checked on `ReadLog::filter` and
+  through `RemoteControl::cmdReadLog` with an isolated `XDG_DATA_HOME`
+  (ANTS-6632).
 - **B-not_found** — an unopenable path → `{ok:false, code:"not_found"}`.
 
 ## Test plan
 
 Behavioural invariants exercise `ReadLog::filter` against fixture logs
-in a `QTemporaryDir`. Wiring invariants source-scrape
+in a `QTemporaryDir`; B-INV-15 also calls `cmdReadLog`. Wiring invariants source-scrape
 `remotecontrol.h` and every RemoteControl source / `claudeintegration.cpp`
 / `mcpprojection.cpp` / the MainWindow sources plus
 `mcptoolregistry.cpp`. Label `features;fast`. Verify the suite fails against

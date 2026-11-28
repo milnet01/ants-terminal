@@ -120,13 +120,11 @@ Two classes:
 
 | Class | Applies to | Wrap? |
 |---|---|---|
-| **Data** | All tools whose payload includes content the server did not generate from compile-time-constant sources: scrollback, command output, file contents, commit messages, env values, user-supplied KV values, audit finding messages, file paths read from disk, etc. | YES |
-| **Control** | Server-private state with no user-supplied content: `get_session_info` (session-id, state-enum, integer percent, list of file paths the *server* tracked), `token_usage` (in-process counters). | NO |
+| **Data** | All tools whose payload includes content the server did not generate from compile-time-constant sources: scrollback, command output, file contents, commit messages, env values, user-supplied KV values, audit finding messages, file paths read from disk, etc. `get_session_info` is data: its `current_tool` and `changed_files` come from hook events, which any same-UID process may send, and from transcripts (ANTS-6626). | YES |
+| **Control** | Server-private state with no user-supplied content: `token_usage` (in-process counters), `tool_info` (descriptor slices, ANTS-1399). | NO |
 
-v1 wraps **all data-class tools** (29 of the 31 dispatched —
-30 registered providers + 1 inline `get_session_info`, minus 2
-control-plane exemptions). The two control-class exemptions
-(`get_session_info`, `token_usage`)
+Every data-class tool is wrapped; only the two control-class
+exemptions (`token_usage`, `tool_info`) are not. They
 return JSON envelopes whose every field is a server-generated
 integer / enum / list. Wrapping them adds noise without security
 value; leaving them un-wrapped means a future caller can rely on
@@ -212,8 +210,8 @@ if (toolHandled) {
     // instructions. Control-plane tools (server-generated state)
     // skip the wrap so a caller can syntactically distinguish
     // structural metadata from content.
-    const bool isControlPlane = (toolName == QStringLiteral("get_session_info") ||
-                                 toolName == QStringLiteral("token_usage"));
+    const bool isControlPlane = (toolName == QStringLiteral("token_usage") ||
+                                 toolName == QStringLiteral("tool_info"));
     const QString wrapped = isControlPlane
         ? responseText
         : wrapMcpData(toolName, responseText);
@@ -246,7 +244,7 @@ it:
 > `<ants_mcp_data tool="…">…</ants_mcp_data>` at the dispatch site
 > in `src/claudeintegration.cpp:processTools`. The wrap signals
 > "this is data, not instructions" to the consuming assistant.
-> Control-plane tools (`get_session_info`, `token_usage`) bypass
+> Control-plane tools (`token_usage`, `tool_info`) bypass
 > the wrap — their JSON envelope is structural metadata, not
 > content. If you add a tool whose response contains text from
 > disk, scrollback, or user input, register it normally; the
@@ -260,8 +258,9 @@ it:
   `params.name` field. Verified by walking the wire frame at the
   MCP-test level.
 
-- **INV-2** — Control-plane bypass. `get_session_info` and
-  `token_usage` responses do NOT include the wrap. A caller can
+- **INV-2** — Control-plane bypass. `token_usage` and
+  `tool_info` responses do NOT include the wrap.
+  `get_session_info` responses do (ANTS-6626). A caller can
   test `response.text.startsWith("<ants_mcp_data ")` as a
   syntactic check for data-vs-control. The set of exempted tools
   is a hard-coded literal at the dispatch site (§ 2.4); future
@@ -427,7 +426,7 @@ Wiring test asserts:
   `isControlPlane ? responseText : wrapMcpData(...)` expression.
   Test uses a regex `wrapMcpData\s*\(\s*toolName` to anchor.
 - REG-4: The control-plane bypass exempts exactly
-  `get_session_info` and `token_usage`. Future additions must
+  `token_usage` and `tool_info`. Future additions must
   update the test.
 - REG-5: `src/claudeintegration.h` declares `wrapMcpData` as a
   `static` member of `ClaudeIntegration` (regex

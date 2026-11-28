@@ -1115,13 +1115,13 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
         // generated state) skip the wrap so a caller can
         // syntactically distinguish structural metadata
         // from content. See docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md.
+        // ANTS-6626 — get_session_info is wrapped: its changed_files and
+        // current_tool come from hook events and transcripts.
         const bool isControlPlane =
-            (toolName == QStringLiteral("get_session_info") ||
-             toolName == QStringLiteral("token_usage") ||
+            (toolName == QStringLiteral("token_usage") ||
              // ANTS-1399 — tool_info returns a descriptor
              // slice (server-generated metadata about other
-             // tools), not user content. Bypass the wrap
-             // for the same reason get_session_info does.
+             // tools), not user content.
              toolName == QStringLiteral("tool_info"));
         // ANTS-2218 — raw verbatim frame (opt-in, read verbs) vs
         // the default lossy tag-scrub. Control-plane bypasses both.

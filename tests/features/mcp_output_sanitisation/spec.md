@@ -41,7 +41,10 @@ Spec source: `docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md`.
     `isControlPlane` check (ANTS-5072 moved the wrap there from the
     dispatch block).
   - The control-plane exempt set is exactly
-    `{get_session_info, token_usage}`.
+    `{token_usage, tool_info}`. `get_session_info` is wrapped: its
+    `current_tool` and `changed_files` come from hook events
+    (ANTS-6626). Test: `McpOutputSanitisationWiring.ControlPlaneExemptSetExact`;
+    the reply itself: `ClaudeStatusBarPerTab.Ants6626SessionInfoIsFramedAsData`.
   - `CLAUDE.md` "Conventions" mentions `ants_mcp_data` so the
     convention is discoverable.
 

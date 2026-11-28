@@ -204,7 +204,7 @@ place when it saves a Claude session real tokens or round-trips
    auto-wrapped in `<ants_mcp_data tool="…">…</ants_mcp_data>` by the
    dispatch site (ANTS-1294) — register normally and it happens for
    you. Control-plane tools whose JSON is pure structural metadata
-   (e.g. `get_session_info`, `token_usage`, `tool_info`) bypass the
+   (`token_usage`, `tool_info`) bypass the
    wrap — the canonical bypass list is the inline `isControlPlane`
    predicate at the `tools/call` dispatch site in
    `src/claudeintegration.cpp` (ANTS-1294 REG-4); there is no

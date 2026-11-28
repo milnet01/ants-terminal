@@ -110,7 +110,7 @@ No new args. Backwards-compatible by construction.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `wrap_bytes` | int (bytes) | Cumulative ANTS-1294 framing overhead across `n_calls`. Computed at dispatch as the frame's size (INV-3). Always `0` for control-plane tools (`get_session_info`, `token_usage`) whose responses bypass the wrap (verified `claudeintegration.cpp:2700–2705`). |
+| `wrap_bytes` | int (bytes) | Cumulative ANTS-1294 framing overhead across `n_calls`. Computed at dispatch as the frame's size (INV-3). Always `0` for control-plane tools (`token_usage`, `tool_info`) whose responses bypass the wrap (verified `claudeintegration.cpp:2700–2705`). |
 | `duration_us_min` | int (µs) | Smallest single-call latency observed since `since`. `0` if `n_calls == 0` (the entry only exists when `n_calls ≥ 1`, so `0` here means a genuine sub-µs sample, not "uninitialised"). |
 | `duration_us_max` | int (µs) | Largest single-call latency observed. |
 | `duration_us_mean` | int (µs) | Integer arithmetic mean: `floor(duration_us_sum / n_calls)`. Sum is not surfaced (chosen over `_p95` because v2 has no reservoir; see § 9 out-of-scope). |

@@ -1397,21 +1397,20 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 rlTool["name"] = "read_log";
                 rlTool["description"] = QStringLiteral(
                     "Filter a log file and return only matching lines + "
-                    "counts — instead of Read-ing a whole multi-MB log "
-                    "into context. Default target (no `path`) is the Ants "
-                    "debug log; a `path` reads any project log, resolved "
-                    "under caller_cwd. Secrets and private-key lines are "
-                    "blanked ([REDACTED:<kind>], count in `redacted`) "
-                    "unless claude.mcp_redact_secrets is off. "
-                    "Filters: include/exclude (regex), contains "
-                    "(substring), since (keep lines whose leading "
-                    "[yyyy-MM-ddTHH:mm:ss.zzz] prefix >= this), tail "
-                    "(last N). Byte-capped (max_bytes, default 512 KiB, "
-                    "4 MiB ceiling) keeping the NEWEST lines. Pass "
-                    "since_cursor (a prior response's `cursor`) to read "
-                    "only lines appended since — token-frugal polling; a "
-                    "stale/rotated cursor soft-falls-back to a full "
-                    "re-read (cursor_stale:true). caller_cwd required.");
+                    "counts instead of Read-ing a whole log. No `path` "
+                    "reads the Ants debug log; a `path` reads a project "
+                    "log under caller_cwd. Secrets and private-key lines "
+                    "are blanked ([REDACTED:<kind>], count in `redacted`) "
+                    "unless claude.mcp_redact_secrets is off; debug-log "
+                    "input/pty lines are left out (count in "
+                    "input_pty_omitted) unless include_input_pty. "
+                    "Filters: include/exclude (regex), contains, since "
+                    "(leading [yyyy-MM-ddTHH:mm:ss.zzz] prefix >= this), "
+                    "tail (last N). max_bytes (default 512 KiB, 4 MiB "
+                    "ceiling) keeps the NEWEST lines. since_cursor (a "
+                    "prior `cursor`) reads only appended lines; a stale "
+                    "or rotated cursor re-reads in full "
+                    "(cursor_stale:true). caller_cwd required.");
                 rlTool["selection_hint"] = QStringLiteral(
                     "Use to grep a log file (esp. the Ants debug log) for "
                     "relevant lines instead of Bash grep/tail or a full "
@@ -1465,6 +1464,13 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     props["tail"]         = tailProp;
                     props["max_bytes"]    = mbProp;
                     props["since_cursor"] = curProp;
+                    // ANTS-6632 — the explicit opt-in for keystroke lines.
+                    QJsonObject ipProp; ipProp["type"] = "boolean";
+                        ipProp["description"] = QStringLiteral(
+                            "Optional, default false. True returns the debug "
+                            "log's input and pty lines, which can hold typed "
+                            "passwords.");
+                    props["include_input_pty"] = ipProp;
                     props["caller_cwd"]   = makeCallerCwdReadProp();
                     props["fields"]       = makeFieldsProp();   // ANTS-1720
                     props["compact"]      = makeCompactProp();   // ANTS-2091

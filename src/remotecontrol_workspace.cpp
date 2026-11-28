@@ -3085,6 +3085,17 @@ QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
     }
     // ANTS-5707 — read per call, so a config change applies to the next one.
     opts.redactSecrets = Config().claudeMcpRedactSecrets();
+    // ANTS-6632 — the debug log's input and pty lines can hold typed
+    // passwords, so they are left out unless the caller asks for them.
+    const QString debugLog = DebugLog::logFilePath();
+    const QString target = QFileInfo(resolved).canonicalFilePath();
+    const bool isDebugLog = rawPath.isEmpty()
+        || (!target.isEmpty()
+            && (target == QFileInfo(debugLog).canonicalFilePath()
+                || target == QFileInfo(debugLog + QStringLiteral(".1"))
+                                 .canonicalFilePath()));
+    opts.omitInputPty = isDebugLog
+        && !req.value(QStringLiteral("include_input_pty")).toBool();
 
     // The echoed `path` stays the ABSOLUTE resolved path (the debug-log
     // default lives outside any project root, so no reframe — ANTS-1855

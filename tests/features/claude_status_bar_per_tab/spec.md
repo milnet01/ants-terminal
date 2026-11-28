@@ -74,6 +74,12 @@ For every hook event arriving on the singleton's UDS:
   id's one setter, does not come again.
   Tests: `ClaudeStatusBarPerTab.Ants6626ExitClearsTheSession`,
   `ClaudeStatusBarPerTab.Ants6626UntrackedPollKeepsTheSession`.
+- **I10 — `get_session_info` is framed as data (ANTS-6626).** Its reply
+  is wrapped in `<ants_mcp_data tool="get_session_info">`, as every data
+  verb's is: `current_tool` and `changed_files` come from hook events,
+  which another process can send. A close tag or comment marker in a tool
+  name or file path is neutralised, so the reply holds one close tag.
+  Test: `ClaudeStatusBarPerTab.Ants6626SessionInfoIsFramedAsData`.
 
 ## Out of scope
 

@@ -35,13 +35,17 @@ struct Options {
     // ANTS-5707 — blank secrets in the returned lines (spec § 2.6 step 6).
     // On by default; cmdReadLog sets it from claude.mcp_redact_secrets.
     bool    redactSecrets = true;
+    // ANTS-6632 — drop debug-log lines of the `input` and `pty` categories,
+    // which can hold typed passwords. cmdReadLog sets it for the debug log
+    // unless the caller passes include_input_pty:true.
+    bool    omitInputPty = false;
 };
 
 // Filter the already-resolved file at `path`. Returns the read_log
 // response envelope:
 //   {ok:true, path, lines[], matched, scanned, returned, truncated,
 //    lines_dropped?, lines_oversize_skipped?, bytes_cap_clamped?,
-//    time_budget_exhausted?, redacted?, cursor,
+//    time_budget_exhausted?, redacted?, input_pty_omitted?, cursor,
 //    cursor_stale?, stale_reason?}
 // or a refusal {ok:false, code, error}. Refusal codes:
 //   not_found  — file cannot be opened.
