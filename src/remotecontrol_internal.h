@@ -204,6 +204,8 @@ QJsonObject rlNotStoreServedRefusal(QJsonObject env, RoadmapStore *store,
 // properties: the misleading name is gone, and the useful value is kept.
 // ANTS-5399 — `semanticWrite` false on op:"render" and op:"convert", which
 // ARE the re-layout, so the hint pointing at render is not emitted there.
+// Call it once per real write: it also records the text that write discarded,
+// so a second call for the same write reports `discard_repeated` (ANTS-5369).
 void rcRoadmapWriteFields(QJsonObject &out, const RoadmapRender::Outcome &outcome, bool dryRun,
                           bool semanticWrite = true);
 // ANTS-4141 part 2 / ANTS-4635 — refresh the derived `.roadmap-counter` cache

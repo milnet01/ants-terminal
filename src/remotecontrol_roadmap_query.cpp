@@ -1,4 +1,8 @@
-// ANTS-3833 TU 3/25 — Roadmap read ops.
+// ANTS-3833 TU 3/25 — despite the name, roadmap WRITE code: the pass-headings
+// write ops, the store access every roadmap verb shares (roadmapStoreOrNull,
+// roadmapBullets, roadmapWriteTarget), the write-reply fields and the rl*
+// helpers the write TUs share. The read surface (cmdRoadmapQuery) is in
+// remotecontrol_roadmap_query_verb.cpp.
 #include "remotecontrol.h"
 #include "roadmapparse.h"   // ANTS-4989
 #include <QCoreApplication>   // ANTS-5141 — the GUI thread, to tell a worker apart
@@ -1327,6 +1331,21 @@ bool rcdetail::rcRoadmapSourceRefused(QJsonObject &out,
 
 // ─── ANTS-3809 — the store-backed write path, shared by every op ──────────
 
+// ANTS-5369 — records `lost` as the text the latest write to `file` discarded,
+// and returns whether the previous write to it discarded the same text. The
+// record is process-wide, so call this once per real write: a second call for
+// the same write reports a repeat that never happened.
+static bool rcRecordDiscardIsRepeat(const QString &file, const QStringList &lost) {
+    static QMutex mutex;
+    static QHash<QString, size_t> lastDiscard;
+    const size_t digest = qHash(lost.join(QLatin1Char('\n')));
+    const QMutexLocker lock(&mutex);
+    const auto it = lastDiscard.constFind(file);
+    const bool repeated = it != lastDiscard.constEnd() && *it == digest;
+    lastDiscard.insert(file, digest);
+    return repeated;
+}
+
 void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
                                     const RoadmapRender::Outcome &outcome,
                                     bool dryRun, bool semanticWrite) {
@@ -1506,19 +1525,8 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
                 // store keeps removing it. Remembered per file for the life of
                 // the process, which is what the reported loop needed.
                 if (!dryRun && !outcome.filesWritten.isEmpty()) {
-                    static QMutex mutex;
-                    static QHash<QString, size_t> lastDiscard;
-                    const QString key = outcome.filesWritten.first();
-                    const size_t digest =
-                        qHash(outcome.externalLostText.join(QLatin1Char('\n')));
-                    bool repeated = false;
-                    {
-                        const QMutexLocker lock(&mutex);
-                        const auto it = lastDiscard.constFind(key);
-                        repeated = it != lastDiscard.constEnd() && *it == digest;
-                        lastDiscard.insert(key, digest);
-                    }
-                    if (repeated) {
+                    if (rcRecordDiscardIsRepeat(outcome.filesWritten.first(),
+                                                outcome.externalLostText)) {
                         out[QStringLiteral("discard_repeated")] = true;
                         out[QStringLiteral("discard_repeated_hint")] = QStringLiteral(
                             "The previous write to this roadmap discarded the "

@@ -1111,10 +1111,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
         // (shipped → CHANGELOG, closed minors → docs/roadmap/*.md); with the
         // counter now an untracked cache, this committed-corpus floor is what
         // keeps a recovered/absent counter from reissuing a shipped id.
-        qint64 maxFileId =
+        // The highest id taken anywhere: this file, the committed corpus and
+        // (below) the store's allocation floor.
+        qint64 occupiedHighWater =
             rlMaxExistingIdForPrefix(preflightBullets, pfx);
-        maxFileId = std::max(maxFileId, RoadmapFoldIn::corpusHighWater(
-            QFileInfo(counterPath).absolutePath(), pfx));
+        occupiedHighWater = std::max(occupiedHighWater,
+            RoadmapFoldIn::corpusHighWater(QFileInfo(counterPath).absolutePath(), pfx));
         // ANTS-4493 — and floor to the STORE's high-water for this prefix.
         // A project that has been MIGRATED but is not SERVED from the store
         // reaches this path: roadmapWriteTarget() resolves through
@@ -1141,15 +1143,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                 // ANTS-5639 — allocationFloor(), not idHighWater(): the row
                 // alone misses a stored id that no append raised it to.
                 QString hwErr;
-                maxFileId = std::max(
-                    maxFileId, store->allocationFloor(row->projectId, pfx, &hwErr));
+                occupiedHighWater = std::max(occupiedHighWater,
+                    store->allocationFloor(row->projectId, pfx, &hwErr));
             }
         }
         if (req.contains(QStringLiteral("id_hint"))) {
             // An explicit hint already cleared the counter (above); also
             // refuse when it collides with a live id the lagging counter
-            // never knew about (id_hint at or below the file's high-water).
-            if (newId <= maxFileId) {
+            // never knew about (id_hint at or below the occupied high-water).
+            if (newId <= occupiedHighWater) {
                 return rlErr(QStringLiteral("id_taken"),
                     // ANTS-6641 — the floor spans more than this file.
                     QStringLiteral("roadmap_log: id_hint %1 is at or below "
@@ -1157,29 +1159,28 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                                    "ROADMAP.md, CHANGELOG.md, docs/roadmap/ "
                                    "or the roadmap store (%3) — pick a value "
                                    "> %3 or omit the hint")
-                        .arg(newId).arg(pfx).arg(maxFileId));
+                        .arg(newId).arg(pfx).arg(occupiedHighWater));
             }
-            const qint64 highWater = std::max(counter, maxFileId);
+            const qint64 highWater = std::max(counter, occupiedHighWater);
             if (newId - highWater > kIdHintMaxJump)
                 return rlErr(QStringLiteral("bad_args"),
                     QStringLiteral("roadmap_log: ") +
                         rlIdHintTooHighMessage(newId, highWater));
-        } else if (maxFileId >= newId) {
+        } else if (occupiedHighWater >= newId) {
             // Counter lagged the file: skip past the live max so we never
             // write a duplicate, and let the counter rewrite below self-heal.
-            newId = maxFileId + 1;
+            newId = occupiedHighWater + 1;
             counterReconciled = true;
             // ANTS-4493 — report what it advanced PAST as well as what it
             // advanced TO. "advanced to 612" reads as safe until you know 612
             // was the OCCUPIED high-water rather than the first free slot, and
             // that is exactly the reading that made the reported collision look
             // like a normal allocation.
-            counterAdvancedPast = maxFileId;
+            counterAdvancedPast = occupiedHighWater;
         }
+        // The width is a minimum: id 12345 prints in full.
         idStr = QStringLiteral("%1-%2").arg(pfx).arg(newId, 4, 10,
                                                      QLatin1Char('0'));
-        if (newId > 9999)
-            idStr = QStringLiteral("%1-%2").arg(pfx).arg(newId);
     }
     QStringList scrubbedNames;
     int scrubbedUnnamed = 0;                      // ANTS-4572
@@ -3782,7 +3783,6 @@ QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out,
     };
     const QString id    = src.value(QStringLiteral("id")).toString().trimmed();
     const QString field = src.value(QStringLiteral("field")).toString().trimmed();
-    const QJsonObject &req = src;
     if (id.isEmpty())
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"%1\" needs `id` — the store's "
@@ -3800,7 +3800,7 @@ QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out,
                            "and `status` is op:\"flip\"; body prose is "
                            "op:\"amend_body\".").arg(kEditable.join(QStringLiteral(", "))));
     }
-    if (!req.contains(QStringLiteral("value")))
+    if (!src.contains(QStringLiteral("value")))
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"%1\" needs `value` (the key must "
                            "be present; for layman an empty string clears the "
@@ -3830,7 +3830,7 @@ QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out,
             t = t.trimmed();
             if (!t.isEmpty()) items << t;
         };
-        const QJsonValue v = req.value(QStringLiteral("value"));
+        const QJsonValue v = src.value(QStringLiteral("value"));
         if (v.isArray()) {
             for (const QJsonValue &e : v.toArray()) {
                 if (!e.isString())
@@ -3854,7 +3854,7 @@ QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out,
             for (const QString &e : std::as_const(items))
                 if (!rlEvidenceLooksLikePath(e)) evNotPath << e;
     } else {
-        stored  = req.value(QStringLiteral("value")).toString().trimmed();
+        stored  = src.value(QStringLiteral("value")).toString().trimmed();
         // ANTS-5094 — append's caps and control-character strip for the two
         // prose columns (rlFillItemBody); kind stays verbatim for its enum
         // check. A raw newline in layman published an extra ROADMAP.md line.
@@ -4047,7 +4047,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
                                                   &pkValue, &oldValue);
         !r.isEmpty())
         return QJsonDocument(r);
-    const std::optional<qint64> pk = pkValue;
     const QString &stored  = change.stored;
     const QString &display = change.display;
     const QStringList &evNotPath = change.evNotPath;
@@ -4056,12 +4055,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
     HistoryContext hist;               // ANTS-3822 § 2.5 — one op, one stamp
     hist.changedAt = rlHistoryStamp();
     const auto mutate = [&](QString *e) -> bool {
-        if (!store.setItemField(*pk, field, stored,
+        if (!store.setItemField(pkValue, field, stored,
                                 QStringLiteral("asserted"), e))
             return false;
-        hist.record(*pk, field, oldValue, display);
+        hist.record(pkValue, field, oldValue, display);
         // ANTS-4501 § 2.2 — an amend is a modification, and cannot move status.
-        if (!rlStampModified(store, *pk, e))
+        if (!rlStampModified(store, pkValue, e))
             return false;
         return rlFlushHistory(store, hist, e);
     };

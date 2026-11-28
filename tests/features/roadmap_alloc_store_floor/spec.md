@@ -30,7 +30,7 @@ with `ok:true` and a normal-looking id.
 
 ## Fix
 
-In the markdown path, floor `maxFileId` to the store's high-water for the
+In the markdown path, floor `occupiedHighWater` to the store's high-water for the
 resolved prefix as well. The project is looked up by
 `readProjectByRoot()` — not `migratedProject()` — because the question is
 "does the store hold ids for this root", which is true whatever dialect the
