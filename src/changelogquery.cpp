@@ -117,8 +117,9 @@ bool parseVersionHeading(const QString &line, QString &version, QString &date,
     return true;
 }
 
-// A `### ` category heading (or a bare `###`). `cat` = the trimmed name ("" if none).
-bool parseCategoryHeading(const QString &line, QString &cat) {
+// A `### ` heading (or a bare `###`). `cat` = the trimmed name ("" if none);
+// the caller decides whether it names a category.
+bool parseH3Heading(const QString &line, QString &cat) {
     if (line.startsWith(QLatin1String("### "))) {
         cat = line.mid(4).trimmed();
         return true;
@@ -287,7 +288,7 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
 
         // --- category heading ---
         QString cat;
-        if (parseCategoryHeading(line, cat)) {
+        if (parseH3Heading(line, cat)) {
             finalizeEntry();
             curCategory = categoryForHeading(cat);
             // ANTS-5145 — a dated topic heading that sets a category is an
@@ -458,7 +459,7 @@ QList<DocFinding::Finding> lint(const QString &markdown, const QString &relPath,
         if (t.isEmpty() || linkRef.match(l).hasMatch()) continue;
 
         QString cat;
-        if (parseCategoryHeading(l, cat)) {
+        if (parseH3Heading(l, cat)) {
             if (!seenCategory)
                 for (int p : std::as_const(pendingProse))
                     add(p, QStringLiteral("prose_before_category"),
