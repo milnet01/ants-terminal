@@ -280,6 +280,124 @@ QJsonObject fileEntryJson(const FileEntry &fe, bool withLane) {
     return o;
 }
 
+// ANTS-3503 — no-module-map fallback. When the lane digest is requested
+// but nothing was emitted (no file carries a lane → the project has no
+// parseable `## Module map` to partition on, e.g. finbreak), the summary
+// still can't answer "where is the code". Emit a flat, capped, sorted
+// non-test file-path digest so lane-less repos get a navigable first-call
+// map too. Deterministic (sorted) → keeps session_orient's 304 ETag
+// stable; shares the kMaxLaneDigestFiles cap + the lane_digest_truncated
+// flag. Only present when the fallback fires, so the lane-digest shape is
+// byte-identical for a project that does have lanes.
+// Returns whether `cap` cut the list.
+bool addFlatSourceDigest(QJsonObject &env, const Index &idx, int cap) {
+    bool truncated = false;
+    QStringList flat;
+    for (const FileEntry &fe : idx.files)
+        if (fe.role != QLatin1String("test"))
+            flat << fe.path;
+    flat.sort();
+    QJsonArray files;
+    for (const QString &p : flat) {
+        if (files.size() >= cap) {
+            truncated = true;
+            break;
+        }
+        files.append(p);
+    }
+    env[QStringLiteral("source_files")] = files;
+    return truncated;
+}
+
+// The reply when no symbol, lane or file_path is asked for: lane, language
+// and role counts, with the opt-in source-file digest.
+void addSummary(QJsonObject &env, const Index &idx, const QueryParams &params,
+                const Options &opts) {
+    QMap<QString, int> laneCounts, langCounts, roleCounts;
+    for (const FileEntry &fe : idx.files) {
+        if (!fe.lane.isEmpty()) laneCounts[fe.lane]++;
+        langCounts[fe.language.isEmpty() ? QStringLiteral("unknown") : fe.language]++;
+        roleCounts[fe.role]++;
+    }
+    // ANTS-3468 — opt-in compact lane→source-file digest. The counts-only
+    // summary couldn't answer "where does subsystem X live", so the
+    // session_orient bundle's map still forced a grep. When laneFiles is
+    // set, each lane gains a `source_files` array of its NON-test paths
+    // (test files are the bulk and low-signal for "where is the code");
+    // symbol-level "where is X" stays a standalone codebase_index symbol=
+    // call, too big for an always-on first call. Deterministic (sorted
+    // lanes + sorted paths) so it does not perturb session_orient's 304
+    // ETag; globally capped so a huge tree can't bloat the bundle.
+    QMap<QString, QStringList> laneSource;   // lane → sorted non-test paths
+    if (params.laneFiles) {
+        for (const FileEntry &fe : idx.files)
+            if (!fe.lane.isEmpty() && fe.role != QLatin1String("test"))
+                laneSource[fe.lane] << fe.path;
+        for (auto it = laneSource.begin(); it != laneSource.end(); ++it)
+            it.value().sort();
+    }
+    int  digestEmitted   = 0;
+    // The digest's one truncation flag: the lane lists' cap, or on the
+    // fallback arm below the flat list's. Sent as lane_digest_truncated, and
+    // on the fallback arm also as source_files_truncated.
+    bool digestTruncated = false;
+
+    QJsonArray lanes;
+    for (auto it = laneCounts.cbegin(); it != laneCounts.cend(); ++it) {
+        QJsonObject l;
+        l[QStringLiteral("lane")]       = it.key();
+        l[QStringLiteral("file_count")] = it.value();
+        if (params.laneFiles) {
+            QJsonArray files;
+            for (const QString &p : laneSource.value(it.key())) {
+                if (digestEmitted >= opts.maxLaneDigestFiles) {
+                    digestTruncated = true;
+                    break;
+                }
+                files.append(p);
+                ++digestEmitted;
+            }
+            l[QStringLiteral("source_files")] = files;
+        }
+        lanes.append(l);
+    }
+    if (params.laneFiles && digestEmitted == 0) {
+        digestTruncated =
+            addFlatSourceDigest(env, idx, opts.maxLaneDigestFiles) || digestTruncated;
+        // ANTS-4560 — the same fact under the name that matches the array
+        // it describes. On this arm there are no lanes at all, so
+        // `lane_digest_truncated` names a digest the caller cannot see,
+        // and the flag whose name DOES look right — `files_truncated` —
+        // is about the index's own cap and is correctly false. A reporter
+        // read those two, concluded the list was neither complete nor
+        // flagged, and inferred the project had no renderer, no scripting
+        // and no tests directory. Both flags are emitted here: this one
+        // because it is findable, `lane_digest_truncated` because callers
+        // already key on it.
+        env[QStringLiteral("source_files_truncated")] = digestTruncated;
+    }
+    QJsonObject langs, roles;
+    for (auto it = langCounts.cbegin(); it != langCounts.cend(); ++it)
+        langs[it.key()] = it.value();
+    for (auto it = roleCounts.cbegin(); it != roleCounts.cend(); ++it)
+        roles[it.key()] = it.value();
+    env[QStringLiteral("lane_count")] = laneCounts.size();
+    env[QStringLiteral("lanes")]      = lanes;
+    env[QStringLiteral("languages")]  = langs;
+    env[QStringLiteral("roles")]      = roles;
+    // ANTS-2148 — soft empty-signal. An empty map (file_count:0) is
+    // otherwise indistinguishable from a tiny project, so a consuming
+    // session can't tell "no source admitted" from "nothing here" and
+    // may trust an empty index instead of falling back to grep. The
+    // flag is stable while the tree is unchanged (it does not perturb
+    // session_orient's 304 ETag, unlike generated_at_ms).
+    env[QStringLiteral("empty")] = idx.files.isEmpty();
+    // ANTS-3468 — surface the digest cap only when the digest was emitted
+    // (keeps the counts-only summary shape byte-identical when opt-out).
+    if (params.laneFiles)
+        env[QStringLiteral("lane_digest_truncated")] = digestTruncated;
+}
+
 }  // namespace
 
 qint64 mapSourceMtimeMs(const QString &rootCanonical) {
@@ -417,108 +535,7 @@ QJsonObject query(const Index &idx, const QueryParams &params,
     bool symbolsTruncated = false;
 
     if (n == 0) {
-        // Summary.
-        QMap<QString, int> laneCounts, langCounts, roleCounts;
-        for (const FileEntry &fe : idx.files) {
-            if (!fe.lane.isEmpty()) laneCounts[fe.lane]++;
-            langCounts[fe.language.isEmpty() ? QStringLiteral("unknown") : fe.language]++;
-            roleCounts[fe.role]++;
-        }
-        // ANTS-3468 — opt-in compact lane→source-file digest. The counts-only
-        // summary couldn't answer "where does subsystem X live", so the
-        // session_orient bundle's map still forced a grep. When laneFiles is
-        // set, each lane gains a `source_files` array of its NON-test paths
-        // (test files are the bulk and low-signal for "where is the code");
-        // symbol-level "where is X" stays a standalone codebase_index symbol=
-        // call, too big for an always-on first call. Deterministic (sorted
-        // lanes + sorted paths) so it does not perturb session_orient's 304
-        // ETag; globally capped so a huge tree can't bloat the bundle.
-        QMap<QString, QStringList> laneSource;   // lane → sorted non-test paths
-        if (params.laneFiles) {
-            for (const FileEntry &fe : idx.files)
-                if (!fe.lane.isEmpty() && fe.role != QLatin1String("test"))
-                    laneSource[fe.lane] << fe.path;
-            for (auto it = laneSource.begin(); it != laneSource.end(); ++it)
-                it.value().sort();
-        }
-        int  digestEmitted   = 0;
-        bool digestTruncated = false;
-
-        QJsonArray lanes;
-        for (auto it = laneCounts.cbegin(); it != laneCounts.cend(); ++it) {
-            QJsonObject l;
-            l[QStringLiteral("lane")]       = it.key();
-            l[QStringLiteral("file_count")] = it.value();
-            if (params.laneFiles) {
-                QJsonArray files;
-                for (const QString &p : laneSource.value(it.key())) {
-                    if (digestEmitted >= opts.maxLaneDigestFiles) {
-                        digestTruncated = true;
-                        break;
-                    }
-                    files.append(p);
-                    ++digestEmitted;
-                }
-                l[QStringLiteral("source_files")] = files;
-            }
-            lanes.append(l);
-        }
-        // ANTS-3503 — no-module-map fallback. When the lane digest is requested
-        // but nothing was emitted (no file carries a lane → the project has no
-        // parseable `## Module map` to partition on, e.g. finbreak), the summary
-        // still can't answer "where is the code". Emit a flat, capped, sorted
-        // non-test file-path digest so lane-less repos get a navigable first-call
-        // map too. Deterministic (sorted) → keeps session_orient's 304 ETag
-        // stable; shares the kMaxLaneDigestFiles cap + the lane_digest_truncated
-        // flag. Only present when the fallback fires, so the lane-digest shape is
-        // byte-identical for a project that does have lanes.
-        if (params.laneFiles && digestEmitted == 0) {
-            QStringList flat;
-            for (const FileEntry &fe : idx.files)
-                if (fe.role != QLatin1String("test"))
-                    flat << fe.path;
-            flat.sort();
-            QJsonArray files;
-            for (const QString &p : flat) {
-                if (files.size() >= opts.maxLaneDigestFiles) {
-                    digestTruncated = true;
-                    break;
-                }
-                files.append(p);
-            }
-            env[QStringLiteral("source_files")] = files;
-            // ANTS-4560 — the same fact under the name that matches the array
-            // it describes. On this arm there are no lanes at all, so
-            // `lane_digest_truncated` names a digest the caller cannot see,
-            // and the flag whose name DOES look right — `files_truncated` —
-            // is about the index's own cap and is correctly false. A reporter
-            // read those two, concluded the list was neither complete nor
-            // flagged, and inferred the project had no renderer, no scripting
-            // and no tests directory. Both flags are emitted here: this one
-            // because it is findable, `lane_digest_truncated` because callers
-            // already key on it.
-            env[QStringLiteral("source_files_truncated")] = digestTruncated;
-        }
-        QJsonObject langs, roles;
-        for (auto it = langCounts.cbegin(); it != langCounts.cend(); ++it)
-            langs[it.key()] = it.value();
-        for (auto it = roleCounts.cbegin(); it != roleCounts.cend(); ++it)
-            roles[it.key()] = it.value();
-        env[QStringLiteral("lane_count")] = laneCounts.size();
-        env[QStringLiteral("lanes")]      = lanes;
-        env[QStringLiteral("languages")]  = langs;
-        env[QStringLiteral("roles")]      = roles;
-        // ANTS-2148 — soft empty-signal. An empty map (file_count:0) is
-        // otherwise indistinguishable from a tiny project, so a consuming
-        // session can't tell "no source admitted" from "nothing here" and
-        // may trust an empty index instead of falling back to grep. The
-        // flag is stable while the tree is unchanged (it does not perturb
-        // session_orient's 304 ETag, unlike generated_at_ms).
-        env[QStringLiteral("empty")] = idx.files.isEmpty();
-        // ANTS-3468 — surface the digest cap only when the digest was emitted
-        // (keeps the counts-only summary shape byte-identical when opt-out).
-        if (params.laneFiles)
-            env[QStringLiteral("lane_digest_truncated")] = digestTruncated;
+        addSummary(env, idx, params, opts);
     } else if (!params.symbol.isEmpty()) {
         QJsonArray matches;
         for (const FileEntry &fe : idx.files)

@@ -797,6 +797,13 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
     const QString base = QStringLiteral("((?:pathlib\\.)?Path\\(\\s*(?:[\\w.]+\\.)?__file__\\s*\\)") + upward
                          + QStringLiteral("|(?<![\\w.])[A-Za-z_]\\w*") + upward + QStringLiteral(")");
     const QString part = QStringLiteral("\\s*/\\s*(?:\"[^\"]*\"|'[^']*')");
+    // Capture groups. `base` is group 1 wherever it is used: the head and its
+    // climbs, which applyTail walks. Then: join and whole, 2 = the run of
+    // `/ "piece"` joins (whole allows none, for a value that is only a base);
+    // walkCall, 2 = the joins, 3 = glob or rglob, 4 = its pattern; osJoin,
+    // 1 = the dirname(__file__) chain or a name, 2 = the joined string
+    // arguments; source, 1 = getsource's argument, 2 = the module in
+    // Path(module.__file__).read_text.
     static const QRegularExpression join(base + QStringLiteral("((?:") + part + QStringLiteral(")+)"));
     static const QRegularExpression whole(QStringLiteral("^\\s*") + base + QStringLiteral("((?:") + part
                                           + QStringLiteral(")*)\\s*$"));

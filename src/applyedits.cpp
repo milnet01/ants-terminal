@@ -81,8 +81,8 @@ int uniqueLineMatching(const QStringList &lines, const QString &needle, Norm nor
 // Reported on every miss, whether or not `match_wrapped` was asked for: the
 // round-trip this saves is the one where the caller does not yet know the
 // flag would help.
-void findWhitespaceNearMiss(const QString &contents, const QString &oldStr,
-                            EditOutcome &r) {
+void findNearMiss(const QString &contents, const QString &oldStr,
+                  EditOutcome &r) {
     if (oldStr.contains(QLatin1Char('\n'))) {
         const QVector<WrapMatch::Span> hits = WrapMatch::find(contents, oldStr, 2);
         if (hits.size() != 1) return;
@@ -199,7 +199,7 @@ EditOutcome applyToContent(const QString &contents, const QString &oldStr,
             // told WHERE rather than merely refused.
         }
         r.skipReason = QStringLiteral("not_found");
-        findWhitespaceNearMiss(contents, oldStr, r);
+        findNearMiss(contents, oldStr, r);
         return r;
     }
     if (count > 1 && !replaceAll) {

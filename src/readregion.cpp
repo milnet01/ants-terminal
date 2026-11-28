@@ -243,7 +243,13 @@ bool opensCharLiteral(const QString &line, int i) {
     return j < line.size() && line.at(j) == QLatin1Char('\'');
 }
 
-// ANTS-2222 / ANTS-2224 — the C-family scan behind braceBalancedEndLine.
+// ANTS-2222 / ANTS-2224 — the C-family scan behind braceBalancedEndLine:
+// from a symbol's declaration line to its matching closing brace. Returns the
+// 1-based closing-brace line, or 0 if no balanced close is found (the caller
+// keeps the outline-derived fallback). Serves both aggregate bodies
+// (struct/class/union) and function bodies. Skips braces inside // and /* */
+// comments and "…"/'…' literals (heuristic, the same altitude as
+// file_outline).
 template <class NextLine>
 int cFamilyBraceEndLine(NextLine &next, int startLine, int *maxDepth, int *openLine) {
     int depth = 0, deepest = 0;
@@ -340,17 +346,11 @@ int braceBalancedEndLine(const QStringList &lines, int startLine, int *maxDepth,
 
 namespace {
 
-// ANTS-2222 / ANTS-2224 — brace-balanced scan from a symbol's declaration line
-// to its matching closing brace. Returns the 1-based closing-brace line, or 0
-// if no balanced close is found (caller keeps the outline-derived fallback).
-// Serves both aggregate bodies (struct/class/union) and function bodies. Skips
-// braces inside // and /* */ comments and "…"/'…' literals (heuristic, the
-// same altitude as file_outline).
-//
+// braceBalancedEndLine over the file at `absPath`, the C-family scan.
 // ANTS-6502 — read from the file one line at a time. A line over
 // kScanLineBytes, or a body over kBraceScanBytes, ends the scan with -1:
 // the end is unknown, and the body is far longer than read_region returns.
-int braceBalancedEndLine(const QString &absPath, int startLine) {
+int braceEndLineInFile(const QString &absPath, int startLine) {
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) return 0;
     QByteArray scratch;
@@ -488,7 +488,7 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
         // The flat outline's "next entry" for a struct is its first member, so
         // the outline-derived end stops there. Brace-match to the real close.
         // An end the scan gave up on (-1) lies past what the byte cap returns.
-        const int braceEnd = braceBalancedEndLine(absPath, r.start);
+        const int braceEnd = braceEndLineInFile(absPath, r.start);
         r.end = (braceEnd >= r.start) ? braceEnd : braceEnd < 0 ? INT_MAX : outlineEnd;
     } else if (braceDelimited && kind == QLatin1String("func")) {
         // ANTS-2224 — belt-and-braces cap on function bodies. When file_outline
@@ -499,7 +499,7 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
         // TIGHTENS: a normal body's brace-end equals outlineEnd; a body-less
         // declaration brace-matches past the next symbol so min keeps
         // outlineEnd; the last symbol's INT_MAX (to-EOF) collapses to the close.
-        const int braceEnd = braceBalancedEndLine(absPath, r.start);
+        const int braceEnd = braceEndLineInFile(absPath, r.start);
         r.end = (braceEnd >= r.start) ? std::min(braceEnd, outlineEnd) : outlineEnd;
     } else {
         r.end = outlineEnd;
@@ -674,6 +674,76 @@ public:
 private:
     bool m_inBlock = false;
 };
+
+// ANTS-2157 — integration brief: the ordered call-expressions inside the
+// returned region (the pipeline's STAGES, with line anchors = insertion
+// points) + the accessors a new stage typically needs (m_ members +
+// get/is/has getters referenced). Answers "to add a step here, what are
+// the existing steps in order and the helpers they use?" in one call.
+// A heuristic line scan (same Karpathy-§2 bet as file_outline); reuses
+// the region this call already sliced. The first kept line in symbol
+// mode is the signature — its own call is not a stage.
+void addCallSequence(QJsonObject &env, const QJsonArray &lines, int startLine,
+                     bool firstLineIsSignature) {
+    static const QRegularExpression callRx(
+        QStringLiteral(R"((?:^|[^\w.>])([A-Za-z_]\w*)\s*\()"));
+    static const QRegularExpression memRx(QStringLiteral(R"(\bm_[A-Za-z_]\w*)"));
+    static const QRegularExpression getRx(
+        QStringLiteral(R"(\b((?:get|is|has)[A-Za-z_]\w*)\s*\()"));
+    static const QSet<QString> kw = {
+        QStringLiteral("if"), QStringLiteral("for"), QStringLiteral("while"),
+        QStringLiteral("switch"), QStringLiteral("return"), QStringLiteral("sizeof"),
+        QStringLiteral("catch"), QStringLiteral("do"), QStringLiteral("else"),
+        QStringLiteral("new"), QStringLiteral("delete"), QStringLiteral("throw"),
+        QStringLiteral("and"), QStringLiteral("or"), QStringLiteral("not"),
+        QStringLiteral("co_await"), QStringLiteral("co_return"),
+    };
+    constexpr int kMaxSeq = 300;
+    QJsonArray seq;
+    QSet<QString> accessors;
+    // ANTS-3379 — carry `/* … */` state across the region so a block
+    // comment opened on one line masks callees on the next.
+    bool inBlockComment = false;
+    for (int i = 0; i < lines.size(); ++i) {
+        // Scan the comment-stripped text: comment prose must not
+        // register as a call or an accessor. Stripped every line
+        // (even the signature / seq-full ones) to keep inBlockComment
+        // correct across the region.
+        const QString ln = stripCommentsForScan(
+            lines.at(i).toString(), inBlockComment);
+        const int lineNum = startLine + i;
+        const bool isSignatureLine = (firstLineIsSignature && i == 0);
+        if (!isSignatureLine && seq.size() < kMaxSeq) {
+            auto it = callRx.globalMatch(ln);
+            while (it.hasNext() && seq.size() < kMaxSeq) {
+                const QString callee = it.next().captured(1);
+                if (kw.contains(callee)) continue;
+                // ANTS-3379 — a leading-uppercase callee is
+                // overwhelmingly a type construction / functional cast
+                // / macro (Engine(...), QString(...), Q_ASSERT(...)),
+                // not a pipeline stage. Suppress it — free functions
+                // and methods in this codebase are lowerCamelCase, so
+                // this is a high-precision heuristic (lowercase type
+                // ctors like vec3(...) remain lexically ambiguous and
+                // are left in; see spec residual note).
+                if (callee.at(0).isUpper()) continue;
+                QJsonObject c;
+                c[QStringLiteral("line")]   = lineNum;
+                c[QStringLiteral("callee")] = callee;
+                seq.append(c);
+            }
+        }
+        for (auto mit = memRx.globalMatch(ln); mit.hasNext(); )
+            accessors.insert(mit.next().captured(0));
+        for (auto git = getRx.globalMatch(ln); git.hasNext(); )
+            accessors.insert(git.next().captured(1));
+    }
+    QStringList accList(accessors.begin(), accessors.end());
+    std::sort(accList.begin(), accList.end());
+    env["call_sequence"] = seq;
+    env["call_sequence_truncated"] = (seq.size() >= kMaxSeq);
+    env["accessors"] = QJsonArray::fromStringList(accList);
+}
 
 }  // namespace
 
@@ -903,74 +973,7 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
         if (truncated || opts.tailLines > 0) env["section_end_line"] = endLine;
     }
 
-    // ANTS-2157 — integration brief: the ordered call-expressions inside the
-    // returned region (the pipeline's STAGES, with line anchors = insertion
-    // points) + the accessors a new stage typically needs (m_ members +
-    // get/is/has getters referenced). Answers "to add a step here, what are
-    // the existing steps in order and the helpers they use?" in one call.
-    // A heuristic line scan (same Karpathy-§2 bet as file_outline); reuses
-    // the region this call already sliced. The first kept line in symbol
-    // mode is the signature — its own call is not a stage.
-    if (opts.callSequence) {
-        static const QRegularExpression callRx(
-            QStringLiteral(R"((?:^|[^\w.>])([A-Za-z_]\w*)\s*\()"));
-        static const QRegularExpression memRx(QStringLiteral(R"(\bm_[A-Za-z_]\w*)"));
-        static const QRegularExpression getRx(
-            QStringLiteral(R"(\b((?:get|is|has)[A-Za-z_]\w*)\s*\()"));
-        static const QSet<QString> kw = {
-            QStringLiteral("if"), QStringLiteral("for"), QStringLiteral("while"),
-            QStringLiteral("switch"), QStringLiteral("return"), QStringLiteral("sizeof"),
-            QStringLiteral("catch"), QStringLiteral("do"), QStringLiteral("else"),
-            QStringLiteral("new"), QStringLiteral("delete"), QStringLiteral("throw"),
-            QStringLiteral("and"), QStringLiteral("or"), QStringLiteral("not"),
-            QStringLiteral("co_await"), QStringLiteral("co_return"),
-        };
-        constexpr int kMaxSeq = 300;
-        QJsonArray seq;
-        QSet<QString> accessors;
-        // ANTS-3379 — carry `/* … */` state across the region so a block
-        // comment opened on one line masks callees on the next.
-        bool inBlockComment = false;
-        for (int i = 0; i < lines.size(); ++i) {
-            // Scan the comment-stripped text: comment prose must not
-            // register as a call or an accessor. Stripped every line
-            // (even the signature / seq-full ones) to keep inBlockComment
-            // correct across the region.
-            const QString ln = stripCommentsForScan(
-                lines.at(i).toString(), inBlockComment);
-            const int lineNum = startLine + i;
-            const bool isSignatureLine = (hasSym && i == 0);
-            if (!isSignatureLine && seq.size() < kMaxSeq) {
-                auto it = callRx.globalMatch(ln);
-                while (it.hasNext() && seq.size() < kMaxSeq) {
-                    const QString callee = it.next().captured(1);
-                    if (kw.contains(callee)) continue;
-                    // ANTS-3379 — a leading-uppercase callee is
-                    // overwhelmingly a type construction / functional cast
-                    // / macro (Engine(...), QString(...), Q_ASSERT(...)),
-                    // not a pipeline stage. Suppress it — free functions
-                    // and methods in this codebase are lowerCamelCase, so
-                    // this is a high-precision heuristic (lowercase type
-                    // ctors like vec3(...) remain lexically ambiguous and
-                    // are left in; see spec residual note).
-                    if (callee.at(0).isUpper()) continue;
-                    QJsonObject c;
-                    c[QStringLiteral("line")]   = lineNum;
-                    c[QStringLiteral("callee")] = callee;
-                    seq.append(c);
-                }
-            }
-            for (auto mit = memRx.globalMatch(ln); mit.hasNext(); )
-                accessors.insert(mit.next().captured(0));
-            for (auto git = getRx.globalMatch(ln); git.hasNext(); )
-                accessors.insert(git.next().captured(1));
-        }
-        QStringList accList(accessors.begin(), accessors.end());
-        std::sort(accList.begin(), accList.end());
-        env["call_sequence"] = seq;
-        env["call_sequence_truncated"] = (seq.size() >= kMaxSeq);
-        env["accessors"] = QJsonArray::fromStringList(accList);
-    }
+    if (opts.callSequence) addCallSequence(env, lines, startLine, hasSym);
     return env;
 }
 

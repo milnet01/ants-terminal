@@ -28,7 +28,7 @@ namespace {
 inline constexpr int kSeed = 3;          // lines in a seed run
 inline constexpr int kMaxGap = 3;        // edited lines skipped on one side
 inline constexpr int kMaxBucket = 30;    // a seed in more places is boilerplate
-inline constexpr int kMaxDiff = 20;
+inline constexpr int kMaxDiffLinesReported = 20;  // changed lines listed per group
 inline constexpr int kDefaultMinLines = 5;
 inline constexpr int kDefaultTop = 50;
 inline constexpr double kDefaultSimilarity = 0.8;
@@ -199,8 +199,8 @@ private:
             while (fromA + n < limitA && fromB + n < size(fb) && id(fa, fromA + n) == id(fb, fromB + n)) {
                 if (m_names && m_files.at(fa).raw.at(fromA + n) != m_files.at(fb).raw.at(fromB + n)) {
                     m->diverged = true;
-                    if (m->diff.size() < kMaxDiff) m->diff.append({fa, fromA + n});
-                    if (m->diff.size() < kMaxDiff) m->diff.append({fb, fromB + n});
+                    if (m->diff.size() < kMaxDiffLinesReported) m->diff.append({fa, fromA + n});
+                    if (m->diff.size() < kMaxDiffLinesReported) m->diff.append({fb, fromB + n});
                 }
                 ++n;
             }
@@ -226,9 +226,9 @@ private:
                     const double sim = double(matched + n) / double(qMax(spanA, spanB));
                     if (sim < m_similarity) continue;
                     for (int i = ea; i < na; ++i)
-                        if (m->diff.size() < kMaxDiff) m->diff.append({fa, i});
+                        if (m->diff.size() < kMaxDiffLinesReported) m->diff.append({fa, i});
                     for (int i = eb; i < nb; ++i)
-                        if (m->diff.size() < kMaxDiff) m->diff.append({fb, i});
+                        if (m->diff.size() < kMaxDiffLinesReported) m->diff.append({fb, i});
                     run(na, nb);
                     matched += n;
                     ea = na + n;
@@ -344,7 +344,8 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     for (const auto &ab : std::as_const(matchNodes)) g.unite(ab.first, ab.second);
 
     struct Group {
-        QList<int> sites;
+        QList<int> sites;        // positions in g.sites(), before the merge
+        QList<int> mergedSites;  // positions in `merged`, after it
         int lines = 0;
         double similarity = 1.0;
         bool diverged = false;
@@ -362,7 +363,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
             bool seen = false;
             for (const DiffLine &e : std::as_const(gr.diff))
                 seen = seen || (e.file == d.file && e.index == d.index);
-            if (!seen && gr.diff.size() < kMaxDiff) gr.diff.append(d);
+            if (!seen && gr.diff.size() < kMaxDiffLinesReported) gr.diff.append(d);
         }
     }
 
@@ -388,13 +389,14 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
             merged.append(s);
             kept.append(int(merged.size()) - 1);
         }
-        gr.sites = kept;
-        if (gr.sites.size() >= 2) ordered.append(gr);
+        gr.mergedSites = kept;
+        if (gr.mergedSites.size() >= 2) ordered.append(gr);
     }
     std::sort(ordered.begin(), ordered.end(), [&](const Group &a, const Group &b) {
         if (a.lines != b.lines) return a.lines > b.lines;
-        if (a.sites.size() != b.sites.size()) return a.sites.size() > b.sites.size();
-        const Site &sa = merged.at(a.sites.first()), &sb = merged.at(b.sites.first());
+        if (a.mergedSites.size() != b.mergedSites.size())
+            return a.mergedSites.size() > b.mergedSites.size();
+        const Site &sa = merged.at(a.mergedSites.first()), &sb = merged.at(b.mergedSites.first());
         if (sa.file != sb.file) return files.at(sa.file).rel < files.at(sb.file).rel;
         return sa.start < sb.start;
     });
@@ -403,7 +405,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     for (int i = 0; i < ordered.size() && i < top; ++i) {
         const Group &gr = ordered.at(i);
         QJsonArray sites;
-        for (int si : gr.sites) {
+        for (int si : gr.mergedSites) {
             const Site &s = merged.at(si);
             const File &f = files.at(s.file);
             QJsonObject o;
@@ -412,7 +414,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
             o[QStringLiteral("end")] = f.lineNo.at(s.end - 1);
             sites.append(o);
         }
-        const Site &first = merged.at(gr.sites.first());
+        const Site &first = merged.at(gr.mergedSites.first());
         const QString text = files.at(first.file).norm.mid(first.start, first.end - first.start)
                                  .join(QLatin1Char('\n'));
         QJsonArray diff;
@@ -427,9 +429,9 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         o[QStringLiteral("id")] = QStringLiteral("dup:") + QString::fromLatin1(
             QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha1).toHex().left(12));
         o[QStringLiteral("lines")] = gr.lines;
-        o[QStringLiteral("copies")] = int(gr.sites.size());
+        o[QStringLiteral("copies")] = int(gr.mergedSites.size());
         o[QStringLiteral("diverged")] = gr.diverged;
-        o[QStringLiteral("finding_shape")] = gr.sites.size() >= 3 || gr.diverged;
+        o[QStringLiteral("finding_shape")] = gr.mergedSites.size() >= 3 || gr.diverged;
         o[QStringLiteral("similarity")] = gr.similarity;
         o[QStringLiteral("sites")] = sites;
         o[QStringLiteral("diff")] = diff;
