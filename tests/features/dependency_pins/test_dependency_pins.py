@@ -2,6 +2,7 @@
 """ANTS-3428 — a below-latest pin needs a ledger row. See spec.md beside this."""
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -141,7 +142,7 @@ def step_script(yml, name):
     return "\n".join(body)
 
 
-def run_step(script, stubs, env):
+def run_step(script, stubs, env, cwd=ROOT):
     """Run a step as GitHub runs one with no shell: key (`bash -e`), with the
     named commands replaced by stub scripts on PATH."""
     d = tempfile.mkdtemp(prefix="audit-step-")
@@ -151,7 +152,7 @@ def run_step(script, stubs, env):
             f.write("#!/bin/sh\n" + body)
         os.chmod(path, 0o755)
     full = dict(os.environ, PATH=d + os.pathsep + os.environ["PATH"], **env)
-    p = subprocess.run(["bash", "-e", "-c", script], env=full, cwd=ROOT,
+    p = subprocess.run(["bash", "-e", "-c", script], env=full, cwd=cwd,
                        capture_output=True, text=True, timeout=60)
     return p.returncode, p.stdout + p.stderr
 
@@ -178,6 +179,26 @@ rc, out = run_step(step_script(audit, "Audit published downloads"),
                     "REHEARSAL": "false"})
 check(rc == 1 and "not checked" in out and "publishes no ants-terminal package" in out,
       f"INV-8 the audit step reports each failure under bash -e (rc={rc}: {out[-300:]})")
+
+# INV-9 — release.yml takes each linuxdeploy AppImage from a tagged release and
+# checks its sha256 before anything runs it. The stub curl logs each URL and
+# writes junk, so the real sha256sum must refuse both files and stop the step.
+with open(os.path.join(ROOT, ".github", "workflows", "release.yml")) as f:
+    release = f.read()
+work = tempfile.mkdtemp(prefix="linuxdeploy-step-")
+urls = os.path.join(work, "urls")
+CURL = ("out=; for a; do case \"$a\" in http*) echo \"$a\" >> \"$URLS\" ;; esac;"
+        " [ \"$prev\" = -o ] && out=$a; prev=$a; done\necho junk > \"$out\"\n")
+name = next(l.strip()[len("- name: "):] for l in release.split("\n")
+            if l.strip().startswith("- name: Download linuxdeploy"))
+rc, out = run_step(step_script(release, name), {"curl": CURL}, {"URLS": urls}, cwd=work)
+got = open(urls).read().split() if os.path.exists(urls) else []
+pinned = re.compile(r"^https://github\.com/linuxdeploy/[^/]+/releases/download/"
+                    r"(?!continuous/|latest/)[^/]+/linuxdeploy[\w-]*-x86_64\.AppImage$")
+check(len(got) == 2 and all(pinned.match(u) for u in got),
+      f"INV-9 both linuxdeploy downloads name a tagged release ({got})")
+check(rc != 0 and "linuxdeploy: FAILED" in out and "linuxdeploy-plugin-qt: FAILED" in out,
+      f"INV-9 a download with the wrong sha256 stops the step (rc={rc}: {out[-300:]})")
 
 print(f"\n{len(failures)} failure(s)")
 sys.exit(1 if failures else 0)

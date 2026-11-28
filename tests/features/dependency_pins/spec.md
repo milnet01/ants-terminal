@@ -47,9 +47,17 @@ the pins step still turns the script's exit 2 into a warning and exit 0, and
 the audit step still reports an unfetchable permanent link as not checked and
 a package listing with no ants-terminal package as an error.
 
+**INV-9 — linuxdeploy is pinned and checked before it runs (ANTS-6630).**
+release.yml's linuxdeploy download step fetches both x86_64 AppImages
+(linuxdeploy, linuxdeploy-plugin-qt) from a tagged release, never `continuous`
+or `latest`, and `sha256sum -c` checks each against a recorded hash. A
+download that does not match stops the step.
+
 ## Test
 
 `test_dependency_pins.py` builds fixture trees and an upstream file, and
 checks each invariant's finding and exit code. INV-7 is a text check on the
 workflow. INV-8 runs the two steps' scripts under `bash -e` with stub
-`python3`, `gh` and `curl` on PATH. Red first: before the script exists, every case fails.
+`python3`, `gh` and `curl` on PATH. INV-9 runs the download step the same
+way in a scratch folder, with a stub `curl` that logs each URL and writes junk,
+and expects the real `sha256sum` to refuse both files. Red first: before the script exists, every case fails.

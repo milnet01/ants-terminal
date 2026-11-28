@@ -15,9 +15,9 @@
 #     `gh release upload`. No `pull_request_target`, no self-hosted
 #     runners, no third-party secrets.
 #   • actions/* pinned by 40-char SHA with version tag for humans.
-#   • linuxdeploy is downloaded from its `continuous` channel, unpinned
-#     and with no checksum to verify against; the download step says
-#     what stands in for one.
+#   • linuxdeploy and its Qt plugin are pinned to a tagged upstream
+#     release, and each download must match a recorded sha256 before it
+#     runs.
 #   • The AppImage is smoke-tested (`--version`, `--help`) before upload.
 
 name: Release artefacts
@@ -157,26 +157,24 @@ jobs:
           # Some AppImage launchers also look for a top-level .desktop;
           # linuxdeploy will populate this from the installed copy.
 
-      - name: Download linuxdeploy + Qt plugin (continuous channel)
+      - name: Download linuxdeploy + Qt plugin (pinned, sha256-checked)
         run: |
-          # linuxdeploy does not cut tagged releases and does not ship
-          # checksum files alongside the `continuous` AppImage (only a
-          # `.zsync` file is published). The supply-chain trade-off: a
-          # malicious push to linuxdeploy/linuxdeploy or
-          # linuxdeploy-plugin-qt could ship a backdoor that lands in
-          # our AppImage. Mitigations in lieu of checksums:
-          #   • the AppImage is smoke-tested below — a binary that
-          #     fails to print --version on a clean Ubuntu 22.04 runner
-          #     would fail CI before upload;
-          #   • this workflow runs only on tag push or manual
-          #     dispatch, not on PRs from forks, so an attacker cannot
-          #     trigger it without write access to the repo.
-          # If linuxdeploy starts publishing tagged releases with
-          # checksums, switch to those and verify here.
+          # Both tools run in a job that can write releases, so each is
+          # pinned to a tagged release (pinned 2026-11-27) and checked
+          # against its recorded sha256; a mismatch stops the job before
+          # either runs. Not `continuous`: it is rebuilt in place, so no
+          # recorded hash would hold for it.
+          # To bump: change a tag and its hash, from the asset's `digest` in `gh api repos/linuxdeploy/<repo>/releases/tags/<tag>`, or `sha256sum` of the download where it has none.
+          LINUXDEPLOY_TAG=1-alpha-20251107-1
+          QT_PLUGIN_TAG=1-alpha-20250213-1
           curl -fsSL --retry 3 --retry-delay 5 -o linuxdeploy \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-x86_64.AppImage"
           curl -fsSL --retry 3 --retry-delay 5 -o linuxdeploy-plugin-qt \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/${QT_PLUGIN_TAG}/linuxdeploy-plugin-qt-x86_64.AppImage"
+          sha256sum -c <<'EOF'
+          c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d  linuxdeploy
+          15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724  linuxdeploy-plugin-qt
+          EOF
           chmod +x linuxdeploy linuxdeploy-plugin-qt
 
       - name: Build AppImage

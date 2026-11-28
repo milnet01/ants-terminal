@@ -35,7 +35,9 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     m_titleLabel = new ElidedLabel(this);
     m_titleLabel->setAlignment(Qt::AlignCenter);
     m_titleLabel->setElideMode(Qt::ElideMiddle);   // preserve both "cmd" prefix and "cwd" suffix
-    m_titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents); // Pass clicks to TitleBar
+    // Pass clicks to TitleBar. This also means ElidedLabel's full-title
+    // tooltip never shows; that is intended (see the tooltip note below).
+    m_titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
     layout->addStretch();
     layout->addWidget(m_titleLabel);
     layout->addStretch();

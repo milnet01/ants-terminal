@@ -41,8 +41,8 @@ private:
     // typically reflecting shell title + cwd). Without elision the label
     // pushes the minimize/maximize/close buttons off-screen when the title
     // exceeds available width between the center-button and the chrome
-    // buttons. ElidedLabel truncates to fit; full title stays readable in
-    // the tooltip.
+    // buttons. ElidedLabel truncates to fit. No tooltip shows the full title:
+    // the label ignores the mouse (titlebar.cpp), so hover never reaches it.
     ElidedLabel *m_titleLabel = nullptr;
     QPoint m_cursorOffset;     // Cursor offset from window corner at drag start
     QPoint m_knownWindowPos;   // Last known window position (from tracker)

@@ -15,7 +15,8 @@
 // via a QLabel* pointer would skip the elision path. setFullText is
 // explicit at every call site and avoids the hiding-non-virtual footgun.
 // The widget also exposes a full-text tooltip whenever the displayed text
-// had to be elided, so hover-inspection always reveals the whole string.
+// had to be elided, so hovering reveals the whole string, unless the label
+// ignores the mouse (WA_TransparentForMouseEvents, as the title bar's does).
 //
 // The text is always plain: it can come from a program in the terminal (an
 // OSC 0/2 window title), so markup in it is shown, never rendered, in the
