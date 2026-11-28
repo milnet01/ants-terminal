@@ -155,6 +155,7 @@ caller can fall back to line mode; it is not a refusal.
   "symbol": "TerminalGrid::reset",   // present in symbol mode (echo)
   "symbol_ambiguous": false,         // present in symbol mode iff > 1 match
   "symbol_match_count": 1,           // present in symbol mode iff ambiguous
+  "redacted": 2,                     // present iff secrets were blanked (§ 2.7)
   "etag": "<payload sha256 — injected by the dispatcher, not the handler>"
 }
 ```
@@ -229,6 +230,16 @@ both must not cross the wires.
   duplicate the ETag with no extra saving and add surface for no value
   (Karpathy § 2). Resolved to ETag-only; flagged for cold-eyes (§ 7).
 
+### 2.7 Secret redaction
+
+With `claude.mcp_redact_secrets` on (default true, read per call), each
+emitted line passes through `SecretRedact::scrub`, and every line of a
+private-key block becomes `[REDACTED:private_key]`. Block state is tracked
+from the file's first line, so a region that starts inside a block is
+blanked too. Redaction runs before the per-line clip and before the byte cap
+is charged, and keeps one output line per file line. An agent that edits a
+file it read this way sees the labels, not the secrets.
+
 ## 3. Invariants
 
 - **INV-1** — Line-range mode returns exactly the lines `[start_line,
@@ -291,6 +302,12 @@ both must not cross the wires.
   document's headings, regardless of the requested range or file size.
   *Test:* `McpReadRegion.Ants6502PeakMemoryStaysBounded` reads a file ending
   in one 64 MiB line in each mode and asserts peak growth of at most 16 MiB.
+- **INV-10** — Secret redaction (§ 2.7, ANTS-6642): with
+  `claude.mcp_redact_secrets` on, every secret `SecretRedact::scrub` matches
+  is replaced by its label, every line of a private-key block reads
+  `[REDACTED:private_key]`, the line count is unchanged, and `redacted`
+  counts what was hidden. Off, lines are verbatim. *Test:*
+  `McpReadRegion.Ants6642RedactsSecretsWhenAsked`.
 
 ## 4. RAM / build cost
 
@@ -322,11 +339,11 @@ keeps the headings and never the document.
 
 Feature test: `tests/features/mcp_read_region/` (label `features;fast`),
 compiled into a test bundle (not a standalone — see
-`tests/features/README.md`). Covers INV-1..INV-9 against fixture files in a
+`tests/features/README.md`). Covers INV-1..INV-10 against fixture files in a
 `QTemporaryDir`; INV-5/INV-6/INV-7 add source-scrape assertions against
 `claudeintegration.cpp` / `mainwindow.cpp` / `mcpprojection.cpp`. Drive the
 pure `ReadRegion::extract` directly for the slicing invariants
-(INV-1/2/3/8/9). Per the project convention, verify each test fails
+(INV-1/2/3/8/9/10). Per the project convention, verify each test fails
 against pre-implementation source before wiring the handler.
 
 ## 7. Open questions (for cold-eyes)

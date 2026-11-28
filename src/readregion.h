@@ -55,6 +55,10 @@ struct Options {
     int     maxLineBytes = 0;
     int     tailLines = 0;         // ANTS-5281 — <=0 → off; section mode only: its last N lines
     bool    callSequence = false;  // ANTS-2157 — also emit the ordered call list + accessors
+    // ANTS-6642 — blank secrets as read_log does: each SecretRedact::scrub
+    // match, and every line of a private-key block. The read_region and
+    // read_regions handlers set it from claude.mcp_redact_secrets.
+    bool    redactSecrets = false;
 };
 
 // Slice the already-resolved file at `absPath`. Returns the read_region
@@ -62,7 +66,8 @@ struct Options {
 //   {ok:true, path, start_line, end_line, lines[], returned, truncated,
 //    bytes_cap_clamped?, line_cap_clamped?, max_line_bytes?, lines_clipped?,
 //    symbol?, symbol_ambiguous?, symbol_match_count?, section?, section_slug?,
-//    section_end_line?, call_sequence?, call_sequence_truncated?, accessors?}
+//    section_end_line?, call_sequence?, call_sequence_truncated?, accessors?,
+//    redacted?}
 // or a refusal {ok:false, code, error}. Refusal codes:
 //   bad_args          — zero/multiple selectors, or start<1 / end<start.
 //   not_found         — file cannot be opened.
@@ -93,10 +98,12 @@ QJsonObject extract(const QString &absPath, const Options &opts);
 // omits its own `path` reads from `defaultPath` instead (a per-item `path`
 // still wins), so the common "N slices of ONE file" case can pass the filename
 // once instead of repeating it on every item. Empty → items must each carry a
-// `path` (prior behaviour).
+// `path` (prior behaviour). `redactSecrets` sets Options::redactSecrets on
+// every item (ANTS-6642).
 QJsonObject extractBatch(const QString &rootCanonical,
                          const QJsonValue &itemsValue, int maxBytes,
-                         const QString &defaultPath = QString());
+                         const QString &defaultPath = QString(),
+                         bool redactSecrets = false);
 
 // ANTS-4350 — rank a document's headings against a query slug that matched
 // nothing, so a refusal carries near-misses instead of a dead end. Non-numeric

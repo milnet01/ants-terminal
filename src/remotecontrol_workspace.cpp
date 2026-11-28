@@ -2320,10 +2320,10 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
 //  * Per-mutation pass/fail counts, so "died for the wrong reason" (a
 //    collection error rather than the target assertion) is visible.
 //
-// `test_command` is an ARGV ARRAY, never a shell string. That is a deliberate
-// narrowing: this verb writes to a source file and spawns a process, and a
-// shell string would make it an arbitrary-command surface reachable from a
-// tool call. Everything a test selector needs is expressible as argv.
+// `test_command` and `build_command` are ARGV ARRAYS, never shell strings, so
+// no argument needs quoting. This does not narrow what runs: argv[0] may be
+// any program, `sh -c` included, so the verb runs whatever command the client
+// sends. A client that can call it can already run commands through Bash.
 QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty())
@@ -3163,6 +3163,9 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
         opts.startLine = startV.toInt();
         opts.endLine   = endV.isDouble() ? endV.toInt() : opts.startLine;
     }
+    // ANTS-6642 — as read_log: read per call, so a config change applies to
+    // the next one.
+    opts.redactSecrets = Config().claudeMcpRedactSecrets();
     return QJsonDocument(ReadRegion::extract(check.resolved, opts));
 }
 
@@ -3228,7 +3231,8 @@ QJsonDocument RemoteControl::cmdReadRegions(const QJsonObject &req) {
     QJsonObject batch = ReadRegion::extractBatch(
         rootCanonical, itemsVal,
         req.value(QStringLiteral("max_bytes")).toInt(0),
-        req.value(QStringLiteral("path")).toString());
+        req.value(QStringLiteral("path")).toString(),
+        Config().claudeMcpRedactSecrets());   // ANTS-6642
     // ANTS-4512 — say which key the batch was read from. Without it a
     // per-item shape error cannot be attributed to an array at all, which is
     // what made the refusal above worth having.

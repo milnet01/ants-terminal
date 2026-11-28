@@ -44,6 +44,10 @@ etag_match?}`. caller_cwd Required.
   read_regions schema (survives `additionalProperties:false`, drops out of
   `ignored_args`) and forwarded by `cmdReadRegions` as `extractBatch`'s
   `defaultPath`.
+- **RR-11 secret redaction** (ANTS-6642) — with `claude.mcp_redact_secrets`
+  on, each item's lines are redacted as `read_region`'s are (ANTS-2021
+  INV-10), and an item that hid anything carries its own `redacted` count.
+  `cmdReadRegions` reads the switch per call.
 
 ## Out of scope
 

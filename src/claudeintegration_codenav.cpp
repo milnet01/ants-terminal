@@ -1261,9 +1261,10 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                         "`path` (git diff) before acting, and never hand-repair "
                         "it: a repair races that restore, and a commit can "
                         "ship the mutant. "
-                        "`test_command` is an ARGV ARRAY, never a shell string — "
-                        "a deliberate narrowing, because this verb writes to a "
-                        "source file and spawns a process. caller_cwd required.");
+                        "`test_command` is an ARGV ARRAY, never a shell string. "
+                        "It runs whatever program argv[0] names, `sh -c` "
+                        "included: this verb executes a command. "
+                        "caller_cwd required.");
                     mp["selection_hint"] = QStringLiteral(
                         "Use to prove a test would actually catch a defect "
                         "before trusting it — and to find green tests that "
@@ -2320,7 +2321,7 @@ void appendToolSchemasTrace(QJsonArray &tools) {
                         {"description", QStringLiteral("Caller depth; only 1 is served yet.")}};
                     props["max_bytes"] = QJsonObject{
                         {"type", "integer"}, {"minimum", 1},
-                        {"description", QStringLiteral("Reply cap (default 512 KiB).")}};
+                        {"description", QStringLiteral("Reply cap (default 512 KiB, at most 4 MiB).")}};
                     props["offset"] = QJsonObject{
                         {"type", "integer"}, {"minimum", 0},
                         {"description", QStringLiteral(

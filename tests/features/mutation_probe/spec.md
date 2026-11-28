@@ -73,11 +73,12 @@ before the write and before the run, and therefore before a verdict exists to
 be misread — which is why it beats the weaker alternative of warning whenever
 `occurrences > 1`.
 
-## Why `test_command` is argv and not a shell string
+## `test_command` is argv, and the verb runs a command
 
-This verb writes to a source file and spawns a process. A shell string would
-make it an arbitrary-command surface reachable from a tool call. Everything a
-test selector needs is expressible as argv, so the narrowing costs nothing.
+`test_command` and `build_command` are argv arrays, run with no shell, so no
+argument needs quoting. That does not limit what runs: argv[0] may be any
+program, `sh -c` included. This verb executes whatever command the client
+sends; a client that can call it can already run commands through Bash.
 
 ## What the loop buys
 

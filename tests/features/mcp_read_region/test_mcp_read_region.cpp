@@ -571,3 +571,57 @@ TEST(McpReadRegion, Ants4394GlobalSentinelIsDocumented) {
     EXPECT_NE(rrsBlock.find("~global"), std::string::npos)
         << "and read_regions' too, since it shares the resolution path";
 }
+
+// ANTS-6642 — with redactSecrets on, a token is blanked and every line of a
+// private-key block reads [REDACTED:private_key], including a region that
+// starts inside the block; `redacted` counts them. Off, the text is verbatim.
+// The handler sets the switch from claude.mcp_redact_secrets per call.
+TEST(McpReadRegion, Ants6642RedactsSecretsWhenAsked) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString token = "ghp_" + QString(36, QChar('a'));
+    const QString kind = QStringLiteral("OPENSSH PRIVATE") + QStringLiteral(" KEY-----");
+    const QStringList fixture = {
+        "push with " + token,            // 1
+        "plain line",                    // 2
+        "-----BEGIN " + kind,            // 3
+        "b3BlbnNzaC1rZXktdjEAAAAA",      // 4
+        "-----END " + kind,              // 5
+        "after",                         // 6
+    };
+    const QString p = writeFile(dir, "s.txt", fixture);
+    const QString key = QStringLiteral("[REDACTED:private_key]");
+
+    ReadRegion::Options on = lineOpts(1, 6);
+    on.redactSecrets = true;
+    const QJsonObject env = ReadRegion::extract(p, on);
+    const QStringList got = linesOf(env);
+    ASSERT_EQ(got.size(), 6) << "redaction must keep one line per line";
+    EXPECT_FALSE(got[0].contains(token));
+    EXPECT_TRUE(got[0].startsWith("push with [REDACTED:")) << got[0].toStdString();
+    EXPECT_EQ(got[1], "plain line");
+    EXPECT_EQ(got[2], key);
+    EXPECT_EQ(got[3], key);
+    EXPECT_EQ(got[4], key);
+    EXPECT_EQ(got[5], "after");
+    EXPECT_EQ(env.value("redacted").toInt(), 4);
+
+    ReadRegion::Options inside = lineOpts(4, 6);
+    inside.redactSecrets = true;
+    const QJsonObject ienv = ReadRegion::extract(p, inside);
+    EXPECT_EQ(linesOf(ienv), (QStringList{key, key, "after"}))
+        << "a region starting inside a key block must not leak its body";
+    EXPECT_EQ(ienv.value("redacted").toInt(), 2);
+
+    const QJsonObject off = ReadRegion::extract(p, lineOpts(1, 6));
+    EXPECT_EQ(linesOf(off), fixture);
+    EXPECT_FALSE(off.contains("redacted"));
+
+    const std::string rc = ants_test::slurpRemoteControl();
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdReadRegion(const QJsonObject");
+    ASSERT_FALSE(body.empty()) << "cmdReadRegion body not found";
+    EXPECT_NE(body.find("opts.redactSecrets = Config().claudeMcpRedactSecrets()"),
+              std::string::npos)
+        << "read_region must take the switch from claude.mcp_redact_secrets";
+}

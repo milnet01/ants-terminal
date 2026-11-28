@@ -370,3 +370,37 @@ TEST(ReadRegions, Ants4721NonObjectItemNamesTheShape) {
               std::string::npos);
     EXPECT_EQ(str.value("index").toInt(), 2);
 }
+
+// RR-11 (ANTS-6642) — extractBatch's redactSecrets blanks secrets in every
+// item and each item counts its own; cmdReadRegions passes the
+// claude.mcp_redact_secrets switch.
+TEST(ReadRegions, Ants6642RedactsSecretsWhenAsked) {
+    Fixture fx;
+    const QString token = "ghp_" + QString(36, QChar('a'));
+    writeFile(fx.root, "s.txt", "push with " + token + "\nplain\n");
+    QJsonArray items;
+    items.append(lineItem("s.txt", 1, 2));
+    items.append(lineItem("src/a.cpp", 1, 3));
+
+    const QJsonArray on = ReadRegion::extractBatch(
+        fx.root, QJsonValue(items), 0, QString(), true)
+        .value("results").toArray();
+    ASSERT_EQ(on.size(), 2);
+    const QString secret = joinLines(on.at(0).toObject());
+    EXPECT_FALSE(secret.contains(token)) << secret.toStdString();
+    EXPECT_TRUE(secret.contains("[REDACTED:"));
+    EXPECT_EQ(on.at(0).toObject().value("redacted").toInt(), 1);
+    EXPECT_FALSE(on.at(1).toObject().contains("redacted"))
+        << "an item with nothing hidden carries no count";
+
+    const QJsonArray off = runRegions(fx.root, items).value("results").toArray();
+    ASSERT_EQ(off.size(), 2);
+    EXPECT_TRUE(joinLines(off.at(0).toObject()).contains(token));
+
+    const std::string rc = ants_test::slurpRemoteControl();
+    const std::string hbody =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdReadRegions");
+    ASSERT_FALSE(hbody.empty()) << "cmdReadRegions body not found";
+    EXPECT_NE(hbody.find("Config().claudeMcpRedactSecrets()"), std::string::npos)
+        << "read_regions must take the switch from claude.mcp_redact_secrets";
+}

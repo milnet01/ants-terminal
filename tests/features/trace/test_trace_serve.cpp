@@ -791,14 +791,17 @@ TEST_F(TraceServe, Ants6503ManyHitsHoldOnlyAPagesRows) {
 
 // INV-26 (ANTS-6503) — a page whose byte cap would fit more rows than are held
 // ends where the held rows do, and the next page starts at the row after.
+// A Python file's rows are `kind:"code"`, short enough that the held rows fit
+// under the 4 MiB ceiling with room to spare.
 TEST_F(TraceServe, Ants6503PageEndsWhereTheHeldRowsDo) {
     constexpr int kLines = 70000;   // past the most rows one page holds
+    constexpr int kMaxBytes = 4 * 1024 * 1024;
     QByteArray many;
     for (int i = 0; i < kLines; ++i) many += "zq\n";
-    ASSERT_TRUE(write(QStringLiteral("many.txt"), many));
+    ASSERT_TRUE(write(QStringLiteral("many.py"), many));
     const auto page = [&](int offset) {
         QJsonObject args{{QStringLiteral("symbol"), QStringLiteral("zq")},
-                         {QStringLiteral("max_bytes"), 64 * 1024 * 1024}};
+                         {QStringLiteral("max_bytes"), kMaxBytes}};
         if (offset) args.insert(QStringLiteral("offset"), offset);
         return call(args);
     };
@@ -808,6 +811,11 @@ TEST_F(TraceServe, Ants6503PageEndsWhereTheHeldRowsDo) {
     ASSERT_FALSE(rows.isEmpty()) << dump(first);
     ASSERT_LT(rows.size(), kLines) << "the page held every row";
     ASSERT_TRUE(first.value(QStringLiteral("truncated")).toBool()) << "rows were left out silently";
+    // The held rows ended the page, not the byte cap: one more row would fit.
+    const qint64 rowBytes =
+        QJsonDocument(rows.last().toObject()).toJson(QJsonDocument::Compact).size() + 1;
+    EXPECT_LT(QJsonDocument(first).toJson(QJsonDocument::Compact).size() + rowBytes, kMaxBytes)
+        << "the byte cap, not the held rows, ended the page";
     const int next = first.value(QStringLiteral("next_offset")).toInt(-1);
     ASSERT_EQ(next, int(rows.size()));
     const int lastLine = rows.last().toObject().value(QStringLiteral("line")).toInt();
@@ -816,6 +824,21 @@ TEST_F(TraceServe, Ants6503PageEndsWhereTheHeldRowsDo) {
     const QJsonArray after = arr(page(next), "references");
     ASSERT_FALSE(after.isEmpty());
     EXPECT_EQ(after.first().toObject().value(QStringLiteral("line")).toInt(), lastLine + 1);
+}
+
+// INV-29 (ANTS-6628) — `max_bytes` is clamped to the read family's 4 MiB
+// ceiling. 70,000 text rows of about 70 bytes are more than 4 MiB of rows, so
+// an unclamped 64 MiB cap sends one page larger than the ceiling.
+TEST_F(TraceServe, Ants6628MaxBytesClampsToTheFamilyCeiling) {
+    QByteArray many;
+    for (int i = 0; i < 70000; ++i) many += "zq\n";
+    ASSERT_TRUE(write(QStringLiteral("many.txt"), many));
+    const QJsonObject r = call({{QStringLiteral("symbol"), QStringLiteral("zq")},
+                                {QStringLiteral("max_bytes"), 64 * 1024 * 1024}});
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+    EXPECT_TRUE(r.value(QStringLiteral("truncated")).toBool());
+    EXPECT_LE(QJsonDocument(r).toJson(QJsonDocument::Compact).size(), 4 * 1024 * 1024)
+        << "a 64 MiB max_bytes was not clamped to 4 MiB";
 }
 
 // INV-26 (ANTS-6503) — the rows held are the first in § 2.2's order, not the

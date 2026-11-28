@@ -41,6 +41,7 @@ namespace {
 constexpr int kMaxWalkFiles = 5000;                 // § 2.5, SymbolQuery's cap
 constexpr qint64 kMaxFileBytes = 2LL * 1024 * 1024;  // § 2.5
 constexpr int kDefaultMaxBytes = 512 * 1024;         // § 2.1
+constexpr int kMaxBytesCeiling = 4 * 1024 * 1024;    // § 2.1, the read family's
 constexpr int kTextMax = 200;                        // a row's quoted line
 constexpr int kGitListMs = 10000;                    // git ls-files' time budget
 
@@ -408,6 +409,7 @@ std::optional<QJsonObject> parseRequest(const QJsonObject &args, const QString &
         req.maxBytes = args.value(QStringLiteral("max_bytes")).toInt(-1);
         if (req.maxBytes <= 0)
             return refuse("bad_args", QStringLiteral("\"max_bytes\" must be a positive integer"));
+        req.maxBytes = qMin(req.maxBytes, kMaxBytesCeiling);   // ANTS-6628
     }
     if (args.contains(QStringLiteral("offset"))) {
         req.offset = args.value(QStringLiteral("offset")).toInt(-1);

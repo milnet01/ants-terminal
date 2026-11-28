@@ -11,6 +11,7 @@
 #include "utf8cut.h"
 #include "markdownscan.h"
 #include "pathvalidation.h"
+#include "secretredact.h"
 
 #include <QByteArray>
 #include <QCryptographicHash>
@@ -645,6 +646,35 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
     return r;
 }
 
+// ANTS-6642 — whether a line sits in a private-key block, which spans lines
+// SecretRedact::scrub sees one at a time. Fed every line from the top of the
+// file, so a region that starts inside a block knows it. A line holding a
+// marker counts as inside, as read_log's tracker does.
+class KeyBlockTracker {
+public:
+    bool inside(const QByteArray &raw) {
+        if (!raw.contains("PRIVATE KEY")) return m_inBlock;
+        static const QRegularExpression kBegin(
+            QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY(?: BLOCK)?-----"));
+        static const QRegularExpression kEnd(
+            QStringLiteral("-----END [^\\-\\n]*PRIVATE KEY(?: BLOCK)?-----"));
+        const QString line = QString::fromUtf8(raw);
+        if (m_inBlock) {
+            const QRegularExpressionMatch e = kEnd.match(line);
+            if (e.hasMatch())
+                m_inBlock = kBegin.match(line, e.capturedEnd()).hasMatch();
+            return true;
+        }
+        const QRegularExpressionMatch b = kBegin.match(line);
+        if (!b.hasMatch()) return false;
+        m_inBlock = !kEnd.match(line, b.capturedEnd()).hasMatch();
+        return true;
+    }
+
+private:
+    bool m_inBlock = false;
+};
+
 }  // namespace
 
 QJsonObject extract(const QString &absPath, const Options &opts) {
@@ -773,18 +803,39 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     // ANTS-6502 — every line read holds at most maxBytes + 1 of itself: enough
     // to see it is over the cap, which is all the loop below asks of it.
     QByteArray scratch;
+    KeyBlockTracker keys;
+    int redacted = 0;
     while (!f.atEnd()) {
         QByteArray raw = BoundedReadLine::readKeep(f, qint64(maxBytes) + 1, scratch);
         if (raw.endsWith('\n')) raw.chop(1);
         ++lineNo;
-        if (lineNo < startLine) continue;
+        if (lineNo < startLine) {
+            if (opts.redactSecrets) keys.inside(raw);
+            continue;
+        }
         if (lineNo > endLine) break;
+
+        QString text = QString::fromUtf8(raw);
+        // ANTS-6642 — redact before the clip, which could cut a secret short
+        // of the shape scrub() matches, and before costing, as a label can be
+        // longer than what it replaces.
+        int lineRedacted = 0;
+        if (opts.redactSecrets) {
+            if (keys.inside(raw)) {
+                text = QStringLiteral("[REDACTED:private_key]");
+                lineRedacted = 1;
+            } else {
+                SecretRedact::Result r = SecretRedact::scrub(text);
+                text = std::move(r.text);
+                lineRedacted = r.redactedCount;
+            }
+            if (lineRedacted > 0) raw = text.toUtf8();
+        }
 
         // Clip BEFORE costing, so the clip makes room rather than competing
         // with the byte cap — the ordering the report asked for and the one
         // that changes the answer: on a region whose weight is a few long
         // lines, clipping is what lets the later rows be reached at all.
-        QString text = QString::fromUtf8(raw);
         if (maxLineBytes > 0) {
             const QString clipped = ReadRegion::clipToBytes(text, maxLineBytes);
             if (clipped.size() != text.size()) {
@@ -812,6 +863,7 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
         }
         lines.append(text);
         keptBytes += cost;
+        redacted += lineRedacted;
         effectiveEnd = lineNo;
     }
 
@@ -826,6 +878,7 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     env["returned"] = returned;
     env["truncated"] = truncated;
     if (capClamped) env["bytes_cap_clamped"] = true;
+    if (redacted > 0) env["redacted"] = redacted;
     // ANTS-4700 — echo the effective cap and how many lines it actually cut.
     // Both ride the true arm: a caller who did not ask sees no new keys, and
     // one who did can tell "nothing was long enough to clip" from "the clip
@@ -939,7 +992,7 @@ QString sliceEtag(const QJsonObject &obj) {
 // {code,error} object so the batch loop records one bad item without aborting.
 QJsonObject readOneRegion(const QJsonObject &item,
                           const QString &rootCanonical, int maxBytes,
-                          const QString &defaultPath) {
+                          const QString &defaultPath, bool redactSecrets) {
     // ANTS-3589 — a per-item `path` wins; otherwise fall back to the batch's
     // top-level `defaultPath` so the single-file case need not repeat it.
     QString rawPath = item.value(QStringLiteral("path")).toString();
@@ -968,6 +1021,7 @@ QJsonObject readOneRegion(const QJsonObject &item,
     opts.symbol   = item.value(QStringLiteral("symbol")).toString();
     opts.section  = item.value(QStringLiteral("section")).toString();
     opts.maxBytes = maxBytes;
+    opts.redactSecrets = redactSecrets;
     const QJsonValue startV = item.value(QStringLiteral("start_line"));
     const QJsonValue endV   = item.value(QStringLiteral("end_line"));
     if (startV.isDouble()) {
@@ -990,7 +1044,7 @@ QJsonObject readOneRegion(const QJsonObject &item,
 
 QJsonObject extractBatch(const QString &rootCanonical,
                          const QJsonValue &itemsValue, int maxBytes,
-                         const QString &defaultPath) {
+                         const QString &defaultPath, bool redactSecrets) {
     if (!itemsValue.isArray()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -1061,7 +1115,8 @@ QJsonObject extractBatch(const QString &rootCanonical,
         const QJsonObject item = iv.toObject();
         const int itemCap = budget > 0 ? budget : 1;
         QJsonObject slice =
-            readOneRegion(item, rootCanonical, itemCap, defaultPath);
+            readOneRegion(item, rootCanonical, itemCap, defaultPath,
+                          redactSecrets);
         const QString etag = sliceEtag(slice);
         const QString prior =
             item.value(QStringLiteral("etag_match")).toString();

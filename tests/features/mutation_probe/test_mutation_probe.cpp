@@ -149,9 +149,8 @@ TEST(MutationProbe, Inv3GuaranteesWired) {
         << "a red baseline makes every result meaningless — a mutant dying "
            "proves nothing when the suite was already failing";
 
-    // test_command is argv, never a shell string. This verb writes to a
-    // source file and spawns a process; a shell string would make it an
-    // arbitrary-command surface reachable from a tool call.
+    // test_command is argv, never a shell string, so no argument needs
+    // quoting. It still runs whatever program argv[0] names.
     EXPECT_EQ(rc.find("QProcess::startCommand"), std::string::npos)
         << "no shell-string execution on this path";
     EXPECT_NE(rc.find("ARGV ARRAY"), std::string::npos)

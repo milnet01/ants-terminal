@@ -33,7 +33,7 @@ What is missing today:
 | `lang` | string, optional | Restrict parsing to one language id from § 2.3. |
 | `include` | array, optional | A subset of `definitions`, `callers`, `callees`, `references`, `tests`, `docs`, `spec_invariants`, `roadmap_items`. Default: all that the current ship supports. |
 | `depth` | integer 1–3, optional | Caller and callee depth. Default 1. |
-| `max_bytes` | integer, optional | The standard response cap, default 512 KiB. |
+| `max_bytes` | integer, optional | The standard response cap, default 512 KiB, clamped to the read family's 4 MiB ceiling. |
 | `offset` | integer, optional | Row cursor from a previous reply's `next_offset`. |
 
 Exactly one of `symbol` and `path` is required. These refuse the call with `bad_args`: neither or both given, a malformed `symbol`, an unknown `include` member, an unknown `lang`, or `depth` outside 1–3. A `path` that `PathValidation::validatePath` rejects refuses with `bad_path`. A `caller_cwd` that does not resolve to a directory refuses with `no_project`. In ship 1, `depth` above 1 and `include:["callees"]` refuse with `bad_args` naming ship 2, rather than silently answering at depth 1.
@@ -224,9 +224,10 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 - **INV-23** — A binary file is never reported as `file_too_large`. *Test:* `tests/features/trace/` writes a 3 MiB `blob.bin` holding NUL bytes and the text `kindProbe` into a temporary copy of the fixture, expecting no `not_covered` entry naming it. *Breaks when:* the size check runs before the binary check.
 - **INV-24** — `limits` rows name only languages with a file naming the symbol. *Test:* `tests/features/trace/` traces `afterError`, found only in `broken.cpp`, expecting exactly one `limits` row, for `cpp`. *Breaks when:* a language's limits are recorded for every file with a grammar.
 - **INV-25** — Two or more oversized files under one top-level directory fold to one row. *Test:* `tests/features/trace/` writes two 3 MiB files under `vendor/`, expecting one `file_too_large` row `{dir:"vendor", files:2}` with no `file` key. *Breaks when:* each file gets its own row. INV-16's lone file keeps its name.
-- **INV-26** — Each of the definitions, callers, references and docs sections counts every row it finds, and holds only its first `offset` plus one page's rows in § 2.2's order. A page whose byte cap would fit more rows than are held ends where they end, with `truncated:true` and `next_offset` (ANTS-6503).. *Test:* `tests/features/trace/` writes `many.txt` naming `zq` on 500,000 lines and expects peak memory to grow by at most 32 MiB (skipped under ASan); writes 70,000 such lines and, with a 64 MiB `max_bytes`, expects a truncated page whose next page starts at the following line; and writes 150 such lines to each of `aa.txt` and `aa/x.txt`, expecting a small page to start at `aa.txt` line 1. *Breaks when:* every row is held, a section holds the first rows found rather than the first in order, or a page runs past the held rows without `next_offset`..
+- **INV-26** — Each of the definitions, callers, references and docs sections counts every row it finds, and holds only its first `offset` plus one page's rows in § 2.2's order. A page whose byte cap would fit more rows than are held ends where they end, with `truncated:true` and `next_offset` (ANTS-6503).. *Test:* `tests/features/trace/` writes `many.txt` naming `zq` on 500,000 lines and expects peak memory to grow by at most 32 MiB (skipped under ASan); writes 70,000 such lines to `many.py`, whose shorter `code` rows fit under a 4 MiB `max_bytes`, and expects a truncated page with room for another row, whose next page starts at the following line; and writes 150 such lines to each of `aa.txt` and `aa/x.txt`, expecting a small page to start at `aa.txt` line 1. *Breaks when:* every row is held, a section holds the first rows found rather than the first in order, or a page runs past the held rows without `next_offset`..
 - **INV-27** — One compiled query is kept per language. An edited query file's text replaces it, and the replaced query is freed once no caller still holds it (ANTS-6504).. *Test:* `tests/features/trace/` writes a user `python.scm`, holds the compiled query `trace::queryFor` returns, writes a different text, and expects the held query to stay alive while held and to be freed once released, observed through a `std::weak_ptr`. *Breaks when:* compiled queries are kept per text for the process's life, or a replaced query is freed while a caller holds it..
 - **INV-28** — A walked file is read at most one byte past the 2 MiB limit, so a file that grew after the walk measured it is reported `file_too_large`, never read whole (ANTS-6505).. *Test:* `tests/features/trace/` reads `serve`'s body from `src/trace/trace.cpp` and expects no `f.readAll()` and a `f.read(kMaxFileBytes + 1` call. Structural, since no test can grow a file between the walk and the read. *Breaks when:* the read is unbounded..
+- **INV-29** — A `max_bytes` above 4 MiB is clamped to 4 MiB (ANTS-6628). *Test:* `tests/features/trace/` writes `many.txt` naming `zq` on 70,000 lines, more than 4 MiB of rows, calls with a 64 MiB `max_bytes`, and expects a truncated reply of at most 4 MiB. *Breaks when:* `max_bytes` has no ceiling.
 
 ## 4. Failure modes
 
@@ -262,6 +263,7 @@ Feature test: `tests/features/trace/`, label `features`, its bundle taken from `
 - INV-26: three cases, calling `trace::serve` directly. The memory case runs in a forked child and is skipped under ASan.
 - INV-27: one case, calling `trace::queryFor` directly.
 - INV-28: a source read of `serve`, as the case says.
+- INV-29: one case, calling `trace::serve` directly.
 - INV-13: builds two `ClaudeIntegration` pipelines and compares their `tools/list` replies.
 - INV-14: the query re-read case, with `XDG_DATA_HOME` set for the test process.
 - INV-17: the `nm` and `ldd` commands, run by the bundle against the built `ants-mcpd`.
@@ -303,7 +305,7 @@ The fixture's `.dart` file is never parsed; it exists to be reported.
 | INV-1 to INV-16, INV-18 | `tests/features/trace/` |
 | INV-17 | **Partial:** `tests/features/trace/` (the `nm` and `ldd` checks) catches a shared link; nothing catches a `dlopen` of a system grammar |
 | INV-21 | `tests/features/trace/` |
-| INV-22, INV-23, INV-24, INV-25, INV-26, INV-27, INV-28 | `tests/features/trace/` |
+| INV-22, INV-23, INV-24, INV-25, INV-26, INV-27, INV-28, INV-29 | `tests/features/trace/` |
 | INV-19, INV-20 | `tests/features/trace/`, from ship 2 |
 | § 2.3 grammar pins match the vendored files | **nothing** — `tools/vendor-grammars.sh` checks hashes only when it runs; deferred; not yet queued |
 | § 2.8 preamble stays within 500 bytes | ANTS-1252 INV-3's test |

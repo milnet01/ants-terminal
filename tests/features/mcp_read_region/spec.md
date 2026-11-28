@@ -18,6 +18,7 @@ invariants source-scrape the registration sites. Full design contract:
 | B9 | `Ants5281SectionTailNeedsNoLineNumbers` | `tail_lines:N` with `section` returns the section's last N lines, stopping at the section's end. Above the section's size it returns the whole section. Without `section` it refuses `bad_args`. `section_end_line` appears when `tail_lines` is set or a section read is truncated. |
 
 | B10 | `Ants6502PeakMemoryStaysBounded` (INV-9) | On a file ending in one 64 MiB line, line-range, symbol and section reads each raise the process's peak memory by at most 16 MiB, and say `truncated`. Measured in a forked child; skipped under ASan, whose quarantine keeps freed blocks resident. |
+| B11 | `Ants6642RedactsSecretsWhenAsked` (INV-10) | With `redactSecrets` on, a token is blanked, every line of a private-key block reads `[REDACTED:private_key]` (a region starting inside the block too), the line count is unchanged, and `redacted` counts what was hidden. Off, the lines are verbatim with no `redacted`. `cmdReadRegion` sets the switch from `claude.mcp_redact_secrets`. |
 
 INV-4 (path validation), INV-5 (caller_cwd Required), INV-6 (ETag), INV-7
 (fields projection) are covered by the W1 source-scrape
