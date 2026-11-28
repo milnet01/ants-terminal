@@ -62,7 +62,10 @@ class Pty;
 // One quantum of parse output shipped from worker → GUI. Carries both
 // the structured action stream and the raw bytes (session logging and
 // asciicast recording stay on GUI so file ordering remains trivially
-// linear; the worker just hands over the bytes it already read).
+// linear; the worker just hands over the bytes it already read). One
+// exception: the SGR reset fed when a foreground program exits (ANTS-5135)
+// is in the raw bytes too, at the point the parser saw it, so a replayed
+// recording clears the attributes the screen cleared (ANTS-6658).
 //
 // The batch is built on the worker thread and shipped to the GUI thread
 // via a `std::shared_ptr<const VtBatch>` (`VtBatchPtr`) over a queued
@@ -212,6 +215,12 @@ public:
     // first read. Pty stores it on the worker on every read; GUI reads it.
     bool keysShareable() const { return m_keysShareable.load(std::memory_order_relaxed); }
 
+    // ANTS-6658 — feeds the SGR reset (ESC[0m) to `parser`, recording it in
+    // `pending` as fed bytes, only when the parser is at ground: the exited
+    // program's last bytes may still be arriving, and a reset fed into the
+    // middle of one of its sequences would break it. Returns whether it fed.
+    static bool feedSgrResetIfAtGround(VtParser &parser, VtBatchBuilder &pending);
+
 signals:
     // Emitted from the worker thread whenever a parse batch is ready.
     // Connect with Qt::QueuedConnection to marshal onto GUI. The
@@ -247,6 +256,9 @@ public slots:
 private slots:
     void onPtyData(const QByteArray &data);
     void onPtyFinished(int exitCode);
+    // ANTS-5135 — Pty::foregroundProgramExited: feed the SGR reset now, or
+    // once the parser next returns to ground (ANTS-6658).
+    void onForegroundProgramExited();
     void onFlushTimer();
     // ANTS-5075 — hand Pty the next paste slices while its write queue is empty.
     void feedPaste();
@@ -270,6 +282,8 @@ private:
     // Actions and raw bytes for the next batch; print runs stay coalesced.
     VtBatchBuilder m_pending;
     bool m_pendingClearSelection = false;
+    // ANTS-6658 — an SGR reset is owed but the parser was mid-sequence.
+    bool m_sgrResetPending = false;
     // ANTS-1061 — decodes inline images as they are parsed; the results ride
     // in VtBatch::images.
     inlineimage::Predecoder m_predecoder;

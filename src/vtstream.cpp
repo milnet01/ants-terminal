@@ -33,6 +33,9 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
         [this](const VtAction &a) { onParsedAction(a); });
     connect(m_pty, &Pty::dataReceived, this, &VtStream::onPtyData);
     connect(m_pty, &Pty::finished, this, &VtStream::onPtyFinished);
+    // Same thread as dataReceived, so this runs before the wake's data.
+    connect(m_pty, &Pty::foregroundProgramExited, this,
+            &VtStream::onForegroundProgramExited);
     // ANTS-2119 — surface PTY write-loss so it is not silent. Two causes emit
     // it: the queue passing Pty::MAX_PENDING_WRITE_BYTES, and a fatal write
     // or drain error on a dead master. Rare either way, hence a log warning
@@ -155,6 +158,8 @@ void VtStream::onPtyData(const QByteArray &data) {
     // start()). This runs synchronously on the worker; no cross-thread hop.
     m_parser->feed(data.constData(), static_cast<int>(data.size()));
     m_pending.endFeed();
+    if (m_sgrResetPending && feedSgrResetIfAtGround(*m_parser, m_pending))
+        m_sgrResetPending = false;
 
     // Fast path: if we're over either threshold, flush immediately so
     // the GUI sees output with sub-frame latency on heavy streams.
@@ -168,6 +173,21 @@ void VtStream::onPtyData(const QByteArray &data) {
         // heavy load, which is the batching we want.
         scheduleFlush();
     }
+}
+
+bool VtStream::feedSgrResetIfAtGround(VtParser &parser, VtBatchBuilder &pending) {
+    if (!parser.atGround()) return false;
+    static const QByteArray kReset = QByteArrayLiteral("\033[0m");
+    pending.beginFeed(kReset);
+    parser.feed(kReset.constData(), static_cast<int>(kReset.size()));
+    pending.endFeed();
+    return true;
+}
+
+void VtStream::onForegroundProgramExited() {
+    if (!m_parser) return;
+    m_sgrResetPending = !feedSgrResetIfAtGround(*m_parser, m_pending);
+    if (!m_sgrResetPending) scheduleFlush();
 }
 
 void VtStream::scheduleFlush() {

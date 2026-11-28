@@ -17,6 +17,14 @@ child has been reaped, any later reap attempt triggered by the read loop
 must not call `waitpid` with a pid that matches "any child" — doing so can
 reap a process the `Pty` object never started.
 
+**INV-4 — a child that closes the terminal before it exits keeps its exit
+code.** On Linux the master reads EOF once the last slave fd closes, which
+can come before the exiting child is reapable. When `waitpid(WNOHANG)`
+returns 0 at EOF, the reap polls again every 10 ms for up to 500 ms before
+emitting `finished`. A child that exits inside that window is reaped and
+reported with its own exit code; one still running after it gives
+`finished(-1)`, and the destructor reaps it.
+
 ## Rationale
 
 `Pty::onReadReady` reads in a loop until `EAGAIN`. `VtStream` asks the `Pty`
@@ -75,3 +83,6 @@ a real event loop pumped in between, can show any of the three.
   processed. No separate read budget: acks reach the worker only through
   its event loop, so the loop pauses itself once `VtStream`'s in-flight cap
   is reached. Locked by this spec.
+- **ANTS-6658** (2026-11-28): the EOF reap tried `waitpid(WNOHANG)` once,
+  so a child not yet reapable lost its exit code and stayed a zombie until
+  the tab closed. Fix: poll again briefly (INV-4).

@@ -69,16 +69,25 @@ table above and updates `lastSeen` in place on every call.
 - **INV-8** `shellPgid <= 0` never fires — the child has been reaped and
   there is no shell to return to.
 - **INV-9** `Pty::onReadReady` samples `tcgetpgrp` and, on a true
-  verdict, emits the reset **into the data stream** ahead of the bytes
-  it is about to deliver. Ordering is the reason: a separate signal
-  could overtake queued parse batches, and the reset must reach the
-  parser before the prompt it is meant to clean.
+  verdict, emits `foregroundProgramExited` before the read loop, so
+  before any `dataReceived` of that wake. Pty and `VtStream` share the
+  parse-worker thread, so the signal is delivered at once and the reset
+  reaches the parser before the prompt it is meant to clean. Pty emits
+  no reset bytes itself.
+- **INV-10** `VtStream::feedSgrResetIfAtGround` feeds `ESC[0m` only when
+  the parser is at ground: in Ground with no UTF-8 character half-read.
+  The exited program's last bytes may still be unread, and a reset fed
+  inside a half-read CSI, ESC, OSC or UTF-8 sequence would break it.
+  Held, the reset is fed after the next read that leaves the parser at
+  ground. A fed reset is in the batch's raw bytes where the parser saw
+  it, so a replayed recording clears what the screen cleared.
 
 ## Scope
 
 ### In scope
 - The transition state machine, every row of the table.
-- That the wiring in `onReadReady` exists and injects ahead of the data.
+- That the wiring in `onReadReady` exists and signals ahead of the data.
+- The ground gate on the reset.
 
 ### Out of scope
 - Whether the reset reaches the screen. That needs a real pty, a real
@@ -102,3 +111,7 @@ table above and updates `lastSeen` in place on every call.
   printed a dim line, and the conclusion was wrong. The user's second
   report — dim text in the terminal with no session running — is what
   reopened it. ANTS-5135.
+- **ANTS-6658** (2026-11-28) — Pty injected the reset as data whatever
+  state the parser was in, so it could land inside the exited program's
+  last, half-read sequence. The decision moved to `VtStream`, behind the
+  ground gate (INV-10).

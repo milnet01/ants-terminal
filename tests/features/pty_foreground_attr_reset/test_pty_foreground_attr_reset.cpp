@@ -3,22 +3,32 @@
 // behaviour, so no parser fix reaches it -- and this host's prompt carries
 // no SGR reset to clear it. See spec.md.
 //
-// The state machine is called directly rather than source-grepped: it is a
-// pure static function precisely so it can be. INV-9 (the wiring) is the
-// one part that needs the source, because proving it behaviourally needs a
-// real pty, a real shell and a real external program.
+// The state machine and the ground gate (INV-10) are called directly rather
+// than source-grepped: both are pure static functions precisely so they can
+// be. INV-9 (the wiring) is the one part that needs the source, because
+// proving it behaviourally needs a real pty, a real shell and a real
+// external program.
 
 #include <cstdio>
+#include <cstring>
 #include <regex>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
+#include <QByteArray>
+
 #include "ptyhandler.h"
+#include "vtparser.h"
+#include "vtstream.h"
 #include "../../_support/srcgrep.h"
 
 #ifndef SRC_PTY_CPP_PATH
 #  error "SRC_PTY_CPP_PATH compile definition required"
+#endif
+#ifndef SRC_VTSTREAM_CPP_PATH
+#  error "SRC_VTSTREAM_CPP_PATH compile definition required"
 #endif
 
 namespace {
@@ -133,11 +143,13 @@ TEST(PtyForegroundAttrReset, ReapedChildNeverFires) {
 }
 
 TEST(PtyForegroundAttrReset, WiredIntoTheReadPath) {
-    // INV-9 -- ordering. A separate signal could overtake queued parse
-    // batches; only the data stream preserves "reset before the prompt".
+    // INV-9 -- ordering. The verdict travels as a signal emitted before the
+    // wake's dataReceived, on the same thread, and VtStream feeds the reset.
     const std::string cpp = ants_test::slurpFile(SRC_PTY_CPP_PATH);
+    const std::string stream = ants_test::slurpFile(SRC_VTSTREAM_CPP_PATH);
 
     ASSERT_FALSE(cpp.empty()) << "could not read " << SRC_PTY_CPP_PATH;
+    ASSERT_FALSE(stream.empty()) << "could not read " << SRC_VTSTREAM_CPP_PATH;
 
     EXPECT_TRUE(std::regex_search(
         cpp, std::regex(R"(foregroundReturnedToShell\s*\()")))
@@ -148,10 +160,84 @@ TEST(PtyForegroundAttrReset, WiredIntoTheReadPath) {
         << "INV-9: ptyhandler.cpp does not call tcgetpgrp, so nothing "
            "samples the foreground process group.";
 
-    // The reset must be emitted as DATA, not as a bespoke signal.
-    EXPECT_TRUE(std::regex_search(
+    // ANTS-6658 -- Pty no longer injects the reset as data: only the parser
+    // knows whether the exited program's last sequence is complete.
+    EXPECT_FALSE(std::regex_search(
         cpp, std::regex(R"(emit\s+dataReceived\s*\([^)]*033\[0m)")))
-        << "INV-9: the reset is not emitted into the data stream. It must "
-           "travel as bytes so it cannot overtake the parse batches it has "
-           "to precede.";
+        << "INV-9: Pty injects the reset into the data stream, where it can "
+           "land inside a sequence the parser has half-read (INV-10).";
+
+    const auto emitAt = cpp.find("emit foregroundProgramExited()");
+    const auto readAt = cpp.find("::read(m_masterFd, buf");
+    EXPECT_NE(emitAt, std::string::npos)
+        << "INV-9: ptyhandler.cpp never emits foregroundProgramExited.";
+    EXPECT_TRUE(emitAt != std::string::npos && readAt != std::string::npos &&
+                emitAt < readAt)
+        << "INV-9: the verdict is not emitted before the read loop, so the "
+           "reset could reach the parser after the prompt it must precede.";
+
+    EXPECT_TRUE(std::regex_search(
+        stream, std::regex(R"(&Pty::foregroundProgramExited\s*,\s*this\s*,\s*&VtStream::onForegroundProgramExited)")))
+        << "INV-9: VtStream does not connect Pty::foregroundProgramExited, so "
+           "no reset is ever fed.";
+}
+
+namespace {
+
+// INV-10 -- a parser whose actions land in `pending`, as VtStream wires it.
+struct GateRig {
+    VtBatchBuilder pending;
+    VtParser parser{[this](const VtAction &a) { pending.add(a); }};
+    void feed(const char *bytes) { parser.feed(bytes, static_cast<int>(std::strlen(bytes))); }
+    VtBatch take() { VtBatch b; pending.takeInto(b); return b; }
+};
+
+bool isSgr(const VtAction &a) {
+    return a.type == VtAction::CsiDispatch && a.finalChar == 'm' &&
+           a.intermediate.empty();
+}
+
+} // namespace
+
+TEST(PtyForegroundAttrReset, ResetFedAtGround) {
+    // INV-10 -- between sequences the reset is fed, and recorded in the raw
+    // bytes at the point the parser saw it.
+    GateRig rig;
+    EXPECT_TRUE(VtStream::feedSgrResetIfAtGround(rig.parser, rig.pending))
+        << "INV-10: a parser at ground was refused the reset.";
+    const VtBatch b = rig.take();
+    EXPECT_TRUE(b.rawBytes == QByteArray("\033[0m"))
+        << "INV-10: the raw bytes are not exactly the reset.";
+    ASSERT_EQ(b.actions.size(), 1u);
+    EXPECT_TRUE(isSgr(b.actions[0]) &&
+                (b.actions[0].params.empty() || b.actions[0].params == std::vector<int>{0}))
+        << "INV-10: the reset did not parse as SGR 0.";
+}
+
+TEST(PtyForegroundAttrReset, ResetHeldWhileMidSequence) {
+    // INV-10 -- the exited program's last bytes may still be arriving. A
+    // reset fed into a half-read sequence would break it, so none is fed
+    // until the parser is back at ground.
+    struct Case { const char *name; const char *head; const char *tail; };
+    const Case cases[] = {
+        {"CSI", "\033[3", "1m"},
+        {"UTF-8", "\xE2\x82", "\xAC"},
+        {"OSC", "\033]0;title", "\a"},
+        {"ESC", "\033", "7"},
+    };
+    for (const Case &c : cases) {
+        GateRig rig;
+        rig.feed(c.head);
+        EXPECT_FALSE(VtStream::feedSgrResetIfAtGround(rig.parser, rig.pending))
+            << "INV-10: the reset was fed mid-" << c.name << " sequence.";
+        EXPECT_EQ(rig.pending.rawSize(), 0)
+            << "INV-10: a held reset still reached the raw bytes (" << c.name << ").";
+        rig.feed(c.tail);
+        for (const VtAction &a : rig.take().actions)
+            EXPECT_FALSE(isSgr(a) && a.params != std::vector<int>{31})
+                << "INV-10: an SGR the stream never sent appeared (" << c.name << ").";
+        EXPECT_TRUE(VtStream::feedSgrResetIfAtGround(rig.parser, rig.pending))
+            << "INV-10: the reset was refused once the " << c.name
+            << " sequence completed.";
+    }
 }

@@ -79,9 +79,18 @@ that state, never the start of a fresh sequence.
 A regression that swung too far the other way (treating *any* byte
 inside the string state as a terminator) would break legitimate OSC
 8 / OSC 52 / OSC 1337 payloads. The spec requires that ordinary
-bytes (non-BEL, non-ST, non-ESC) continue to flow into the OSC
-buffer. Tested by feeding a 1 KiB OSC body and asserting the dispatched
-payload matches it byte-for-byte.
+bytes (non-BEL, non-ST, non-ESC, and not a C0 control: Invariant 6)
+continue to flow into the OSC buffer. Tested by feeding a 1 KiB OSC
+body and asserting the dispatched payload matches it byte-for-byte.
+
+### Invariant 6 — C0 controls in an OSC body are dropped
+
+A C0 control other than BEL, ESC, CAN or SUB inside an OSC body is
+ignored, as the Williams `osc_string` state ignores it. So
+`ESC ] 0 ; a LF b TAB c BEL` dispatches the payload `0;abc`, and no
+title, OSC 8 URI or OSC 52 payload carries a raw control byte. DCS is
+unchanged: Williams passes C0 through in `dcs_passthrough`, so a DCS
+payload keeps them.
 
 ## Regression history
 
@@ -93,6 +102,8 @@ payload matches it byte-for-byte.
 - **ANTS-6440** (2026-11-06) — a second ESC in a peek state still
   opened a live Escape state. The peek states now take ESC through
   `processString` like any other trailing byte.
+- **ANTS-6658** (2026-11-28) — C0 controls inside an OSC body were
+  appended to the payload. They are now dropped (Invariant 6).
 
 ## Test strategy
 

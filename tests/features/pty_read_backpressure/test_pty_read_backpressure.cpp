@@ -285,11 +285,57 @@ void checkNoZombieStealAfterEof() {
     }
 }
 
+// INV-4 (ANTS-6658) — a child that closes the terminal shortly before it
+// exits still reports its exit code. The master reads EOF while the child
+// is not yet reapable; the reap must poll again, not give up at once.
+void checkExitCodeKeptWhenReapLags() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) {
+        expect(false, "ANTS-6658-INV-4-setup", "could not create QTemporaryDir");
+        return;
+    }
+    // Every terminal fd is closed, so the master reads EOF, then the child
+    // lives on for 150 ms before exiting 7.
+    const QString script = writeExecutableScript(
+        dir, "late_exit.sh",
+        "#!/bin/sh\nexec </dev/null >/dev/null 2>&1\nsleep 0.15\nexit 7\n");
+    if (script.isEmpty()) {
+        expect(false, "ANTS-6658-INV-4-setup", "could not write late_exit.sh");
+        return;
+    }
+
+    Pty pty;
+    int finishedCount = 0;
+    int exitCode = -2;
+    QObject::connect(&pty, &Pty::finished, [&](int code) {
+        ++finishedCount;
+        exitCode = code;
+    });
+    if (!pty.start(script)) {
+        expect(false, "ANTS-6658-INV-4-setup", "Pty::start(late_exit.sh) failed");
+        return;
+    }
+    QElapsedTimer clock;
+    clock.start();
+    while (finishedCount == 0 && clock.elapsed() < 3000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+    expect(finishedCount == 1, "ANTS-6658-INV-4",
+           "expected exactly 1 finished(); got " + std::to_string(finishedCount));
+    expect(exitCode == 7, "ANTS-6658-INV-4",
+           "expected finished(7) from a child that exits 150 ms after closing "
+           "the terminal; got finished(" + std::to_string(exitCode) +
+           ") — the EOF reap gave up before the child was reapable");
+    expect(pty.childPid() == -1, "ANTS-6658-INV-4",
+           "the child was not reaped at EOF, so its zombie stays until the tab closes");
+}
+
 int runMain() {
     expect_reset();
     checkPauseHonouredAtOnce();
     checkNoDoubleFinishedAfterEof();
     checkNoZombieStealAfterEof();
+    checkExitCodeKeptWhenReapLags();
     return expect_finish();
 }
 

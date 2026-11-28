@@ -77,12 +77,22 @@ signals:
     void writeLost(qint64 byteCount);
     // ANTS-5075 — the EAGAIN queue has just been written out in full.
     void writeDrained();
+    // ANTS-5135 — a foreground program has just exited (see
+    // foregroundReturnedToShell). Emitted before the dataReceived of the same
+    // wake; VtStream answers with an SGR reset (ANTS-6658).
+    void foregroundProgramExited();
 
 private slots:
     void onReadReady();
     void onWriteReady();
 
 private:
+    // ANTS-6658 — the EOF reap. A child not yet reapable is polled again
+    // every kEofReapRetryMs, up to kEofReapRetries times, then finished(-1).
+    void reapAndFinish(int retriesLeft);
+    static constexpr int kEofReapRetries = 50;
+    static constexpr int kEofReapRetryMs = 10;  // 50 × 10 ms = 500 ms at most
+
     // The write loop shared by write() and onWriteReady(): writes until all
     // `len` bytes are out or a write fails with anything but EINTR, and
     // returns the count written. On an early stop errno says why; a write

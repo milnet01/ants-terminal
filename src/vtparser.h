@@ -66,6 +66,10 @@ public:
 
     void feed(const char *data, int length);
 
+    // ANTS-6658 — true between sequences: in Ground with no UTF-8 character
+    // half-read, so bytes fed now cannot land inside another sequence.
+    bool atGround() const { return m_state == Ground && m_utf8Remaining == 0; }
+
 private:
     enum State {
         Ground,

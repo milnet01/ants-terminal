@@ -217,6 +217,26 @@ TEST(VtOscEscDiscard, secondEscInPeekStateIsDiscarded) {
     }
 }
 
+// INV-6 (ANTS-6658) — a C0 control other than BEL, ESC, CAN or SUB inside
+// an OSC body is dropped, as Williams' osc_string ignores it, so a title,
+// OSC 8 URI or OSC 52 payload never carries a raw control byte. DCS keeps
+// them: Williams passes C0 through in dcs_passthrough.
+TEST(VtOscEscDiscard, oscBodyDropsC0Controls) {
+    const auto osc = collectActions("\x1B]0;a\nb\tc\x01" "d\x1F" "e\x07");
+    const VtAction *end = findByType(osc, VtAction::OscEnd);
+    expect(end != nullptr, "INV-6: OscEnd dispatched after BEL terminator");
+    if (end)
+        expect(end->payload == "0;abcde", "INV-6: C0 bytes reached the OSC payload",
+               end->payload.c_str());
+    expect(countByType(osc, VtAction::Execute) == 0,
+           "INV-6: a C0 byte inside the OSC body was executed");
+
+    const auto dcs = collectActions("\x1BPq\na\x1B\\");
+    const VtAction *dend = findByType(dcs, VtAction::DcsEnd);
+    expect(dend != nullptr && dend->payload.find('\n') != std::string::npos,
+           "INV-6: DCS no longer passes C0 bytes through");
+}
+
 }  // namespace
 
 

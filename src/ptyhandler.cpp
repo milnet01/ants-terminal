@@ -3,6 +3,8 @@
 #include "debuglog.h"
 #include "secretredact.h"
 
+#include <QTimer>
+
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -616,15 +618,14 @@ void Pty::onReadReady() {
     //
     // Sampled once per wake, BEFORE draining: the bytes waiting are usually
     // the prompt the shell is about to write, and the reset has to reach the
-    // parser ahead of them. Emitted as DATA rather than as its own signal for
-    // that same reason — a signal can overtake queued parse batches, and this
-    // ordering is the whole point. Safe to inject here because the verdict is
-    // only true once the foreground is the shell again, so no program is
-    // mid-sequence.
+    // parser ahead of them. The signal is emitted before any dataReceived of
+    // this wake, on the same thread, so VtStream sees it first. VtStream feeds
+    // the reset itself (ANTS-6658): the exited program's last bytes may still
+    // be unread, so only the parser knows whether it is between sequences.
     if (foregroundReturnedToShell(::tcgetpgrp(m_masterFd), childPid(),
                                   m_lastForegroundPgid)) {
         ANTS_LOG(DebugLog::Pty, "foreground back to shell - clearing SGR");
-        emit dataReceived(QByteArrayLiteral("\033[0m"));
+        emit foregroundProgramExited();
     }
 
     // ANTS-4272 — sampled on the worker, beside tcgetpgrp. A password prompt
@@ -649,21 +650,7 @@ void Pty::onReadReady() {
             //          exited.
             m_readEof = true;
             m_readNotifier->setEnabled(false);
-            int status = 0;
-            int exitCode = -1;
-            pid_t w = ::waitpid(m_childPid, &status, WNOHANG);
-            if (w > 0) {
-                // Child genuinely reaped — record exit + clear PID so
-                // the destructor's escalation block doesn't try to
-                // double-reap.
-                exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-                m_childPid = -1;
-            }
-            // ANTS-1131 — keep m_childPid when waitpid(WNOHANG) returns 0: the
-            // child closed the PTY but is not reaped yet, and the destructor's
-            // SIGTERM/SIGKILL escalation needs the pid to reap it. So
-            // finished(-1) means "not reaped at EOF".
-            emit finished(exitCode);
+            reapAndFinish(kEofReapRetries);
             break;
         } else {
             // EAGAIN or EINTR — stop for now. Unlike the write loops, an
@@ -672,4 +659,30 @@ void Pty::onReadReady() {
             break;
         }
     }
+}
+
+void Pty::reapAndFinish(int retriesLeft) {
+    int status = 0;
+    const pid_t w = ::waitpid(m_childPid, &status, WNOHANG);
+    if (w == 0 && retriesLeft > 0) {
+        // ANTS-6658 — on Linux the slave closes, and the master reads EIO,
+        // before the exiting child is reapable. Poll again shortly rather
+        // than lose its exit code. The timer dies with this Pty.
+        QTimer::singleShot(kEofReapRetryMs, this,
+                           [this, retriesLeft] { reapAndFinish(retriesLeft - 1); });
+        return;
+    }
+    int exitCode = -1;
+    if (w > 0) {
+        // Child genuinely reaped — record exit + clear PID so
+        // the destructor's escalation block doesn't try to
+        // double-reap.
+        exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        m_childPid = -1;
+    }
+    // ANTS-1131 — keep m_childPid when the child is still not reaped after
+    // the retries: it closed the PTY but lives on, and the destructor's
+    // SIGTERM/SIGKILL escalation needs the pid to reap it. So finished(-1)
+    // means "not reaped at EOF".
+    emit finished(exitCode);
 }

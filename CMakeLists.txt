@@ -4811,7 +4811,8 @@ if(ANTS_TESTS)
         SRC_PTY_H_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.h")
     set_property(SOURCE tests/features/pty_foreground_attr_reset/test_pty_foreground_attr_reset.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_PTY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp")
+        SRC_PTY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
+        SRC_VTSTREAM_CPP_PATH="${CMAKE_SOURCE_DIR}/src/vtstream.cpp")
     set_property(SOURCE tests/features/envelope_close_tag_scrub/test_envelope_close_tag_scrub.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_DOCCITATIONS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/doccitations.cpp")

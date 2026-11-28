@@ -435,7 +435,10 @@ void VtParser::processString(uint32_t ch) {
             endString(VtAction::OscEnd, m_oscString, Ground);
         else if (ch == 0x1B)
             endString(VtAction::OscEnd, m_oscString, OscStringEsc);
-        else if (!appendUtf8(m_oscString, ch, kMaxStringBytes))
+        else if (ch < 0x20) {
+            // ANTS-6658 — other C0 bytes are ignored, as Williams' osc_string
+            // does, so no payload carries a raw control byte. DCS passes them.
+        } else if (!appendUtf8(m_oscString, ch, kMaxStringBytes))
             m_stringTruncated = true;
         break;
 
