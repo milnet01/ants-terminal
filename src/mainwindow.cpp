@@ -1713,16 +1713,13 @@ void MainWindow::setupStatusWidgets() {
 }
 
 
-// ANTS-1146 — formerly setupClaudeIntegration. Constructs
-// ClaudeIntegration + ClaudeTabTracker (services owned by
-// MainWindow), the ClaudeStatusBarController (chrome + per-session
-// render state), wires the controller's signals to MainWindow's
-// existing slots, then constructs the remaining chrome items (Roadmap
-// button, version chip, peer-usage watcher, update-available QAction,
-// startup update-check) that landed in this function for historical
-// convenience and remain here as the status-bar chrome remainder.
-// MCP-provider plumbing for ClaudeIntegration is split into
-// setupClaudeMcpProviders below.
+// Despite its name, most of this is not status-bar work. It is where the
+// Claude Code services are created: ClaudeIntegration and ClaudeTabTracker,
+// the peer-usage file watcher, and (through setupClaudeMcpProviders) the MCP
+// providers and sockets. It also builds the ClaudeStatusBarController and
+// wires its signals, then the right-hand status-bar items: Roadmap button,
+// version chip, update-available QAction and the startup update check. The
+// left-hand widgets come later, in setupStatusWidgets.
 void MainWindow::setupStatusBarChrome() {
     m_claudeIntegration = new ClaudeIntegration(this);
     m_claudeIntegration->setContextWindowTokens(m_config.claudeContextWindowTokens());

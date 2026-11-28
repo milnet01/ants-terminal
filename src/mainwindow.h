@@ -617,10 +617,10 @@ private:
     // `dir`, with --chrome when that project opts in (claude_chrome in its
     // .ants/project.json, read at each launch). `args` follows, unquoted.
     static QString claudeLaunch(const QString &dir, const QString &args = {});
-    // ANTS-1146 — formerly setupClaudeIntegration. Constructs
-    // ClaudeIntegration, the controller, the MCP-provider helper,
-    // and the remaining chrome items (Roadmap button, version chip,
-    // peer-usage watcher, update QAction, startup update-check).
+    // Creates the Claude Code services (ClaudeIntegration, ClaudeTabTracker,
+    // the peer-usage watcher, the MCP providers via setupClaudeMcpProviders),
+    // then the status bar's right-hand items. Must run before the first
+    // newTab().
     void setupStatusBarChrome();
     // ANTS-6184 — the status bar's left-hand widgets and the 2 s timer that
     // refreshes the whole bar. Needs setupStatusBarChrome() run first.

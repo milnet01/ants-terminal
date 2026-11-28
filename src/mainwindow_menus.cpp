@@ -108,7 +108,8 @@ void MainWindow::setupFileMenu() {
         m_tabWidget->setCurrentIndex(prev);
     });
 
-    // Alt+1..9 to jump to tab by index
+    // Alt+1..8 jump to tabs 1..8; Alt+9 jumps to the last tab, as in
+    // web browsers.
     for (int i = 1; i <= 9; ++i) {
         auto *a = new QAction(this);
         a->setShortcut(QKeySequence(QString("Alt+%1").arg(i)));
