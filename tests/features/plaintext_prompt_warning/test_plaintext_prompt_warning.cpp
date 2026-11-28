@@ -99,16 +99,18 @@ TEST(PlaintextPromptWarning, INV1_AiDialogWarnsOncePerEndpointStillSends) {
             << "INV-1: the request must still be SENT after the warning: the "
                "dialog's LlmClient must hold a reply in flight";
 
-        // Second send to the SAME endpoint: the button is disabled, but a
-        // real Enter keypress in the input field is not gated on it —
-        // returnPressed() is wired to onSend() unconditionally. Drive it
-        // via QTest::keyClick (the codebase's established key-injection
-        // idiom, e.g. tests/features/roadmap_search_keybinds), the same
-        // route a real Enter keypress takes.
+        // Second send to the SAME endpoint. onSend returns while a reply is
+        // in flight (ANTS-6644), so stop the first one; abort() emits no
+        // finished(), so Send stays off and the second send goes by Enter,
+        // which is not gated on the button. QTest::keyClick is the
+        // codebase's key-injection idiom (tests/features/roadmap_search_keybinds).
+        client->abort();
         input->setText(QStringLiteral("second message, same endpoint"));
         QTest::keyClick(input, Qt::Key_Return);
 
         const QString afterSecond = chat->toPlainText();
+        ASSERT_TRUE(afterSecond.contains(QStringLiteral("second message, same endpoint")))
+            << "fixture premise: the second message was sent";
         const auto warningCount = afterSecond.count(warning, Qt::CaseSensitive);
         EXPECT_EQ(warningCount, 1)
             << "INV-1: a second send to the SAME endpoint must add no "
@@ -318,4 +320,65 @@ TEST(PlaintextPromptWarning, Ants5105LongReplyIsShortenedForDisplay) {
     EXPECT_TRUE(after.contains(QStringLiteral("shortened")))
         << "the chat must say the reply was shortened";
     EXPECT_TRUE(sendBtn->isEnabled());
+}
+
+// ANTS-6644 — Enter while a reply streams leaves that reply running and
+// sends nothing. Before the fix, returnPressed() reached onSend(), whose
+// sendRequest() aborted the streaming reply without a word.
+TEST(PlaintextPromptWarning, Ants6644EnterWhileStreamingKeepsTheReply) {
+    AiDialog dlg;
+    dlg.setConfig(QStringLiteral("https://192.0.2.1/v1/chat/completions"),
+                  QString(), QStringLiteral("gpt-4"), 50);
+    auto *input  = dlg.findChild<QLineEdit *>();
+    auto *chat   = dlg.findChild<QTextEdit *>();
+    auto *client = dlg.findChild<LlmClient *>();
+    QPushButton *sendBtn = findButtonByText(&dlg, QStringLiteral("Send"));
+    ASSERT_TRUE(input && chat && client && sendBtn);
+    input->setText(QStringLiteral("question"));
+    sendBtn->click();
+    ASSERT_TRUE(client->busy()) << "fixture premise: a reply is in flight";
+    emit client->chunk(QStringLiteral("partial answer"));
+
+    input->setText(QStringLiteral("follow-up"));
+    QTest::keyClick(input, Qt::Key_Return);
+
+    const QString chatText = chat->toPlainText();
+    EXPECT_FALSE(chatText.contains(QStringLiteral("You: follow-up")))
+        << "Enter mid-stream must not send; chat was:\n" << chatText.toStdString();
+    EXPECT_TRUE(client->busy()) << "the streaming reply must not be aborted";
+    EXPECT_EQ(input->text(), QStringLiteral("follow-up"))
+        << "the unsent text must stay in the input field";
+
+    // The streaming reply still lands when it finishes.
+    client->abort();   // stop the real request; abort() emits no finished()
+    LlmResult done;
+    done.ok = true;
+    done.text = QStringLiteral("partial answer, finished");
+    emit client->finished(done);
+    EXPECT_TRUE(chat->toPlainText().contains(QStringLiteral("partial answer, finished")));
+    EXPECT_TRUE(sendBtn->isEnabled());
+}
+
+// ANTS-6644 — a reply cut at LlmClient's size cap arrives with ok == true
+// and truncated == true; Insert Cmd stays off for it, as for a failed reply.
+TEST(PlaintextPromptWarning, Ants6644TruncatedReplyLeavesInsertOff) {
+    AiDialog dlg;
+    dlg.setConfig(QStringLiteral("https://192.0.2.1/v1/chat/completions"),
+                  QString(), QStringLiteral("gpt-4"), 50);
+    auto *client = dlg.findChild<LlmClient *>();
+    QPushButton *insertBtn = findButtonByText(&dlg, QStringLiteral("Insert Cmd"));
+    ASSERT_TRUE(client && insertBtn);
+
+    LlmResult whole;
+    whole.ok = true;
+    whole.text = QStringLiteral("Try:\n```bash\nls -la\n```");
+    emit client->finished(whole);
+    ASSERT_TRUE(insertBtn->isEnabled()) << "fixture premise: a whole reply enables Insert";
+
+    LlmResult cut = whole;
+    cut.truncated = true;
+    cut.text += QStringLiteral("\n[response truncated]");
+    emit client->finished(cut);
+    EXPECT_FALSE(insertBtn->isEnabled())
+        << "a reply cut at the size cap must not enable Insert Cmd";
 }

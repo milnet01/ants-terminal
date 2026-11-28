@@ -74,6 +74,12 @@ only where the owning spec § 2.1 states the text is stable enough to do so.
   `finished()` replaces the streamed text rather than adding a copy, and
   keeps earlier messages. A second reply streams into its own message and
   leaves the first intact. Test: `Ants5105ReplyStreamsIntoChat`.
+- **INV-6** (ANTS-6644, regression) — Enter while a reply streams sends
+  nothing: the reply keeps running and the typed text stays in the input
+  field. Test: `Ants6644EnterWhileStreamingKeepsTheReply`.
+- **INV-7** (ANTS-6644, regression) — a reply with `truncated` set leaves
+  Insert Cmd disabled, though `ok` is true. Test:
+  `Ants6644TruncatedReplyLeavesInsertOff`.
 
 ## Test notes
 
@@ -88,7 +94,9 @@ button by its label); the Send button is located by its `"Send"` text.
 `QTest::keyClick(input, Qt::Key_Return)` drives a second send once the Send
 button has gone disabled by the first — the same path a real Enter keypress
 takes, since `onSend()` is wired to `QLineEdit::returnPressed()`
-unconditionally (the button is never the only route to it). Endpoints follow the owning spec's § 6 convention: TEST-NET-1
+unconditionally (the button is never the only route to it). INV-1 aborts
+the first request before that second send, because `onSend()` returns
+while one is in flight (INV-6). Endpoints follow the owning spec's § 6 convention: TEST-NET-1
 (`192.0.2.1`, RFC 5737) for "remote", and a loopback port nothing listens on
 (`127.0.0.1:9`) for "loopback" — no request in this file ever reaches a
 real server. Label `features;fast`.

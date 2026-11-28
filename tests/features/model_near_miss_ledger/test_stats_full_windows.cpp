@@ -71,3 +71,24 @@ TEST(ModelNearMissLedger, Inv11DistinctSignatures) {
     const QJsonObject env = NM::statsFull(recs, QStringLiteral("/p"), now);
     EXPECT_EQ(env.value("window_24h").toObject().value("distinct_signatures").toInt(), 3);
 }
+
+// ANTS-6644 — excluded_pre_epoch_count obeys the project filter, as
+// window_24h and all_time do.
+TEST(ModelNearMissLedger, Ants6644PreEpochCountIsProjectScoped) {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QList<NM::Record> recs;
+    recs << makeRecord(now, {QStringLiteral("composer_not_empty")}, QStringLiteral("/p1"));
+    recs << makeRecord(now, {QStringLiteral("composer_not_empty")}, QStringLiteral("/p2"));
+    recs << makeRecord(now, {QStringLiteral("composer_not_empty")}, QStringLiteral("/p2"));
+    NM::Record current = makeRecord(now, {QStringLiteral("composer_not_empty")},
+                                    QStringLiteral("/p1"));
+    current.epoch = 1;
+    recs << current;   // the others are epoch 0, so pre-epoch at minEpoch 1
+
+    const QJsonObject env = NM::statsFull(recs, QStringLiteral("/p1"), now, 1);
+    EXPECT_EQ(env.value("excluded_pre_epoch_count").toInt(), 1);
+    EXPECT_EQ(env.value("all_time").toObject().value("total").toInt(), 1);
+
+    const QJsonObject envGlobal = NM::statsFull(recs, QString(), now, 1);
+    EXPECT_EQ(envGlobal.value("excluded_pre_epoch_count").toInt(), 3);
+}

@@ -221,6 +221,23 @@ TEST(ModelRecommender, Ants1930PlanKeywordModerateWorkUpgradesToOpus) {
         << result.reason.toStdString();
 }
 
+// ANTS-6644: "planning" and "planned" double the n, so the shared -ing/-ed
+// suffix missed them; each must trip plan_keyword on its own.
+TEST(ModelRecommender, Ants6644PlanningAndPlannedArePlanKeywords) {
+    for (const QString &text : {QStringLiteral("We are planning the next step."),
+                                QStringLiteral("It went as planned.")}) {
+        QTemporaryFile f;
+        QVector<QJsonArray> turns;
+        QJsonArray content;
+        content.append(textBlock(text));
+        content.append(toolUse(QStringLiteral("Bash")));
+        turns.append(content);
+        const auto result = ModelRecommender::score(writeSyntheticTranscript(turns, f));
+        EXPECT_TRUE(result.reason.contains(QStringLiteral("plan_keyword")))
+            << text.toStdString() << " — reason: " << result.reason.toStdString();
+    }
+}
+
 // ANTS-1930: a score of exactly -1 now stays Sonnet (pre-1930 it routed
 // to Haiku at <= -1). Long prompts (+1) with mechanical tool use (-2)
 // nets -1 — the rebalanced Haiku threshold (<= -2) keeps it on Sonnet.

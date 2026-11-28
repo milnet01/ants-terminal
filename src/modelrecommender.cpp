@@ -14,21 +14,23 @@ namespace ModelRecommender {
 
 namespace {
 
+// Each stem with its inflections, as kCommitIntentAlternations spells them;
+// "plan" doubles its n (ANTS-6644: "planned", "planning").
 const QStringList kPlanKeywords{
-    QStringLiteral("spec"),
-    QStringLiteral("design"),
-    QStringLiteral("architecture"),
-    QStringLiteral("review"),
-    QStringLiteral("plan"),
-    QStringLiteral("refactor"),
+    QStringLiteral("spec(?:s|ed|ing)?"),
+    QStringLiteral("design(?:s|ed|ing)?"),
+    QStringLiteral("architecture(?:s|ed|ing)?"),
+    QStringLiteral("review(?:s|ed|ing)?"),
+    QStringLiteral("plan(?:s|ned|ning)?"),
+    QStringLiteral("refactor(?:s|ed|ing)?"),
 };
 
 // ANTS-2010 — word-boundary guard. A bare contains() matched each stem inside
 // unrelated words ("plan" in "explanation", "spec" in "especially"/"respect"/
 // "unspecified", "design" in "designated"), inflating the Opus plan-score on
 // prose that carried no planning intent. Anchor each stem at word boundaries
-// with the same idiom hasCommitIntent uses, allowing the regular -s/-ed/-ing
-// inflections (true signal: "reviewed the spec", "refactoring the parser")
+// with the same idiom hasCommitIntent uses, allowing its inflections
+// (true signal: "reviewed the spec", "refactoring the parser")
 // while rejecting substrings of unrelated words. Lazy-built once per process;
 // linear, no nested quantifiers — no ReDoS surface.
 const QVector<QRegularExpression> &planKeywordPatterns() {
@@ -37,8 +39,7 @@ const QVector<QRegularExpression> &planKeywordPatterns() {
         out.reserve(kPlanKeywords.size());
         for (const QString &kw : kPlanKeywords) {
             out.append(QRegularExpression(
-                QStringLiteral("(?:^|\\W)") + kw +
-                    QStringLiteral("(?:s|ed|ing)?(?:\\W|$)"),
+                QStringLiteral("(?:^|\\W)") + kw + QStringLiteral("(?:\\W|$)"),
                 QRegularExpression::CaseInsensitiveOption));
         }
         return out;

@@ -40,11 +40,13 @@ controller's near-miss emit path.
   `downgrade_requires_active_work` (ANTS-1959, 9th) are appended last.
 - **INV-10** — `statsSlim.dominantBlocker` = highest-occurrence token
   across the 24 h window's records (one count per distinct token in a
-  record's `blocked_by`); ties broken by taxonomy order; empty window
-  ⇒ empty string.
+  record's `blocked_by`); ties broken by taxonomy order, a taxonomy token
+  before an unknown one, and unknown ones alphabetically (ANTS-6644);
+  empty window ⇒ empty string.
 - **INV-11** — `statsFull.window_24h.total` filters by ts ≤ 24 h before
   `nowMs` and project match; `all_time` has no window filter;
-  `distinct_signatures` counts post-sort distinct blocked_by arrays.
+  `distinct_signatures` counts post-sort distinct blocked_by arrays;
+  `excluded_pre_epoch_count` counts only in-scope records (ANTS-6644).
 - **INV-13** — `fromJson` of legacy JSON missing optional fields
   returns Record with struct-default fallbacks; idempotent
   re-serialisation holds for writer-produced records.

@@ -68,6 +68,9 @@ to the user's configured floor.
 - **INV-9** `score()` is a stateless free function — no per-call
   mutable state; calling it twice with the same path and unchanged
   file returns the same result.
+- **INV-10** (ANTS-6644, regression) — a plan keyword matches as a whole
+  word with its inflections, including "planned" and "planning".
+  *Test:* `Ants6644PlanningAndPlannedArePlanKeywords`.
 
 ## ANTS-6749 — the thinking level is the one Claude Code recorded
 

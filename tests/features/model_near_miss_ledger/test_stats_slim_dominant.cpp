@@ -52,6 +52,25 @@ TEST(ModelNearMissLedger, Inv10TieBrokenByTaxonomyOrder) {
     EXPECT_EQ(s.dominantBlocker, QStringLiteral("focused_state_not_idle"));
 }
 
+// ANTS-6644 — a tie among tokens outside the taxonomy goes to the
+// alphabetically first, not to whichever QHash happens to iterate first.
+// 26 tied tokens, so the old hash-order pick matched by chance 1 run in 26.
+TEST(ModelNearMissLedger, Ants6644UnknownTokenTieIsAlphabetical) {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QList<NM::Record> recs;
+    for (char c = 'z'; c >= 'a'; --c)
+        recs << makeRecord({QStringLiteral("unknown_%1").arg(QLatin1Char(c))},
+                           QStringLiteral("/p"), now);
+
+    const NM::StatsSlim s = NM::statsSlim(recs, QStringLiteral("/p"), now);
+    EXPECT_EQ(s.dominantBlocker, QStringLiteral("unknown_a"));
+
+    // A taxonomy token still beats the unknown ones on a tie.
+    recs << makeRecord({QStringLiteral("composer_not_empty")}, QStringLiteral("/p"), now);
+    EXPECT_EQ(NM::statsSlim(recs, QStringLiteral("/p"), now).dominantBlocker,
+              QStringLiteral("composer_not_empty"));
+}
+
 TEST(ModelNearMissLedger, Inv10EmptyWindow) {
     const NM::StatsSlim s = NM::statsSlim({}, QStringLiteral("/p"),
                                           QDateTime::currentMSecsSinceEpoch());

@@ -141,6 +141,14 @@ bool LlmClient::isEndpointHostBlocked(const QString &endpoint) {
             (quint32(a6[14]) << 8) | quint32(a6[15]);
         return isBlockedV4(embedded);
     }
+    // ANTS-6644 — 6to4 2002::/16 carries its IPv4 address in bytes 2-5; a
+    // 6to4 relay routes it there, as a NAT64 gateway does above.
+    if (a6[0] == 0x20 && a6[1] == 0x02) {
+        const quint32 embedded =
+            (quint32(a6[2]) << 24) | (quint32(a6[3]) << 16) |
+            (quint32(a6[4]) << 8) | quint32(a6[5]);
+        return isBlockedV4(embedded);
+    }
     return false;
 }
 
@@ -337,10 +345,12 @@ void LlmClient::drain() {
         m_rawBody += bytes.left(kMaxBytes - m_rawBody.size());
     m_sseLineBuffer += bytes;
 
-    // Cap the line buffer to guard against a misbehaving server. A single
-    // SSE frame larger than the cap (no newline in kMaxBytes of bytes) is
-    // pathological — drop the buffered partial frame, but flag the answer
-    // as truncated so onFinished() doesn't report it as complete. Without
+    // Cap the line buffer to guard against a misbehaving server. Any backlog
+    // over the cap trips it: one SSE frame with no newline in kMaxBytes, or
+    // complete lines arriving faster than the per-tick parse below drains
+    // them. Both are far past what the callers' maxTokens allow, so drop
+    // the buffer, but flag the answer as truncated so onFinished() doesn't
+    // report it as complete. Without
     // the flag the caller silently resumes parsing on a corrupted offset
     // and treats a mangled answer as whole (ANTS-1754).
     // Cap per-tick iterations + re-arm via singleShot(0) so a flood of

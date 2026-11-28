@@ -249,6 +249,11 @@ void testSourceInvariants() {
            "source: click handler emits insertCommand");
     expect(qboxPos < emitPos,
            "source: question appears BEFORE emit (confirmation gate)");
+
+    // ANTS-6644 — insertCommand reaches TerminalWidget::writeCommand, which
+    // adds Enter, so the confirmation must say the command will be run.
+    expect(src.find("active terminal and run if you confirm.") != std::string::npos,
+           "source: confirmation says the command will be run");
 }
 
 }  // namespace

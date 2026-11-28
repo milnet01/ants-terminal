@@ -61,6 +61,9 @@ without a live network.
   guarantee is not overstated (no claim of hostname SSRF protection); the
   residual exposure is bounded by hard-refused redirects + the 0600
   user-owned `ai_endpoint` trust model.
+- **INV-2d** (ANTS-6644, regression) — `isEndpointHostBlocked` applies the
+  IPv4 test to the address a 6to4 literal (`2002::/16`, bytes 2-5) embeds,
+  as it does for NAT64 and `::/96`. Test: `Ants6644SixToFourEmbeddedV4Blocked`.
 - **INV-16** — `llmclient` / `llmdispatcher` / `briefdispatch` headers +
   sources include no Qt Widgets header (widget-free discipline; the lib
   links Qt6::Widgets PUBLIC so this is not enforced by the lib boundary).

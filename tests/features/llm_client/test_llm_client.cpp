@@ -202,6 +202,17 @@ TEST(LlmClient, Ants1746_EndpointHostBlocked) {
         QStringLiteral("https://8.8.8.8/v1")));
 }
 
+// ANTS-6644 — 6to4 (2002::/16) embeds an IPv4 address in bytes 2-5, so a
+// blocked v4 behind it is blocked; a public v4 behind it is not.
+TEST(LlmClient, Ants6644SixToFourEmbeddedV4Blocked) {
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://[2002:a9fe:a9fe::1]/latest/meta-data/")));   // 169.254.169.254
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://[2002:c0a8:0132::]/v1")));                   // 192.168.1.50
+    EXPECT_FALSE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("https://[2002:808:808::1]/v1")));                   // 8.8.8.8
+}
+
 // INV-3 — secrets scrubbed out of the serialised request body.
 TEST(LlmClient, INV3_BuildRequestBodyScrubsSecrets) {
     // A GitHub classic PAT shape (ghp_ + 36 alphanumerics) — a known

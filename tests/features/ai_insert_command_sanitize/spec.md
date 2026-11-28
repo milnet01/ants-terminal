@@ -49,6 +49,8 @@ dialog surfaces this count in the confirmation dialog's footer.
 
 The `insertCommand` signal MUST NOT fire until the user clicks Yes
 in a confirmation dialog that displays the sanitized bytes verbatim.
+The dialog says the command will be run, not only typed:
+`TerminalWidget::writeCommand` adds Enter (ANTS-6644).
 
 This test exercises the pure extractAndSanitizeCommand helper — the
 UI confirmation is a source-grep assertion that the `emit

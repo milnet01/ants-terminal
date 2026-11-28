@@ -176,10 +176,13 @@ QString dominantBlocker(const QHash<QString, int> &tally) {
     const QStringList &order = taxonomyOrder();
     for (auto it = tally.constBegin(); it != tally.constEnd(); ++it) {
         const int taxIdx = order.indexOf(it.key());
-        if (it.value() > bestCount
-            || (it.value() == bestCount
-                && taxIdx >= 0
-                && (bestOrder < 0 || taxIdx < bestOrder))) {
+        // A tie goes to the earlier taxonomy token, then to any taxonomy
+        // token, then to the alphabetically first unknown one (ANTS-6644:
+        // QHash order varies between runs).
+        const bool tieWins = it.value() == bestCount
+            && (taxIdx >= 0 ? (bestOrder < 0 || taxIdx < bestOrder)
+                            : (bestOrder < 0 && it.key() < best));
+        if (it.value() > bestCount || tieWins) {
             bestCount = it.value();
             best      = it.key();
             bestOrder = taxIdx;
@@ -260,10 +263,13 @@ QJsonObject statsFull(const QList<Record> &recs,
     QJsonObject env;
     // ANTS-1954 — count records excluded by the epoch filter (pre-epoch records
     // that exist on disk but are not counted in window_24h or all_time).
+    // ANTS-6644 — in project scope, only that project's records count.
     int excludedPreEpochCount = 0;
     if (minEpoch > 0) {
         for (const Record &r : recs)
-            if (r.epoch < minEpoch) ++excludedPreEpochCount;
+            if (r.epoch < minEpoch
+                && (projectScope.isEmpty() || r.project == projectScope))
+                ++excludedPreEpochCount;
     }
 
     env[QStringLiteral("ok")]          = true;

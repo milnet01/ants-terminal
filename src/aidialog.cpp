@@ -104,7 +104,7 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
         }
         QString msg = tr(
             "The AI suggested this command. It will be typed into the "
-            "active terminal if you confirm.")
+            "active terminal and run if you confirm.")
             + QStringLiteral(
             "<br><br>"
             "<pre style='background:#2b2b2b;color:#eee;padding:8px;"
@@ -206,6 +206,9 @@ void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
 void AiDialog::onSend() {
     QString text = m_input->text().trimmed();
     if (text.isEmpty() || m_endpoint.isEmpty()) return;
+    // Enter reaches here while a reply streams (only the Send button is
+    // off); sending now would abort that reply without a word.
+    if (m_client->busy()) return;
 
     m_input->clear();
     appendMessage("You", text);
@@ -236,7 +239,7 @@ void AiDialog::appendMessage(const QString &role, const QString &text) {
     // ANTS-5200 — never mid-stream: onLlmFinished deletes the streamed reply
     // by m_streamStart, a character position a trim would move. Every
     // caller runs with no stream open: sendRequest and onLlmFinished clear
-    // m_streamStart first, and onSend's Send button is off while one streams.
+    // m_streamStart first, and onSend returns while one streams.
     trimHistory(m_chatHistory->document(), kMaxHistoryChars);
     m_chatHistory->verticalScrollBar()->setValue(m_chatHistory->verticalScrollBar()->maximum());
 }
@@ -368,7 +371,7 @@ void AiDialog::onLlmFinished(const LlmResult &result) {
         // Insert when the response landed cleanly; a truncated response
         // (network drop mid-fenced-block) would otherwise invite the user
         // to confirm a command missing its tail.
-        m_insertBtn->setEnabled(result.ok);
+        m_insertBtn->setEnabled(result.ok && !result.truncated);
     } else if (!result.error.isEmpty()) {
         appendMessage("Error", result.error);
     }
