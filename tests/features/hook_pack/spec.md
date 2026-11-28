@@ -168,6 +168,13 @@ hook blocks too, just wrongly); matching the reason on `diff` rather than
 on the verb name (the wrong string contains the word); dropping G4 after
 the split looks settled.
 
+## ANTS-6672 — git status and log are vetoed at any command position
+
+The status/log veto tests each pipeline or compound segment, as the diff veto
+does (ANTS-4517). `cd src && git status`, `true; git log --oneline -5` and
+`make || git status --short` each block; `echo "then run git status"` is text
+and passes. Red on the pre-fix hook: the three later-stage commands passed.
+
 ## ANTS-6310 — the know-how store is announced
 
 `ants-know-how-notice.sh` runs on SessionStart. With the store file present it

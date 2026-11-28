@@ -114,13 +114,17 @@ done
 # A real invocation sits at a COMMAND POSITION. Anchoring to the start of the
 # whole string is the obvious over-correction: a pipeline's or a compound's
 # later stage runs git exactly as its first does. So split on the separators
-# and test each segment's head.
+# and test each segment's head. The status/log patterns are tested the same
+# way, so `cd x && git status` is vetoed as `git status` is.
 git_diff_stat=0
+git_status_log=0
 _scan=$(printf '%s' "$cmd" | tr '|;&()' '\n\n\n\n\n')
 while IFS= read -r _seg; do
     _seg=${_seg#"${_seg%%[![:space:]]*}"}
     case "$_seg" in
         "git diff --stat"*) git_diff_stat=1 ;;
+        "git status"|"git status "*|"git log --oneline"*|"git log -n"*"--oneline"*)
+            git_status_log=1 ;;
     esac
 done <<SCAN
 $_scan
@@ -135,15 +139,14 @@ reason=""
 # (ANTS-2074 working-tree, ANTS-3377 hunks); ANTS-2169 Part 2 identified it
 # but the message kept naming the wrong two.
 #
-# It is tested before the case, not as an arm of it: a case stops at its
-# first matching arm, so the phrase as mere text (an echo) would end it
+# Both git tests come before the case, not as arms of it: a case stops at
+# its first matching arm, so the phrase as mere text (an echo) would end it
 # there with no reason and skip the ROADMAP arm below.
 if [ "$git_diff_stat" -eq 1 ]; then
     reason='use mcp__ants__git_state op:"diff" — per-file added/removed counts (hunks:true for @@ headers)'
+elif [ "$git_status_log" -eq 1 ]; then
+    reason='use mcp__ants__git_state (op:"status": branch, ahead/behind, files; op:"log") — paginated git facts cost ~30 tokens vs raw stdout'
 else case "$cmd" in
-    "git status"|"git status "*|"git log --oneline"*|"git log -n"*"--oneline"*)
-        reason='use mcp__ants__git_state (op:"status": branch, ahead/behind, files; op:"log") — paginated git facts cost ~30 tokens vs raw stdout'
-        ;;
     *"cat ROADMAP.md"*"grep"*|*"grep "*"ROADMAP.md"*)
         [ "$roadmap_read" -eq 1 ] && \
             reason='use mcp__ants__roadmap_query (status=active returns ~10x fewer tokens than full ROADMAP)'

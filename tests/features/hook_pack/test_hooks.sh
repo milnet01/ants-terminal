@@ -345,6 +345,28 @@ if [ "$have_jq" -eq 1 ]; then
         fi
     done
 
+    # ANTS-6672 — the status/log branch was still anchored to the start of
+    # the whole command, so `cd x && git status` ran raw. It is now tested
+    # per segment, as the diff branch is; text about it is still text.
+    for realcmd in \
+        'cd src && git status' \
+        'true; git log --oneline -5' \
+        'make || git status --short'
+    do
+        payload="$(jq -nc --arg c "$realcmd" '{tool_input:{command:$c}}')"
+        if [ -n "$(printf '%s' "$payload" | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)" ]; then
+            pass "ANTS-6672 a later-stage status/log is vetoed: $realcmd"
+        else
+            fail "ANTS-6672 a later-stage status/log ran raw: $realcmd"
+        fi
+    done
+    payload="$(jq -nc --arg c 'echo "then run git status" >> notes.md' '{tool_input:{command:$c}}')"
+    if [ -z "$(printf '%s' "$payload" | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)" ]; then
+        pass "ANTS-6672 writing about git status is not vetoed"
+    else
+        fail "ANTS-6672 veto fired on text about git status"
+    fi
+
     # The status/log branch routes to git_state too. ANTS-5485 retires
     # get_git_status, so no reason may name it.
     status_reason="$(printf '%s' '{"tool_input":{"command":"git status"}}' \
