@@ -134,6 +134,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **verify_changes reads ctest's counts and full FAILED list even when the output is longer than the kept log tail (ANTS-6655).**
+
+- **A resumed test-audit round folds in findings from chunks reviewed in an earlier session, and a chunk whose brief cannot be built shows as a failed lane instead of sending a stub prompt (ANTS-6655).**
+
+- **mutation_probe scores a mutant broken, not killed, when the run failed but no test failed, and reports occurrences as the sites it replaces (ANTS-6655).**
+
+- **Test-audit fold-in matches worded dimension headers and keeps each field on one line; synthesis escapes fence tags in any case and returns every chunk for limit -1 (ANTS-6655).**
+
+- **test_results and focused_test count a ctest test that could not run as a failure, and source_scrapes keeps a CMake list item naming the project root (ANTS-6655).**
+
 - **The pre-push sanitizer gate skips a build-asan tree marked as interrupted straight away, without first running a CMake regeneration in it (ANTS-6656).**
 
 - **tools/check-roadmap.sh --allow exempts exactly the ids it names, and an id holding a bracket no longer crashes it (ANTS-6656).**

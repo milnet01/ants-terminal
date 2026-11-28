@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7042 -->
+<!-- ants-roadmap-id-high-water: ANTS=7044 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99954,7 +99954,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6655] **Fix the smaller bugs the 2026-11-06 reviews found in test-audit-verify.**
+- ✅ [ANTS-6655] **Fix the smaller bugs the 2026-11-06 reviews found in test-audit-verify.**
   15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 400 `verifyengine.cpp:287` (Medium)
   - row 401 `testauditdialog.cpp:415-422` (Medium)
@@ -99971,6 +99971,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1436 `src/testauditengine.cpp:1936` (Info)
   - row 1437 `src/mutationjournal.cpp:53` (Info)
   - row 1438 `src/verifyengine.cpp:359-360` (Info)
+  2026-11-28 (ac090660): rows 400/1438, 401, 402, 404, 408-413, 1436
+  fixed; 405 and 1437 already fixed (ANTS-6616); 414 not a bug (ANTS-5503
+  INV-5). Suite 6965/6965.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -100441,6 +100444,23 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: chore.
   Source: helper follow-ups 2026-11-28.
   Lanes: tools-ci-gate.
+
+- 📋 [ANTS-7043] **mutation_probe: classify a ctest Not Run failure as an error.**
+  classifyFailure has no case for ctest's `Not Run`, so such a mutant
+  reads `killed_by: unknown`. Seen while building ANTS-6655 row 412.
+  **Layman:** A mutation test that fails only because a test program is missing is labelled unknown.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: test-tools.
+
+- 📋 [ANTS-7044] **Count worded dimension names in test-audit synthesis, as the header matcher now does.**
+  Synthesis counts each dimension with a plain contents.contains(d),
+  so "Coverage gaps" written as words is missed. ANTS-6655 row 408
+  fixed only dimensionInHeader.
+  **Layman:** The test-audit summary undercounts some kinds of finding.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: test-tools.
 
 ### Readability (2026-11-06 review)
 
