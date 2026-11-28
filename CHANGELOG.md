@@ -27,6 +27,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Bash veto hook sends git status and git log to git_state wherever they appear in a command, not only at its start (ANTS-6672).**
+
+- **The tasks/refresh debug log line drops its unfinished= column, which repeated pending= (ANTS-6666).**
+
+- **Twenty readability fixes from the 2026-11-06 reviews across dialogs, the audit engine, the build files and the MCP verbs; behaviour is unchanged (ANTS-6659-6678).**
+
 - **quotation_check stops looking once it passes a quotation's cited line (ANTS-6989).**
 
 - **Under the Kitty keyboard protocol, Ctrl+letter is sent as CSI <letter>;5u and Shift+letter as plain text, as the protocol says (ANTS-6654).**
@@ -135,6 +141,10 @@ for security-relevant changes.
   The next query reads the files again.
 
 ### Fixed
+
+- **A Claude question or plan-approval prompt marks its tab as awaiting input whatever the tool name's capitalisation (ANTS-6666).**
+
+- **project_settings op:detect suggests the whole-root walk for a large repository with source files at its root, even when its subfolders fill the 20000-file count (ANTS-6668).**
 
 - **Editing a roadmap declared in .ants/project.json refreshes project_layout at once (ANTS-6987).**
 

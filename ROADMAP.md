@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7052 -->
+<!-- ants-roadmap-id-high-water: ANTS=7078 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -100595,9 +100595,45 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: user decision 2026-11-28 (ANTS-6654 row 1302).
   Lanes: terminal-widget.
 
+- 📋 [ANTS-7055] **The compile pool uses max(2, nproc/4) on every host.**
+  From ANTS-6662: the under-4-cores branch gives a 3-core host 3 jobs but a 4-7-core host 2. It was kept from the nproc-2 formula (ANTS-1217), whose reason is gone. Dropping it makes the five places that state max(2, nproc/4) true.
+  **Layman:** Small machines get a sensible number of parallel compile jobs.
+  Kind: fix.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7056] **Decide whether a dated ### topic heading counts as a category heading in changelog_log's prose check.**
+  From ANTS-6663: collectInterleavedProse sets sawCategory for any column-0 ### line.
+  **Layman:** Check whether the changelog tool treats dated topic headings the way it should.
+  Kind: investigate.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7062] **claudeintegration.cpp matches AskUserQuestion without case, as the state resolver does.**
+  From ANTS-6666: the resolver now matches choice tools case-insensitively; this compare is still exact.
+  **Layman:** Spot Claude's question prompts however the tool name is capitalised, everywhere.
+  Kind: fix.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 💭 [ANTS-7064] **Decide one severity for a tool's "error" level: native parsers report MAJOR, foreign SARIF CRITICAL.**
+  From ANTS-6661 row 625. No record gives the native mapping's reason; either change alters what last_audit_summary reports. The user's call.
+  **Layman:** Choose one severity for a tool's errors so audit summaries agree.
+  Kind: investigate.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7069] **The Bash veto's segment scan does not split inside quotes.**
+  From ANTS-6672: git commit -m "x; git status ok" is vetoed; the diff check has the same flaw.
+  **Layman:** Stop the Bash veto hook blocking a command when the words only appear inside quotes.
+  Kind: fix.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 💭 [ANTS-7075] **changelog_log release reports max_body_bytes_effective when it moves the request into range.**
+  From ANTS-6674 row 954; the name roadmap_query uses. The user's call.
+  **Layman:** Tell the caller when the changelog tool adjusts a size limit they asked for.
+  Kind: enhancement.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
 ### Readability (2026-11-06 review)
 
-- 📋 [ANTS-6659] **Make the app-entry-dialogs code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6659] **Make the app-entry-dialogs code the 2026-11-06 reviews flagged easier to follow.**
   2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1172 `src/diffviewer.cpp:416` (Medium)
   - row 1178 `src/settingsdialog.cpp:1339` (Medium)
@@ -100606,7 +100642,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6660] **Make the audit-dialog code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6660] **Make the audit-dialog code the 2026-11-06 reviews flagged easier to follow.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 604 `src/auditdialog.h:656` (Low)
   **Layman:** Code here is harder to follow than it needs to be.
@@ -100614,7 +100650,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6661] **Make the audit-engine code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6661] **Make the audit-engine code the 2026-11-06 reviews flagged easier to follow.**
   11 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 608 `src/auditrunner.cpp:993` (Medium)
   - row 609 `src/auditrunner.cpp:914` (Low)
@@ -100632,7 +100668,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6662] **Make the build-system code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6662] **Make the build-system code the 2026-11-06 reviews flagged easier to follow.**
   3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1220 `CMakeLists.txt:4623` (Medium)
   - row 1223 `CMakeLists.txt:2550` (Medium)
@@ -100642,7 +100678,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: build-system.
 
-- 📋 [ANTS-6663] **Make the changelog-feedback code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6663] **Make the changelog-feedback code the 2026-11-06 reviews flagged easier to follow.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1166 `src/changeloglog.cpp:119` (Low)
   **Layman:** Code here is harder to follow than it needs to be.
@@ -100650,7 +100686,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: changelog-feedback.
 
-- 📋 [ANTS-6664] **Make the chrome-widgets code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6664] **Make the chrome-widgets code the 2026-11-06 reviews flagged easier to follow.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 572 `src/coloredtabbar.cpp:403` (Low)
   **Layman:** Code here is harder to follow than it needs to be.
@@ -100658,7 +100694,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: chrome-widgets.
 
-- 📋 [ANTS-6665] **Make the claude-integration code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6665] **Make the claude-integration code the 2026-11-06 reviews flagged easier to follow.**
   7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 714 `src/claudeintegration_terminal.cpp:186` (Medium)
   - row 715 `src/claudeintegration.cpp:2396` (Medium)
@@ -100672,7 +100708,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6666] **Make the claude-session-widgets code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6666] **Make the claude-session-widgets code the 2026-11-06 reviews flagged easier to follow.**
   6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 755 `src/claudestatuswidgets.cpp:2029-2052` (Medium)
   - row 761 `src/claudestateresolver.cpp:39-42` (Low)
@@ -100685,7 +100721,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6667] **Make the code-index-search code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6667] **Make the code-index-search code the 2026-11-06 reviews flagged easier to follow.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1057 `src/readregion.cpp:686` (Medium)
   - row 1058 `src/codebaseindex.cpp:492` (Medium)
@@ -100700,7 +100736,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6668] **Make the config-session-project code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6668] **Make the config-session-project code the 2026-11-06 reviews flagged easier to follow.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1144 `src/projectsettings.cpp:394` (Medium)
   **Layman:** Code here is harder to follow than it needs to be.
@@ -100708,7 +100744,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6669] **Make the diagnostics-logging code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6669] **Make the diagnostics-logging code the 2026-11-06 reviews flagged easier to follow.**
   3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1194 `src/readlog.cpp:265` (Medium)
   - row 1195 `src/readlog.cpp:238` (Low)
@@ -100718,7 +100754,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: diagnostics-logging.
 
-- 📋 [ANTS-6670] **Make the dialog-chrome-theme code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6670] **Make the dialog-chrome-theme code the 2026-11-06 reviews flagged easier to follow.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 585 `src/themedstylesheet.cpp:208-213` (Low)
   **Layman:** Code here is harder to follow than it needs to be.
@@ -100726,7 +100762,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: dialog-chrome-theme.
 
-- 📋 [ANTS-6671] **Make the doc-engines code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6671] **Make the doc-engines code the 2026-11-06 reviews flagged easier to follow.**
   6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 966 `src/doccitations.cpp:1692` (Medium)
   - row 967 `src/doccitations.cpp:1571` (Medium)
@@ -100739,7 +100775,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: doc-engines.
 
-- 📋 [ANTS-6672] **Make the hooks-packaging code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6672] **Make the hooks-packaging code the 2026-11-06 reviews flagged easier to follow.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1279 `hooks/ants-bash-veto.sh:135` (Medium)
   - row 1280 `packaging/release.sh:239` (Medium)
@@ -100755,7 +100791,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: hooks-packaging.
 
-- 📋 [ANTS-6673] **Make the mainwindow code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6673] **Make the mainwindow code the 2026-11-06 reviews flagged easier to follow.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 536 `src/mainwindow.cpp:1663` (Medium)
   - row 547 `src/mainwindow_mcp.cpp:136` (Medium)
@@ -100766,7 +100802,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6674] **Make the mcp-content-verbs code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6674] **Make the mcp-content-verbs code the 2026-11-06 reviews flagged easier to follow.**
   9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 934 `src/remotecontrol_docs.cpp:221` (Medium)
   - row 935 `src/remotecontrol_docs.cpp:1068-1075` (Medium)
@@ -100782,7 +100818,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6675] **Make the mcp-infra code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6675] **Make the mcp-infra code the 2026-11-06 reviews flagged easier to follow.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1088 `src/mcpprojection.cpp:297` (Medium)
   - row 1089 `src/mcpspill.cpp:410` (Medium)
@@ -100794,7 +100830,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6676] **Make the mcp-review-verbs code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6676] **Make the mcp-review-verbs code the 2026-11-06 reviews flagged easier to follow.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 919 `src/remotecontrol_review.cpp:195` (Medium)
   - row 920 `src/remotecontrol_review.cpp:613` (Medium)
@@ -100805,7 +100841,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: mcp-review-verbs.
 
-- 📋 [ANTS-6677] **Make the mcp-roadmap-batch code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6677] **Make the mcp-roadmap-batch code the 2026-11-06 reviews flagged easier to follow.**
   2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 881 `src/remotecontrol_roadmap_repair.cpp:372-373` (Low)
   - row 882 `src/remotecontrol_roadmap_backfill.cpp:119-120` (Low)
@@ -100814,7 +100850,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6678] **Make the mcp-roadmap-query-log code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6678] **Make the mcp-roadmap-query-log code the 2026-11-06 reviews flagged easier to follow.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 822 `src/remotecontrol_roadmap_log.cpp:1009` (Medium)
   - row 827 `src/remotecontrol_roadmap_log.cpp:2030` (Medium)
@@ -101040,6 +101076,126 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: vt-parser-pty.
+
+- 📋 [ANTS-7053] **Re-indent diffviewer.cpp's finalize and runAsync lambdas one level, so they read as inside runProbes.**
+  From ANTS-6659 row 1172; whitespace only, about 490 lines. Then drop the comment that explains the shallow indent.
+  **Layman:** Line up some diff-viewer code so its nesting is visible at a glance.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7054] **Give each scraped source file one compile-define name (SRC_<STEM>_CPP_PATH / _H_PATH).**
+  From ANTS-6662 row 1223: 38 files carry more than one define name. Rename the variants in CMakeLists.txt and their tests; state the convention beside the first ANTS-4797 block.
+  **Layman:** Use one consistent name per file in the build's test settings.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7057] **Move the roadmap_query and model_switch_stats descriptors out of claudeintegration_terminal.cpp into their tool family's file.**
+  From ANTS-6665 row 714; check the tools/list order change breaks no client or test.
+  **Layman:** Put two tool definitions in the file where their family lives.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7058] **Split mcpToolsList's four passes over tools into named functions and state the snapshot point once.**
+  From ANTS-6665 row 715.
+  **Layman:** Break one very long function in the MCP server into named parts.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7059] **Build and register each roadmap_log schema property together, or give that schema its own function.**
+  From ANTS-6665 row 739.
+  **Layman:** Make the roadmap tool's argument list easier to read and change.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7060] **Split parseTranscriptTail into one function per reading, each taking the events it should search.**
+  From ANTS-6665 row 740.
+  **Layman:** Split the code that reads the end of a Claude session log into clear parts.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7061] **modelautoswitch.h's idleCeilingMs comment says what the controller does with a value of 0 or less.**
+  From ANTS-6666: the comment says it leaves idleElapsedMs at -1; the controller pushes the ceiling to qint64 max.
+  **Layman:** Correct a code comment about the model auto-switch idle setting.
+  Kind: doc-fix.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7063] **Condense the ticket-history comments in refreshAutoModelSwitch's early guards and scoring to one rule each.**
+  From ANTS-6666 row 755; the gate half shipped there.
+  **Layman:** Replace long history notes in the auto-switch code with short rules.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7065] **Split source_scrapes' scanPython into a small class with one method per Python path form.**
+  From ANTS-6667 row 1081: Path join, os.path join, glob/walk, getsource, assignment.
+  **Layman:** Break up the code that finds which Python tests read which files.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7066] **Split doc_citations check() into named steps: symbol-ref resolution, the per-citation Resolved verdict, the filter-and-page tail.**
+  From ANTS-6671 row 967.
+  **Layman:** Break the doc-citation checker's main function into named steps.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7067] **Extract the quotation pass's attribution and read-and-fold verdict into helpers, so its loop only harvests.**
+  From ANTS-6671 row 968.
+  **Layman:** Break the quotation checker's main loop into named helpers.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7068] **Lock a nested C++ qualifier (ns::Alpha::fire()) in doc_symbols' INV-9 test.**
+  From ANTS-6671 row 979: only the Rust case covers a::b::x.
+  **Layman:** Add a test for doc symbols written with more than one namespace.
+  Kind: test.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7070] **Move get_cwd, get_last_command, get_environment and get_text out of setupClaudeMcpProviders into named mcp* methods.**
+  From ANTS-6673 row 547, as mcpGetScrollback was; re-point mcp_secret_redaction's get_last_command slice.
+  **Layman:** Move four MCP tool handlers out of one long setup function.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7071] **Pass spec_lint's reply totals to specLintBuildResponse as one named struct.**
+  From ANTS-6674 row 935; fold the scoped-mode counts overwrite into the builder.
+  **Layman:** Replace a long list of unnamed arguments in the spec checker with named fields.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7072] **Move quotation_check's per-item evaluation out of run into its own function.**
+  From ANTS-6674 row 937.
+  **Layman:** Split the quotation checker's main function.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7073] **Extract changelog_log's normalize, release, add_subsection and add ops into their own functions, as clAmend was.**
+  From ANTS-6674 row 950.
+  **Layman:** Split the changelog tool's long handler into one function per operation.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7074] **Extract feedback_query's mapped-id status resolution into a helper returning statusArr and its flags.**
+  From ANTS-6674 row 951.
+  **Layman:** Split a long block out of the feedback query tool.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 💭 [ANTS-7076] **Rename ceSanitiseEcho to a neutral sanitiseEcho across the roadmap, cold-eyes and session_memory verbs.**
+  From ANTS-6676 row 927; about 37 call sites and 6 tests. ANTS-6262 recorded that the name stays, so it waits on the user.
+  **Layman:** Give a widely shared text-cleaning helper a name that fits all its uses.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7077] **Split cmdRoadmapLogFlip into per-format paths (GFM, ants-v1, store) behind a small dispatcher.**
+  From ANTS-6678 row 827; mind the INV-6 m_main-> scrape.
+  **Layman:** Split the roadmap status-flip code into one path per roadmap format.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
+
+- 📋 [ANTS-7078] **Rename maxFileId in remotecontrol_roadmap_log_batch.cpp to occupiedHighWater, as roadmap_log.cpp now reads.**
+  From ANTS-6678 row 822.
+  **Layman:** Use the same clear name for the highest used roadmap id in both files.
+  Kind: refactor.
+  Source: ANTS-6659-6678 helper follow-ups 2026-11-28.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
