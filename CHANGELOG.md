@@ -124,6 +124,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`amend_headline` refuses a line break and lanes are cleaned, so neither can add lines to ROADMAP.md; a pass-headings append refuses an id that exists** (ANTS-6641)
+
+- **A short roadmap note is no longer skipped because a body line contains it; flipping an item to its current status leaves it untouched; a failed write cannot be applied twice from its plan** (ANTS-6641)
+
+- **Roadmap tools called from a project subfolder read the project's declared id format; store-served pass items can be flipped by id; dry runs and refusals report the same fields as the real calls** (ANTS-6641)
+
 - **`roadmap_log op:"create_section"` works on a store-served project that has no items yet, and its replies and `bundle_row`'s name their `op`** (ANTS-6640)
 
 - **`bundle_row` sorts correctly on the last column of a table whose rows have no closing `|`; `append_batch` warns about evidence only on bullets it filed; `repair_trailers` reports its history note on every real run** (ANTS-6640)
@@ -245,6 +251,8 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **`roadmap_query` regex searches cannot hang: a nested-quantifier pattern is refused, every pattern has a step limit, and `body_match` is capped and cleaned like `query`** (ANTS-6641)
 
 - **`verify_changes cache_only` never opens a trust prompt; an untrusted config answers `cache_miss`** (ANTS-6639)
 

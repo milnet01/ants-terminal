@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6996 -->
+<!-- ants-roadmap-id-high-water: ANTS=6999 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99381,7 +99381,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6641] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-query-log.**
+- 🚧 [ANTS-6641] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-query-log.**
   22 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 97 `remotecontrol_roadmap_query_verb.cpp:1059-1065` (Medium)
   - row 98 `ROADMAP.md` (Medium)
@@ -99408,6 +99408,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-10 (ANTS-6721): the 2026-11-09 paired review re-found rows 97,
   98, 101 (both the preview id and the missing id_taken), 104 and 108;
   all still present at e7324f30.
+  2026-11-28 (18c31e88): 17 rows fixed, 1383/1385/1391 already fixed,
+  1386 not a bug; suite 6852/6852. Row 103 moved to its own item. Waits
+  on the user: row 101's in-batch duplicate check. Tests
+  Ants4354CallLevelPassIsTheBatchFallback and
+  Ants6372CallLevelStatusIsTheBatchFallback expect two bullets sharing
+  pass 2.1 in one batch both to apply, which gives two items one id; the
+  store path refuses that. Options: (a) refuse in-batch duplicates and
+  change those two tests to distinct passes (recommended); (b) keep
+  allowing them on the file path.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99892,6 +99901,30 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: ANTS-6639 helper, 2026-11-28.
   Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6997] **roadmap_log append dry_run previews the markdown path on a machine with no store row, while the real call rebuilds the store and allocates from it.**
+  Split from ANTS-6641 row 103 (too big for the bundle). Details:
+  docs/reviews/close-findings-2026-11-06.md row 103.
+  **Layman:** A roadmap preview can promise a different result than the real write gives on a machine that has not set up its roadmap store.
+  Kind: fix.
+  Source: ANTS-6641 helper, 2026-11-28.
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6998] **docs/standards/mcp-errors.md names bad_op for an unknown op; the code and mcp-error-codes.md use bad_mode.**
+  Found while fixing ANTS-6641.
+  **Layman:** One reference page names the wrong error code for an unknown command.
+  Kind: doc-fix.
+  Source: ANTS-6641 helper, 2026-11-28.
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6999] **On a pass roadmap, a note retried on a later day is appended twice, because the stored note line carries the date.**
+  Side effect of ANTS-6641 row 105 (whole-line note match): the old
+  substring check caught this case. The markdown path behaves the same
+  way as the new store check.
+  **Layman:** Re-running the same roadmap note on another day can add it a second time.
+  Kind: fix.
+  Source: ANTS-6641 helper, 2026-11-28.
+  Lanes: mcp-roadmap-query-log.
 
 ### Readability (2026-11-06 review)
 
@@ -112923,13 +112956,15 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: mcp-roadmap-query-log-a.
 
-- 📋 [ANTS-5923] **remotecontrol_roadmap_query.cpp:976: The markdown fallback parses with idFormatFor(projectRoot) (the caller's folder, unresolved) while the store seam uses idFormatFor(root).**
+- ✅ [ANTS-5923] **remotecontrol_roadmap_query.cpp:976: The markdown fallback parses with idFormatFor(projectRoot) (the caller's folder, unresolved) while the store seam uses idFormatFor(root).**
   Lead L20-C1 from the readability review of 2026-10-22, lane mcp-roadmap-query-log-b.
   Location: remotecontrol_roadmap_query.cpp:976
   The markdown fallback parses with `idFormatFor(projectRoot)` (the caller's folder, unresolved) while the store seam uses `idFormatFor(root)`. So a subdirectory caller on an unmigrated project gets no declared ID format. `verb:3069` and `:3094` pass `callerCanonical` the same way. Searched: `projectsettings.cpp:127-144`.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-28 (18c31e88): fixed with ANTS-6641 row 1390;
+  RoadmapLogReviewFixes.Row1390SubdirectoryCallerReadsTheRootDeclaration.
   **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
