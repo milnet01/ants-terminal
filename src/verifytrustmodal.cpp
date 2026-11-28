@@ -100,8 +100,10 @@ QString commandPreview(const QByteArray &configBytes) {
     if (gates.isEmpty()) return QStringLiteral("(no command field found)");
     QString preview = gates.first().command;
     if (preview.size() > kCommandPreviewChars) {
-        preview = preview.left(kCommandPreviewChars)
-                  + QStringLiteral("…");
+        // ANTS-6988 — never keep half of a surrogate pair at the cut.
+        qsizetype cut = kCommandPreviewChars;
+        if (preview.at(cut - 1).isHighSurrogate()) --cut;
+        preview = preview.left(cut) + QStringLiteral("…");
     }
     return revealHidden(preview);
 }

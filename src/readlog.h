@@ -21,6 +21,10 @@ constexpr int kMaxTail         = 10000;
 // ANTS-5110 — wall-clock budget for one scan; past it the scan stops
 // between lines with time_budget_exhausted:true, resumable from `cursor`.
 constexpr int kDefaultTimeBudgetMs = 5000;
+// ANTS-6988 — longest include/exclude pattern accepted; each also runs under
+// PCRE2's match limit (ants::regex::hardenUserRegex), as the time budget is
+// only checked between lines.
+constexpr int kMaxPatternChars = 1024;
 
 struct Options {
     QString include;            // QRegularExpression; empty = no filter
@@ -49,7 +53,8 @@ struct Options {
 //    cursor_stale?, stale_reason?}
 // or a refusal {ok:false, code, error}. Refusal codes:
 //   not_found  — file cannot be opened.
-//   bad_args   — include/exclude is not a valid QRegularExpression.
+//   bad_args   — include/exclude is not a valid QRegularExpression, or is
+//                longer than kMaxPatternChars.
 // A bad/rotated since_cursor is NOT a refusal: it soft-falls-back to a
 // full re-read with cursor_stale:true (mirrors get_scrollback's posture).
 QJsonObject filter(const QString &path, const Options &opts);

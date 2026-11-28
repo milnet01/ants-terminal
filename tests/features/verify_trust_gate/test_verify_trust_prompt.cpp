@@ -51,3 +51,22 @@ TEST(VerifyTrustPrompt, ShowsHiddenCharactersVisibly) {
     EXPECT_TRUE(box.informativeText().contains(QStringLiteral("U+001B")))
         << "MD-3: " << box.informativeText().toStdString();
 }
+
+// MD-3 (ANTS-6988) — the preview's length cap never cuts a character in
+// half: an emoji straddling the cut is dropped whole, not shown as the
+// <U+D83D> of its first half.
+TEST(VerifyTrustPrompt, PreviewCutKeepsSurrogatePairsWhole) {
+    const QString emoji = QString::fromUtf8("\xF0\x9F\x98\x80");   // two UTF-16 units
+    const QString command =
+        QString(199, QLatin1Char('a')) + emoji + QStringLiteral("tail");
+    const QByteArray config = (QStringLiteral("{\"build\":{\"command\":\"")
+                               + command + QStringLiteral("\"}}")).toUtf8();
+    QMessageBox box;
+    VerifyTrust::buildPromptBox(box, QStringLiteral("/tmp/proj"),
+                                QString(64, QLatin1Char('a')), config);
+
+    const QString text = box.informativeText();
+    EXPECT_FALSE(text.contains(QStringLiteral("U+D83D"))) << "MD-3: " << text.toStdString();
+    EXPECT_TRUE(text.contains(QString(199, QLatin1Char('a')) + QStringLiteral("…")))
+        << "MD-3: " << text.toStdString();
+}

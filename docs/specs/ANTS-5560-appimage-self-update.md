@@ -114,6 +114,10 @@ The AppImage streams to disk and is hashed as it arrives, so memory holds one ne
 | INV-9 | `SelfUpdate.ReleaseWorkflowSigns` |
 | INV-10 | `SelfUpdate.Ants6513SmallDownloadsCapped` |
 
+Regression tests with no INV of their own:
+`SelfUpdate.Ants6633RequestTimesOutAStalledTransfer` (a stalled download gives up)
+and `SelfUpdate.Ants6633OfferShowsMarkupAsText` (the offer shows markup as text).
+
 ## 7. Cross-doc impact
 
 - `tests/features/update_available_menubar/spec.md` keeps its invariants; the indicator gains the "Restart to finish" text.

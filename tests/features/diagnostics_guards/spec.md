@@ -41,7 +41,9 @@ message `x.h: No such file or directory`, as `recent_errors` does.
 `recordedAtMs`, so a file edited while the build ran makes the cache stale.
 
 **INV-11 — a cache with no time is not reported fresh** (ANTS-6632).
-`BuildCache::checkStale` with no time returns `staleKnown:false`.
+`BuildCache::checkStale` with no time returns `staleKnown:false`, and
+`BuildCache::addStaleness` writes `stale_unknown:true` for it, never
+`stale_walk_capped` (ANTS-6988).
 
 **INV-12 — the message cap never splits a surrogate pair** (ANTS-6632), in
 `parseBuildOutput` or in `fromJson`.

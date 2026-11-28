@@ -210,12 +210,21 @@ TEST(DiagnosticsGuards, StaleIsMeasuredFromTheBuildStart) {
     EXPECT_FALSE(BuildCache::checkStale(tmp.path(), BuildCache::staleSinceMs(b)).stale);
 }
 
-// INV-11 — a cache with no time to compare against is not reported fresh.
+// INV-11 — a cache with no time to compare against is not reported fresh,
+// and the reply names that cause, not a capped walk (ANTS-6988).
 TEST(DiagnosticsGuards, StaleIsUnknownWithNoBuildTime) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    EXPECT_FALSE(BuildCache::checkStale(tmp.path(), 0).staleKnown)
+    const BuildCache::StaleCheck s = BuildCache::checkStale(tmp.path(), 0);
+    EXPECT_FALSE(s.staleKnown)
         << "a build with no recorded time was reported known-fresh";
+    QJsonObject env;
+    BuildCache::addStaleness(env, s);
+    EXPECT_TRUE(env.value(QStringLiteral("stale_unknown")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_FALSE(env.contains(QStringLiteral("stale_walk_capped")))
+        << "a cache with no time was reported as a capped walk";
+    EXPECT_FALSE(env.contains(QStringLiteral("stale")));
 }
 
 // INV-12 — the message cap never splits a surrogate pair, in the parser or

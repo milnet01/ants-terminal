@@ -5,6 +5,7 @@
 
 #include "readlog.h"
 #include "boundedreadline.h"
+#include "regexharden.h"
 #include "secretredact.h"
 
 #include <QByteArray>
@@ -170,30 +171,33 @@ private:
 QJsonObject filter(const QString &path, const Options &opts) {
     QJsonObject env;
 
-    // Regex validation → bad_args (before opening the file).
+    // Regex validation → bad_args (before opening the file). ANTS-6988 — a
+    // pattern is capped in length and runs under PCRE2's match limit, so one
+    // line's match cannot hold the worker: a line whose match hits the limit
+    // counts as not matching.
     const bool haveInc = !opts.include.isEmpty();
     const bool haveExc = !opts.exclude.isEmpty();
     QRegularExpression incRe, excRe;
-    if (haveInc) {
-        incRe = QRegularExpression(opts.include);
-        if (!incRe.isValid()) {
-            env["ok"] = false; env["code"] = QStringLiteral("bad_args");
-            env["error"] = QStringLiteral("read_log: invalid 'include' regex: %1")
-                               .arg(incRe.errorString());
-            return env;
+    const auto compile = [&env](const QString &pattern, const char *name,
+                                QRegularExpression &re) {
+        QString why;
+        if (pattern.size() > kMaxPatternChars) {
+            why = QStringLiteral("longer than %1 characters").arg(kMaxPatternChars);
+        } else {
+            re = QRegularExpression(ants::regex::hardenUserRegex(pattern));
+            if (re.isValid()) {
+                re.optimize();
+                return true;
+            }
+            why = re.errorString();
         }
-        incRe.optimize();
-    }
-    if (haveExc) {
-        excRe = QRegularExpression(opts.exclude);
-        if (!excRe.isValid()) {
-            env["ok"] = false; env["code"] = QStringLiteral("bad_args");
-            env["error"] = QStringLiteral("read_log: invalid 'exclude' regex: %1")
-                               .arg(excRe.errorString());
-            return env;
-        }
-        excRe.optimize();
-    }
+        env["ok"] = false; env["code"] = QStringLiteral("bad_args");
+        env["error"] = QStringLiteral("read_log: invalid '%1' regex: %2")
+                           .arg(QLatin1String(name), why);
+        return false;
+    };
+    if (haveInc && !compile(opts.include, "include", incRe)) return env;
+    if (haveExc && !compile(opts.exclude, "exclude", excRe)) return env;
 
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) {

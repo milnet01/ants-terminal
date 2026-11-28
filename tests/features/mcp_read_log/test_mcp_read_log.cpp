@@ -138,6 +138,30 @@ TEST(McpReadLog, BadRegex) {
     EXPECT_EQ(env.value("code").toString().toStdString(), "bad_args");
 }
 
+// B-INV-4 (ANTS-6988) — a pattern over kMaxPatternChars refuses, and a
+// pattern runs under PCRE2's match limit: `(a+)+b` backtracks about 2^18
+// times on 18 a's before the `|a` branch matches, inside PCRE2's own limit
+// but past the 100 000 one the hardening sets, so the line is not kept.
+TEST(McpReadLog, PatternIsCappedAndMatchLimited) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = writeLog(dir, "a.log", {QString(18, QLatin1Char('a')), "ok"});
+
+    ReadLog::Options longPat;
+    longPat.exclude = QString(ReadLog::kMaxPatternChars + 1, QLatin1Char('x'));
+    const QJsonObject refused = ReadLog::filter(p, longPat);
+    EXPECT_FALSE(refused.value("ok").toBool()) << "an over-long pattern was run";
+    EXPECT_EQ(refused.value("code").toString().toStdString(), "bad_args");
+    longPat.exclude.chop(1);
+    EXPECT_TRUE(ReadLog::filter(p, longPat).value("ok").toBool())
+        << "a pattern of exactly the cap was refused";
+
+    ReadLog::Options slow; slow.include = "^(?:(a+)+b|a)|^ok";
+    const QJsonObject env = ReadLog::filter(p, slow);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(linesOf(env), QStringList{"ok"})
+        << "a match past the match limit ran to completion";
+}
+
 // B-INV-5 — contains substring.
 TEST(McpReadLog, Contains) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

@@ -978,14 +978,9 @@ QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
     QJsonArray btErrors = env.value("errors").toArray();
     enrichLikelyFixes(btErrors, rootCanonical);
     env["errors"] = btErrors;
-    const auto stale =
-        BuildCache::checkStale(rootCanonical,
-                               BuildCache::staleSinceMs(*loaded));
-    if (!stale.staleKnown) {
-        env["stale_walk_capped"] = true;
-    } else if (stale.stale) {
-        env["stale"] = true;
-    }
+    BuildCache::addStaleness(
+        env, BuildCache::checkStale(rootCanonical,
+                                    BuildCache::staleSinceMs(*loaded)));
     return QJsonDocument(env);
 }
 

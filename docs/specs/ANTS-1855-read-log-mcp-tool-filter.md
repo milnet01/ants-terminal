@@ -93,8 +93,11 @@ rcDelegate(rc, &RemoteControl::cmdReadLog))` dispatch in
   `N <= 0` or omitted means no tail limit (all survivors, subject to the
   byte cap). `matched` still reports the full pre-tail count.
 
-An invalid `include`/`exclude` pattern → `{ok:false, code:"bad_args"}`
-(named which arg).
+An invalid `include`/`exclude` pattern, or one longer than
+`ReadLog::kMaxPatternChars` (1024), → `{ok:false, code:"bad_args"}`
+(named which arg). Each pattern runs under PCRE2's match limit
+(`ants::regex::hardenUserRegex`); a line whose match hits it counts as
+not matching.
 
 ### 2.3 Output envelope
 
@@ -270,7 +273,8 @@ window across `since_cursor` polls.
   returns `Required` for `read_log` + dispatch test.
 - **INV-4** — `include`/`exclude` are `QRegularExpression`; a line is
   emitted iff it matches `include` (when set) and does not match
-  `exclude` (when set); an invalid pattern refuses with `bad_args`.
+  `exclude` (when set); an invalid or over-long pattern refuses with
+  `bad_args`.
   *Test:* fixture log + good/bad patterns.
 - **INV-5** — `contains:S` keeps only lines whose text contains the
   literal substring S. *Test:* fixture.

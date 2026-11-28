@@ -340,6 +340,30 @@ TEST(MarkdownScanSpans, StrayBacktickAboveALargeTableIsLinear) {
     EXPECT_LT(ms, 1000) << "codeSpans took " << ms << " ms";
 }
 
+// ANTS-6988 — pass 2 finds each opener's closer by length. Before, every
+// unpaired run walked every later run to the boundary: these 5 000 runs of
+// distinct lengths above a 400 000-row table cost about 4 * 10^9 steps. The
+// verdict is unchanged: the unpaired runs pair with nothing.
+TEST(MarkdownScanSpans, ManyUnpairedRunsOfMixedLengthAreNotQuadratic) {
+    constexpr int kStrays = 5000;
+    constexpr int kRows = 400000;
+    QStringList lines;
+    lines.reserve(kStrays + kRows);
+    for (int i = 0; i < kStrays; ++i)
+        lines << QStringLiteral("a ") + QString(i + 2, QLatin1Char('`')) + QStringLiteral(" b");
+    for (int i = 0; i < kRows; ++i) lines << QStringLiteral("| `x` | y |");
+    const QVector<bool> fence = fenceMask(lines);
+
+    QElapsedTimer clock;
+    clock.start();
+    const QVector<CodeSpan> spans = codeSpans(lines, fence);
+    const qint64 ms = clock.elapsed();
+
+    ASSERT_EQ(spans.size(), kRows);
+    EXPECT_EQ(spans.first().startLine, kStrays) << "an unpaired run opened a span";
+    EXPECT_LT(ms, 1000) << "codeSpans took " << ms << " ms";
+}
+
 // ANTS-3740 — headings(): the ATX collector hoisted out of
 // ReadRegion::resolveSection when cold_eyes_brief became its second consumer.
 // Level, slug and body span are all published to a reviewer, so all three are

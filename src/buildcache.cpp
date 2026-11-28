@@ -162,6 +162,7 @@ StaleCheck checkStale(const QString &canonProject, qint64 sinceMs) {
     // No time to compare against: whether the build is stale is unknown.
     if (canonProject.isEmpty() || sinceMs <= 0) {
         out.staleKnown = false;
+        out.noTime = true;
         return out;
     }
     int probed = 0;
@@ -202,6 +203,15 @@ StaleCheck checkStale(const QString &canonProject, qint64 sinceMs) {
         }
     }
     return out;
+}
+
+void addStaleness(QJsonObject &env, const StaleCheck &stale) {
+    if (!stale.staleKnown) {
+        env[stale.noTime ? QStringLiteral("stale_unknown")
+                         : QStringLiteral("stale_walk_capped")] = true;
+    } else if (stale.stale) {
+        env[QStringLiteral("stale")] = true;
+    }
 }
 
 QJsonObject toJson(const ParsedBuild &build) {

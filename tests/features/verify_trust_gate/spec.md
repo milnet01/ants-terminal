@@ -93,3 +93,4 @@ Source scrapes of `ModalClient::showPrompt`: the prompt is a modal
   (CVE-2021-42574) or zero-width space, a line or paragraph separator — is
   shown as `<U+XXXX>` in the first-command preview and in the full config,
   never passed through raw. Checked on the dialog `buildPromptBox` builds.
+  The preview's length cut never splits a surrogate pair (ANTS-6988).

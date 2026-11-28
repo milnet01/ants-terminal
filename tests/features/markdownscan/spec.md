@@ -89,6 +89,11 @@ cover `fenceOpenerChar` and the masking policy through their own behaviour.
   backtick above a large boundary-free block costs linear time, not
   runs × lines. *Test:* `MarkdownScanSpans.StrayBacktickAboveALargeTableIsLinear`
   — a 20 000-row table under one stray run → one span per row, under a second.
+  Pass 2 finds a closer by length, not by walking every later run (ANTS-6988),
+  so many unpaired runs of mixed length cost linear time too. *Test:*
+  `MarkdownScanSpans.ManyUnpairedRunsOfMixedLengthAreNotQuadratic` — 5 000
+  runs of distinct lengths above a 100 000-row table → one span per row, under
+  a second.
 
   **The forward search runs in two passes, and the order is load-bearing**
   (ANTS-4598). Pass 1 pairs runs **within** a line; pass 2 joins what is left

@@ -3,6 +3,7 @@
 #include "markdownscan.h"
 
 #include <algorithm>
+#include <QHash>
 #include <QRegularExpression>
 #include <QRegularExpressionMatch>
 #include <QString>
@@ -215,16 +216,25 @@ QVector<CodeSpan> codeSpans(const QStringList &lines,
     // fenced line, so the search stops at the first boundary rather than
     // skipping it. A run that finds no partner here is literal text and opens
     // nothing — which is what makes one stray backtick harmless.
+    //
+    // ANTS-6988 — the closer is the first run pass 1 left, of the same length,
+    // on a later line. Those runs are indexed by length, so an opener no
+    // longer walks every run up to the boundary (quadratic when a block holds
+    // many unpaired runs of mixed length). A pairing consumes every run up to
+    // its closer and `a` only moves forward, so a candidate past `a` is still
+    // unused, and each length's cursor only moves forward.
+    QHash<int, QVector<int>> leftByLen;
+    for (int k = 0; k < runs.size(); ++k)
+        if (!runs.at(k).used) leftByLen[runs.at(k).len].append(k);
+    QHash<int, int> cursor;
     for (int a = 0; a < runs.size(); ++a) {
         if (runs.at(a).used) continue;
-        const int stop = nextBoundary[runs.at(a).line + 1];
-        for (int b = a + 1; b < runs.size(); ++b) {
-            if (runs.at(b).line == runs.at(a).line) continue;
-            if (runs.at(b).line >= stop) break;
-            if (runs.at(b).used || runs.at(b).len != runs.at(a).len) continue;
-            pair(a, b);
-            break;
-        }
+        const QVector<int> &cands = *leftByLen.constFind(runs.at(a).len);
+        int &c = cursor[runs.at(a).len];
+        while (c < cands.size() && runs.at(cands.at(c)).line <= runs.at(a).line) ++c;
+        if (c == cands.size()) continue;
+        const int b = cands.at(c);
+        if (runs.at(b).line < nextBoundary[runs.at(a).line + 1]) pair(a, b);
     }
 
     // Pass 2 appends out of order; consumers read spans in document order.

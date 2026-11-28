@@ -71,14 +71,19 @@ qint64 staleSinceMs(const ParsedBuild &build);
 // Walk the project's compile-input set looking for any file with
 // mtime > sinceMs. Returns {stale_known, stale}. When
 // stale_known is false, the walk hit kStaleWalkCap before any
-// newer file was found, or sinceMs is not a time — callers report
-// `stale_walk_capped:true` instead of `stale:false`. The probed set is
-// per § 3.3 (`op=read`) step 3 of the spec.
+// newer file was found, or sinceMs is not a time (noTime). The probed
+// set is per § 3.3 (`op=read`) step 3 of the spec.
 struct StaleCheck {
     bool staleKnown = true;  // false ⇒ stale unknown
     bool stale      = false;
+    bool noTime     = false; // ANTS-6988 — unknown because there was no time
 };
 StaleCheck checkStale(const QString &canonProject, qint64 sinceMs);
+
+// Write a StaleCheck into a build_status envelope: `stale:true`,
+// `stale_walk_capped:true` when the walk hit its cap, `stale_unknown:true`
+// when there was no time to compare against, or nothing when fresh.
+void addStaleness(QJsonObject &env, const StaleCheck &stale);
 
 // Render to/from JSON object (1:1 with the on-disk shape). Caller
 // uses this when building the MCP envelope. fromJson keeps the writer's

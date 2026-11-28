@@ -1999,6 +1999,12 @@ if(ANTS_TESTS)
     set_tests_properties(obs_status_behaviour PROPERTIES
         LABELS "features;fast"
         TIMEOUT 120)
+    # ANTS-6988 — obs-submit.sh and obs-setup.sh against an osc shim.
+    add_test(NAME obs_submit_behaviour
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/release_pipeline/obs_submit_behaviour_test.sh")
+    set_tests_properties(obs_submit_behaviour PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 120)
 
     # ANTS-5143 — the perf benchmarks are not built under ANTS_SANITIZERS.
     # A sanitized benchmark measures the sanitizer, and the debug preset never

@@ -17,6 +17,10 @@ Test surfaces:
 - `obs_status_behaviour_test.sh`, ctest `obs_status_behaviour`: drives the
   real `packaging/obs/obs-status.sh` against an `osc` shim serving canned
   XML. Covers INV-18.
+- `obs_submit_behaviour_test.sh`, ctest `obs_submit_behaviour`: drives the
+  real `packaging/obs/obs-submit.sh` and `obs-setup.sh` against an `osc`
+  shim, with a PATH that holds no real `osc` and git limited to the file
+  protocol. Covers INV-22 and INV-23.
 - `test_release_pipeline.cpp` (features bundle): source-scrape of
   `release.yml` and `release.sh`. Covers INV-17. `release_behaviour_test.sh`
   also runs `release.yml`'s tag step for INV-17's tag check.
@@ -145,6 +149,25 @@ Test surfaces:
   The `ci.yml` run and the `release.yml` run (INV-10, INV-14) are different
   runs: a red `release.yml` run after the tag is INV-14's case and keeps
   the tag.
+- **INV-22** `packaging/obs/obs-submit.sh [--staging <sha> <version>]`
+  (ANTS-6988). A release submit checks the package out (or updates an
+  existing checkout), copies `_service` as written, the spec, the rpmlintrc
+  and the repo's patches, drops a patch the repo no longer has, stamps
+  `Version:` from the pinned tag without its `v`, and commits with the
+  message `ants-terminal <tag>`. `--staging` aims `_service` at the commit,
+  gives the version literally, drops `match-tag` and `versionrewrite-*`, and
+  submits to `home:milnet:ants-terminal-staging`. Exit 1 with no `osc` call
+  when the pinned tag is missing locally or on `_service`'s URL, or the
+  staging commit is not on `origin/main`. A version holding `-` exits 1
+  with nothing committed. A refused commit is retried after an update,
+  giving up with exit 1 after five tries. A wrong argument count exits 2
+  with usage; no `osc` on PATH exits 1.
+- **INV-23** `packaging/obs/obs-setup.sh` (ANTS-6988) applies the project
+  meta, the prjconf and the package meta, in that order, naming
+  `OBS_PROJECT`, `OBS_PACKAGE` and `OBS_USER`. Both metas are well-formed XML
+  with no double hyphen, and the prjconf's `Prefer: wget2-wget` sits inside
+  its Fedora `%if`. A refused meta stops the script non-zero; no `osc` on
+  PATH exits 1.
 
 ## Rationale
 

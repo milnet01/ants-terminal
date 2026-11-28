@@ -44,6 +44,10 @@ dispatch are locked by source-scrape.
   `time_budget_exhausted:true`, and its `cursor` resumes the scan
   (ANTS-1855 INV-13). The budget is checked after every line, so lines an
   `include` regex is slow to reject cannot run on past it (ANTS-6632).
+  Within one line, an `include` or `exclude` pattern runs under PCRE2's
+  match limit (`(*LIMIT_MATCH=100000)`): a match that hits it counts as no
+  match. A pattern longer than `kMaxPatternChars` refuses with `bad_args`
+  (ANTS-6988).
   One oversized line is drained to its end first, so it can overrun the
   budget (ANTS-6632).
 - **B-INV-14** — with `redactSecrets` on (the default), each returned line

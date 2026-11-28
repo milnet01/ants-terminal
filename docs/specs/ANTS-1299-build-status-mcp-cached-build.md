@@ -170,7 +170,8 @@ Server-side flow:
    hit before any newer file is found, `stale_walk_capped:true`
    is set and `stale` is omitted (not false — distinguishes
    "looked, none found" from "could not walk fully"). A cache
-   with neither time is treated the same way. Future-
+   with neither time sets `stale_unknown:true` instead, and
+   `stale` is likewise omitted. Future-
    proofing: if a project carries a top-level `include/` directory,
    it is also probed (Ants itself does not, today).
 4. Return the cached envelope with `ok:true` injected.
