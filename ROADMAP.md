@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7010 -->
+<!-- ants-roadmap-id-high-water: ANTS=7013 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94215,6 +94215,31 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: finbreak feedback 2026-11-28.
   Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-7011] **roadmap_log annotate_batch reports its items under `annotated`, not under `flipped` with an unchanged status.**
+  DOOM_Ants: annotate_batch lists annotated items under "flipped" with
+  from_status equal to to_status.
+  **Layman:** Adding notes to several roadmap items reports them as if their status changed.
+  Kind: fix.
+  Source: DOOM_Ants feedback 2026-11-28.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-7012] **indie_review_partition splits unassigned source files from files the suffix filter dropped.**
+  DOOM_Ants: 52 "unassigned" files were all non-source (suffix_filter).
+  Suggested: unassigned_source beside a filtered count.
+  **Layman:** A review tool reports files it ignored on purpose as if they were missing from the review.
+  Kind: enhancement.
+  Source: DOOM_Ants feedback 2026-11-28.
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-7013] **source_scrapes resolves anchors through a project-declared list of scrape helper functions.**
+  DOOM_Ants: 14 anchors stayed unresolved because the tests read through
+  project helpers (get_body, body_of, assign_stmt, call_pos). Suggested:
+  let .ants/project.json declare them.
+  **Layman:** A tool that finds tests reading a file misses tests that use the project's own reading helpers.
+  Kind: enhancement.
+  Source: DOOM_Ants feedback 2026-11-28.
+  Lanes: mcp-review-verbs.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
