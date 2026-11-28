@@ -625,3 +625,60 @@ TEST(RoadmapBackfill, Ants5405RenamedPassIsDatedFromItsRename) {
         << QJsonDocument(resp).toJson().toStdString();
     EXPECT_EQ(resp.value(QStringLiteral("shipped_undated_count")).toInt(), 0);
 }
+
+// ANTS-6640 — the walk reads the archive directory's ARCHIVE files only. A
+// README beside them can quote a bullet in a code fence, and the -U0 diff
+// shows no fence, so that example would date the item it names. The archive
+// beside it is the control: its bullet still dates its item.
+TEST(RoadmapBackfill, Ants6640ArchiveDirectoryWalksArchiveNamesOnly) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = -1;
+    const QString root = seedRepo(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    {   // An archive section, so the walk covers docs/roadmap/, and an item
+        // no revision of ROADMAP.md shows, for the archive to date.
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        ASSERT_TRUE(store != nullptr);
+        QString err;
+        const auto sid = store->addSection(projectId, QStringLiteral("0-5-old"),
+                                           QStringLiteral("Old"), 2, 1000,
+                                           std::nullopt, &err);
+        ASSERT_TRUE(sid.has_value()) << err.toStdString();
+        ASSERT_TRUE(store->setSectionSource(*sid, QStringLiteral("docs/roadmap/0.5.md"), &err))
+            << err.toStdString();
+        RoadmapStore::ItemWrite w;
+        w.projectId = projectId;
+        w.id        = QStringLiteral("DEMO-0098");
+        w.status    = QStringLiteral("planned");
+        w.headline  = QStringLiteral("Archived.");
+        w.kind      = QStringLiteral("fix");
+        w.source    = QStringLiteral("seed");
+        w.layman    = QStringLiteral("A thing.");
+        w.sectionId = *sid;
+        w.position  = 0;
+        ASSERT_TRUE(store->putItem(w, &err)) << err.toStdString();
+    }
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/docs/roadmap/0.5.md"),
+                          QByteArray("# Archive\n\n## Old\n\n")
+                              + bullet("\xF0\x9F\x93\x8B", "DEMO-0098", "Archived.")));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/docs/roadmap/README.md"),
+                          QByteArray("# About these files\n\n```\n")
+                              + bullet("\xF0\x9F\x93\x8B", "DEMO-0099", "Never in git.")
+                              + "```\n"));
+    ASSERT_TRUE(git(root, {QStringLiteral("add"), QStringLiteral("docs")}));
+    ASSERT_TRUE(git(root, {QStringLiteral("commit"), QStringLiteral("-q"),
+                           QStringLiteral("-m"), QStringLiteral("archive")},
+                    QStringLiteral("2026-03-01T10:00:00 +0000")));
+
+    ASSERT_VERB_OK(runBackfill(root));
+    EXPECT_EQ(datesOf(projectId, QStringLiteral("DEMO-0098")).created.toStdString(),
+              std::string("2026-03-01"))
+        << "the archive file itself was not walked";
+    const Dates quoted = datesOf(projectId, QStringLiteral("DEMO-0099"));
+    ASSERT_TRUE(quoted.found);
+    EXPECT_TRUE(quoted.createdNull)
+        << "dated from a README's fenced example: " << quoted.created.toStdString();
+}

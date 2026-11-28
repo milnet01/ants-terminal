@@ -9,6 +9,7 @@
 #include "remotecontrol_internal.h"
 #include "projectsettings.h"   // ANTS-3771
 #include "gitwrap.h"
+#include "roadmapmigrate.h"   // kUnversionedArchive
 #include "roadmapparse.h"
 #include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
@@ -76,9 +77,13 @@ bool rlLooksLikeBulletLine(QStringView s) {
 }
 
 // The pathspecs the walk runs over: the live roadmap plus every archive the
-// store's sections name, plus each archive's DIRECTORY. The directory is what
-// covers a file that existed historically and no longer does — a rotation
-// renaming `docs/roadmap/0.4.md`, say — which a list of today's files cannot.
+// store's sections name, plus the archive names in each archive's DIRECTORY.
+// The directory is what covers a file that existed historically and no longer
+// does — a rotation renaming `docs/roadmap/0.4.md`, say — which a list of
+// today's files cannot. ANTS-6640 — archive names only, never the whole
+// directory: the -U0 diff carries no fence context, so another file's example
+// bullet would date an item. The globs are roadmap-format.md § 3.9's names as
+// near as a glob gets (parseArchiveName() holds the exact rule).
 QStringList rlRoadmapPathspecs(RoadmapStore &store, qint64 projectId,
                                const QString &root, const QString &roadmapPath) {
     QSet<QString> specs;
@@ -96,7 +101,12 @@ QStringList rlRoadmapPathspecs(RoadmapStore &store, qint64 projectId,
             if (!r.sourcePath || r.sourcePath->isEmpty()) continue;   // the live roadmap
             specs.insert(*r.sourcePath);
             const int slash = r.sourcePath->lastIndexOf(QLatin1Char('/'));
-            if (slash > 0) specs.insert(r.sourcePath->left(slash));
+            if (slash <= 0) continue;
+            const QString dir = QStringLiteral(":(glob)") + r.sourcePath->left(slash);
+            specs.insert(dir + QStringLiteral("/[0-9]*.[0-9]*.md"));   // 0.6.md
+            specs.insert(dir + QStringLiteral("/P[0-9]*.md"));         // P07.5.md
+            specs.insert(dir + QLatin1Char('/')
+                         + QLatin1String(RoadmapMigrate::kUnversionedArchive));
         }
     }
     QStringList out(specs.cbegin(), specs.cend());

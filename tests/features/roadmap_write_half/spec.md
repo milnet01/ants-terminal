@@ -360,6 +360,7 @@ or one that runs with arguments the preview never saw.
 | Case | Asserts |
 |---|---|
 | `Ants5371EmptyStoreProjectTakesABatch` | A migrated project whose roadmap has a section and no bullets takes an `append_batch`; the new item is stored `planned`. |
+| `Ants6640EmptyStoreProjectTakesACreateSection` | The same project takes a `create_section`, and the rendered file carries the new heading. |
 
 **Would break this:** running the file path's zero-bullet format gate when the store serves the project.
 

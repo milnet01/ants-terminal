@@ -268,6 +268,8 @@ TEST(McpRoadmapLogCreateSection, SuccessEnvelopeShape) {
     RemoteControl rc(nullptr);
     const QJsonObject out = rc.cmdRoadmapLogCreateSectionForTest(baseReq(dir.path())).object();
     ASSERT_TRUE(out["ok"].toBool());
+    // ANTS-6640 — the real write names its op, as the preview and store reply do.
+    EXPECT_EQ(out["op"].toString(), QStringLiteral("create_section"));
     EXPECT_EQ(out["file"].toString(), QStringLiteral("ROADMAP.md"));
     EXPECT_TRUE(out.contains("slug"));
     EXPECT_TRUE(out.contains("line"));

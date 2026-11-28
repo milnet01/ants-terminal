@@ -61,7 +61,7 @@ so it lives only here (no `docs/specs/ANTS-1691.md`).
   comparison (`QCollator` numeric mode): `9` sorts before `78`.
 - **INV-11** atomic write — source-grep: handler's only write path is
   `rlAtomicWrite`, a `QSaveFile` … `.commit()`.
-- **INV-12** success envelope — `{ok:true, file:"ROADMAP.md", section,
+- **INV-12** success envelope — `{ok:true, op:"bundle_row", file:"ROADMAP.md", section,
   row_index (1-based among data rows), columns, created_table,
   bytes_written>0}`.
 - **INV-13** (ANTS-3432) schema wiring — source-grep
@@ -103,6 +103,11 @@ so it lives only here (no `docs/specs/ANTS-1691.md`).
   reader checking whether bundle_row supported the flag found a doc
   implying nothing did except append. The description now **enumerates**
   every op, so the next one added is either listed or visibly absent.
+
+- **INV-15** (ANTS-6640) sorted insert on a row with no trailing `|` — the
+  sort reads the row's last cell. Inserting `c` on the last column of a
+  table holding `b` and `d`, written without outer trailing pipes, lands at
+  `row_index:2`.
 
 ## Method
 

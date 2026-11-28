@@ -363,17 +363,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
         env[QStringLiteral("strip_skipped_ids")] = stripIds;
         if (stripSkippedIds.size() > kStripSkipCap)
             env[QStringLiteral("strip_skipped_truncated")] = true;
-        if (!dryRun)
-            rlAttachHistoryNote(env, store, hist);
     }
     if (clearPlaceholder) {
         env[QStringLiteral("placeholder_sources_cleared")] = int(clearPlan.size());
         env[QStringLiteral("placeholder_lines_removed")]   = placeholderLines;
         // Uncapped: the population is bounded by one backfill.
         env[QStringLiteral("placeholder_cleared_ids")] = QJsonArray::fromStringList(clearedIds);
-        if (!dryRun && !stripRuns)
-            rlAttachHistoryNote(env, store, hist);
     }
+    // ANTS-6640 — on every real run: the column repairs record history too.
+    if (!dryRun)
+        rlAttachHistoryNote(env, store, hist);
     if (dryRun) env[QStringLiteral("dry_run")] = true;
     // The ids the guard refused, capped. The COUNT is the whole answer and is
     // never capped; the list is a sample to start from, and a truncated one that

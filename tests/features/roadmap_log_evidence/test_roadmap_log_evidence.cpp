@@ -273,6 +273,41 @@ TEST(roadmap_log_evidence, Inv8ProseWithCommasIsReported) {
         << QJsonDocument(out).toJson().toStdString();
 }
 
+// INV-10 (ANTS-6640) — on the file write, append_batch's advisory reads only
+// the bullets it filed. A skipped bullet's prose evidence was never written,
+// so warning about it sends the caller to fix an item that does not exist.
+TEST(roadmap_log_evidence, Inv10BatchSkippedBulletRaisesNoAdvisory) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeRoadmap(tmp.path(), freshRoadmap()));
+    ASSERT_TRUE(writeCounter(tmp.path(), 9001));
+
+    QJsonObject filed;
+    filed["headline"] = QStringLiteral("Crash on open.");
+    filed["evidence"] = QJsonArray{QStringLiteral("shot.png")};
+    QJsonObject skippedBullet;   // no headline: skipped as headline_empty
+    skippedBullet["evidence"] = QJsonArray{QStringLiteral("user screenshot")};
+    QJsonObject req;
+    req["caller_cwd"] = tmp.path();
+    req["op"]         = QStringLiteral("append_batch");
+    req["section"]    = QStringLiteral("backlog");
+    req["status"]     = QStringLiteral("planned");
+    req["kind"]       = QStringLiteral("fix");
+    req["source"]     = QStringLiteral("test");
+    req["bullets"]    = QJsonArray{filed, skippedBullet};
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    ASSERT_EQ(out.value(QStringLiteral("applied_count")).toInt(), 1)
+        << QJsonDocument(out).toJson().toStdString();
+    ASSERT_EQ(out.value(QStringLiteral("skipped_count")).toInt(), 1);
+    EXPECT_TRUE(evidenceWarning(out).isEmpty())
+        << "the advisory named a bullet that was skipped: "
+        << QJsonDocument(out).toJson().toStdString();
+}
+
 // INV-9 (ANTS-6129) — roadmap_query echoes `evidence` on a section= row as it
 // does on a list row. Section mode once built its rows from a hand copy of the
 // list builder, and the copy left the field out.

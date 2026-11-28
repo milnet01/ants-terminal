@@ -76,6 +76,9 @@ are invisible to this pass and are not counted as repaired.
 - **INV-7** — the pass is idempotent: a second run over a repaired
   store reports zero repairs.
 - **INV-8** — an item whose prose carries no trailer run is untouched.
+- **INV-20** (ANTS-6640) — a real run, with or without `strip_runs` and
+  `clear_placeholder_source`, whose history rows the cap drops carries
+  `history_note`.
 
 ## Stripping redundant trailing runs — ANTS-4507
 

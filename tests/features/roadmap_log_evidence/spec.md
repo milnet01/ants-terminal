@@ -46,6 +46,8 @@ rendered as an `Evidence: path1, path2` body line and echoed by
 
 - **INV-9** (ANTS-6129) — `roadmap_query` with `section=` echoes the
   `evidence` array on each row, exactly as the list path does.
+- **INV-10** (ANTS-6640) — `append_batch`'s file write reports only the
+  bullets it filed: a skipped bullet's prose evidence raises no advisory.
 
 It is an ADVISORY on a successful write, never a refusal. `roadmap_log` is
 called by sessions across every project on this machine; a new refusal on

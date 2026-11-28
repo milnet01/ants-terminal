@@ -3659,6 +3659,31 @@ TEST(RoadmapWriteHalf, Ants5371EmptyStoreProjectTakesABatch) {
     EXPECT_EQ(statusOf(ids.at(0).toString(), projectId), QStringLiteral("planned"));
 }
 
+// ANTS-6640 — create_section's gate is file-only too: the same empty project
+// takes a new section instead of refusing unrecognised_format.
+TEST(RoadmapWriteHalf, Ants6640EmptyStoreProjectTakesACreateSection) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, emptyFixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]    = root;
+    req[QStringLiteral("op")]            = QStringLiteral("create_section");
+    req[QStringLiteral("after_section")] = QStringLiteral("work");
+    req[QStringLiteral("level")]         = 2;
+    req[QStringLiteral("title")]         = QStringLiteral("Later");
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        resp = rc.cmdRoadmapLogCreateSectionForTest(req).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(readAll(root + QStringLiteral("/ROADMAP.md")).contains("## Later"));
+}
+
 // ------------------------------------------------------------- ANTS-5283 -----
 
 // A dry run says whether the render would change any bytes: true before the

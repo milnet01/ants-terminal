@@ -219,6 +219,7 @@ heading spliced into it.
 ```jsonc
 {
   "ok": true,
+  "op": "create_section",
   "slug": "phase-10-6-multi-threading-concurrency",
   "file": "ROADMAP.md",
   "line": 4321,           // 1-based line number of the heading

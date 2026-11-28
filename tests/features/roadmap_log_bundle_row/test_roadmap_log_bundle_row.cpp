@@ -295,6 +295,8 @@ TEST(RoadmapLogBundleRow, Inv12EnvelopeShape) {
     const auto out = rc.cmdRoadmapLogBundleRowForTest(
         baseReq(dir.path(), {"79", "ccc333", "new", "d"})).object();
     ASSERT_TRUE(out["ok"].toBool());
+    // ANTS-6640 — the real write names its op, as the preview and store reply do.
+    EXPECT_EQ(out["op"].toString(), QStringLiteral("bundle_row"));
     EXPECT_EQ(out["file"].toString(), QStringLiteral("ROADMAP.md"));
     EXPECT_EQ(out["section"].toString(), QStringLiteral("bundle-progress"));
     EXPECT_EQ(out["columns"].toInt(), 4);
@@ -411,4 +413,36 @@ TEST(RoadmapLogBundleRow, Inv14DryRunResolvesSortedPlacement) {
         }
     }
     EXPECT_EQ(dataRow, 3);
+}
+
+// INV-15 (ANTS-6640) — a sorted insert reads the LAST cell of a row written
+// without a trailing `|`. GFM lets the outer pipes be left off, and the
+// splitter used to drop the cell after the last pipe, so a sort on the last
+// column compared against empty strings and every new row landed at the end.
+TEST(RoadmapLogBundleRow, Inv15SortedInsertReadsLastCellWithoutTrailingPipe) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), QStringLiteral(
+        "# Test Roadmap\n"
+        "\n"
+        "## 📊 Bundle progress\n"
+        "\n"
+        "| Bundle | Theme\n"
+        "| --- | ---\n"
+        "| 1 | b\n"
+        "| 2 | d\n"
+        "\n"
+        "## Trailing Section\n"
+        "\n"));
+    RemoteControl rc(nullptr);
+    auto req = baseReq(dir.path(), {"3", "c"});
+    req["position"] = QStringLiteral("sorted");
+    req["sort_col"] = 1;
+    const auto out = rc.cmdRoadmapLogBundleRowForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool()) << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out["row_index"].toInt(), 2)
+        << "\"c\" sorts between \"b\" and \"d\" on the last column";
+    const QString md = readRoadmap(dir.path());
+    const qsizetype added = md.indexOf(QStringLiteral("| 3 | c |"));
+    ASSERT_NE(added, -1) << md.toStdString();
+    EXPECT_LT(added, md.indexOf(QStringLiteral("| 2 | d"))) << md.toStdString();
 }

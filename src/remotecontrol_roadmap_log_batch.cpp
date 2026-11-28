@@ -756,14 +756,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         // ships counts as shipped, so the check runs over the statuses the
         // batch would leave; a parent refused here keeps its status, which can
         // leave a grandparent with an open part, so it repeats until stable.
+        // ANTS-6640 — each pass drops every parent it refuses, then repeats.
         if (!annotateMode) {
             for (bool changed = true; changed;) {
                 changed = false;
                 QHash<qint64, QString> pending;
                 for (const StoreTarget &st : std::as_const(resolved))
                     pending.insert(st.itemPk, st.t->toWord);
-                for (qsizetype k = 0; k < resolved.size(); ++k) {
-                    StoreTarget &st = resolved[k];
+                QVector<StoreTarget> kept;
+                kept.reserve(resolved.size());
+                for (StoreTarget &st : resolved) {
                     QString linkErr;
                     const auto linkCheck =
                         rlFlipLinks(store, st.itemPk, st.t->toWord, pending, &linkErr);
@@ -777,12 +779,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                              QStringLiteral("roadmap_log: %1 cannot ship while a part "
                                             "split from it is still open: %2")
                                  .arg(st.t->id, open.join(QStringLiteral(", "))));
-                        resolved.removeAt(k);
                         changed = true;
-                        break;
+                        continue;
                     }
                     st.blockedByOpen = linkCheck->openBlockers;
+                    kept.append(st);
                 }
+                resolved = std::move(kept);
             }
         }
 
@@ -795,9 +798,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                                      QStringLiteral(" in the store"));
         }
 
-        // `flipped` is returned in firstLine-ascending order on the markdown
-        // path; sorting here rather than at the envelope keeps the write order
-        // deterministic too.
+        // Sorted here rather than at the envelope so the write order is
+        // deterministic too. Not file order, as the markdown path's is: a
+        // target found in the store carries its negated pk as firstLine
+        // (ANTS-4485), so those sort by descending pk, ahead of any file line.
         std::sort(resolved.begin(), resolved.end(),
             [](const StoreTarget &a, const StoreTarget &b) {
                 return a.t->firstLine < b.t->firstLine;
@@ -1255,10 +1259,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     const QString &roadmapPath = located.roadmapPath;
     const QString &markdown = located.markdown;
 
-    // INV-9 — unrecognised_format gate.
+    // The store write target, resolved before the gate below needs it.
+    std::optional<RoadmapWriteTarget> target;
+    {
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        // ANTS-3863 — fromMemory: `markdown` is already read and spliced below.
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
+        target = roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+    }
+
+    // INV-9 — unrecognised_format gate. ANTS-6640 — file-only, as append_batch's
+    // is (ANTS-5371): a store project with no items yet renders no bullets.
     const auto preflightBullets = rlParse(markdown, callerCanonical);
     if (auto refusal = rlUnrecognisedFormat(roadmapPath, markdown,
-                                            preflightBullets.isEmpty()))
+                                            !target && preflightBullets.isEmpty()))
         return *refusal;
     // ANTS-2031 — heading-format roadmaps have no create_section writer.
     if (rcBulletsArePassHeadings(preflightBullets)) {
@@ -1443,15 +1461,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     // and the collision check resolve against the same text either way. Only
     // the mutation and the write differ, which is what INV-2 is about.
     {
-        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
-        QString seamErr;
-        // ANTS-3863 — fromMemory: `markdown` is already read and spliced below.
-        auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
-        const auto target =
-            roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
-        QJsonObject refusal;
-        if (rcRoadmapSourceRefused(refusal, why, seamErr))
-            return QJsonDocument(refusal);
         if (target) {
             RoadmapStore &store = *target->store;
             const qint64 projectId = target->projectId;
@@ -1611,6 +1620,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
         bytesInserted += ln.toUtf8().size() + 1;   // + '\n'
     QJsonObject out;
     out["ok"]   = true;
+    out["op"]   = QStringLiteral("create_section");   // ANTS-6640 — as the store reply
     out["slug"] = newSlug;
     out["file"] = QStringLiteral("ROADMAP.md");
     out["line"] = insertAt + 1;                   // 1-based heading line
@@ -1623,9 +1633,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     // ANTS-2136 — dry_run preview: the heading + intro block are rendered
     // and the insertion point resolved; return the would-be slug, 1-based
     // heading line and inserted-byte count WITHOUT writing ROADMAP.md.
-    // Only the preview carries `op`.
     if (req.value(QStringLiteral("dry_run")).toBool()) {
-        out["op"]      = QStringLiteral("create_section");
         out["dry_run"] = true;
         out["bytes"]   = bytesInserted;
         return QJsonDocument(out);
@@ -2028,6 +2036,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
                     else cur += t[j];
                     ++j;
                 }
+                // ANTS-6640 — the last cell of a row with no trailing `|`.
+                parts << cur.trimmed();
                 const QString existing =
                     parts.value(sortCol).trimmed();
                 if (coll.compare(key, existing) < 0) {
@@ -2063,9 +2073,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     // while a wrongly-sorted or wrongly-escaped cell is not — a mangled table
     // is exactly the outcome you would want to see before it lands.
     //
-    // The envelope is built once for both; only the preview carries `op`.
+    // The envelope is built once for both.
     QJsonObject out;
     out["ok"]            = true;
+    out["op"]            = QStringLiteral("bundle_row");   // ANTS-6640
     out["file"]          = QStringLiteral("ROADMAP.md");
     out["section"]       = section;
     out["row_index"]     = rowIndex;
@@ -2073,7 +2084,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     out["created_table"] = createdTable;
     const int rowBytes   = static_cast<int>(rowText.toUtf8().size() + 1);
     if (req.value(QStringLiteral("dry_run")).toBool()) {
-        out["op"]      = QStringLiteral("bundle_row");
         out["dry_run"] = true;
         out["row"]     = rowText;
         out["bytes"]   = rowBytes;
@@ -3243,9 +3253,10 @@ QJsonDocument RemoteControl::appendBatchToFile(AppendBatchPlan &p) {
         rlExplainCounterFloor(out, p.counter, p.maxFileId);
     }
     // ANTS-4527 — this path never ran rlFillItemBody, which collects the
-    // store path's list, so it is read from the request here.
-    for (const auto &bv : p.req.value(QStringLiteral("bullets")).toArray()) {
-        const QJsonObject ev = rlEvidenceAdvisoryForReq(bv.toObject());
+    // store path's list, so it is read from the request here. ANTS-6640 — from
+    // the accepted bullets only: a skipped one was never filed.
+    for (const Accepted &a : p.accepted) {
+        const QJsonObject ev = rlEvidenceAdvisoryForReq(a.bulletReq);
         for (const auto &e : ev.value(QStringLiteral("elements")).toArray())
             p.evNotPathRollup << e.toString();
     }

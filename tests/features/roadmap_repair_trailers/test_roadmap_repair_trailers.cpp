@@ -269,6 +269,31 @@ TEST(RoadmapRepairTrailers, RepairedColumnIsRecordedInHistory) {
     EXPECT_FALSE(q.next()) << "one repair, one history row";
 }
 
+// ANTS-6640 — a plain repair (no strip_runs, no clear_placeholder_source)
+// whose history rows the cap drops says so in `history_note`, as the stripping
+// passes already did. Silent, the dropped rows read as rows that were written.
+TEST(RoadmapRepairTrailers, PlainRepairAtTheHistoryCapSaysSo) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(damage(projectId, QStringLiteral("DEMO-0001"),
+                       QStringLiteral("layman"), QStringLiteral("A plain config")));
+
+    RemoteControl rc(nullptr);
+    rc.setRoadmapHistoryCapForTest(1);   // every history row is over the cap
+    const QJsonObject resp = repair(rc, root, /*dryRun=*/false);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    ASSERT_GE(resp.value(QStringLiteral("repaired")).toInt(), 1)
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("history_note")).toString()
+                    .contains(QStringLiteral("not recorded")))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
 TEST(RoadmapRepairTrailers, Inv2HardWrapIsRepaired) {
     ants_test::XdgGuard guard;
     QTemporaryDir tmp;
