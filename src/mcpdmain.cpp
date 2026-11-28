@@ -45,6 +45,7 @@
 #include <algorithm>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <fcntl.h>
@@ -152,6 +153,18 @@ private:
     QByteArray m_discardTail;       // its last bytes, where a trailing id sits
 };
 
+// ANTS-6643 — a verb still running would hold ~ClaudeIntegration's worker join
+// for ever, so a timed-out `--call` exits without unwinding.
+int runCallOrExit(const mcpd::CallRequest &request, ClaudeIntegration &pipeline) {
+    bool timedOut = false;
+    const int code = mcpd::runCall(request, pipeline, mcpd::kCallReplyTimeoutMs, &timedOut);
+    if (timedOut) {
+        std::fflush(nullptr);
+        std::_Exit(code);
+    }
+    return code;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -238,7 +251,7 @@ int main(int argc, char **argv) {
 
     // ANTS-5506 — everything above is shared with stdio mode. `--call` builds
     // no forwarder and no usage snapshot, which is why it returns here.
-    if (callRequest.isCall) return mcpd::runCall(callRequest, pipeline);
+    if (callRequest.isCall) return runCallOrExit(callRequest, pipeline);
 
     // ANTS-4659 — the undeclared-argument survey. Set after the `--call`
     // return, so tests that run `--call` never write the user's file.

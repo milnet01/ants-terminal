@@ -3,8 +3,9 @@
 //
 // The picker takes $ANTS_MCP_SOCKET when set, else the newest mcp-* socket in
 // ConfigPaths::antsRuntimeDir() (ANTS-5236), preferring one whose pid is
-// alive (ANTS-1322). Every candidate must be a socket owned by the expected
-// uid; a foreign-owned one is skipped.
+// alive (ANTS-1322) and, among several, one a listener answers (ANTS-6643).
+// Every candidate must be a socket owned by the expected uid; a foreign-owned
+// one is skipped.
 
 #pragma once
 

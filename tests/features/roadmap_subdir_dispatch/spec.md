@@ -59,3 +59,9 @@ by the same line.
   directory with no roadmap at or above it resolves to itself and the read
   reports `no_roadmap` as before. *Breaks when:* the resolution walks
   somewhere and reports another project's answer.
+- **ANTS-6643** — A `.git` file makes a folder a worktree of another project
+  only when that worktree dir's `gitdir` file names the same `.git` back, as
+  git writes it. *Test:* `Ants6643ForeignGitFileIsNotAWorktree` points a
+  `.git` file at a real worktree dir of a migrated project; `roadmap_query`
+  from it reports `markdown`. *Breaks when:* the `gitdir:` line alone is
+  trusted — the folder reads, and writes, as that project.

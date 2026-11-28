@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QTimer>
 
 #include <cstdio>
 
@@ -51,9 +52,10 @@ int usage(const QString &message) {
 }
 
 // One JSON-RPC request through the pipeline; its reply line, or empty when the
-// request ended with no reply.
+// request ended with no reply. `*timedOut` is set when none came within
+// `timeoutMs`.
 QByteArray dispatch(ClaudeIntegration &pipeline, int id, const QString &method,
-                    const QJsonObject &params) {
+                    const QJsonObject &params, int timeoutMs, bool *timedOut) {
     QJsonObject rpc{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
                     {QStringLiteral("id"), id},
                     {QStringLiteral("method"), method}};
@@ -65,7 +67,10 @@ QByteArray dispatch(ClaudeIntegration &pipeline, int id, const QString &method,
         [&](const QByteArray &line) { replyLine = line; done = true; loop.quit(); },
         [&] { done = true; loop.quit(); }, [] { return true; });
     pipeline.handleMcpLine(QJsonDocument(rpc).toJson(QJsonDocument::Compact), &channel);
-    if (!done) loop.exec();
+    if (!done) {
+        QTimer::singleShot(timeoutMs, &loop, [&] { *timedOut = true; loop.quit(); });
+        loop.exec();
+    }
     return replyLine;
 }
 
@@ -135,7 +140,8 @@ CallExit exitCodeFor(const QJsonObject &envelope, bool envelopeParsed,
     return CallClean;
 }
 
-int runCall(const CallRequest &request, ClaudeIntegration &pipeline) {
+int runCall(const CallRequest &request, ClaudeIntegration &pipeline,
+            int replyTimeoutMs, bool *timedOutOut) {
     if (!request.usageError.isEmpty()) return usage(request.usageError);
     if (mcp::terminalScopedVerbNames().contains(request.verb))
         return usage(QStringLiteral("%1 needs a running terminal").arg(request.verb));
@@ -152,11 +158,17 @@ int runCall(const CallRequest &request, ClaudeIntegration &pipeline) {
 
     // A client asks for tools/list before calling; tool_info refuses
     // `tools_not_ready` until something has.
-    dispatch(pipeline, 1, QStringLiteral("tools/list"), {});
-    const QByteArray replyLine = dispatch(
+    bool timedOut = false;
+    dispatch(pipeline, 1, QStringLiteral("tools/list"), {}, replyTimeoutMs, &timedOut);
+    const QByteArray replyLine = timedOut ? QByteArray() : dispatch(
         pipeline, 2, QStringLiteral("tools/call"),
         QJsonObject{{QStringLiteral("name"), request.verb},
-                    {QStringLiteral("arguments"), args}});
+                    {QStringLiteral("arguments"), args}}, replyTimeoutMs, &timedOut);
+    if (timedOutOut) *timedOutOut = timedOut;
+    if (timedOut) {
+        std::fprintf(stderr, "ants-mcpd --call: no reply within %d ms\n", replyTimeoutMs);
+        return CallFailed;
+    }
 
     const QJsonObject reply = QJsonDocument::fromJson(replyLine).object();
     const QString text = reply.value(QStringLiteral("result")).toObject()

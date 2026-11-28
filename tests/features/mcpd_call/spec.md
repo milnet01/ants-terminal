@@ -43,6 +43,12 @@ case that needs a *particular* `claude.mcp_*` key, or needs to inspect
 dotted strings `Config`'s accessors read, e.g. `"claude.mcp_enabled"`, not a
 nested object).
 
+## Regressions
+
+| Case | What |
+|---|---|
+| `Ants6643CallEndsWhenTheVerbNeverReplies` | ANTS-6643 — `mcpd::runCall` with a short reply deadline, in process, against a deferred verb that never replies: it returns `CallFailed` and reports the time-out instead of waiting for ever. |
+
 ## Cold-eyes loop log
 
 Reviewed alongside `docs/specs/ANTS-5506-mcpd-call.md`; see

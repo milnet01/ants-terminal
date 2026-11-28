@@ -64,7 +64,8 @@ carry one name.
   as `id_origin = 'parsed'`, not `'quarantined'`, and still accepts every token
   the universal grammar accepts.
 - **INV-13** — every path that parses a project's roadmap resolves the same id
-  for the same bullet.
+  for the same bullet. That includes the counter-prefix sniff behind
+  `op:append` (ANTS-6643, `Ants6643CounterPrefixSniffUsesTheDeclaration`).
 - **INV-14** — a declared `pattern` runs under a PCRE match limit at every
   site that compiles it, so a backtracking pattern cannot stall a parse; a
   match cut short by the limit reads as a non-match (INV-4).

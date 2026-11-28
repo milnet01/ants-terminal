@@ -13,11 +13,13 @@
 
 #include "../standalone_mcp_server/mcpd_session.h"
 
+#include "claudeintegration.h"
 #include "mcpdcall.h"
 
 #include <gtest/gtest.h>
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -29,6 +31,8 @@
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
+
+#include <functional>
 
 #ifndef ANTS_SOURCE_DIR
 #error "ANTS_SOURCE_DIR compile definition required"
@@ -707,4 +711,33 @@ TEST(McpdCall, Ants6829ToolInfoServesOneOp) {
     EXPECT_FALSE(body.value(QStringLiteral("op_detail")).toString().isEmpty());
     EXPECT_LT(slice.size() * 2, whole.size())
         << "the slice is not much smaller than the whole descriptor";
+}
+
+// ANTS-6643 — a verb that never replies ends `--call` as CallFailed once the
+// reply deadline passes, instead of waiting for ever. In process, with a short
+// deadline; the handler keeps its reply and never calls it.
+TEST(McpdCall, Ants6643CallEndsWhenTheVerbNeverReplies) {
+    ClaudeIntegration pipeline;
+    const QString verb = QStringLiteral("zz_test_never_reply");
+    std::function<void(QString)> heldReply;
+    pipeline.registerToolProvider(verb, ClaudeIntegration::callerCwdContractFor(verb),
+        ClaudeIntegration::DeferredToolHandler(
+            [&heldReply](const QJsonObject &, const std::function<void(QString)> &reply) {
+                heldReply = reply;
+            }));
+    const QJsonObject args{{QStringLiteral("caller_cwd"), QStringLiteral(ANTS_SOURCE_DIR)}};
+    const mcpd::CallRequest req = mcpd::parseCallRequest(
+        {QStringLiteral("--call"), verb,
+         QString::fromUtf8(QJsonDocument(args).toJson(QJsonDocument::Compact))});
+    ASSERT_TRUE(req.usageError.isEmpty()) << req.usageError.toStdString();
+
+    bool timedOut = false;
+    QElapsedTimer clock;
+    clock.start();
+    const int code = mcpd::runCall(req, pipeline, 200, &timedOut);
+    EXPECT_TRUE(static_cast<bool>(heldReply)) << "the verb never ran";
+    EXPECT_TRUE(timedOut);
+    EXPECT_EQ(code, mcpd::CallFailed);
+    EXPECT_LT(clock.elapsed(), 10000) << "the deadline did not end the wait";
+    heldReply = nullptr;
 }

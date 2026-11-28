@@ -543,3 +543,18 @@ TEST(AdapterWriteFlip, Ants6233BulletFieldDropsC1Controls) {
     EXPECT_EQ(rcdetail::rcSanitizeBulletField(in, 0),
               QStringLiteral("abc") + QChar(0x00E9));
 }
+
+// ANTS-6643 — the length cap counts UTF-16 units. A cut never leaves half of
+// a surrogate pair, and the result with its `…` is at most `maxLen` long.
+TEST(AdapterWriteFlip, Ants6643BulletFieldCapKeepsSurrogatePairsWhole) {
+    const QString grin = QString(QChar(0xD83D)) + QChar(0xDE00);   // U+1F600
+    const QString in = grin.repeated(10);                           // 20 units
+    for (int maxLen : {4, 5, 6, 7}) {
+        const QString out = rcdetail::rcSanitizeBulletField(in, maxLen);
+        EXPECT_LE(out.size(), maxLen) << "maxLen " << maxLen;
+        EXPECT_TRUE(out.endsWith(QChar(0x2026))) << "maxLen " << maxLen;
+        const QString kept = out.chopped(1);
+        EXPECT_EQ(kept.size() % 2, 0) << "maxLen " << maxLen << ": half a pair kept";
+        EXPECT_TRUE(in.startsWith(kept)) << "maxLen " << maxLen;
+    }
+}

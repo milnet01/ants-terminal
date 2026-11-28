@@ -32,6 +32,14 @@
 
 #include <memory>
 
+// Declared here, not included: remotecontrol_internal.h stays inside the
+// remotecontrol sources (RcTuSplit INV-5).
+namespace rcdetail {
+QString rlDetectCounterPrefix(const QString &markdown, const RoadmapParse::IdFormat &fmt);
+QString rlResolveCounterPrefix(const QString &idPrefixArg, const QString &markdown,
+                               const QString &callerCanonical, bool *guessed);
+}
+
 namespace {
 
 using RoadmapParse::BulletRecord;
@@ -664,6 +672,31 @@ TEST(roadmap_id_format_declared, Inv13EveryPathResolvesOneId) {
     const auto bs = RoadmapParse::parseBullets(
         QString::fromUtf8(gfmDoc()), ProjectSettings::idFormatFor(root));
     EXPECT_NE(byId(bs, "AX1"), nullptr);
+}
+
+// ANTS-6643 — the counter-prefix sniff behind op:append reads ids under the
+// project's declared pattern too. A project that declares only a pattern, with
+// ids the undeclared reader does not see, was given its folder name instead.
+TEST(roadmap_id_format_declared, Ants6643CounterPrefixSniffUsesTheDeclaration) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(declare(root, QString(), QStringLiteral("^([A-Z]{1,4}-\\d+)(?:\\.|$)")));
+    const QString md = QStringLiteral(
+        "# Roadmap\n\n## Work\n\n"
+        "- [ ] **MC-0042. First item**\n\n"
+        "- [ ] **MC-0043. Second item**\n");
+
+    // Preconditions: only the declared reader sees the ids.
+    ASSERT_TRUE(rcdetail::rlDetectCounterPrefix(md, IdFormat{}).isEmpty());
+    ASSERT_EQ(rcdetail::rlDetectCounterPrefix(md, ProjectSettings::idFormatFor(root)),
+              QStringLiteral("MC"));
+
+    bool guessed = true;
+    EXPECT_EQ(rcdetail::rlResolveCounterPrefix(QString(), md, root, &guessed),
+              QStringLiteral("MC"))
+        << "INV-13: the sniff read the roadmap as undeclared";
+    EXPECT_FALSE(guessed);
 }
 
 // ---------------------------------------------------------------- INV-6 ----

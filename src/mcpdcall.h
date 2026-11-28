@@ -52,9 +52,16 @@ QString unwrapToolText(const QString &text);
 CallExit exitCodeFor(const QJsonObject &envelope, bool envelopeParsed,
                      bool exitCodeFlag);
 
+// ANTS-6643 — how long `--call` waits for each reply before it exits
+// CallFailed, so a verb that never answers cannot hang a push gate.
+inline constexpr int kCallReplyTimeoutMs = 15 * 60 * 1000;
+
 // § 2.1 — runs one parsed request through `pipeline` and prints the unwrapped
 // result to stdout. The caller has already set terse responses and offload off
 // and built no forwarder and no usage snapshot. Returns the process exit code.
-int runCall(const CallRequest &request, ClaudeIntegration &pipeline);
+// `replyTimeoutMs` bounds each reply (tests pass a short one); `*timedOut`
+// (optional) is set when a reply did not come in time.
+int runCall(const CallRequest &request, ClaudeIntegration &pipeline,
+            int replyTimeoutMs = kCallReplyTimeoutMs, bool *timedOut = nullptr);
 
 } // namespace mcpd

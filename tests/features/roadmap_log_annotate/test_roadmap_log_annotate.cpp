@@ -13,6 +13,7 @@
 
 #include <QByteArray>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QIODevice>
 #include <QJsonArray>
@@ -682,4 +683,36 @@ TEST(roadmap_log_annotate, Ants5393ArgumentClosingTagFieldsNamed) {
                            QStringLiteral("locators[0].new_text (</note>)")}))
         << "a tag ending the field is the scrub's; a code span or a non-argument "
            "tag is prose";
+}
+
+// Declared here, not included: remotecontrol_internal.h stays inside the
+// remotecontrol sources (RcTuSplit INV-5).
+namespace rcdetail {
+void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames,
+                          int *unnamedRemovals, QStringList *removedFragments);
+}
+
+// ANTS-6643 — a text full of unclosed `<parameter name=…>` openers scrubs in
+// linear time. Each opener used to scan to the end of the text for a closer
+// that was not there, twice, so the cost grew with the square of the size.
+TEST(roadmap_log_annotate, Ants6643UnclosedOpenersScrubInLinearTime) {
+    QString text;
+    while (text.size() < 512 * 1024)
+        text += QStringLiteral("<parameter name=\"a\">x ");
+    QStringList names;
+    QElapsedTimer clock;
+    clock.start();
+    rcdetail::rcScrubLeakedToolXml(text, names, nullptr, nullptr);
+    EXPECT_LT(clock.elapsed(), 2000) << "the scrub took " << clock.elapsed() << " ms";
+    EXPECT_TRUE(names.isEmpty()) << "no opener has a closer, so no pair was lost";
+    EXPECT_FALSE(text.contains(QStringLiteral("<parameter")))
+        << "the orphan openers must still be stripped";
+
+    // A closed pair is still removed and named, with an unclosed opener after it.
+    QString mixed = QStringLiteral("keep <parameter name=\"items\">[1]</parameter> "
+                                   "and <parameter name=\"b\">tail");
+    QStringList mixedNames;
+    rcdetail::rcScrubLeakedToolXml(mixed, mixedNames, nullptr, nullptr);
+    EXPECT_EQ(mixedNames, QStringList{QStringLiteral("items")});
+    EXPECT_EQ(mixed, QStringLiteral("keep  and tail"));
 }

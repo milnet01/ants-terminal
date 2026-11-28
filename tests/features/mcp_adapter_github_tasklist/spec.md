@@ -67,6 +67,13 @@ for ANTS-1428. See `docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md` for t
   On `op:"flip"` and `op:"flip_batch"`, a failed counter write refuses
   `counter_write_failed` with the roadmap file and the counter unchanged.
 
+### Bullet-field sanitiser
+
+- **ANTS-6643 / The length cap keeps surrogate pairs whole.**
+  `rcSanitizeBulletField` never cuts half of a pair, and its result,
+  `…` included, is at most `maxLen` UTF-16 units. Case
+  `Ants6643BulletFieldCapKeepsSurrogatePairsWhole`.
+
 ## Bundle
 
 `test_claude` — joins the sibling `parseBullets` tests

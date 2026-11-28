@@ -99,6 +99,16 @@ QString seedProject(ants_test::XdgGuard &guard, const QTemporaryDir &tmp) {
     return QFileInfo(raw).canonicalFilePath();
 }
 
+// A linked worktree at `wtRaw` as git writes one: its `.git` file names the
+// administrative dir, and that dir's `gitdir` file names the `.git` back.
+bool linkWorktree(const QString &wtRaw, const QString &adminDir) {
+    return QDir().mkpath(adminDir)
+        && writeFile(wtRaw + QStringLiteral("/.git"),
+                     (QStringLiteral("gitdir: ") + adminDir + QLatin1Char('\n')).toUtf8())
+        && writeFile(adminDir + QStringLiteral("/gitdir"),
+                     (wtRaw + QStringLiteral("/.git\n")).toUtf8());
+}
+
 QString subOf(const QString &root) {
     return QFileInfo(QDir(root).filePath(QStringLiteral("sub"))).canonicalFilePath();
 }
@@ -241,11 +251,7 @@ TEST(RoadmapSubdirDispatch, Inv4WorktreeResolvesToTheRegisteredMainCheckout) {
     const QString wtRaw = QDir(tmp.path()).filePath(QStringLiteral("proj-wt"));
     ASSERT_TRUE(writeFile(wtRaw + QStringLiteral("/ROADMAP.md"),
                           QByteArray(kRoadmap)));
-    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/.git/worktrees/proj-wt")));
-    ASSERT_TRUE(writeFile(
-        wtRaw + QStringLiteral("/.git"),
-        (QStringLiteral("gitdir: ") + root
-         + QStringLiteral("/.git/worktrees/proj-wt\n")).toUtf8()));
+    ASSERT_TRUE(linkWorktree(wtRaw, root + QStringLiteral("/.git/worktrees/proj-wt")));
     const QString wt = QFileInfo(wtRaw).canonicalFilePath();
     ASSERT_FALSE(wt.isEmpty());
 
@@ -281,11 +287,7 @@ TEST(RoadmapSubdirDispatch, Ants4953WorktreeWriteIsRefusedByName) {
             : QDir(tmp.path()).filePath(QStringLiteral("proj-wt"));
         ASSERT_TRUE(writeFile(wtRaw + QStringLiteral("/ROADMAP.md"),
                               QByteArray(kRoadmap)));
-        ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/.git/worktrees/wt")));
-        ASSERT_TRUE(writeFile(
-            wtRaw + QStringLiteral("/.git"),
-            (QStringLiteral("gitdir: ") + root
-             + QStringLiteral("/.git/worktrees/wt\n")).toUtf8()));
+        ASSERT_TRUE(linkWorktree(wtRaw, root + QStringLiteral("/.git/worktrees/wt")));
         const QString wt = QFileInfo(wtRaw).canonicalFilePath();
         ASSERT_FALSE(wt.isEmpty());
 
@@ -331,15 +333,11 @@ TEST(RoadmapSubdirDispatch, Inv4WorktreeOfAProjectWithNoRoadmapIsUnchanged) {
                  QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
 
     const QString bare = QDir(tmp.path()).filePath(QStringLiteral("bare-main"));
-    ASSERT_TRUE(QDir().mkpath(bare + QStringLiteral("/.git/worktrees/wt")));
 
     const QString wtRaw = QDir(tmp.path()).filePath(QStringLiteral("wt"));
     ASSERT_TRUE(writeFile(wtRaw + QStringLiteral("/ROADMAP.md"),
                           QByteArray(kRoadmap)));
-    ASSERT_TRUE(writeFile(
-        wtRaw + QStringLiteral("/.git"),
-        (QStringLiteral("gitdir: ") + bare
-         + QStringLiteral("/.git/worktrees/wt\n")).toUtf8()));
+    ASSERT_TRUE(linkWorktree(wtRaw, bare + QStringLiteral("/.git/worktrees/wt")));
     const QString wt = QFileInfo(wtRaw).canonicalFilePath();
 
     QJsonObject req;
@@ -353,6 +351,37 @@ TEST(RoadmapSubdirDispatch, Inv4WorktreeOfAProjectWithNoRoadmapIsUnchanged) {
         << QJsonDocument(r).toJson().toStdString();
     EXPECT_EQ(r.value(QStringLiteral("source")).toString(),
               QStringLiteral("markdown"));
+}
+
+// ANTS-6643 — a `.git` file only claims to be a worktree. One unpacked from an
+// archive can name a real project's worktree dir; git's back-reference in
+// that dir names a different `.git`, so the folder answers for itself.
+TEST(RoadmapSubdirDispatch, Ants6643ForeignGitFileIsNotAWorktree) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+    const QString admin = root + QStringLiteral("/.git/worktrees/proj-wt");
+    ASSERT_TRUE(linkWorktree(QDir(tmp.path()).filePath(QStringLiteral("proj-wt")), admin));
+
+    const QString foreignRaw = QDir(tmp.path()).filePath(QStringLiteral("unpacked"));
+    ASSERT_TRUE(writeFile(foreignRaw + QStringLiteral("/ROADMAP.md"), QByteArray(kRoadmap)));
+    ASSERT_TRUE(writeFile(foreignRaw + QStringLiteral("/.git"),
+                          (QStringLiteral("gitdir: ") + admin + QLatin1Char('\n')).toUtf8()));
+    const QString foreign = QFileInfo(foreignRaw).canonicalFilePath();
+    ASSERT_FALSE(foreign.isEmpty());
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = foreign;
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdRoadmapQueryForTest(req).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("source")).toString(), QStringLiteral("markdown"))
+        << "a .git file whose worktree dir names another .git was read as that "
+           "project's worktree, so its writes would key to that project's store";
 }
 
 // --------------------------------------------------------------- ANTS-4885 --

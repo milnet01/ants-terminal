@@ -7,11 +7,15 @@
 #include <QFile>
 #include <QFileInfo>
 
+#include <algorithm>
 #include <cerrno>
 #include <csignal>
 #include <cstring>
+#include <vector>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 namespace mcpd {
 
@@ -35,6 +39,24 @@ long socketPid(const QString &path) {
     bool ok = false;
     const long pid = QFileInfo(path).fileName().section(QLatin1Char('-'), -1).toLong(&ok);
     return ok ? pid : -1;
+}
+
+// ANTS-6643 — whether anything listens at `path`. A reused pid makes a dead
+// terminal's socket look live, so the picker asks the socket itself.
+// Non-blocking: a full backlog (EAGAIN) still means a listener is there. A
+// path that cannot be probed counts as listening, as it did before the probe.
+bool listenerAt(const QString &path) {
+    const QByteArray p = QFile::encodeName(path);
+    sockaddr_un addr{};
+    if (p.size() >= static_cast<qsizetype>(sizeof(addr.sun_path))) return true;
+    const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    if (fd < 0) return true;
+    addr.sun_family = AF_UNIX;
+    std::memcpy(addr.sun_path, p.constData(), static_cast<size_t>(p.size()));
+    const bool up = ::connect(fd, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) == 0
+                    || errno == EAGAIN || errno == EINPROGRESS;
+    ::close(fd);
+    return up;
 }
 
 }  // namespace
@@ -82,9 +104,8 @@ QString pickTerminalSocket(uid_t expectedUid, QString *whyNot) {
         }
         return path;
     }
-    QString best;
-    int bestLive = -1;
-    qint64 bestMtime = 0;
+    struct Candidate { QString path; int live; qint64 mtime; };
+    std::vector<Candidate> ranked;
     int foreign = 0;
     for (const QString &path : terminalSocketCandidates()) {
         struct stat st{};
@@ -93,12 +114,18 @@ QString pickTerminalSocket(uid_t expectedUid, QString *whyNot) {
         if (st.st_uid != expectedUid) { ++foreign; continue; }
         const long pid = socketPid(path);
         const int live = (pid > 0 && ::kill(static_cast<pid_t>(pid), 0) == 0) ? 1 : 0;
-        const qint64 mtime = static_cast<qint64>(st.st_mtime);
-        if (live > bestLive || (live == bestLive && mtime > bestMtime)) {
-            best = path;
-            bestLive = live;
-            bestMtime = mtime;
-        }
+        ranked.push_back({path, live, static_cast<qint64>(st.st_mtime)});
+    }
+    // A live pid first, then the newest. With more than one, the first that a
+    // listener answers wins (ANTS-6643); with none answering, the top one.
+    std::stable_sort(ranked.begin(), ranked.end(), [](const Candidate &x, const Candidate &y) {
+        return x.live != y.live ? x.live > y.live : x.mtime > y.mtime;
+    });
+    QString best = ranked.empty() ? QString() : ranked.front().path;
+    if (ranked.size() > 1) {
+        const auto up = std::find_if(ranked.begin(), ranked.end(),
+                                     [](const Candidate &c) { return listenerAt(c.path); });
+        if (up != ranked.end()) best = up->path;
     }
     if (best.isEmpty() && whyNot) {
         *whyNot = foreign > 0

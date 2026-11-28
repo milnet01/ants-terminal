@@ -29,10 +29,12 @@
 #include <QTemporaryDir>
 
 #include <cstring>
+#include <ctime>
 #include <functional>
 #include <string>
 #include <vector>
 
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -224,6 +226,31 @@ TEST(ClaudeSocketRuntimeDir, Inv3PickerIgnoresLegacyName) {
         EXPECT_NE(got, path) << "(c) a regular file was returned as a socket";
         EXPECT_EQ(got, QString()) << "(c) nothing valid exists, expected empty";
     }
+}
+
+// ANTS-6643 — a leftover socket whose pid now belongs to another live process
+// looks live. Newer than the real terminal's, it was picked, and every
+// forwarded verb answered no_terminal. The picker now skips one nobody answers.
+TEST(ClaudeSocketRuntimeDir, Ants6643PickerSkipsASocketNobodyListensOn) {
+    Sandbox sb;
+    ASSERT_TRUE(sb.ok());
+    sb.makeAntsDir(0700);
+    const QString real  = sb.antsDir() + QStringLiteral("/mcp-") + QString::number(::getpid());
+    const QString stale = sb.antsDir() + QStringLiteral("/mcp-") + QString::number(::getppid());
+    Collector srv;
+    ASSERT_TRUE(srv.listen(real));
+    const std::time_t hourAgo = std::time(nullptr) - 3600;
+    const struct timespec times[2] = {{hourAgo, 0}, {hourAgo, 0}};
+    ASSERT_EQ(::utimensat(AT_FDCWD, QFile::encodeName(real).constData(), times, 0), 0)
+        << "precondition: the real terminal's socket must be the older one";
+    ASSERT_TRUE(makeLeftoverSocket(stale));
+
+    QString why;
+    EXPECT_EQ(mcpd::pickTerminalSocket(::getuid(), &why), real)
+        << "the newer socket nobody listens on was picked; whyNot: " << why.toStdString();
+    srv.close();
+    QFile::remove(real);
+    QFile::remove(stale);
 }
 
 // INV-5

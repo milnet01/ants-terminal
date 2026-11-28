@@ -14,6 +14,7 @@ Contract: [`docs/specs/ANTS-5236-sockets-in-runtime-dir.md`](../../../docs/specs
 - **INV-7** — `reapStaleTerminalSockets` sweeps the runtime directory, keeps live and own sockets, and leaves the legacy `tempPath()` name alone (ANTS-5587), a regular file there included (ANTS-5080). Case `Inv7SweepCoversRuntimeDirOnly`.
 - **INV-8** — checked elsewhere: the existing `McpMasterToggle.INV2_StartupGate` and `McpOrientation_Inv14.MainWindowExportsSocket`, unmodified.
 - **INV-9** — `mainwindow.cpp` exports `ANTS_CLAUDE_HOOK_SOCKET` once, after `startHookServer(`. Case `Inv9HookSocketExported`.
+- **ANTS-6643** — among several candidates, `pickTerminalSocket` skips a socket nobody listens on, even one whose pid is live and whose file is newest. Case `Ants6643PickerSkipsASocketNobodyListensOn`.
 
 ## How it runs
 

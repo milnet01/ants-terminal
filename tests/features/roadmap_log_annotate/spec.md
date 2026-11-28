@@ -155,3 +155,12 @@ merged arguments. The call is refused `bad_args` before anything is written;
 is prose and passes; one that ends the field is stripped by the scrub, as
 before. *Tests:* `Ants5393AnnotateRefusesArgumentClosingTag`,
 `Ants5393ArgumentClosingTagFieldsNamed`.
+
+## ANTS-6643 — unclosed openers scrub in linear time
+
+The leaked-tool-XML scrub (INV-8) looks for `<parameter …>…</parameter>`
+pairs only up to the last closer, so a text full of unclosed openers no
+longer makes each one scan to the end. A closed pair is still removed and
+named, and orphan openers are still stripped. *Test:*
+`Ants6643UnclosedOpenersScrubInLinearTime`, which times the scrub of 512 KiB
+of openers.

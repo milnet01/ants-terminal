@@ -210,9 +210,9 @@ QString rcGitDirOf(const QString &dotGit) { return GitRepo::gitDirOf(dotGit); } 
 // process on a path several read verbs take.
 //
 // Returns `dir` unchanged unless every step holds: a `.git` FILE, a parsable
-// gitdir, a `/worktrees/<name>` tail, and a main checkout that actually holds a
-// roadmap. So a non-worktree, and a worktree whose main checkout is gone,
-// behave exactly as before.
+// gitdir, a `/worktrees/<name>` tail whose `gitdir` file names this `.git`
+// back, and a main checkout that actually holds a roadmap. So a non-worktree,
+// and a worktree whose main checkout is gone, behave exactly as before.
 static QString rcMainCheckoutOf(const QString &dir) {
     const QString dotGit = dir + QStringLiteral("/.git");
     if (!QFileInfo(dotGit).isFile())
@@ -223,6 +223,16 @@ static QString rcMainCheckoutOf(const QString &dir) {
     const QFileInfo wt(gitDir);
     // <main>/.git/worktrees/<name> — the parent's own parent is <main>/.git.
     if (wt.dir().dirName() != QStringLiteral("worktrees"))
+        return dir;
+    // ANTS-6643 — git writes the worktree's own `.git` path back into
+    // <gitDir>/gitdir. Without that match, a `.git` file unpacked from an
+    // archive could claim any project and key this folder's writes to it.
+    QFile back(gitDir + QStringLiteral("/gitdir"));
+    if (!back.open(QIODevice::ReadOnly | QIODevice::Text))
+        return dir;
+    const QString backRef = QFileInfo(QDir(gitDir).absoluteFilePath(
+        QString::fromUtf8(back.readLine()).trimmed())).canonicalFilePath();
+    if (backRef.isEmpty() || backRef != QFileInfo(dotGit).canonicalFilePath())
         return dir;
     QDir common = wt.dir();               // .../.git/worktrees
     if (!common.cdUp())                   // .../.git
@@ -756,10 +766,10 @@ QString rlResolveCounterPrefix(const QString &idPrefixArg,
     // declaring project its declared prefix once it has migrated and a sniffed
     // one before — two id families in one project, which is the outcome § 2.3
     // exists to prevent.
-    QString declared =
-        ProjectSettings::idFormatFor(callerCanonical).prefix;
-    if (!declared.isEmpty()) return declared;
-    QString sniffed = rlDetectCounterPrefix(markdown);
+    const RoadmapParse::IdFormat fmt = ProjectSettings::idFormatFor(callerCanonical);
+    if (!fmt.prefix.isEmpty()) return fmt.prefix;
+    // ANTS-6643 — the sniff reads ids the way the project declares them (INV-13).
+    QString sniffed = rlDetectCounterPrefix(markdown, fmt);
     if (!sniffed.isEmpty()) return sniffed;
     if (guessed) *guessed = true;
     return rlLeafDirPrefix(callerCanonical);
@@ -785,6 +795,8 @@ QJsonObject rlGuessedPrefixAdvisory(const QString &prefix) {
 // roadmap-format.md's never-reuse-ids invariant. The bullets are already
 // parsed at every call site (preflightBullets), so this is a free in-memory
 // scan. Returns 0 when no id matches `pfx`.
+// A synthesised `PFX-S0042` id (ANTS-4500) is skipped on purpose: it counts
+// from its own counter, and no `PFX-NNNN` id it allocates can equal one.
 qint64 rlMaxExistingIdForPrefix(
         const QVector<RoadmapParse::BulletRecord> &bullets,
         const QString &pfx) {
@@ -1159,7 +1171,11 @@ QString rcSanitizeBulletField(const QString &in, int maxLen) {
         out.append(c);
     }
     if (maxLen > 0 && out.size() > maxLen) {
-        out.truncate(maxLen);
+        // ANTS-6643 — leave room for the `…`, and never cut a surrogate pair:
+        // the lengths are UTF-16 units, and a lone half is invalid text.
+        qsizetype cut = maxLen - 1;
+        if (cut > 0 && out.at(cut - 1).isHighSurrogate()) --cut;
+        out.truncate(cut);
         out = out.trimmed();
         out.append(QChar(0x2026));  // …
     }
@@ -1475,17 +1491,27 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames,
                        "'([^']*)'|([^\\s>]+))[^>]*>"
                        "[\\s\\S]*?</parameter>"),
         QRegularExpression::CaseInsensitiveOption);
-    auto it = pairRx.globalMatch(text);
-    while (it.hasNext()) {
-        const auto m = it.next();
-        QString name = m.captured(1);
-        if (name.isEmpty()) name = m.captured(2);
-        if (name.isEmpty()) name = m.captured(3);
-        if (!name.isEmpty() && !scrubbedNames.contains(name)) {
-            scrubbedNames.append(name);
+    // ANTS-6643 — a pair ends at a `</parameter>`, so only the text up to the
+    // last one is searched. An opener after it would scan to the end and fail,
+    // and a body full of unclosed openers made that quadratic.
+    static const QLatin1String kCloseTag("</parameter>");
+    const qsizetype lastClose = text.lastIndexOf(kCloseTag, -1, Qt::CaseInsensitive);
+    if (lastClose >= 0) {
+        const qsizetype pairsEnd = lastClose + kCloseTag.size();
+        QString pairs = text.left(pairsEnd);
+        auto it = pairRx.globalMatch(pairs);
+        while (it.hasNext()) {
+            const auto m = it.next();
+            QString name = m.captured(1);
+            if (name.isEmpty()) name = m.captured(2);
+            if (name.isEmpty()) name = m.captured(3);
+            if (!name.isEmpty() && !scrubbedNames.contains(name)) {
+                scrubbedNames.append(name);
+            }
         }
+        pairs.remove(pairRx);
+        text = pairs + text.mid(pairsEnd);
     }
-    text.remove(pairRx);
     static const QRegularExpression reOrphanOpen(
         QStringLiteral("<parameter\\s+name=[^>]*>"),
         QRegularExpression::CaseInsensitiveOption);
