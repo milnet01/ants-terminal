@@ -2122,13 +2122,15 @@ QJsonObject outlineOneFile(const QString &rawPath,
         }
         // Now apply the caller's own budget to the filtered set, and say so
         // if it bit — otherwise a capped list reads as the complete set of
-        // matches, which is the "cap with no flag" failure.
-        if (kept.size() > maxSymbols) {
+        // matches, which is the "cap with no flag" failure. A budget of zero
+        // or less means the default, as FileOutline::compute reads it.
+        const int budget = maxSymbols > 0 ? maxSymbols : 200;
+        if (kept.size() > budget) {
             // ANTS-4469 — same rule as the engine's own cap: say how many.
             // Here the drop is against the FILTERED set, so it is not the same
             // number as symbols_filtered_out below and both are needed.
-            const int dropped = kept.size() - maxSymbols;
-            while (kept.size() > maxSymbols) kept.removeLast();
+            const int dropped = kept.size() - budget;
+            while (kept.size() > budget) kept.removeLast();
             result[QStringLiteral("truncated")]       = true;
             result[QStringLiteral("symbols_dropped")] = dropped;
         }
@@ -2502,6 +2504,12 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     // Read each baseline ONCE. Every mutation is applied to its file's
     // baseline, never to the previous mutant, so two mutations cannot compound.
     for (Target &t : targets) {
+        // As read_log (ANTS-5110): opening a FIFO blocks the worker until a
+        // writer appears.
+        if (!QFileInfo(t.resolved).isFile())
+            return rlErr(QStringLiteral("bad_path"),
+                         QStringLiteral("mutation_probe: \"%1\" is not a regular file")
+                             .arg(t.rawPath));
         QFile bf(t.resolved);
         if (!bf.open(QIODevice::ReadOnly))
             return rlErr(QStringLiteral("read_failed"),
@@ -3065,7 +3073,8 @@ QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
     // open until a writer appeared.
     if (QFileInfo::exists(resolved) && !QFileInfo(resolved).isFile()) {
         return rlErr(QStringLiteral("bad_path"),
-            QStringLiteral("read_log: \"%1\" is not a regular file").arg(rawPath));
+            QStringLiteral("read_log: \"%1\" is not a regular file")
+                .arg(rawPath.isEmpty() ? resolved : rawPath));
     }
 
     ReadLog::Options opts;
@@ -3725,6 +3734,12 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
 
         if (QFileInfo(resolved).size() > kReadToolMaxBytesCeiling) {
             for (int k : group) addSkip(es[k].index, rawPath, QStringLiteral("too_large"));
+            continue;
+        }
+        // As read_log (ANTS-5110): opening a FIFO blocks the worker until a
+        // writer appears.
+        if (!QFileInfo(resolved).isFile()) {
+            for (int k : group) addSkip(es[k].index, rawPath, QStringLiteral("not_regular_file"));
             continue;
         }
         QFile in(resolved);
@@ -4779,6 +4794,13 @@ QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
     if (cmakeCheck.bad) return QJsonDocument(cmakeCheck.err);
     QFile cf(cmakeCheck.resolved.isEmpty() ? root.filePath(cmakeRel)
                                            : cmakeCheck.resolved);
+    // As read_log (ANTS-5110): opening a FIFO blocks the worker until a
+    // writer appears. A source that is not a regular file is not read either.
+    if (QFileInfo::exists(cf.fileName()) && !QFileInfo(cf.fileName()).isFile()) {
+        return rlErr(QStringLiteral("bad_path"),
+            QStringLiteral(
+                "build_target_for: %1 is not a regular file").arg(cmakeRel));
+    }
     if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return rlErr(QStringLiteral("not_found"),
             QStringLiteral(
@@ -4831,11 +4853,13 @@ QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
             QStringLiteral("\\.(c|cc|cpp|cxx)$"));
         QFile newFile(root.filePath(rel));
         if (rxSource.match(rel).hasMatch()
+            && QFileInfo(newFile.fileName()).isFile()
             && newFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
             constexpr qint64 kIncludePrefixBytes = 64 * 1024;
             const auto readPrefix = [&root](const QString &source) {
                 QFile f(root.filePath(source));
-                return f.open(QIODevice::ReadOnly | QIODevice::Text)
+                return QFileInfo(f.fileName()).isFile()
+                           && f.open(QIODevice::ReadOnly | QIODevice::Text)
                            ? QString::fromUtf8(f.read(kIncludePrefixBytes))
                            : QString();
             };
@@ -4866,7 +4890,8 @@ QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
     // target.
     if (req.value(QStringLiteral("suites")).toBool(true)) {
         QFile sf(root.filePath(rel));
-        if (sf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (QFileInfo(sf.fileName()).isFile()
+            && sf.open(QIODevice::ReadOnly | QIODevice::Text)) {
             const QStringList suites =
                 BuildTargets::gtestSuites(QString::fromUtf8(sf.readAll()));
             if (!suites.isEmpty()) {

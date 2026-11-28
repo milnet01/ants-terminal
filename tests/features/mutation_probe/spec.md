@@ -181,3 +181,9 @@ value, or an empty key or one holding `=` refuses `bad_args`. *Test:*
 `MutationProbe.Ants4768SkipsAreReadFromEachRunner`,
 `…SkippedOnlyBaselineRefusesEvenWithExitCodeOptIn`,
 `…EnvReachesTheTestCommand`, `…MalformedEnvRefuses`.
+
+## ANTS-6642 — a target that is not a regular file
+
+A target that is not a regular file, such as a FIFO, refuses `bad_path`
+before it is opened, as `read_log` does (ANTS-5110). *Test:*
+`MutationProbe.Ants6642FifoTargetRefusesWithoutOpening`.

@@ -261,3 +261,50 @@ TEST(BuildTargetFor, LiveCmakeSendsARemoteControlTestToTestClaude) {
     ASSERT_FALSE(got.isEmpty());
     EXPECT_EQ(got.first().name, QStringLiteral("test_claude"));
 }
+
+// ANTS-6642 — the verb never opens a FIFO: opening one blocks the MCP worker
+// until a writer appears. A FIFO `cmake_path` refuses bad_path; a FIFO `path`
+// is answered without reading it. Each call runs in a child, so pre-fix code
+// fails at the deadline.
+#include "remotecontrol.h"
+#include "../../_support/bounded_child.h"
+
+#include <QDir>
+#include <QJsonObject>
+#include <QTemporaryDir>
+
+#include <sys/stat.h>
+
+TEST(BuildTargetFor, Ants6642FifoIsNeverOpened) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QDir root(tmp.path());
+    ASSERT_TRUE(root.mkpath(QStringLiteral("src")));
+    {
+        QFile cm(root.filePath(QStringLiteral("CMakeLists.txt")));
+        ASSERT_TRUE(cm.open(QIODevice::WriteOnly));
+        cm.write("add_executable(app src/main.cpp)\n");
+    }
+    for (const char *name : {"pipe.cmake", "src/pipe.cpp"})
+        ASSERT_EQ(::mkfifo(QFile::encodeName(root.filePath(QString::fromLatin1(name)))
+                               .constData(), 0600), 0) << name;
+    RemoteControl rc(nullptr);
+
+    QJsonObject cmakeReq;
+    cmakeReq[QStringLiteral("caller_cwd")] = tmp.path();
+    cmakeReq[QStringLiteral("path")]       = QStringLiteral("src/main.cpp");
+    cmakeReq[QStringLiteral("cmake_path")] = QStringLiteral("pipe.cmake");
+    EXPECT_EQ(ants_test::runInChildWithin(10000, [&] {
+        return rc.cmdBuildTargetFor(cmakeReq).object()
+                       .value(QStringLiteral("code")).toString()
+                   == QStringLiteral("bad_path") ? 0 : 1;
+    }), 0) << "-1: blocked opening a FIFO cmake_path; 1: it did not refuse bad_path";
+
+    QJsonObject pathReq;
+    pathReq[QStringLiteral("caller_cwd")] = tmp.path();
+    pathReq[QStringLiteral("path")]       = QStringLiteral("src/pipe.cpp");
+    EXPECT_EQ(ants_test::runInChildWithin(10000, [&] {
+        return rc.cmdBuildTargetFor(pathReq).object()
+                   .value(QStringLiteral("ok")).toBool() ? 0 : 1;
+    }), 0) << "-1: blocked opening a FIFO path; 1: the call did not answer ok";
+}

@@ -95,3 +95,43 @@ TEST(SimilarCodeBodies, VerbAndSchemaWiring) {
     EXPECT_TRUE(has(rc, "body_unavailable"));
     EXPECT_TRUE(has(ci, "include_bodies"));   // advertised in the similar_code schema
 }
+
+// INV-3 (ANTS-6642) — a name the file defines twice gives `body_unavailable`,
+// as find_definition's include_body does: the symbol extractor returns the
+// first definition, which may be another overload than the match.
+#include "remotecontrol.h"
+
+TEST(SimilarCodeBodies, Ants6642AmbiguousNameGivesNoBody) {
+    QTemporaryDir dir;
+    const QString root = QFileInfo(dir.path()).canonicalFilePath();
+    QDir().mkpath(root + "/src");
+    QFile f(root + "/src/widget.cpp");
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(
+        "int scale(int a) {\n"
+        "    return a * 2;\n"
+        "}\n"
+        "double scale(double a, double b) {\n"
+        "    double r = a * b;\n"
+        "    return r;\n"
+        "}\n");
+    f.close();
+
+    QJsonObject req;
+    req["caller_cwd"]     = root;
+    req["shape"]          = QStringLiteral("double scale(double a, double b)");
+    req["include_bodies"] = true;
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdSimilarCode(req).object();
+    ASSERT_TRUE(out.value("ok").toBool());
+    bool sawMatch = false;
+    for (const auto &v : out.value("matches").toArray()) {
+        const QJsonObject m = v.toObject();
+        if (!m.value("signature").toString().contains(QStringLiteral("scale"))) continue;
+        sawMatch = true;
+        EXPECT_TRUE(m.value("body_unavailable").toBool())
+            << m.value("signature").toString().toStdString();
+        EXPECT_FALSE(m.contains("body"));
+    }
+    EXPECT_TRUE(sawMatch);
+}

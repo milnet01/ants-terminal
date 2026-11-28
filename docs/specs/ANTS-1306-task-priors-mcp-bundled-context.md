@@ -35,7 +35,7 @@ call so the right priors land **before** the approach is chosen.
 One tool, `{description, caller_cwd, max_specs?, max_cards?,
 max_commits?, max_adrs?}` in, returning four ranked context buckets:
 
-- **specs** — `docs/specs/ANTS-*.md` files whose body matches the
+- **specs** — `docs/specs/*.md` files whose body matches the
   description's terms, with a one-line excerpt each.
 - **roadmap_cards** — ROADMAP bullets whose headline/body match,
   via the existing `cmdRoadmapQuery`.
@@ -123,9 +123,9 @@ All matching is **case-insensitive substring** against file bodies /
 card text. "distinct-needle count" means: how many distinct entries
 of (`ids ∪ paths ∪ terms`) appear at least once in the haystack.
 
-- **specs** — `QDir(docs/specs).entryList("ANTS-*.md")`. For each
+- **specs** — `QDir(docs/specs).entryList("*.md")`. For each
   file body: `score = distinctNeedleCount + 5 × (stem ∈ ids ? 1 : 0)`.
-  The `× 5` boost makes an explicit `ANTS-NNNN` mention in the
+  The `× 5` boost makes an explicit id mention (such as `ANTS-1306`) in the
   description float that exact spec to the top. Keep files with
   `score > 0`; sort `score` desc, then filename asc; take `max_specs`.
   Each entry: `{id (filename stem), path ("docs/specs/<file>"),
@@ -170,7 +170,7 @@ of (`ids ∪ paths ∪ terms`) appear at least once in the haystack.
   Each entry: `{path ("docs/decisions/<file>"), title (first
   `# ` heading line, trimmed; "" if none), score}`.
 
-Every candidate `ANTS-*.md` / ADR body is read once, whole, via
+Every candidate spec / ADR body is read once, whole, via
 `QFile::readAll()` (spec/ADR files are small — ≤ tens of KiB) for
 distinct-needle scoring; the extra **line-by-line** excerpt scan
 runs only on the ≤ `max_specs` already-selected spec files, not on
@@ -241,7 +241,7 @@ ANTS-1404 before the handler runs, when `caller_cwd` is absent.)
 | `cmdRoadmapQuery` non-ok (no ROADMAP.md) | `roadmap_cards:[]`, `cards_count:0`, `ok:true`. |
 | ROADMAP has > 500 bullets | ranking is over the first 500 returned (the high-priority head of the document); documented limitation, not an error. |
 | Same path named twice in `description` | de-duplicated before the git scan. |
-| Spec matched only by `ANTS-NNNN` in its filename | included (id boost), `excerpt` falls back to the title line. |
+| Spec matched only by the id in its filename | included (id boost), `excerpt` falls back to the title line. |
 | > `max_specs` specs match | array capped, `specs_count` = full pre-cap total, same for the other three buckets. |
 
 ## 4. Invariants
@@ -249,11 +249,11 @@ ANTS-1404 before the handler runs, when `caller_cwd` is absent.)
 | # | Statement |
 |---|-----------|
 | 1 | `cmdTaskPriors(const QJsonObject&)` declared public in `remotecontrol.h` (returns `QJsonDocument`); defined in `remotecontrol.cpp` with an `ANTS-1306` anchor comment. No new lib, no new `.cpp` file. |
-| 2 | Term extraction yields three sets — `ids` (`ANTS-[0-9]+`, upper-cased, deduped), `paths` (known-extension tokens, leading `./` stripped, deduped), `terms` (`[A-Za-z_][A-Za-z0-9_]{3,}`, lower-cased, stopwords removed, deduped, capped at 25) — in that fixed order. |
+| 2 | Term extraction yields three sets — `ids` (§ 3.2's any-prefix id pattern, upper-cased, deduped), `paths` (known-extension tokens, leading `./` stripped, deduped), `terms` (`[A-Za-z_][A-Za-z0-9_]{3,}`, lower-cased, stopwords removed, deduped, capped at 25) — in that fixed order. |
 | 3 | The stopword set is a process-static `QSet<QString>` of lower-case words; § 3.2.1 lists v1 contents. Terms ≤ 3 chars are dropped by the `{3,}` quantifier before the stopword filter. |
 | 4 | If `ids`, `paths`, and `terms` are all empty after extraction, the call refuses with `bad_args`. |
 | 5 | Root resolution is `resolveRootCanonical(m_main, req)`; empty → `no_project`. |
-| 6 | Spec ranking: scan `docs/specs/ANTS-*.md`; `score = distinctNeedleCount + 5×(stem∈ids)`; keep `score>0`; sort score desc then filename asc; cap `max_specs`; each entry carries `{id, path, title, excerpt, score}` with `excerpt` ≤ 200 chars. |
+| 6 | Spec ranking: scan `docs/specs/*.md`; `score = distinctNeedleCount + 5×(stem∈ids)`; keep `score>0`; sort score desc then filename asc; cap `max_specs`; each entry carries `{id, path, title, excerpt, score}` with `excerpt` ≤ 200 chars. |
 | 7 | Roadmap-card ranking composes over one `cmdRoadmapQuery({status:"all", limit:500, include_body:true})`; scores `id + headline_oneline + body` (the cmdRoadmapQuery-truncated body); `5×(id∈ids)` boost; sorts score desc preserving query order on ties; caps `max_cards`; non-ok query ⇒ empty bucket, `ok:true`. |
 | 8 | Commit ranking composes over `cmdGitState(op:"log")`: path-filtered per named path (merged, deduped by sha) when `paths` non-empty, else subject-term-filtered over a recent window; sorted by `date` desc; capped `max_commits`. |
 | 9 | A non-ok / not-a-repo result from any internal composer call collapses that one bucket to `[]` and leaves the top-level `ok:true` (mirrors `cmdCurrentState`); only `no_project` / `bad_args` make the whole call non-ok. |

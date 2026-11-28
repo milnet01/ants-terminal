@@ -1111,3 +1111,83 @@ TEST(Ants6956, UpperCaseNarrowSuffixClassifiesNarrow) {
     EXPECT_EQ(env.value(QStringLiteral("scope")).toString(), QStringLiteral("narrow"))
         << "a -NARROW report naming one file is a narrow run, not single_file";
 }
+
+// ANTS-6642 — the scope tag reads a fixed budget of findings, never the
+// caller's `top_n`. With top_n:0 a one-file report read broad and lost its
+// narrow-run warning; with the default of 5 a seven-file sweep read narrow.
+#include <QDateTime>
+
+namespace {
+QJsonObject lasOverCppcheck(const QStringList &files, const QJsonObject &args) {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return {};
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QDir(root).mkpath(QStringLiteral(".audit_cache"));
+    QFile f(root + QStringLiteral("/.audit_cache/cppcheck-run.xml"));
+    if (!f.open(QIODevice::WriteOnly)) return {};
+    QByteArray xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                     "<results version=\"2\"><cppcheck version=\"2.13.0\"/><errors>\n";
+    for (int i = 0; i < files.size(); ++i)
+        xml += "<error id=\"uninitMemberVar\" severity=\"error\" msg=\"m\" verbose=\"m\">"
+               "<location file=\"" + files.at(i).toUtf8() + "\" line=\""
+               + QByteArray::number(i + 1) + "\" column=\"5\"/></error>\n";
+    xml += "</errors></results>\n";
+    f.write(xml);
+    f.close();
+    QJsonObject req = args;
+    req[QStringLiteral("caller_cwd")] = root;
+    RemoteControl rc(nullptr);
+    return rc.cmdLastAuditSummary(req).object();
+}
+}  // namespace
+
+TEST(Ants6642, ScopeIgnoresTopN) {
+    const QJsonObject one = lasOverCppcheck({QStringLiteral("src/a.cpp")},
+                                            {{QStringLiteral("top_n"), 0}});
+    ASSERT_TRUE(one.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(one).toJson().toStdString();
+    EXPECT_EQ(one.value(QStringLiteral("scope")).toString(), QStringLiteral("single_file"));
+    EXPECT_TRUE(one.contains(QStringLiteral("narrow_run_warning")));
+    EXPECT_TRUE(one.value(QStringLiteral("top_findings")).toArray().isEmpty())
+        << "top_n:0 still returns no findings";
+
+    QStringList seven;
+    for (char c = 'a'; c <= 'g'; ++c)
+        seven << QStringLiteral("src/%1.cpp").arg(QLatin1Char(c));
+    const QJsonObject sweep = lasOverCppcheck(seven, {});
+    ASSERT_TRUE(sweep.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(sweep.value(QStringLiteral("scope")).toString(), QStringLiteral("broad"));
+    EXPECT_EQ(sweep.value(QStringLiteral("top_findings")).toArray().size(), 5)
+        << "the default top_n still cuts the envelope to 5";
+}
+
+// ANTS-6642 — a report whose mtime is in the future has an unknown age, so
+// `since_commit` answers stale_mtime instead of fresh:true.
+TEST(Ants6642, FutureReportMtimeIsNotFresh) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral(".audit_cache")));
+    QFile f(root + QStringLiteral("/.audit_cache/audit-2026-01-01T00-00-00Z-abc1234.sarif"));
+    ASSERT_TRUE(f.open(QIODevice::ReadWrite));
+    f.write(R"({"version":"2.1.0","runs":[{
+        "tool":{"driver":{"name":"ants-audit","rules":[]}},
+        "versionControlProvenance":[{"revisionId":"abc1234abc1234abc1234"}],
+        "results":[{"ruleId":"r","level":"warning","message":{"text":"m"},
+          "locations":[{"physicalLocation":{"artifactLocation":{"uri":"src/x.cpp"},
+                        "region":{"startLine":1}}}]}]}]})");
+    f.flush();
+    ASSERT_TRUE(f.setFileTime(QDateTime::currentDateTime().addSecs(3600),
+                              QFileDevice::FileModificationTime));
+    f.close();
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = root;
+    req[QStringLiteral("since_commit")] = QStringLiteral("abc1234abc1234");
+    RemoteControl rc(nullptr);
+    const QJsonObject env = rc.cmdLastAuditSummary(req).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_FALSE(env.value(QStringLiteral("fresh")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("reason")).toString(), QStringLiteral("stale_mtime"));
+}

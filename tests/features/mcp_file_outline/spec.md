@@ -30,10 +30,11 @@ in-tree `auditdialog.cpp` (INV-3 floor check).
 | 15 | (ANTS-4520) In `Mode::Md`, a heading inside a **blockquote** is a heading: `> ## You are here` / `> ## Previously` are listed alongside the plain headings, via the shared `MarkdownScan::stripBlockquote`. The `>` does not change the depth, so the ANTS-4396 `max_heading_level` filter treats `> ##` exactly as `##`. A plan file whose run-state blocks use that convention outlined to the plain headings only, hiding the blocks a session is told to read first from the one call meant to answer "what is in this file?". |
 | 16 | (ANTS-6628) `total_bytes` of a CRLF file equals its size on disk: the file is not read in Text mode, which drops each `\r`. Test: `Ants6628CrlfByteCountIsExact`. |
 | 17 | (ANTS-6628) The 2 KiB `header_doc` cap counts UTF-8 bytes and cuts on a character boundary before the `…`. Test: `Ants6628HeaderDocCapCountsUtf8Bytes`. |
+| 18 | (ANTS-6642) With a `filter`, `cmdFileOutline` reads a `max_symbols` of zero or less as the default budget, as `FileOutline::compute` does without one. Test: `Ants6642FilterWithNonPositiveBudgetUsesTheDefault`. |
 
 ## Acceptance
 
-Exit 0 = all 14 invariants hold.
+Exit 0 = every invariant holds.
 
 Wired as a source file in the `test_claude` bundle (uses the same
 compile defs as the existing MCP-related tests). The runtime

@@ -1425,3 +1425,29 @@ TEST(MutationProbe, Ants6497OutputIsDrainedWhileTheChildRuns) {
     EXPECT_EQ(body.find("readAllStandardOutput()"), std::string::npos)
         << "runCommand still reads the whole output after the child exits";
 }
+
+// ANTS-6642 — a target that is not a regular file refuses bad_path before it
+// is opened: opening a FIFO blocks the MCP worker until a writer appears. The
+// call runs in a child, so pre-fix code fails at the deadline.
+#include "../../_support/bounded_child.h"
+#include <sys/stat.h>
+
+TEST(MutationProbe, Ants6642FifoTargetRefusesWithoutOpening) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString fifo = QDir(tmp.path()).filePath(QStringLiteral("pipe.py"));
+    ASSERT_EQ(::mkfifo(QFile::encodeName(fifo).constData(), 0600), 0);
+    QJsonArray muts;
+    muts.append(mutation(0));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("path")]         = QStringLiteral("pipe.py");
+    req[QStringLiteral("test_command")] = shArgv(QStringLiteral("echo '1 passed'"));
+    req[QStringLiteral("mutations")]    = muts;
+    const int code = ants_test::runInChildWithin(10000, [&] {
+        return codeOf(rc.cmdMutationProbe(req).object()) == "bad_path" ? 0 : 1;
+    });
+    EXPECT_EQ(code, 0) << "-1: mutation_probe blocked opening a FIFO; "
+                          "1: it did not refuse bad_path";
+}

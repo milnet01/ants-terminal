@@ -531,3 +531,22 @@ TEST(McpReadLog, Ants6632DebugLogDefaultOmitsInputLines) {
         rc.cmdReadLog(QJsonObject{{"include_input_pty", true}}).object();
     EXPECT_EQ(linesOf(asked), (QStringList{inputLine, normalLine}));
 }
+
+// B-INV-16 (ANTS-6642) — when the default debug log is not a regular file,
+// the refusal names the log's path; it used to name the empty `path` argument.
+TEST(McpReadLog, Ants6642NonRegularDebugLogRefusalNamesThePath) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::XdgGuard guard;
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath("data").toUtf8());
+    guard.setEnv("XDG_CONFIG_HOME", QDir(tmp.path()).filePath("config").toUtf8());
+    const QString logPath = DebugLog::logFilePath();
+    ASSERT_TRUE(logPath.startsWith(tmp.path())) << logPath.toStdString();
+    ASSERT_TRUE(QDir().mkpath(logPath));   // a directory where the log goes
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdReadLog(QJsonObject{}).object();
+    EXPECT_EQ(out.value("code").toString(), QStringLiteral("bad_path"));
+    EXPECT_TRUE(out.value("error").toString().contains(logPath))
+        << out.value("error").toString().toStdString();
+}

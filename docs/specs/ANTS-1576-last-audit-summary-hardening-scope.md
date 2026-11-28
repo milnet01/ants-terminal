@@ -196,9 +196,10 @@ Envelope gains:
 - `narrow_run_files: ["src/foo.cpp"]` — distinct file list when
   scope ≠ broad, up to 5 entries (prevents giant envelopes).
 
-The classifier counts distinct files in `topFindings[]`, not in the
-raw findings, to keep the cost O(topN). topN is server-clamped to
-50 already, so the classifier touches ≤ 50 entries.
+The classifier counts distinct files among the first 50 ranked
+findings, not the raw findings, so it touches ≤ 50 entries. The
+parser always keeps those 50, whatever `top_n` the caller asked for,
+so the tag does not depend on `top_n` (ANTS-6642).
 
 **Out of scope for this pull:** preferring a broader file when
 two candidates tie on recency. The picker stays lex-max; the
@@ -242,8 +243,7 @@ Verified shipped as [[ANTS-1540]] in pull 3 (2026-05-17). The
 implementation lives in `remotecontrol_state.cpp`:
 
 - Schema accepts `rule_ids: ["ruleA", "ruleB"]`.
-- Parser uses an expanded `topN=50` when filter is active so rare
-  rules surface.
+- Parser keeps 50 findings, filter or not, so rare rules surface.
 - Post-cap filter narrows to the requested set, then re-caps to
   the caller's `topN`.
 - Envelope echoes `rule_ids_filter: [...]` so callers confirm what

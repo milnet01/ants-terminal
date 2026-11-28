@@ -705,7 +705,9 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
         // Empty array ⇒ filter absent (per schema). Non-empty ⇒ active.
         ruleIdsRequested = !ruleIdsFilter.isEmpty();
     }
-    const int parserTopN = ruleIdsRequested ? 50 : topN;
+    // The parser always keeps 50, so the scope classifier below sees the same
+    // findings whatever `top_n` asked for; the envelope is cut to `top_n`.
+    const int parserTopN = 50;
 
     // Discover latest SARIF in {projectRoot}/.audit_cache.
     // ANTS-1391: caller_cwd anchors the root when present.
@@ -777,9 +779,6 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
 
     // Cache key: (path, mtime, parserTopN, floor). Keyed on resolved
     // path so a cppcheck-xml read can't collide with a sarif read.
-    // ANTS-1540 — when rule_ids is set, the parser ran with the
-    // expanded budget (50), so the cache slot is keyed off that
-    // budget; a call with any other cap re-parses.
     const qint64 mtimeMs =
         QFileInfo(reportPath).lastModified().toMSecsSinceEpoch();
     const bool hit = (reportPath == m_auditSummaryPath
@@ -866,7 +865,9 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
         bool fresh = false;
         if (lastCommit.isEmpty()) {
             reason = QStringLiteral("no_provenance");
-        } else if (ageMs > kSinceCommitFreshnessMs) {
+        } else if (ageMs < 0 || ageMs > kSinceCommitFreshnessMs) {
+            // A negative age is a clock that went back or a future mtime: the
+            // snapshot's age is unknown, so it is not fresh.
             reason = QStringLiteral("stale_mtime");
         } else {
             // Case-insensitive hex compare. Treat the shorter of the
@@ -910,6 +911,7 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
         for (const QString &r : ruleIdsFilter) echoed.append(r);
         env["rule_ids_filter"] = echoed;
     } else {
+        summary.topFindings = summary.topFindings.mid(0, topN);
         env = buildLasEnvelope(summary);
     }
     // ANTS-1406 — confirm the short-circuit gate landed on a fresh
@@ -4264,7 +4266,10 @@ QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
                 ro.symbol = sym;
                 const QJsonObject body =
                     ReadRegion::extract(root + QLatin1Char('/') + m.file, ro);
-                if (body.value(QStringLiteral("ok")).toBool(false)) {
+                // An ambiguous name may resolve to another overload's body,
+                // so it is refused, as sqAttachBody refuses it.
+                if (body.value(QStringLiteral("ok")).toBool(false)
+                    && !body.value(QStringLiteral("symbol_ambiguous")).toBool()) {
                     o["symbol"]          = sym;
                     o["body"]            = body.value(QStringLiteral("lines"));
                     o["body_start_line"] = body.value(QStringLiteral("start_line"));

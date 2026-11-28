@@ -59,12 +59,15 @@ dispatch are locked by source-scrape.
   `include_input_pty:true` returns them. Checked on `ReadLog::filter` and
   through `RemoteControl::cmdReadLog` with an isolated `XDG_DATA_HOME`
   (ANTS-6632).
+- **B-INV-16** — when the default debug log is not a regular file,
+  `cmdReadLog` refuses `bad_path` with an error naming the log's path
+  (ANTS-6642).
 - **B-not_found** — an unopenable path → `{ok:false, code:"not_found"}`.
 
 ## Test plan
 
 Behavioural invariants exercise `ReadLog::filter` against fixture logs
-in a `QTemporaryDir`; B-INV-15 also calls `cmdReadLog`. Wiring invariants source-scrape
+in a `QTemporaryDir`; B-INV-15 and B-INV-16 also call `cmdReadLog`. Wiring invariants source-scrape
 `remotecontrol.h` and every RemoteControl source / `claudeintegration.cpp`
 / `mcpprojection.cpp` / the MainWindow sources plus
 `mcptoolregistry.cpp`. Label `features;fast`. Verify the suite fails against

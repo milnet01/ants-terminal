@@ -78,3 +78,9 @@ A file whose bytes are not valid UTF-8 is not written, and each of its
 edits skips `not_utf8`. A leading UTF-8 BOM survives an edit. *Tests:*
 `McpApplyEdits.Ants6534NonUtf8FileIsSkippedAndLeftIntact`,
 `…LeadingBomSurvivesAnEdit`.
+
+## ANTS-6642 — a path that is not a regular file is never opened
+
+Each edit to a path that is not a regular file, such as a FIFO, skips
+`not_regular_file` before the file is opened, as `read_log` refuses one
+(ANTS-5110). *Test:* `McpApplyEdits.Ants6642FifoIsSkippedWithoutOpening`.

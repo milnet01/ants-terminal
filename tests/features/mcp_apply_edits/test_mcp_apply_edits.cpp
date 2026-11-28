@@ -1227,3 +1227,34 @@ TEST(McpApplyEdits, Ants6534LeadingBomSurvivesAnEdit) {
     ASSERT_TRUE(f.open(QIODevice::ReadOnly));
     EXPECT_EQ(f.readAll(), QByteArray("\xEF\xBB\xBF" "alpha\nBETA\n"));
 }
+
+// ANTS-6642 — a path that is not a regular file is skipped before it is
+// opened: opening a FIFO blocks the MCP worker until a writer appears. The
+// call runs in a child, so pre-fix code fails at the deadline.
+#include "../../_support/bounded_child.h"
+#include <sys/stat.h>
+
+TEST(McpApplyEdits, Ants6642FifoIsSkippedWithoutOpening) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString fifo = dir.path() + QStringLiteral("/pipe.txt");
+    ASSERT_EQ(::mkfifo(QFile::encodeName(fifo).constData(), 0600), 0);
+    QJsonObject e;
+    e[QStringLiteral("path")] = QStringLiteral("pipe.txt");
+    e[QStringLiteral("old")]  = QStringLiteral("beta");
+    e[QStringLiteral("new")]  = QStringLiteral("BETA");
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = dir.path();
+    req[QStringLiteral("edits")]      = QJsonArray{e};
+    RemoteControl rc(nullptr);
+    const int code = ants_test::runInChildWithin(10000, [&] {
+        const QJsonArray sk =
+            rc.cmdApplyEdits(req).object().value(QStringLiteral("skipped")).toArray();
+        return sk.size() == 1
+                && sk.at(0).toObject().value(QStringLiteral("reason")).toString()
+                       == QStringLiteral("not_regular_file")
+            ? 0 : 1;
+    });
+    EXPECT_EQ(code, 0) << "-1: apply_edits blocked opening a FIFO; "
+                          "1: the edit was not skipped not_regular_file";
+}

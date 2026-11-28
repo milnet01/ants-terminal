@@ -27,11 +27,12 @@ nothing about that.
 | `CandidatesRankByHeadersCovered` | ANTS-5251: bundles only, most of the new file's headers first, each naming what it covers and misses. A bundle covering none is left out, the limit holds, and no headers gives no suggestion. |
 | `CandidatesBreakATieBySourcesThenOrder` | ANTS-5251: a tie goes to the bundle with more including sources, then to the one declared first. |
 | `LiveCmakeSendsARemoteControlTestToTestClaude` | ANTS-5251: against the real tree, a source including `remotecontrol.h` is sent to `test_claude`, the bundle ANTS-4500's test needed. |
+| `Ants6642FifoIsNeverOpened` | ANTS-6642: through `RemoteControl::cmdBuildTargetFor`, a FIFO `cmake_path` refuses `bad_path` and a FIFO `path` is answered `ok:true`; neither is opened, so neither blocks. |
 
 ## What is NOT locked
 
-The verb body (`RemoteControl::cmdBuildTargetFor`) needs a live MainWindow, so
-its envelope is not driven here. What that body adds over the engine is string
+Apart from that one case, the verb body (`RemoteControl::cmdBuildTargetFor`)
+is not driven here. What that body adds over the engine is string
 composition — `build_command`, `ctest_filter`, `ctest_command` — the
 `found:false` hint, and reading the sources behind `candidate_targets`. A defect
 there is visible on the first call; a defect in

@@ -27,6 +27,9 @@ invariant source-greps the handler + schema.
 - **INV-2** — `cmdSimilarCode` honours `include_bodies`, reuses
   `ReadRegion::extract`, emits `body_unavailable` on a non-resolving
   signature, and the `similar_code` schema advertises the option.
+- **INV-3** (ANTS-6642) — through `cmdSimilarCode`, a match whose name the
+  file defines more than once carries `body_unavailable` and no `body`, as
+  `find_definition`'s `include_body` refuses an ambiguous name.
 
 ## Out of scope (v1)
 

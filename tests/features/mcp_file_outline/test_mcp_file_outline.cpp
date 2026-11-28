@@ -1366,3 +1366,37 @@ TEST(McpFileOutline, Ants6628HeaderDocCapCountsUtf8Bytes) {
     EXPECT_LE(doc.chopped(1).toUtf8().size(), 2048);
     EXPECT_FALSE(doc.contains(QChar(0xFFFD))) << "no character cut in half";
 }
+
+// INV-18 (ANTS-6642) — with a `filter`, a `max_symbols` of zero or less means
+// the default budget, as it does without one. A negative one looped forever
+// on the emptied array, so the call runs in a child and pre-fix code fails at
+// the deadline.
+#include "../../_support/bounded_child.h"
+
+TEST(McpFileOutline, Ants6642FilterWithNonPositiveBudgetUsesTheDefault) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    {
+        QFile f(root + QStringLiteral("/a.cpp"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("void roadmapA() {\n}\nvoid roadmapB() {\n}\nvoid other() {\n}\n");
+    }
+    RemoteControl rc(nullptr);
+    const int code = ants_test::runInChildWithin(10000, [&] {
+        for (int budget : {-1, 0}) {
+            QJsonObject r;
+            r[QStringLiteral("caller_cwd")]  = root;
+            r[QStringLiteral("path")]        = QStringLiteral("a.cpp");
+            r[QStringLiteral("filter")]      = QStringLiteral("roadmap");
+            r[QStringLiteral("max_symbols")] = budget;
+            const QJsonObject out = rc.cmdFileOutline(r).object();
+            if (out.value(QStringLiteral("symbols")).toArray().size() != 2
+                || out.value(QStringLiteral("truncated")).toBool())
+                return 1;
+        }
+        return 0;
+    });
+    EXPECT_EQ(code, 0) << "-1: file_outline looped on max_symbols:-1; "
+                          "1: a non-positive budget did not keep both matches";
+}
