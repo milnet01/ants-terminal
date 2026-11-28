@@ -12,6 +12,12 @@ on 2026-05-19:
   value, the bullet renders with that text (long headlines truncated
   to 120 chars with " …" suffix).
 
+- **ANTS-6655 / fold_in fields stay on one line.** Every caller-supplied
+  field written into the block (framework, dimensions, headline, file,
+  dimension, severity, fix) has its whitespace runs, newlines included,
+  folded to one space, so no field can write a line, such as a `## `
+  heading, of its own. *Test:* `Ants6655FieldsCannotInjectLines`.
+
 - **ANTS-1616 / pre-pass pattern set covers C/C++/Qt smells.** The
   pre-pass regex table MUST hit at least the following pattern ids on
   representative C++/Qt fixture content: `qt_msleep`, `cpp_exit`,

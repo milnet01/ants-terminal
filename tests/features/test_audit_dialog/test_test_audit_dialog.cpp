@@ -30,6 +30,7 @@ namespace {
 class Dlg : public TestAuditDialog {
 public:
     using TestAuditDialog::TestAuditDialog;
+    using TestAuditDialog::briefWork;
     using TestAuditDialog::composeBrief;
     using TestAuditDialog::derivePartition;
     using TestAuditDialog::onAllReportsCollected;
@@ -200,6 +201,50 @@ TEST(TestAuditDialog, INV5_FoldInIdAllocation) {
     dlg.performFoldIn();
     EXPECT_EQ(readFile(tmp.path() + "/.roadmap-counter").trimmed(),
               QStringLiteral("102"));
+}
+
+// INV-15 (ANTS-6655) — a resumed round holds only this session's reports;
+// per-finding fold-in also reads the earlier ones from the partition's
+// report folder, as the synthesis does.
+TEST(TestAuditDialog, Inv15ResumedFoldInReadsReportsOnDisk) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QTemporaryDir mem; ASSERT_TRUE(mem.isValid());
+    buildSuite(tmp.path());
+    writeFile(tmp.path() + "/.roadmap-counter", "100\n");
+    writeFile(tmp.path() + "/ROADMAP.md",
+              "# Roadmap\n\n## 0.7.90 — current (target: 2026-05)\n\n"
+              "### Existing\n- bullet\n");
+
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+    dlg.setSessionMemBaseDir(mem.path());
+    ASSERT_FALSE(dlg.chunks().isEmpty());
+    ASSERT_TRUE(writeFile(tmp.path() + "/.audit_cache/test_audit_"
+                              + dlg.partitionToken() + QChar('/')
+                              + dlg.chunks().first().id + ".md",
+                          "## flakiness\n- [HIGH] tests/test_a.py:1 — sleeps\n"));
+    ASSERT_TRUE(dlg.collectedReports().isEmpty());
+
+    dlg.setFoldInMode(TestAuditDialog::FoldInMode::PerFinding);
+    dlg.performFoldIn();
+    EXPECT_EQ(readFile(tmp.path() + "/.roadmap-counter").trimmed(),
+              QStringLiteral("101"))
+        << "the report from the earlier session must be folded in";
+}
+
+// INV-16 (ANTS-6655) — a brief that cannot be built fails its lane rather
+// than going to the model as a "brief failed" prompt.
+TEST(TestAuditDialog, Inv16FailedBriefFailsTheLane) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QTemporaryDir mem; ASSERT_TRUE(mem.isValid());
+    buildSuite(tmp.path());
+
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+    dlg.setSessionMemBaseDir(mem.path());
+    const auto b = dlg.briefWork(ReviewLane{"no-such-chunk", "no-such-chunk", ""})();
+    EXPECT_TRUE(b.failure.contains(QStringLiteral("bad_chunk_id")))
+        << b.failure.toStdString();
+    EXPECT_TRUE(b.request.userPrompt.isEmpty())
+        << b.request.userPrompt.left(200).toStdString();
 }
 
 // INV-6 — stale token → re-partition, no crash, collected reports kept.

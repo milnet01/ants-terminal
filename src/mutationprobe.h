@@ -116,11 +116,12 @@ BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c);
 // pass/fail counts, so it was scored as a caught bug when no test ran at all.
 // With no readable counts there is no evidence a test noticed anything, which
 // is the same evidence `judgeBaseline` asks of a baseline. Such a run is
-// `Broken`, never `Killed`.
+// `Broken`, never `Killed`. So is one whose counts read but name no failed
+// test (ANTS-6655): pytest's "5 passed, 1 error" exits 1 with failed=0.
 enum class MutantVerdict : std::uint8_t {
     Survived,  // exit 0 — the suite did not notice
-    Killed,    // non-zero exit with readable counts
-    Broken,    // non-zero exit, counts unreadable (-1): nothing was measured
+    Killed,    // non-zero exit, at least one test counted failed
+    Broken,    // non-zero exit, no failed test counted: nothing was measured
 };
 MutantVerdict judgeMutant(int exitCode, const Counts &c);
 

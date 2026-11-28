@@ -598,6 +598,27 @@ TEST(MutationProbe, Ants5360UnreadableNonZeroExitIsBroken) {
         << "exit 0 is unchanged by this fix";
 }
 
+// ANTS-6655 — readable counts are not enough: a test must have failed.
+// pytest's "5 passed, 1 error in 0.10s" (a collection error in the mutated
+// module) exits 1, parses as passed=5 failed=0, and was scored `killed`.
+TEST(MutationProbe, Ants6655NoFailedTestIsBroken) {
+    using V = MutationProbe::MutantVerdict;
+    const auto c = MutationProbe::parseCounts(
+        QStringLiteral("5 passed, 1 error in 0.10s\n"));
+    ASSERT_EQ(c.passed, 5);
+    ASSERT_EQ(c.failed, 0);
+    EXPECT_EQ(MutationProbe::judgeMutant(1, c), V::Broken);
+}
+
+// ANTS-6655 — occurrences counts the sites replace() rewrites. QString::count
+// counts overlapping matches, so "aa" in "aaa" read 2 sites and patched 1.
+TEST(MutationProbe, Ants6655OccurrencesAreNonOverlapping) {
+    const auto r = MutationProbe::applyOne(QStringLiteral("aaa"), mk("o", "aa", "b"));
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.patched, QStringLiteral("ba"));
+    EXPECT_EQ(r.occurrences, 1);
+}
+
 TEST(MutationProbe, Ants5360CollectionErrorReportsBrokenEndToEnd) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

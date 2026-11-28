@@ -298,6 +298,33 @@ TEST(VerifyEngine, Inv5CtestParserExtractsFailingTests) {
     EXPECT_EQ(g->failingTests.at(1), QStringLiteral("bad_two"));
 }
 
+// ANTS-6655 — INV-5 parses every line the gate printed, not the kept tail.
+// The summary and a 30-name FAILED list do not fit a 10-line window; read
+// from the window, the counts stayed unset and 20 names were lost.
+TEST(VerifyEngine, Ants6655CtestParsedBeyondLogTail) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), ".ants/verify.json", R"j({
+        "tests": {"command": "printf '0%% tests passed, 30 tests failed out of 30\n\nThe following tests FAILED:\n'; for i in $(seq 1 30); do printf '  %s - t%s (Failed)\n' $i $i; done; exit 8",
+                  "format": "ctest"}
+    })j");
+
+    VerifyEngine::VerifyOptions opts;
+    opts.timeoutSec = 30;
+    opts.maxLogLines = 10;
+    const auto rep = VerifyEngine::runVerify(tmp.path(), opts);
+
+    auto *g = findGate(const_cast<VerifyEngine::VerifyReport &>(rep),
+                       VerifyEngine::GateName::Tests);
+    ASSERT_NE(g, nullptr);
+    EXPECT_TRUE(g->logTruncated) << "setup: the output must overflow the tail";
+    EXPECT_EQ(g->totalCount, 30);
+    EXPECT_EQ(g->passedCount, 0);
+    ASSERT_EQ(g->failingTests.size(), 30);
+    EXPECT_EQ(g->failingTests.first(), QStringLiteral("t1"));
+    EXPECT_EQ(g->failingTests.last(), QStringLiteral("t30"));
+}
+
 // ---------------------------------------------------------------------------
 // INV-6 — tests gate skips when prior build failed.
 // ---------------------------------------------------------------------------

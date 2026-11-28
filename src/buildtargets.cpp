@@ -176,8 +176,9 @@ QHash<QString, QStringList> pathDefinitions(const QString &cmakeText) {
             const auto var = wholeVar.match(value);
             if (var.hasMatch() && !isRootVar(var.captured(1))) {
                 for (const QString &item : vars.value(var.captured(1))) {
+                    // Null is "not a path"; "" is the root itself (ANTS-6655).
                     const QString rel = rootRelative(item);
-                    if (!rel.isEmpty()) paths.append(rel);
+                    if (!rel.isNull()) paths.append(rel);
                 }
             } else if (value.startsWith(QLatin1String("${"))) {
                 const QString rel = rootRelative(value);

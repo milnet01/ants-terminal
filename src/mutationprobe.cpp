@@ -20,7 +20,11 @@ ApplyResult applyOne(const QString &content, const Mutation &m) {
         r.inert = Inert::OldTextEmpty;
         return r;
     }
-    r.occurrences = content.count(m.oldText);
+    // Non-overlapping, as replace() below finds them: QString::count counts
+    // overlapping matches, so "aa" in "aaa" read as 2 sites and patched 1.
+    for (qsizetype at = content.indexOf(m.oldText); at >= 0;
+         at = content.indexOf(m.oldText, at + m.oldText.size()))
+        ++r.occurrences;
     if (r.occurrences == 0) {
         // The commonest inert case and the dangerous one: the test run that
         // follows is against UNMUTATED code, so it passes, and a caller
@@ -215,8 +219,10 @@ BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c) {
 
 MutantVerdict judgeMutant(int exitCode, const Counts &c) {
     if (exitCode == 0) return MutantVerdict::Survived;
-    if (c.passed < 0 || c.failed < 0) return MutantVerdict::Broken;
-    return MutantVerdict::Killed;
+    // ANTS-6655 — a test must have failed: pytest's "5 passed, 1 error" (a
+    // collection error) exits 1 with failed=0, and measured no kill.
+    if (c.failed > 0) return MutantVerdict::Killed;
+    return MutantVerdict::Broken;
 }
 
 namespace {

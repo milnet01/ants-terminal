@@ -224,12 +224,15 @@ QString assembleLogTail(const QStringList &lines, int maxLines,
     return tail.join(QChar('\n'));
 }
 
-// INV-5 — apply the ctest summary regex per-line.
-void parseCtest(const QStringList &lines, GateResult *r) {
-    static const QRegularExpression kFailLine(
-        QStringLiteral(R"(^\s*\d+ - (\S+) )"));
+// INV-5 — apply the ctest summary regex per line, to every line the gate
+// prints as it arrives: the kept log tail can be as short as 10 lines, and a
+// long FAILED list read from it was cut short.
+struct CtestParser {
     bool inFailBlock = false;
-    for (const QString &line : lines) {
+
+    void feed(const QString &line, GateResult *r) {
+        static const QRegularExpression kFailLine(
+            QStringLiteral(R"(^\s*\d+ - (\S+) )"));
         // ANTS-4996 — both summary shapes, including a green run's.
         if (int failed = 0, total = 0;
             TestResCache::parseCtestSummary(line, &failed, &total)) {
@@ -238,7 +241,7 @@ void parseCtest(const QStringList &lines, GateResult *r) {
         }
         if (line.contains(QLatin1String("The following tests FAILED:"))) {
             inFailBlock = true;
-            continue;
+            return;
         }
         if (inFailBlock) {
             const auto fm = kFailLine.match(line);
@@ -249,7 +252,7 @@ void parseCtest(const QStringList &lines, GateResult *r) {
             }
         }
     }
-}
+};
 
 // Run one gate. Streams stdout+stderr (merged), keeps a rolling
 // last-N-line window per INV-3, enforces a per-gate wall-clock timeout
@@ -272,8 +275,12 @@ GateResult runOneGate(const QString &projectPath,
     QStringDecoder utf8(QStringDecoder::Utf8);
     int totalLines = 0;
     constexpr qsizetype kSingleLineCap = kHardByteCap * 2;
-    // Keep the last maxLogLines lines, counting every line seen.
+    const bool isCtest = gc.format == QStringLiteral("ctest");
+    CtestParser ctest;
+    // Keep the last maxLogLines lines, counting every line seen; a ctest
+    // gate parses each line before the window can drop it.
     auto pushLine = [&](QString line) {
+        if (isCtest) ctest.feed(line, &r);
         lines.append(std::move(line));
         ++totalLines;
         if (lines.size() > maxLogLines) lines.removeFirst();
@@ -353,8 +360,7 @@ GateResult runOneGate(const QString &projectPath,
     r.logTail = assembleLogTail(lines, maxLogLines, &truncated);
     r.logTruncated = (totalLines > lines.size()) || truncated;
 
-    if (gc.format == QStringLiteral("ctest")) {
-        parseCtest(lines, &r);
+    if (isCtest) {
         // INV-5: if the parser found a summary, a parsed failure count
         // overrides ctest's exit 0. A run of zero tests prints no summary
         // and stays passed (ANTS-5981).

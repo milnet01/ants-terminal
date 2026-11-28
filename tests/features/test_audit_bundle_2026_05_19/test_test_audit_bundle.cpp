@@ -97,6 +97,30 @@ TEST(TestAuditBundle201926519, Ants1615AcceptsHeadlineField) {
     EXPECT_FALSE(r.block.contains(QStringLiteral("**.**")));
 }
 
+// ANTS-6655 — a caller-supplied field is one line in ROADMAP.md: a newline
+// in `fix` or the headline wrote a `## ` heading of its own.
+TEST(TestAuditBundle201926519, Ants6655FieldsCannotInjectLines) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    scaffoldRoadmap(tmp.path());
+
+    TestAuditEngine::FoldInRequest req;
+    req.callerCwd = tmp.path();
+    req.framework = "ctest\n## 9.9.9 — injected framework";
+    QJsonObject o = mkActionable("headline", "Sleep\n## 9.9.9 — injected headline");
+    o["fix"] = "Use a clock\n## 9.9.9 — injected fix";
+    QJsonArray arr;
+    arr.append(o);
+    req.actionable = arr;
+
+    const auto r = TestAuditEngine::foldIn(req);
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_FALSE(r.block.contains(QStringLiteral("\n## ")))
+        << r.block.toStdString();
+    EXPECT_TRUE(r.block.contains(QStringLiteral("  - Fix: Use a clock ## 9.9.9")))
+        << r.block.toStdString();
+}
+
 TEST(TestAuditBundle201926519, Ants1615AcceptsSummaryFallback) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

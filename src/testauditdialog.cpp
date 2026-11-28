@@ -334,12 +334,13 @@ ReviewDialogBase::BriefWork TestAuditDialog::briefWork(const ReviewLane &laneRef
             else dims.clear();
             apply = [this, pr = *r.repartition]() { applyPartition(pr); };
         }
-        if (!r.brief.ok) {
-            req.userPrompt = QStringLiteral("[test-audit: brief failed (%1)]")
-                                 .arg(r.brief.code);
-        } else {
-            req.userPrompt = assembleCappedPrompt(br.callerCwd, dims, r.brief);
-        }
+        // ANTS-6655 — a failed brief fails its lane. Sent as a prompt, the
+        // model's reply to it was kept as the chunk's report.
+        if (!r.brief.ok)
+            return ComposedBrief{ req, apply,
+                                  QStringLiteral("test-audit brief failed (%1)")
+                                      .arg(r.brief.code) };
+        req.userPrompt = assembleCappedPrompt(br.callerCwd, dims, r.brief);
         return ComposedBrief{ req, apply };
     };
 }
@@ -428,11 +429,21 @@ void TestAuditDialog::performFoldIn() {
         // still works.
         QJsonArray actionable = m_actionable;
         if (actionable.isEmpty()) {
+            // ANTS-6655 — a resumed round dispatches only the unreviewed
+            // chunks, so this session holds only their reports. The rest sit
+            // on disk under this partition's folder, as the synthesis reads.
             QStringList reports;
-            reports.reserve(m_collectedReports.size());
             for (auto it = m_collectedReports.cbegin();
                  it != m_collectedReports.cend(); ++it)
                 reports << it.value();
+            const QString absDir = projectCwd() + QChar('/') + reportsRelDir();
+            for (const TestAuditEngine::Chunk &c : m_chunks) {
+                if (m_token.isEmpty() || m_collectedReports.contains(c.id))
+                    continue;
+                QFile f(absDir + QChar('/') + c.id + QStringLiteral(".md"));
+                if (f.open(QIODevice::ReadOnly))
+                    reports << QString::fromUtf8(f.read(64 * 1024));
+            }
             actionable = TestAuditEngine::parseActionableFindings(reports);
         }
         if (actionable.isEmpty()) {

@@ -26,9 +26,9 @@ can't be an empty-walk artifact. Anchoring is lexical
 
 ## Invariants
 
-Local to G-19/G-20/G-21 (ANTS-5065). Every other row in the table above
-cites an invariant number from the canonical spec; these three are new
-and are not yet reflected there.
+Local to G-19 to G-23 (ANTS-5065, ANTS-6655). Every other row in the
+table above cites an invariant number from the canonical spec; these are
+new and are not yet reflected there.
 
 - **INV-1** — `mode:"full"` with `limit` omitted returns the documented
   default page size (5, per ANTS-1455 INV-13), not every collected
@@ -41,6 +41,13 @@ and are not yet reflected there.
   every collected report — ANTS-1455 INV-13's documented "all" opt-in —
   unchanged by the INV-1 fix. `truncatedByLimit` false, `next_offset`
   -1. *Test:* `G21` in `test_audit_glob_walk_synth_mode.cpp`.
+- **INV-4** (ANTS-6655) — `mode:"hybrid"` with an explicit `limit:-1`
+  returns every chunk verbatim; an omitted `limit` keeps the default 3.
+  *Test:* `G22` in `test_audit_glob_walk_synth_mode.cpp`.
+- **INV-5** (ANTS-6655) — a report's `<chunk_report` and
+  `</chunk_report>` markers are escaped in any letter case and with any
+  spacing inside the tag, so only the engine's own fence opens or closes.
+  *Test:* `G23` in `test_audit_glob_walk_synth_mode.cpp`.
 
 ## Rationale
 

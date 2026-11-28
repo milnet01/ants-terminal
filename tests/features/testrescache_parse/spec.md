@@ -22,6 +22,9 @@ parsing; this is that coverage.
   non-passing test in `failingTests` and no passing one.
 - **INV-3**: `passed`/`failed`/`total` match the log's own summary
   footer on both fixtures above, before and after the parser is fixed.
+- **INV-4** (ANTS-6655): a `***Not Run` line (a missing executable) names
+  its test in `failingTests`; a `***Not Run (Disabled)` line does not.
+  *Test:* `TestResCacheParse.Inv4NotRunIsAFailureDisabledIsNot`.
 
 ## Out of scope
 
@@ -30,8 +33,8 @@ parsing; this is that coverage.
   `tests/features/mcp_test_results/`.
 - `focused_test`'s own ctest invocation — covered by
   `tests/features/mcp_focused_test/`.
-- Statuses outside `Failed`/`Exception: <reason>`/`Timeout` (e.g.
-  `Not Run`) — not exercised here.
+- Statuses outside `Failed`/`Exception: <reason>`/`Timeout`/`Not Run` —
+  not exercised here.
 
 ## ANTS-4996 — a green ctest summary parses
 

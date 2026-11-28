@@ -94,6 +94,21 @@ TEST(TestAuditActionableParse, Inv2DimensionFromHeader) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// INV-2 (ANTS-6655) — a dimension written as words matches its snake_case
+// name: spaces and slashes read as `_`.
+TEST(TestAuditActionableParse, Inv2SpacedDimensionHeaders) {
+    const auto dim = [](const char *header) {
+        return only(TestAuditEngine::parseActionableFindings(
+                        { QString::fromUtf8(header)
+                          + QStringLiteral("\n- [LOW] a/b.cpp:1 — x\n") }))
+            .value(QStringLiteral("dimension")).toString().toStdString();
+    };
+    EXPECT_EQ(dim("## Coverage gaps"), "coverage_gaps");
+    EXPECT_EQ(dim("## Error handling (2)"), "error_handling");
+    EXPECT_EQ(dim("## Hardcoded data"), "hardcoded_data");
+    EXPECT_EQ(dim("### Setup / teardown"), "setup_teardown");
+}
+
 TEST(TestAuditActionableParse, Inv3AllDashFormsAccepted) {
     expect_reset();
 

@@ -127,6 +127,14 @@ TEST(SourceScrapes, Inv1DefinitionsReadTheirPaths) {
     EXPECT_EQ(defs.value(QStringLiteral("LIST_SOURCES")),
               (QStringList{QStringLiteral("src/a.cpp"), QStringLiteral("src/b.cpp")}));
     EXPECT_EQ(defs.value(QStringLiteral("ROOT_DIR")), QStringList{QString()});
+    // ANTS-6655 — a list item naming the root itself is kept, as "".
+    const QHash<QString, QStringList> listDefs = BuildTargets::pathDefinitions(QStringLiteral(
+        "set(ROOTS \"${CMAKE_SOURCE_DIR}\" \"${CMAKE_SOURCE_DIR}/src/a.cpp\")\n"
+        "target_compile_definitions(t PRIVATE ROOTS_LIST=\"${ROOTS}\")\n"));
+    const QStringList roots = listDefs.value(QStringLiteral("ROOTS_LIST"));
+    ASSERT_EQ(roots.size(), 2) << roots.join(',').toStdString();
+    EXPECT_TRUE(roots.at(0).isEmpty());
+    EXPECT_EQ(roots.at(1), QStringLiteral("src/a.cpp"));
 
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const QJsonObject a = forPath(*dir, "src/a.cpp");

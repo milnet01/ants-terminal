@@ -137,6 +137,34 @@ The following tests FAILED:
     EXPECT_EQ(t2.total, 6) << "total=" << t2.total;
 }
 
+// INV-4 (ANTS-6655) — `***Not Run` (a missing executable) is a failure and
+// is named; `***Not Run (Disabled)` is not.
+TEST(TestResCacheParse, Inv4NotRunIsAFailureDisabledIsNot) {
+    const QString log = QStringLiteral(R"(Test project /build
+    Start 1: Suite.Ok
+1/3 Test #1: Suite.Ok .........................   Passed    0.01 sec
+    Start 2: Suite.Off
+2/3 Test #2: Suite.Off ........................***Not Run (Disabled)   0.00 sec
+    Start 3: Suite.Missing
+Could not find executable /build/missing
+Unable to find executable: /build/missing
+3/3 Test #3: Suite.Missing ....................***Not Run   0.00 sec
+
+50% tests passed, 1 tests failed out of 2
+
+Total Test time (real) =   0.02 sec
+
+The following tests did not run:
+	  2 - Suite.Off (Disabled)
+
+The following tests FAILED:
+	  3 - Suite.Missing (Not Run)
+)");
+    const TRC::ParsedTests t = TRC::parseCtestOutput(log);
+    ASSERT_TRUE(t.recognised);
+    EXPECT_EQ(failureNames(t), QStringList{QStringLiteral("Suite.Missing")});
+}
+
 // ANTS-4996 — a green run's summary has no "tests failed" clause. A log whose
 // counts come only from the summary line must still read as 7 passed; the
 // summary pattern required the failed clause, so it read as nothing.

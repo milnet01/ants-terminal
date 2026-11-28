@@ -21,7 +21,9 @@ Pairs with docs/specs/ANTS-1289-verify-changes-mcp-tool.md.
   the project root is rejected; engine falls through to auto-detect.
 - **INV-5 (ctest parsing)** — captured ctest summary line sets
   `passedCount`/`totalCount`; failing-test names populate
-  `failingTests`.
+  `failingTests`. Every line the gate prints is parsed as it arrives, not
+  only the kept `logTail` (ANTS-6655,
+  `VerifyEngine.Ants6655CtestParsedBeyondLogTail`).
 - **INV-6 (sequential + skip)** — tests gate auto-skips iff prior
   build ran AND failed; tests gate runs when build passes.
 - **INV-7 (additionalProperties schema)** — covered by the MCP-layer

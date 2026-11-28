@@ -35,7 +35,7 @@ agreed with claude-config (CFG-0830, 2026-10-19). The seam is
 
 | # | Invariant | Test |
 |---|---|---|
-| 1 | A path definition, or a definition built from a list, makes its token read each path. A row is `{path, test, file, line, anchor, kind}`: `test` is `Suite.Name` from the enclosing `TEST`, `TEST_F` or `TEST_P`, `file` the test file, `line` the anchor's line, `anchor` the literal's text as written between its quotes. | `SourceScrapes.Inv1DefinitionsReadTheirPaths` |
+| 1 | A path definition, or a definition built from a list, makes its token read each path; a list item naming the root itself is kept as `""` (ANTS-6655). A row is `{path, test, file, line, anchor, kind}`: `test` is `Suite.Name` from the enclosing `TEST`, `TEST_F` or `TEST_P`, `file` the test file, `line` the anchor's line, `anchor` the literal's text as written between its quotes. | `SourceScrapes.Inv1DefinitionsReadTheirPaths` |
 | 2 | A directory definition makes a source-shaped literal read the existing file it names; a literal naming no existing file reads nothing. | `SourceScrapes.Inv2DirectoryDefinitionAndLiteral` |
 | 3 | A header helper under the test roots reads its paths in every test file that calls it. | `SourceScrapes.Inv3HeaderHelperReads` |
 | 4 | A binding ends with its test: a variable of the same name in the next test reads only what it was assigned there. A variable assigned from a bound variable is bound to the same paths. | `SourceScrapes.Inv4BindingsAreScopedAndFollowed` |

@@ -11,6 +11,7 @@
 // INV-26 (ANTS-5624) a brief is built on a worker; apply runs on the GUI
 //        thread before the job is sent.
 // INV-27 (ANTS-5624) a dialog closed mid-build drops the job.
+// INV-28 (ANTS-6655) a failed brief fails its lane and is never sent.
 
 #include "reviewdialogbase.h"
 
@@ -593,6 +594,34 @@ TEST(ReviewDialogBase, INV26_BriefBuiltOnWorkerApplyBeforeSend) {
     EXPECT_NE(workThread->load(), gui) << "INV-26: the brief was built on the GUI thread";
     EXPECT_EQ(applyThread, gui) << "INV-26: apply must run on the GUI thread";
     EXPECT_TRUE(appliedBeforeSend) << "INV-26: the job was sent before apply ran";
+}
+
+// INV-28 (ANTS-6655) — a brief that could not be built fails its lane with
+// its own text; the runner is never called, so no model sees a stub prompt.
+TEST(ReviewDialogBase, INV28_FailedBriefFailsLaneWithoutSending) {
+    TestReviewDialog dlg(QString(), nullptr, nullptr);
+    int sent = 0;
+    dlg.work = [] {
+        TestReviewDialog::ComposedBrief b;
+        b.failure = QStringLiteral("brief broke");
+        return b;
+    };
+    dlg.setJobRunner([&](const LlmJob &, const std::function<void(const LlmResult &)> &done) {
+        ++sent;
+        LlmResult r;
+        r.ok = true;
+        r.text = QStringLiteral("REPORT");
+        done(r);
+    });
+    dlg.setLanes({ ReviewLane{"a", "a", ""} });
+    dlg.redispatch({ "a" });
+    ASSERT_TRUE(pumpUntil([&] { return dlg.allCollectedCalls == 1; }));
+
+    EXPECT_EQ(sent, 0) << "INV-28: a failed brief was sent";
+    EXPECT_FALSE(dlg.reports().contains(QStringLiteral("a")));
+    ASSERT_NE(dlg.statusLabel(), nullptr);
+    const QString status = dlg.statusLabel()->text();
+    EXPECT_TRUE(status.contains(QStringLiteral("brief broke"))) << status.toStdString();
 }
 
 // INV-27 (ANTS-5624) — a dialog closed while a brief is being built drops

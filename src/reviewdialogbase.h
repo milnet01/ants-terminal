@@ -56,10 +56,13 @@ public:
 protected:
     // ANTS-5624 — a lane's brief, built on a worker thread. `apply`, when
     // set, writes what the build found into dialog state; the base runs it on
-    // the GUI thread before the request is sent.
+    // the GUI thread before the request is sent. A non-empty `failure` means
+    // no brief could be built: the lane fails with it and nothing is sent
+    // (ANTS-6655).
     struct ComposedBrief {
         LlmRequest            request;
         std::function<void()> apply;
+        QString               failure{};   // initialiser: {req, apply} stays warning-free
     };
     using BriefWork = std::function<ComposedBrief()>;
 

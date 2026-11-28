@@ -58,8 +58,12 @@ const QRegularExpression &totalTimeRe() {
 }
 
 // ANTS-5064 — a status may carry a reason ("Exception: SegFault",
-// "Subprocess aborted"); its first word decides.
+// "Subprocess aborted"); its first word decides. ANTS-6655 — `Not Run` (a
+// missing executable) is a failure, as ctest counts it; `Not Run (Disabled)`
+// is not.
 bool isFailureStatus(const QString &status) {
+    if (status.startsWith(QLatin1String("Not Run")))
+        return !status.contains(QLatin1String("Disabled"));
     qsizetype n = 0;
     while (n < status.size() && !status.at(n).isSpace()
            && status.at(n) != QLatin1Char(':'))

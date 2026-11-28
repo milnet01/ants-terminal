@@ -132,6 +132,12 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
         connect(worker, &QThread::finished, this,
                 [this, job, brief, done = std::move(done)]() mutable {
                     if (brief->apply) brief->apply();
+                    if (!brief->failure.isEmpty()) {
+                        LlmResult failed;
+                        failed.error = brief->failure;
+                        done(failed);
+                        return;
+                    }
                     LlmJob composed = job;
                     composed.request = std::move(brief->request);
                     m_runner(composed, std::move(done));

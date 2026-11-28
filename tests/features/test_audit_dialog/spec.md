@@ -60,6 +60,12 @@ smoke assertion.
 - **INV-14** (ANTS-5624) — the brief work recovers from a stale token as
   `briefFor` does: it re-partitions and retries once, and the dialog holds
   the new token once the brief is applied.
+- **INV-15** (ANTS-6655) — per-finding fold-in reads every chunk's report:
+  this session's, and for any other chunk the report file under the
+  partition's `.audit_cache/test_audit_<token>/` folder, so a resumed round
+  folds in the chunks an earlier session reviewed.
+- **INV-16** (ANTS-6655) — a brief that cannot be built fails its lane with
+  the engine's code; no request is sent for it.
 
 Note: the spec names the cache-miss code `stale_token`; the engine
 actually returns `stale_partition` — the dialog (and this test) use the

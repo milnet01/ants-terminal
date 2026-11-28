@@ -2908,9 +2908,9 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             r[QStringLiteral("passed")]    = c.passed;
             r[QStringLiteral("failed")]    = c.failed;
             r[QStringLiteral("exit_code")] = run.exitCode;
-            // ANTS-5360 — a non-zero exit with no readable counts measured
+            // ANTS-5360 — a non-zero exit with no failed test counted measured
             // nothing: a syntax or collection error, a failed compile or a
-            // crash. It is `broken`, never `killed`.
+            // crash. It is `broken`, never `killed` (ANTS-6655).
             const auto v = MutationProbe::judgeMutant(run.exitCode, c);
             using MV = MutationProbe::MutantVerdict;
             r[QStringLiteral("outcome")] =
@@ -2924,8 +2924,8 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                         .arg(ap.occurrences);
             } else if (v == MV::Broken) {
                 r[QStringLiteral("summary")] = QStringLiteral(
-                    "the run exited %1 with no readable pass/fail counts, so no "
-                    "test is known to have run — usually the mutant broke the "
+                    "the run exited %1 with no failed test counted, so no "
+                    "test is known to have caught it — usually the mutant broke the "
                     "file's syntax, a collection step or the build. This is NOT "
                     "a kill and says nothing about the suite. Prefer a mutation "
                     "that leaves the code valid.")

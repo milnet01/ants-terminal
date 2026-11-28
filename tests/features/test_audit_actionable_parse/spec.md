@@ -31,6 +31,8 @@ canonicalised.** A `## 🧪 Naming (7)` header sets `naming`: the emoji and
 the trailing count are not part of the value, and the case is normalised
 against the known dimension list so prose styling does not fragment it. An
 unrecognised header is kept as its own trimmed text rather than dropped.
+Spaces and slashes read as `_`, so `## Coverage gaps` sets `coverage_gaps`
+(ANTS-6655, `TestAuditActionableParse.Inv2SpacedDimensionHeaders`).
 
 **INV-3 — all three dash forms are accepted.** The prompt asks for an em
 dash; a model asked for one routinely writes a hyphen or an en dash.

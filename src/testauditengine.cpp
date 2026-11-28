@@ -1004,10 +1004,13 @@ QString canonicalSeverity(QString sev) {
 
 // The dimension a report header names, matched case-insensitively against
 // g_kDimensions() so "Performance" and "performance" count together; "" when
-// it names none.
+// it names none. Spaces and slashes read as `_`, so "Coverage gaps" and
+// "Setup / teardown" name coverage_gaps and setup_teardown.
 QString dimensionInHeader(const QString &header) {
+    static const QRegularExpression sep(QStringLiteral("[\\s/]+"));
+    const QString snake = QString(header).replace(sep, QStringLiteral("_"));
     for (const QString &d : g_kDimensions())
-        if (header.contains(d, Qt::CaseInsensitive)) return d;
+        if (snake.contains(d, Qt::CaseInsensitive)) return d;
     return QString();
 }
 
@@ -1788,11 +1791,16 @@ SynthResult synthesize(const SynthRequest &req) {
         // Escape BOTH the open `<chunk_report` and close `</chunk_report>`
         // markers so a hostile chunk report can't forge a report frame in
         // the synthesis prompt — mirrors indiereviewengine's <lane_report>
-        // hardening (ANTS-1445). indie-review-2026-05-21.
-        contents.replace(QStringLiteral("</chunk_report>"),
-                         QStringLiteral("&lt;/chunk_report&gt;"));
-        contents.replace(QStringLiteral("<chunk_report"),
-                         QStringLiteral("&lt;chunk_report"));
+        // hardening (ANTS-1445). indie-review-2026-05-21. ANTS-6655 — in any
+        // case and with any spacing: `</CHUNK_REPORT >` closed the fence too.
+        static const QRegularExpression closeTag(
+            QStringLiteral(R"(<\s*/\s*chunk_report\s*>)"),
+            QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression openTag(
+            QStringLiteral(R"(<\s*chunk_report)"),
+            QRegularExpression::CaseInsensitiveOption);
+        contents.replace(closeTag, QStringLiteral("&lt;/chunk_report&gt;"));
+        contents.replace(openTag, QStringLiteral("&lt;chunk_report"));
         contentsByChunk.append(contents);
         for (const QString &d : g_kDimensions()) {
             if (contents.contains(d, Qt::CaseInsensitive)) {
@@ -1972,11 +1980,13 @@ SynthResult synthesize(const SynthRequest &req) {
     } else if (mode == QStringLiteral("hybrid")) {
         // ANTS-1486 — summary stats + top-N highest-finding-count
         // chunks verbatim. Default N=3; caller can override via
-        // `limit`. Chunks selected from `findingCountByChunk` desc; ties
+        // `limit`, and -1 means every chunk, as in full mode (ANTS-6655).
+        // Chunks selected from `findingCountByChunk` desc; ties
         // broken by chunk index (so output order is stable).
         renderSummaryBlock();
         int topN = req.limit;
-        if (topN <= 0) topN = 3;
+        if (topN == 0) topN = 3;
+        else if (topN < 0) topN = static_cast<int>(md.size());
         QList<QPair<int /*count*/, int /*idx*/>> ranked;
         ranked.reserve(md.size());
         for (int i = 0; i < md.size(); ++i)
@@ -2103,10 +2113,14 @@ FoldInResult foldIn(const FoldInRequest &req) {
     // INV-3 — single batched allocate + insertBlock.
     QString block;
     QTextStream bs(&block);
+    // ANTS-6655 — every caller-supplied field is folded onto one line: a
+    // newline in one wrote its own lines into ROADMAP.md, a `## ` heading
+    // among them.
     bs << heading << "\n\n"
-       << "Framework: " << req.framework
+       << "Framework: " << req.framework.simplified()
        << " · Files scanned: " << req.filesScanned
-       << " · Dimensions: " << req.dimensions.join(QLatin1String(", "))
+       << " · Dimensions: "
+       << req.dimensions.join(QLatin1String(", ")).simplified()
        << " · Raw: " << req.rawFindings
        << " · Actionable: " << req.actionable.size() << "\n\n";
     const int n = req.actionable.size();
@@ -2124,7 +2138,7 @@ FoldInResult foldIn(const FoldInRequest &req) {
         for (const auto &k : {QStringLiteral("headline"),
                               QStringLiteral("summary"),
                               QStringLiteral("claim")}) {
-            const QString v = f.value(k).toString().trimmed();
+            const QString v = f.value(k).toString().simplified();
             if (!v.isEmpty()) { h = v; break; }
         }
         if (h.isEmpty()) {
@@ -2213,16 +2227,16 @@ FoldInResult foldIn(const FoldInRequest &req) {
     // Render per-finding bullets (headlines validated above, pre-allocation).
     for (int i = 0; i < n; ++i) {
         const QJsonObject f = req.actionable.at(i).toObject();
+        const auto field = [&f](const char *key) {
+            return f.value(QLatin1String(key)).toString().simplified();
+        };
         bs << "- 📋 [" << allocated.at(i) << "] **"
            << headlines.at(i) << ".**\n"
-           << "  - File: " << f.value(QStringLiteral("file")).toString()
+           << "  - File: " << field("file")
            << ":" << f.value(QStringLiteral("line")).toInt() << "\n"
-           << "  - Dimension: "
-           << f.value(QStringLiteral("dimension")).toString() << "\n"
-           << "  - Severity: "
-           << f.value(QStringLiteral("severity")).toString() << "\n"
-           << "  - Fix: "
-           << f.value(QStringLiteral("fix")).toString() << "\n";
+           << "  - Dimension: " << field("dimension") << "\n"
+           << "  - Severity: " << field("severity") << "\n"
+           << "  - Fix: " << field("fix") << "\n";
     }
     bs.flush();
     // Single insertBlock per call (INV-3), under the active release

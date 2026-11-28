@@ -66,6 +66,9 @@ subclasses fill four hooks and use the base services.
   runner is called.
 - **INV-27** (ANTS-5624) — a dialog destroyed while a brief is being built
   drops that job: neither its `apply` step nor the job runner runs.
+- **INV-28** (ANTS-6655) — a brief whose `failure` is set fails its lane
+  with that text, as a failed request does (INV-20), and the job runner is
+  not called for it.
 
 ## Test notes
 
