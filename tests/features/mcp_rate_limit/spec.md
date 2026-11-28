@@ -23,9 +23,10 @@ is full. See `docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md` for the full desi
   `rateLimitCheck` runs BEFORE `tryGetIdempotentReadCache` so a
   cacheable tool at the cap refuses even when the underlying call
   would be cache-served.
-- **INV-6 / empty buckets auto-pruned.** After all entries fall out
-  of the window, the next rateLimitCheck removes the bucket entry;
-  `rateLimitBucketCountForTest()` drops back to its prior value.
+- **INV-6 / stale entries pruned.** After all entries fall out of
+  the window, the next rateLimitCheck on that key drops them and
+  accepts the call, so the bucket's depth is 1. The map entry stays;
+  INV-7 bounds the map.
 - **INV-7 / map cap enforced.** `m_rateLimitBuckets` never exceeds
   `kRateLimitMapCap = 256` entries; insertion at the cap evicts
   the bucket with the oldest most-recent timestamp.

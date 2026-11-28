@@ -1,4 +1,6 @@
-// ANTS-1677 claudeintegration piece 3/9 — the terminal and tab tool descriptors
+// ANTS-1677 claudeintegration piece 3/9 — the terminal and tab tool descriptors,
+// plus two project-scoped ones, roadmap_query and model_switch_stats, which
+// sit here only to keep the tools/list order.
 #include "claudeintegration_internal.h"
 
 #include <QJsonArray>

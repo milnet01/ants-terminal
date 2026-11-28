@@ -1406,6 +1406,11 @@ void ClaudeIntegration::handleMcpLine(const QByteArray &line, McpReplyChannel *o
 // Declared in claudeintegration_internal.h.
 namespace claudeintegrationdetail {
 
+// The phrase that marks the shared caller_cwd description below. The
+// tools/list wire shortening matches it to tell that generic text from a
+// verb's own caller_cwd wording, so both read it from here.
+constexpr QLatin1String kCallerCwdDispatcherPhrase("Required by the dispatcher");
+
 // ANTS-1520 — shared schema property for tools that
 // anchor on caller_cwd. Most project-scoped read and
 // write tools REQUIRE this (refused at the dispatcher
@@ -1442,8 +1447,10 @@ namespace claudeintegrationdetail {
 QJsonObject makeCallerCwdReadProp() {
     QJsonObject p;
     p["type"] = "string";
-    p["description"] = QStringLiteral(
-        "Your $PWD. Required by the dispatcher for "
+    p["description"] = QString(
+        QStringLiteral("Your $PWD. ") + kCallerCwdDispatcherPhrase
+        + QStringLiteral(
+        " for "
         "project-scoped read and write tools "
         "(refuses with code `caller_cwd_required` "
         "when absent — ANTS-1520). The per-tab "
@@ -1451,7 +1458,7 @@ QJsonObject makeCallerCwdReadProp() {
         "`tab_or_cwd_required` instead (ANTS-1415); "
         "three of them (get_text, recent_errors, "
         "last_selection) also accept a `tab` index. "
-        "There is no focused-tab fallback.");
+        "There is no focused-tab fallback."));
     return p;
 }
 
@@ -2718,7 +2725,7 @@ QJsonObject ClaudeIntegration::mcpToolsList(const QJsonObject &request) {
                     const bool generic =
                         arg == QLatin1String("caller_cwd")
                             ? p.value(QStringLiteral("description")).toString()
-                                  .contains(QLatin1String("Required by the dispatcher"))
+                                  .contains(kCallerCwdDispatcherPhrase)
                             : kSharedArgs.contains(arg);
                     if (!generic) continue;
                     // ANTS-6626 — these verbs take a `tab` index instead,

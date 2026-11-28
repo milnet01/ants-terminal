@@ -39,7 +39,8 @@ QJsonObject makeEncodingProp();
 // contiguous run of today's descriptor order; handleMcpRequest calls them in
 // this order. Trace sits between Store and Reports, called only when the
 // process registered `trace` (ClaudeIntegration::m_toolProviders).
-void appendToolSchemasTerminal(QJsonArray &tools);     // get_scrollback .. last_selection
+void appendToolSchemasTerminal(QJsonArray &tools);     // get_scrollback .. last_selection,
+                                                       // with roadmap_query, model_switch_stats
 void appendToolSchemasCodeNav(QJsonArray &tools);      // find_sources .. apply_edits
 void appendToolSchemasDocs(QJsonArray &tools);         // codebase_index .. last_audit_summary
 void appendToolSchemasOrientation(QJsonArray &tools);  // session_orient .. caller_cwd_info

@@ -882,17 +882,9 @@ qint64 ClaudeIntegration::rateLimitCheck(
         bucket.tsMs.dequeue();
     }
 
-    // INV-6 — empty bucket auto-evicts. Insert nowMs into a fresh
-    // entry and return accept. (We re-fetch the bucket reference
-    // after the remove + re-insert because QHash may rehash.)
-    if (bucket.tsMs.isEmpty()) {
-        m_rateLimitBuckets.remove(key);
-        RateLimitBucket &fresh = m_rateLimitBuckets[key];
-        fresh.tsMs.enqueue(nowMs);
-        return 0;
-    }
-
-    // Under cap — accept and append.
+    // Under cap — accept and append. INV-6: a bucket the prune emptied
+    // lands here too; the cap is at least 1 (checked at the top). Its
+    // map entry stays; INV-7's cap bounds the map.
     if (bucket.tsMs.size() < tier.capPerWindow) {
         bucket.tsMs.enqueue(nowMs);
         return 0;
