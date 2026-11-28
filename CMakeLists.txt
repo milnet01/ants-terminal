@@ -272,7 +272,8 @@ find_package(LayerShellQt CONFIG QUIET)
 #      report on a 12-core box: `nproc/2` (= 6 jobs) was still pegging
 #      enough cores to starve the desktop session's UI thread. `nproc/4`
 #      (= 3 jobs on a 12-core / 4 jobs on a 16-core) leaves 9+ cores free
-#      for everything outside the build. Each Qt-bloated cc1plus is
+#      for everything outside the build. Below 4 cores the cap is nproc
+#      itself (see the branch below). Each Qt-bloated cc1plus is
 #      200-300 MiB and concurrent links are even heavier; `link_pool=1`
 #      serialises the bundle linker steps — link is the heaviest single
 #      process and the one most likely to swap.
@@ -311,6 +312,8 @@ ProcessorCount(_ANTS_NPROC)
 if(_ANTS_NPROC EQUAL 0)
     set(_ANTS_COMPILE_CAP 2)
 elseif(_ANTS_NPROC LESS 4)
+    # Kept from the first formula, nproc - 2 (ANTS-1217), which fell to 1 or
+    # below under 4 cores. So a 1-core host gets 1 job, not the floor of 2.
     set(_ANTS_COMPILE_CAP ${_ANTS_NPROC})
 else()
     math(EXPR _ANTS_COMPILE_CAP "${_ANTS_NPROC} / 4")
@@ -323,7 +326,7 @@ endif()
 # runner: peak RSS per ASan compile measured 2.0 GB (claudeintegration.cpp)
 # and 1.4 GB (mainwindow.cpp) on 2026-09-28. Empty keeps the formula above.
 set(ANTS_COMPILE_POOL "" CACHE STRING
-    "Concurrent compile invocations cap (Ninja JOB_POOLS); empty = max(2, nproc/4)")
+    "Concurrent compile invocations cap (Ninja JOB_POOLS); empty = nproc under 4 cores, else max(2, nproc/4)")
 if(NOT ANTS_COMPILE_POOL STREQUAL "")
     if(NOT ANTS_COMPILE_POOL MATCHES "^[1-9][0-9]*$")
         message(FATAL_ERROR "ANTS_COMPILE_POOL must be a positive integer, got '${ANTS_COMPILE_POOL}'")
@@ -2483,13 +2486,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/cjk_width_c_locale/test_cjk_width_c_locale.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
-    set_property(SOURCE tests/features/crash_safe_session_persist/test_crash_safe_session_persist.cpp
+    set_property(SOURCE tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
-    set_property(SOURCE tests/features/window_cell_size/test_window_cell_size.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
-        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp")
+        SRC_INLINEIMAGEDECODE_PATH="${CMAKE_SOURCE_DIR}/src/inlineimagedecode.cpp")
 
     # ----------------------------------------------------------------------
     # ANTS-1217 Phase 3 — test_chrome bundle.
@@ -2786,10 +2785,6 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/help_about_menu/test_help_about_menu.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp")
-    set_property(SOURCE tests/features/report_issue/test_report_issue.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        ANTS_ISSUE_TEMPLATE_DIR="${CMAKE_SOURCE_DIR}/.github/ISSUE_TEMPLATE"
-        SRC_MAINWINDOW_MENUS_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow_menus.cpp")
     set_property(SOURCE tests/features/welcome_dialog/test_welcome_dialog.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_WELCOMEDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/welcomedialog.cpp")
@@ -2804,12 +2799,6 @@ if(ANTS_TESTS)
         SRC_OPENSUSE_SPEC_PATH="${CMAKE_SOURCE_DIR}/packaging/opensuse/ants-terminal.spec"
         SRC_WELCOMEDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/welcomedialog.cpp"
         SRC_SETTINGSDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp")
-    set_property(SOURCE tests/features/appimage_openssl3_shim/test_appimage_openssl3_shim.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
-    set_property(SOURCE tests/features/appimage_desktop_integration/test_appimage_desktop_integration.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
     set_property(SOURCE tests/features/self_update/test_self_update.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SELFUPDATE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/selfupdate.cpp"
@@ -2837,6 +2826,17 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/roadmap_status_bar_refresh/test_roadmap_status_bar_refresh.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         DOCS_STATUS_BAR_STANDARD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/status-bar.md")
+    set_property(SOURCE tests/features/crash_safe_session_persist/test_crash_safe_session_persist.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
+    set_property(SOURCE tests/features/window_cell_size/test_window_cell_size.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp")
+    set_property(SOURCE tests/features/pty_foreground_attr_reset/test_pty_foreground_attr_reset.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_PTY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
+        SRC_VTSTREAM_CPP_PATH="${CMAKE_SOURCE_DIR}/src/vtstream.cpp")
 
     # ANTS-1217 Phase 4: Claude integration + allowlist + AI + SSH +
     # shell-utils tests. Bundle pulls in claude_lib (its primary subject)
@@ -3767,21 +3767,12 @@ if(ANTS_TESTS)
                         tests/features/ai_chat_history_cap/test_ai_chat_history_cap.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_AIDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp")
-    set_property(SOURCE tests/features/lua_oom_event_dispatch/test_lua_oom_event_dispatch.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_LUAENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp")
     set_property(SOURCE tests/features/review_corroboration_single_pass/test_review_corroboration_single_pass.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-5125 INV-2 — the two dialog bodies whose corroboration call
         # count this test scrapes.
         SRC_INDIEREVIEWDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdialog.cpp"
         SRC_COLDEYESDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesdialog.cpp")
-    set_property(SOURCE tests/features/audit_provenance_redaction/test_audit_provenance_redaction.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_AUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
-        # RcTuSplit INV-11 — a remotecontrol TU is never named outside the
-        # ANTS_RC_SOURCES_REL block, so this scrapes the whole set instead.
-        "${_ants_rc_sources_def}")
     set_property(SOURCE tests/features/claude_git_context_hook/test_installer_grep.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SETTINGSDIALOG_H="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
@@ -3829,11 +3820,6 @@ if(ANTS_TESTS)
         # While toc_gap is the only fixable kind the two are behaviourally
         # identical, so the source is the only place that can tell them apart.
         ANTS_DOCLINT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/doclint.cpp")
-    set_property(SOURCE tests/features/doc_lint/test_doc_lint.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        # ANTS-3663 § 6 — the calibration harness walks the real corpus; every
-        # contract row uses a seeded temp tree and needs no path.
-        ANTS_PROJECT_ROOT_PATH="${CMAKE_SOURCE_DIR}")
     set_property(SOURCE tests/features/doc_dedup/test_doc_dedup.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3660 § 2.3 — the corpus-calibration harness walks the whole docs
@@ -3906,6 +3892,19 @@ if(ANTS_TESTS)
         # ANTS-3658 — drift guard: the per-test TIMEOUT override is keyed by
         # ctest test name, which CMake cannot validate (lazy discovery).
         SLOW_TEST_TIMEOUTS_CMAKE="${CMAKE_SOURCE_DIR}/tests/slow_test_timeouts.cmake")
+    # ANTS-5683 — the context meter test scrapes pollClaudeProcess, and
+    # ANTS-5747 the tracker's detectClaudeChild.
+    set_property(SOURCE tests/features/claude_context_meter/test_claude_context_meter.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\""
+        SRC_CLAUDETABTRACKER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudetabtracker.cpp")
+    set_property(SOURCE tests/features/envelope_close_tag_scrub/test_envelope_close_tag_scrub.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_DOCCITATIONS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/doccitations.cpp")
+    set_property(SOURCE tests/features/parked_feature_doc_truth/test_parked_feature_doc_truth.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MODELAUTOSWITCH_H_PATH="${CMAKE_SOURCE_DIR}/src/modelautoswitch.h"
+        DOCS_SUBSYSTEMS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/subsystems.md")
 
     # ANTS-1217 Phase 5 — test_audit bundle. Audit tests consolidated
     # behind one target. Most are pure source-grep (slurp + regex on
@@ -4118,6 +4117,12 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1844 — sliceSection perf-shape lock (roadmap_index_engine ENG-7).
         SRC_ROADMAPINDEX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapindex.cpp")
+    set_property(SOURCE tests/features/audit_provenance_redaction/test_audit_provenance_redaction.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_AUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
+        # RcTuSplit INV-11 — a remotecontrol TU is never named outside the
+        # ANTS_RC_SOURCES_REL block, so this scrapes the whole set instead.
+        "${_ants_rc_sources_def}")
 
     # ANTS-1217 Phase 6 — test_dialogs bundle. Subject: settingsdialog +
     # roadmapdialog + diffviewer (the dialogs hosted by chrome): tests
@@ -4303,6 +4308,10 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         ROADMAPSHORTCUTSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapshortcutsdialog.cpp"
         ROADMAPSHORTCUTSDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapshortcutsdialog.h")
+    set_property(SOURCE tests/features/report_issue/test_report_issue.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_ISSUE_TEMPLATE_DIR="${CMAKE_SOURCE_DIR}/.github/ISSUE_TEMPLATE"
+        SRC_MAINWINDOW_MENUS_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow_menus.cpp")
     # ANTS-1236 — Qt6::Test for QTest::keyClick used by
     # roadmap_shortcuts_cheatsheet. Mirrors the test_chrome / test_claude
     # bundles that also pull Qt6::Test in.
@@ -4349,6 +4358,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/lua_threading/test_lua_threading.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_PLUGINMANAGER_H_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.h")
+    set_property(SOURCE tests/features/lua_oom_event_dispatch/test_lua_oom_event_dispatch.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_LUAENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp")
     endif()
 
     # ANTS-1217 Phase 6 — test_core bundle. Subject: core infrastructure —
@@ -4795,15 +4807,6 @@ if(ANTS_TESTS)
         SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h"
         # ANTS-1061 — the shared image decode the grid and VtStream call.
         SRC_INLINEIMAGEDECODE_PATH="${CMAKE_SOURCE_DIR}/src/inlineimagedecode.cpp")
-    set_property(SOURCE tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_INLINEIMAGEDECODE_PATH="${CMAKE_SOURCE_DIR}/src/inlineimagedecode.cpp")
-    # ANTS-5683 — the context meter test scrapes pollClaudeProcess, and
-    # ANTS-5747 the tracker's detectClaudeChild.
-    set_property(SOURCE tests/features/claude_context_meter/test_claude_context_meter.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\""
-        SRC_CLAUDETABTRACKER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudetabtracker.cpp")
     set_property(SOURCE tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_VTSTREAM_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/vtstream.h")
@@ -4817,13 +4820,6 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/pty_childpid_atomic/test_pty_childpid_atomic.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_PTY_H_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.h")
-    set_property(SOURCE tests/features/pty_foreground_attr_reset/test_pty_foreground_attr_reset.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_PTY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
-        SRC_VTSTREAM_CPP_PATH="${CMAKE_SOURCE_DIR}/src/vtstream.cpp")
-    set_property(SOURCE tests/features/envelope_close_tag_scrub/test_envelope_close_tag_scrub.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_DOCCITATIONS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/doccitations.cpp")
     set_property(SOURCE tests/features/flatpak_host_shell/test_flatpak_host_shell.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_PTYHANDLER_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp")
@@ -4880,10 +4876,6 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/model_switch_confirm/test_switch_confirm_actuator.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_MODELAUTOSWITCH_H_PATH="${CMAKE_SOURCE_DIR}/src/modelautoswitch.h")
-    set_property(SOURCE tests/features/parked_feature_doc_truth/test_parked_feature_doc_truth.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_MODELAUTOSWITCH_H_PATH="${CMAKE_SOURCE_DIR}/src/modelautoswitch.h"
-        DOCS_SUBSYSTEMS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/subsystems.md")
     set_property(SOURCE tests/features/flatpak_lua_module/test_flatpak_lua_module.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml")
@@ -4920,6 +4912,17 @@ if(ANTS_TESTS)
         SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
         SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
         SRC_DEBTSWEEPENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/debtsweepengine.cpp")
+    set_property(SOURCE tests/features/appimage_openssl3_shim/test_appimage_openssl3_shim.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
+    set_property(SOURCE tests/features/appimage_desktop_integration/test_appimage_desktop_integration.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
+    set_property(SOURCE tests/features/doc_lint/test_doc_lint.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3663 § 6 — the calibration harness walks the real corpus; every
+        # contract row uses a seeded temp tree and needs no path.
+        ANTS_PROJECT_ROOT_PATH="${CMAKE_SOURCE_DIR}")
 
     # ANTS-5734 — the trace verb's engine, grammars and fixture project.
     # Links ants_trace_lib, which no other bundle carries (spec § 2.3).
