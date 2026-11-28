@@ -310,4 +310,27 @@ touch -d "40 days ago" "$re/stale.log"
 rerun prune >/dev/null
 [ ! -e "$re/stale.prev" ] || { echo "FAIL INV-15: prune left the .prev behind"; exit 1; }
 
-echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply, records and cleans by owner, summarises a finished job, prunes old jobs, keeps an unread log on a reused name"
+# INV-16 — clean <name> closes that job's watch window and no other job's.
+# The stand-in systemctl lists three watch units and records each unit a stop
+# names, matching a pattern as systemd does.
+ww="$prefix/watch"
+mkdir "$ww"
+stopped="$prefix/stopped"
+: >"$stopped"
+cat >"$fake/systemctl" <<EOF
+#!/bin/bash
+units="cc-job-watch-a-123.service cc-job-watch-a-b-456.service cc-job-watch-a-2-789.service"
+case "\$*" in
+    *list-units*) for u in \$units; do echo "\$u loaded active running stand-in"; done; exit 0 ;;
+    *is-active*)  exit 3 ;;
+    *stop*)       for u in \$units; do [[ \$u == \${@: -1} ]] && echo "\$u" >>"$stopped"; done; exit 0 ;;
+esac
+exit 1
+EOF
+chmod +x "$fake/systemctl"
+echo 0 >"$ww/a.exit"
+env CC_JOB_DIR="$ww" PATH="$fake:$PATH" "$bin" clean a >/dev/null
+[ "$(cat "$stopped")" = "cc-job-watch-a-123.service" ] ||
+    { echo "FAIL INV-16: clean a stopped: $(tr '\n' ' ' <"$stopped")"; exit 1; }
+
+echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply, records and cleans by owner, summarises a finished job, prunes old jobs, keeps an unread log on a reused name, closes only its own job's watch window"

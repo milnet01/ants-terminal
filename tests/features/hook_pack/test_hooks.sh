@@ -184,12 +184,20 @@ if [ "$have_jq" -eq 1 ]; then
             return
         fi
         local reason
-        reason="$(printf '%s' "$out" | jq -r '.reason // empty')"
+        reason="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty')"
         local n=${#reason}
         if [ "$n" -le 200 ] && [ "$n" -gt 0 ]; then
             pass "INV-4 $label reason=${n} bytes"
         else
             fail "INV-4 $label reason=${n} (must be 1..200)"
+        fi
+        # ANTS-6651 — the current PreToolUse deny, not the deprecated
+        # top-level decision:"block".
+        if printf '%s' "$out" | jq -e '.hookSpecificOutput.hookEventName == "PreToolUse"
+              and .hookSpecificOutput.permissionDecision == "deny" and (has("decision") | not)' >/dev/null; then
+            pass "ANTS-6651 $label denies through permissionDecision"
+        else
+            fail "ANTS-6651 $label block envelope: $out"
         fi
     }
     # ANTS-2141: grep/find-over-source is now a soft-warn, NOT a block — its
@@ -246,7 +254,7 @@ if [ "$have_jq" -eq 1 ]; then
         local id="$1" expected="$2" cmd="$3" out actual=pass
         out=$(jq -nc --arg c "$cmd" '{tool_input:{command:$c}}' \
               | ( cd "$rt_proj" && HOME="$rt_work" bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null ))
-        case "$out" in *'"block"'*) actual=block ;; esac
+        case "$out" in *'"permissionDecision":"deny"'*) actual=block ;; esac
         if [ "$actual" = "$expected" ]; then
             pass "CFG-0656 $id $expected :: $cmd"
         else
@@ -287,7 +295,7 @@ if [ "$have_jq" -eq 1 ]; then
     # them, so routing there is a dead end that ends in `# ants-bypass` — the
     # raw command the veto exists to prevent. The reason must name git_state.
     diff_reason="$(printf '%s' '{"tool_input":{"command":"git diff --stat"}}' \
-        | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null | jq -r '.reason // empty')"
+        | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason // empty')"
     case "$diff_reason" in
         *git_state*) pass "diff veto routes to git_state" ;;
         "")          fail "diff veto stopped blocking (regression)" ;;
@@ -340,7 +348,7 @@ if [ "$have_jq" -eq 1 ]; then
     # The status/log branch routes to git_state too. ANTS-5485 retires
     # get_git_status, so no reason may name it.
     status_reason="$(printf '%s' '{"tool_input":{"command":"git status"}}' \
-        | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null | jq -r '.reason // empty')"
+        | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason // empty')"
     case "$status_reason" in
         *get_git_status*) fail "status veto names the retired get_git_status: $status_reason" ;;
         *git_state*) pass "status veto routes to git_state" ;;
@@ -438,6 +446,28 @@ if [ "$have_jq" -eq 1 ]; then
         pass "ANTS-2141 INV-6 ants_is_source_search predicate table"
     else
         fail "ANTS-2141 INV-6 predicate table mismatch"
+    fi
+
+    # ANTS-6651 — -r inside a flag cluster is recursive, and a project file
+    # whose path merely contains /proc or /sys is not a system directory.
+    if (
+        . "$HOOKS_DIR/_common.sh"
+        p() { if ants_is_source_search "$1"; then echo m; else echo n; fi; }
+        r() { if ants_is_source_read "$1"; then echo m; else echo n; fi; }
+        e=0
+        [ "$(p 'grep -nr foo src/')" = m ] || { echo "grep -nr"; e=1; }
+        [ "$(p 'grep -irn foo src/')" = m ] || { echo "grep -irn"; e=1; }
+        [ "$(p 'grep -n foo src/bar.cpp')" = n ] || { echo "grep -n"; e=1; }
+        [ "$(p 'grep -r x src/processgroup.h')" = m ] || { echo "grep src/processgroup.h"; e=1; }
+        [ "$(r 'cat src/processgroup.h')" = m ] || { echo "cat src/processgroup.h"; e=1; }
+        [ "$(r 'cat src/sysinfo.cpp')" = m ] || { echo "cat src/sysinfo.cpp"; e=1; }
+        [ "$(p 'grep -r x /proc')" = n ] || { echo "grep /proc"; e=1; }
+        [ "$(r 'cat "/usr/include/x.h"')" = n ] || { echo "cat /usr"; e=1; }
+        exit $e
+    ) >&2; then
+        pass "ANTS-6651 clustered -r warns; /proc inside a project path does not exempt"
+    else
+        fail "ANTS-6651 predicate rows mismatch (cases above)"
     fi
 
     # INV-7: throttle — fire→warn, immediate→suppressed, post-window→warn again.
@@ -682,7 +712,7 @@ if [ "$have_jq" -eq 1 ]; then
         '{"tool_input":{"command":"git status"}}' \
         '{"tool_input":{"command":"cat ROADMAP.md | grep foo"}}'; do
         reason="$(printf '%s' "$payload" | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null \
-            | jq -r '.reason // empty' 2>/dev/null)"
+            | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)"
         case "$reason" in
             *"# ants-bypass"*) leak=1 ;;
         esac
@@ -703,6 +733,13 @@ if [ "$have_jq" -eq 1 ]; then
         pass "behaviour read-roadmap-veto fires on full read"
     else
         fail "behaviour read-roadmap-veto did NOT fire on full read"
+    fi
+    if printf '%s' "$out_full" | jq -e '.hookSpecificOutput.permissionDecision == "deny"
+          and (.hookSpecificOutput.permissionDecisionReason | length > 0)
+          and (has("decision") | not)' >/dev/null 2>&1; then
+        pass "ANTS-6651 read-roadmap-veto denies through permissionDecision"
+    else
+        fail "ANTS-6651 read-roadmap-veto block envelope: $out_full"
     fi
     out_offset="$(printf '%s' "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/ROADMAP.md\",\"offset\":100}}" | bash "$HOOKS_DIR/ants-read-roadmap-veto.sh" 2>/dev/null)"
     if [ -z "$out_offset" ]; then

@@ -62,6 +62,11 @@ source is `packaging/cc-job/cc-job`.
   is cleared as before. `status --all` lists no job for a `.prev` file.
   `clean` and `prune` remove it with the job.
   *Breaks when:* re-using a job name wipes output nobody has read.
+- **INV-16** *(ANTS-6651)* — `clean <name>` stops only the watch units named
+  `cc-job-watch-<name>-<digits>.service`, so cleaning job `a` leaves the watch
+  windows of jobs `a-b` and `a-2` open.
+  *Breaks when:* cleaning one job closes the watch window of another whose
+  name begins with it.
 
 The test starts its job through a stand-in `systemd-run`, so it needs no
 `systemd --user`.

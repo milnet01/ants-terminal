@@ -102,13 +102,14 @@ snapshot from PreCompact is present.
     `get_git_status` / `roadmap_query`
   - `cat ROADMAP.md | grep` → block, suggest `roadmap_query`
 - Block reason ≤ 200 bytes (INV-4).
-- **Override: trailing comment `# ants-bypass`** — veto strips the
-  comment before display; does NOT pass through to bash. Compare
+- **Override: a `# ants-bypass` comment anywhere in the command** —
+  the veto lets the command through untouched, before testing any
+  pattern; bash reads the token as a comment. Compare
   with the earlier-considered `ANTS_BYPASS=1` env-var prefix
   (rejected in loop 3 — too easily exfiltrated as a reusable
   sentinel; if Claude memorises it the veto loses its function).
-  Comment form keeps the bypass intentional and removes the literal
-  token from the block-reason text the model sees (INV-12).
+  Comment form keeps the bypass intentional, and no block-reason
+  text the model sees names the token (INV-12).
 - **Security framing (loop-3 S1252-8):** the bypass is a **UX
   affordance, not a security boundary**. Hooks do not defend against
   prompt injection that relays a bypassed bash command; the security
@@ -149,7 +150,7 @@ processes from `&` backgrounding). Exits 0 always (INV-1).
 ### 1.5 `ants-precompact-snapshot.sh` — PreCompact
 
 Side-effect-only. Parses `transcript_path` and writes most recent
-TodoWrite snapshot + in-progress spec path to
+TodoWrite snapshot to
 `~/.cache/ants-terminal/precompact_<sessionId>.json` ONLY if
 `sessionId` matches `^[a-zA-Z0-9_-]{1,64}$` (INV-2). Otherwise exits
 silent.
@@ -346,7 +347,7 @@ hook pack acts as the safety net once the canonical tools exist).
 | jq missing on user host | All hooks degrade silently (exit 0 on `jq` failure) — INV-7's parse fails → script silently no-ops. |
 | Zombie drift-check processes | `flock` PID-file gates overlap (INV-11); errors logged to `~/.cache/ants-terminal/drift-check.log` (so silent backgrounding doesn't hide failures). |
 | Bash-veto JSON-injection | `jq -r` only (INV-7); pattern-match against decoded value, never raw JSON. |
-| Veto blocks legitimate Bash | Trailing `# ants-bypass` comment lets Claude opt out per command (§1.2). The veto strips the comment before display — no token leakage (INV-12). |
+| Veto blocks legitimate Bash | A `# ants-bypass` comment anywhere in the command lets Claude opt out per command (§1.2). No block reason names the token — no token leakage (INV-12). |
 | Veto blocks legitimate full Read of ROADMAP | Use `roadmap_query` with `status: "all"` (same content, ~12 K vs ~123 K) or Read with `offset`/`limit` for slices (§1.3). |
 
 ## 8. Out of scope (V1)

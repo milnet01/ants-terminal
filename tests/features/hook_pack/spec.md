@@ -23,14 +23,17 @@ passes, non-zero (with FAIL lines on stderr) otherwise.
    `ants-precompact-snapshot.sh` emit zero stdout bytes against
    `{}` stdin.
 6. **INV-12 (no leakable bypass token).** For each pattern that
-   fires a block, the emitted block-reason JSON's `.reason` MUST
+   fires a block, the emitted JSON's
+   `.hookSpecificOutput.permissionDecisionReason` MUST
    NOT contain the literal `# ants-bypass` token. The token DOES
    appear in `ants-bash-veto.sh` source (inside the `case` glob
    that *enables* the bypass) — INV-12's concern is leakage into
    the model's input, i.e. the reason string. The override
    mechanism is documented in `hooks/README.md` only.
 7. **Bash-veto block hits.** Two positive cases that MUST produce a
-   `decision:"block"` JSON envelope: `git status`, `cat ROADMAP.md | grep`.
+   PreToolUse `permissionDecision:"deny"` envelope with no top-level
+   `decision` (ANTS-6651): `git status`, `cat ROADMAP.md | grep`. A full
+   read of `ROADMAP.md` gets the same envelope from the read veto.
    One negative: `ls -la` produces no envelope (empty stdout). (ANTS-2141
    moved `grep -r … src/` out of the block class into the soft-warn class —
    see the ANTS-2141 section below.)
@@ -77,6 +80,10 @@ These run only when `jq` is present (skipped with a `[skip]` line otherwise).
   `find src tests -name '*.py' | sort` (ANTS-5520).
 - **Predicate (INV-6).** `_common.sh::ants_is_source_search` is sourced and
   table-tested in-process (it `return`s, never `exit`s).
+- **Regression (ANTS-6651).** `grep -nr` and `grep -irn` over `src/` warn, and
+  `grep -n` over one file does not. A project path containing `/proc` or `/sys`
+  (`src/processgroup.h`, `src/sysinfo.cpp`) is not exempt for either
+  predicate; `/proc` and `"/usr/…"` as paths still are.
 - **Throttle (INV-7).** With `ANTS_GREP_NUDGE_THROTTLE_SEC=2` + a fixed
   `ANTS_GREP_NUDGE_KEY`: first fire warns, an immediate second is suppressed
   (empty), and a fire after the window (`touch -d` backdate) warns again.

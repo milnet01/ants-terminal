@@ -88,8 +88,12 @@ ants_nudge_command_head() {
     case " $pre " in
         *" --help"*|*" --version"*|*" -h "*|*" -V "*) return 1 ;;
     esac
+    # A system directory counts only where a word starts with it, so
+    # src/processgroup.h is not /proc.
+    local sys_root="(^|[[:space:]\"'=])/(tmp|var|etc|usr|proc|sys)"
+    [[ "$pre" =~ $sys_root ]] && return 1
     case "$pre" in
-        */tmp*|*/var*|*/etc*|*/usr*|*/proc*|*/sys*|*build/*|*build-*|*.git/*|*node_modules*|*.log*)
+        *build/*|*build-*|*.git/*|*node_modules*|*.log*)
             return 1 ;;
     esac
     ANTS_NUDGE_PRE="$pre"
@@ -116,9 +120,11 @@ ants_is_source_search() {
         ag)            ANTS_NUDGE_TOOL=ag;       return 0 ;;
         ack|ack-grep)  ANTS_NUDGE_TOOL=ack;      return 0 ;;
         grep|egrep|fgrep)
-            case " $pre " in
-                *" -r"*|*" -R"*|*" --recursive"*) ANTS_NUDGE_TOOL="grep"; return 0 ;;
-            esac
+            # -r or -R alone or in a cluster such as -nr, or --recursive.
+            local rflag='(^|[[:space:]])-[A-Za-z]*[rR]'
+            if [[ "$pre" =~ $rflag ]] || [[ " $pre " == *" --recursive"* ]]; then
+                ANTS_NUDGE_TOOL="grep"; return 0
+            fi
             ;;
         git)
             if [ "$second" = "grep" ]; then ANTS_NUDGE_TOOL=git-grep; return 0; fi

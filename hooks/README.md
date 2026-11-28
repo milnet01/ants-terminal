@@ -55,7 +55,8 @@ out of scope; `ROADMAP.md` has its own routing), or carrying `--help` /
 **Block (precise vetoes).** `git status` / `git log --oneline` → `git_state`
 (`op:"status"` / `op:"log"`); `git diff --stat` → `git_state op:"diff"`;
 `cat ROADMAP.md | grep` → `roadmap_query`.
-These emit `{"decision":"block","reason":"…"}` (reason ≤ 200 B).
+These emit a PreToolUse `hookSpecificOutput` with `permissionDecision:"deny"`
+and a `permissionDecisionReason` of at most 200 B.
 
 ### The `# ants-bypass` override
 

@@ -125,7 +125,8 @@ strip from pre: leading `VAR=val ` assignments and a single leading `cd … &&`
                 (only a leading `cd`, not any other command before `&&`)
 
 RECURSIVE_GREP = pre has a leading-or-post-`&&`/`;` token in
-    {grep,egrep,fgrep} carrying -r | -R | --recursive,
+    {grep,egrep,fgrep} carrying -r | -R (alone or in a cluster such as -nr)
+    | --recursive,
     OR a token in {rg,ag,ack,ack-grep}            # these are recursive by default
 PROJECT_FIND   = pre has a `find` token AND a -name|-iname|-path|-ipath primary
     AND its first path operand is a project SOURCE location — `.`, `./`, or a
@@ -152,7 +153,9 @@ eligible = (RECURSIVE_GREP or PROJECT_FIND or GIT_GREP) and not EXEMPT
   **ending in `.log`**.
 
 These EXEMPT checks are **substring** tests on `pre` (not word-split tokens) —
-that is the reading blind spot (c) below depends on. The non-source-root + flag
+that is the reading blind spot (c) below depends on. The system
+directories (`/tmp` to `/sys`) match only at the start of a word (after a space, a quote or `=`),
+so `src/processgroup.h` is not `/proc` (ANTS-6651). The non-source-root + flag
 scans run on **`pre`**, not the whole `$cmd`, so a
 source search that merely *pipes into* a non-source path —
 `grep -rn x src/ | tee /var/log/out` — still warns. Only the `# ants-bypass`
@@ -328,9 +331,11 @@ existing sub-millisecond stat-ascent (ANTS-1252 INV-9), zero tokens, zero files.
   `{"tool_input":{"command":"grep -rn foo src/"}}`; assert with a single jq
   program:
   `jq -e '(.hookSpecificOutput.additionalContext|length>0) and (.hookSpecificOutput|has("permissionDecision")|not) and ((.decision//"")=="")'` → `true`, exit status 0.
-- **INV-2** — The git-status and `cat ROADMAP.md | grep` branches still emit
-  `{"decision":"block"}` with a `reason`. *Test:* those two assertion-7 cases
-  still produce `.decision=="block"`.
+- **INV-2** — The git-status and `cat ROADMAP.md | grep` branches still
+  block: a PreToolUse `permissionDecision:"deny"` with a
+  `permissionDecisionReason` (ANTS-6651; top-level `decision:"block"` is
+  deprecated for PreToolUse). *Test:* those two assertion-7 cases still
+  produce `.hookSpecificOutput.permissionDecision=="deny"`.
 - **INV-3** — The warn `additionalContext` is ≤ 400 bytes. *Test:* harness
   extracts `.hookSpecificOutput.additionalContext` via `jq -r` and asserts its
   byte length — the cap is on the **field value**, not the whole stdout envelope

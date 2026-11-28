@@ -50,6 +50,7 @@ fi
 reason='use mcp__ants__roadmap_query (status=active saves ~10x tokens; status=all returns the full set at ~12 K vs ~123 K). Read with offset/limit also bypasses this veto.'
 reason="$(printf '%s' "$reason" | LC_ALL=C cut -c1-200)"
 
-jq -nc --arg r "$reason" '{decision:"block", reason:$r}'
+jq -nc --arg r "$reason" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse", permissionDecision:"deny", permissionDecisionReason:$r}}'
 
 exit 0

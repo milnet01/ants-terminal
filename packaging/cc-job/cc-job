@@ -194,8 +194,15 @@ clean_one() {
     # The log is the only copy of the output (CFG-0729: a clean before reading
     # it forced a re-run). Refuse until tail has shown it.
     if ((!force)) && [[ -s $JOB_DIR/$name.log && ! -e $JOB_DIR/$name.read ]]; then return 2; fi
-    # Close any watch window first, or it reports the log vanishing.
-    systemctl --user stop "cc-job-watch-$name-*" 2>/dev/null || true
+    # Close any watch window first, or it reports the log vanishing. Only this
+    # job's, cc-job-watch-<name>-<pid>: a glob would also close job <name>-b's.
+    local unit rest
+    while read -r unit _; do
+        rest=${unit#"cc-job-watch-$name-"}
+        if [[ $rest != "$unit" && $rest =~ ^[0-9]+\.service$ ]]; then
+            systemctl --user stop "$unit" 2>/dev/null || true
+        fi
+    done < <(systemctl --user list-units 'cc-job-watch-*' --no-legend --plain 2>/dev/null || true)
     rm -f "$JOB_DIR/$name".{log,exit,info,read,env,prev}
 }
 

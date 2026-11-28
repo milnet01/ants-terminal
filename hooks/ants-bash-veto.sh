@@ -7,8 +7,8 @@
 #    verbs; the command still runs. Throttled per session, tallied always.
 #  - BLOCK: git status / log → git_state (op:status / op:log); a --stat diff
 #    → git_state op:diff (a diff needs CHANGED LINES); ROADMAP|grep →
-#    roadmap_query. Emit
-#    `{"decision":"block","reason":"..."}`.
+#    roadmap_query. Emit a PreToolUse `permissionDecision:"deny"` with a
+#    `permissionDecisionReason`.
 # INV-4: block reason ≤ 200 B. INV-7: jq -r only. INV-12: bypass token
 # never appears in the reason string.
 
@@ -155,8 +155,10 @@ esac; fi
 # Cap to 200 B (ANTS-1252 INV-4). printf truncation via `cut -c` is locale-safe.
 reason="$(printf '%s' "$reason" | LC_ALL=C cut -c1-200)"
 
-# Emit decision-block JSON. jq -nc keeps the payload compact and
-# escapes the reason properly without us hand-rolling JSON.
-jq -nc --arg r "$reason" '{decision:"block", reason:$r}'
+# Emit a deny. Top-level decision:"block" is deprecated for PreToolUse.
+# jq -nc keeps the payload compact and escapes the reason properly without
+# us hand-rolling JSON.
+jq -nc --arg r "$reason" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse", permissionDecision:"deny", permissionDecisionReason:$r}}'
 
 exit 0
