@@ -609,15 +609,24 @@ TEST(IndieReviewComputedPartition, Inv9SampleIsDeterministicAndCapped) {
 TEST(IndieReviewComputedPartition, Inv8HandlerReportsUnassignedForTheCarriedPartition) {
     const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
-    const std::string body =
+    const std::string handler =
         ants_test::slurpFunctionBody(rc, "RemoteControl::cmdIndieReviewPartition");
-    ASSERT_FALSE(body.empty());
+    ASSERT_FALSE(handler.empty());
 
     // The reporter must actually be passed to the walk, or it stays empty and
     // every assertion below would pass against a permanently silent envelope.
-    EXPECT_NE(body.find("deriveComputedPartition(root, &unassigned)"),
+    EXPECT_NE(handler.find("deriveComputedPartition(root, &unassigned)"),
               std::string::npos)
         << "the walk must be given somewhere to record what it skipped";
+    // ANTS-6676 — the coverage section lives in appendPartitionCoverage, and
+    // the handler hands it the walk's reporter and `derived` once.
+    EXPECT_NE(handler.find("appendPartitionCoverage(env, root, lanes, derived, "
+                           "unassigned)"),
+              std::string::npos)
+        << "the handler must hand the walk's reporter to the coverage section";
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "static void appendPartitionCoverage(");
+    ASSERT_FALSE(body.empty());
     EXPECT_NE(body.find("env[\"unassigned_count\"]"), std::string::npos);
     EXPECT_NE(body.find("env[\"unassigned_by_suffix\"]"), std::string::npos)
         << "a bare count cannot tell shell from documentation";
@@ -714,9 +723,12 @@ TEST(IndieReviewComputedPartition, Ants6182ReplyNamesWhatNoLaneCovers) {
     EXPECT_FALSE(outside.contains(QStringLiteral("src")));
 
     // The handler needs a MainWindow, so its wiring is read from the source.
-    const std::string body = ants_test::slurpFunctionBody(
-        ants_test::slurpRemoteControl(), "RemoteControl::cmdIndieReviewPartition");
-    EXPECT_NE(body.find("env[\"outside_roots\"]"), std::string::npos);
-    EXPECT_NE(body.find("unassignedSample = unassigned.sample"), std::string::npos);
+    const std::string rc = ants_test::slurpRemoteControl();
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdIndieReviewPartition");
+    const std::string coverage =
+        ants_test::slurpFunctionBody(rc, "static void appendPartitionCoverage(");
+    EXPECT_NE(coverage.find("env[\"outside_roots\"]"), std::string::npos);
+    EXPECT_NE(coverage.find("unassignedSample = unassigned.sample"), std::string::npos);
     EXPECT_NE(body.find("env[\"too_coarse\"] = !coarseLanes.isEmpty()"), std::string::npos);
 }

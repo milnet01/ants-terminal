@@ -82,7 +82,8 @@ of the surface.
 
 - **INV-8** (the handler surfaces it, for whichever partition the reply
   carries) — `cmdIndieReviewPartition` passes the reporter to the computed
-  walk and emits `unassigned_count` / `unassigned_by_suffix` /
+  walk and hands it, with `derived`, to `appendPartitionCoverage`, which emits
+  `unassigned_count` / `unassigned_by_suffix` /
   `unassigned_reason` / `unassigned_hint`. The reported set always describes
   the partition in the envelope: the computed walk's reporter is used on the
   `derived` path, and `unassignedForLanes` answers the same question about the
@@ -90,7 +91,7 @@ of the surface.
   would be worse than no count, which is what the original `derived` gate
   protected — the gate is now a branch rather than a silence.
   *Test:* `Inv8HandlerReportsUnassignedForTheCarriedPartition` (source-grep
-  over `cmdIndieReviewPartition`).
+  over `cmdIndieReviewPartition` and `appendPartitionCoverage`).
   *Breaks when:* the reporter is not passed — the counts then stay zero and
   the envelope is silent again while every field still exists.
 

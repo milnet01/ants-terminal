@@ -30,6 +30,89 @@
 
 using namespace rcdetail;  // ANTS-3833
 
+// The "files in no lane" part of the indie_review_partition reply.
+// `computedGap` is what the computed walk skipped; it is read only when
+// `derived` says the computed partition is the one the reply carries.
+//
+// ANTS-4771 — the computed walk admits only files
+// CodebaseIndex::isIndexableFile accepts, which is narrower than
+// "source" by design, so the files it drops are reported rather than lost.
+// ANTS-4786 — the DECLARED partition needs the same answer and could not
+// give it: the walk's reporter is populated only when the computed walk runs,
+// so on the map-driven path — the normal path here and on every migrated
+// project — the envelope carried no coverage signal at all. Measured: 50
+// lanes over 113 files, silent about the 200 they omitted (ANTS-4785).
+//
+// The QUESTION is one question, so the number means the same thing on both
+// paths and the CAUSE is what the caller is told apart. Ask it of whichever
+// partition this reply actually carries; a count describing the other one
+// would be worse than no count, which is what the old `derived` gate was
+// protecting.
+static void appendPartitionCoverage(
+        QJsonObject &env, const QString &root,
+        const QList<IndieReviewEngine::Lane> &lanes, bool derived,
+        const IndieReviewEngine::UnassignedSources &computedGap) {
+    IndieReviewEngine::UnassignedSources unassigned;
+    QStringList unassignedSample;
+    if (!derived) {
+        unassigned =
+            IndieReviewEngine::unassignedForLanes(root, lanes, &unassignedSample);
+    } else {
+        unassigned = computedGap;
+        unassignedSample = unassigned.sample;
+        // ANTS-6182 — a walk bounded by source roots says what it did not enter.
+        const QMap<QString, int> outside = IndieReviewEngine::codeOutsideRoots(root);
+        if (!outside.isEmpty()) {
+            QJsonObject o;
+            for (auto it = outside.constBegin(); it != outside.constEnd(); ++it)
+                o[it.key()] = it.value();
+            env["outside_roots"] = o;
+            env["outside_roots_hint"] = QStringLiteral(
+                "these directories hold code in no lane, because the walk covers "
+                "only the source roots; name them in source_roots, or in "
+                ".indie-review/partition.json");
+        }
+    }
+    if (unassigned.count <= 0) return;
+    env["unassigned_count"]  = unassigned.count;
+    env["unassigned_reason"] = derived ? QStringLiteral("suffix_filter")
+                                       : QStringLiteral("incomplete_partition");
+    QJsonObject bySuffix;
+    for (auto it = unassigned.bySuffix.constBegin();
+         it != unassigned.bySuffix.constEnd(); ++it) {
+        bySuffix[it.key().isEmpty() ? QStringLiteral("(no suffix)")
+                                    : it.key()] = it.value();
+    }
+    env["unassigned_by_suffix"] = bySuffix;
+    if (!unassignedSample.isEmpty()) {
+        QJsonArray sampleArr;
+        for (const QString &p : unassignedSample) sampleArr.append(p);
+        env["unassigned_sample"] = sampleArr;
+    }
+    const QString cause =
+        derived
+            ? QStringLiteral(
+                  "the computed partition admits only the suffixes the "
+                  "codebase index can outline — shell, and any language "
+                  "this project builds on that the index does not read, "
+                  "land here; build and CI files can share a lane of their "
+                  "own in .indie-review/partition.json")
+            : QStringLiteral(
+                  "the partition this project declares does not name them "
+                  "— see `path` for the file that declares it, and "
+                  "`unassigned_sample` for where the gap starts");
+    env["unassigned_hint"] = QStringLiteral(
+        "%1 file(s) under the walked source roots are in NO lane, because "
+        "%2. See `unassigned_by_suffix` for what was skipped. This is a "
+        "coverage gap, not a formatting note: a review driven by this "
+        "partition will not look at those files, and `file_count` counts "
+        "only what a lane covers. Cover them by editing "
+        "<projectPath>/.indie-review/partition.json to name them, or "
+        "give them to the review-code skill as an extra lane.")
+            .arg(unassigned.count)
+            .arg(cause);
+}
+
 QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     if (!m_roots) return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
         QStringLiteral("indie_review_partition: no MainWindow")));
@@ -48,7 +131,9 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     // .indie-review/partition.json remains the fix.
     bool derived = false;
     const int mapLaneCount = lanes.size();   // what the map itself yielded
-    IndieReviewEngine::UnassignedSources unassigned;   // ANTS-4771
+    // ANTS-4771 — what the computed walk skipped; appendPartitionCoverage
+    // reads it only when the computed partition wins.
+    IndieReviewEngine::UnassignedSources unassigned;
     if (lanes.size() <= 1) {
         const auto computed =
             IndieReviewEngine::deriveComputedPartition(root, &unassigned);
@@ -167,80 +252,7 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "directory (ANTS-3709). Adjust and commit as "
             ".indie-review/partition.json to pin it.");
     }
-    // ANTS-4771 — the computed walk admits only files
-    // CodebaseIndex::isIndexableFile accepts, which is narrower than
-    // "source" by design, so the files it drops are reported rather than lost.
-    // ANTS-4786 — the DECLARED partition needs the same answer and could not
-    // give it: `unassigned` is populated only when the computed walk runs, so
-    // on the map-driven path — the normal path here and on every migrated
-    // project — the envelope carried no coverage signal at all. Measured: 50
-    // lanes over 113 files, silent about the 200 they omitted (ANTS-4785).
-    //
-    // The QUESTION is one question, so the number means the same thing on both
-    // paths and the CAUSE is what the caller is told apart. Ask it of whichever
-    // partition this reply actually carries; a count describing the other one
-    // would be worse than no count, which is what the old `derived` gate was
-    // protecting.
-    QStringList unassignedSample;
-    const QString unassignedReason =
-        derived ? QStringLiteral("suffix_filter")
-                : QStringLiteral("incomplete_partition");
-    if (!derived) {
-        unassigned =
-            IndieReviewEngine::unassignedForLanes(root, lanes, &unassignedSample);
-    } else {
-        unassignedSample = unassigned.sample;
-        // ANTS-6182 — a walk bounded by source roots says what it did not enter.
-        const QMap<QString, int> outside = IndieReviewEngine::codeOutsideRoots(root);
-        if (!outside.isEmpty()) {
-            QJsonObject o;
-            for (auto it = outside.constBegin(); it != outside.constEnd(); ++it)
-                o[it.key()] = it.value();
-            env["outside_roots"] = o;
-            env["outside_roots_hint"] = QStringLiteral(
-                "these directories hold code in no lane, because the walk covers "
-                "only the source roots; name them in source_roots, or in "
-                ".indie-review/partition.json");
-        }
-    }
-    if (unassigned.count > 0) {
-        env["unassigned_count"]  = unassigned.count;
-        env["unassigned_reason"] = unassignedReason;
-        QJsonObject bySuffix;
-        for (auto it = unassigned.bySuffix.constBegin();
-             it != unassigned.bySuffix.constEnd(); ++it) {
-            bySuffix[it.key().isEmpty() ? QStringLiteral("(no suffix)")
-                                        : it.key()] = it.value();
-        }
-        env["unassigned_by_suffix"] = bySuffix;
-        if (!unassignedSample.isEmpty()) {
-            QJsonArray sampleArr;
-            for (const QString &p : unassignedSample) sampleArr.append(p);
-            env["unassigned_sample"] = sampleArr;
-        }
-        const QString cause =
-            derived
-                ? QStringLiteral(
-                      "the computed partition admits only the suffixes the "
-                      "codebase index can outline — shell, and any language "
-                      "this project builds on that the index does not read, "
-                      "land here; build and CI files can share a lane of their "
-                      "own in .indie-review/partition.json")
-                : QStringLiteral(
-                      "the partition this project declares does not name them "
-                      "— see `path` for the file that declares it, and "
-                      "`unassigned_sample` for where the gap starts");
-        env["unassigned_hint"] = QStringLiteral(
-            "%1 file(s) under the walked source roots are in NO lane, because "
-            "%2. See `unassigned_by_suffix` for what was skipped. This is a "
-            "coverage gap, not a formatting note: a review driven by this "
-            "partition will not look at those files, and `file_count` counts "
-            "only what a lane covers. Cover them by editing "
-            "<projectPath>/.indie-review/partition.json to name them, or "
-            "give them to the review-code skill as an extra lane.")
-                .arg(unassigned.count)
-                .arg(cause);
-    }
+    appendPartitionCoverage(env, root, lanes, derived, unassigned);
     if (lanes.size() <= 1 || derived) {
         env["sparse_partition"]      = true;
         // ANTS-4811 — which STAGE produced nothing, as a field rather than
@@ -345,6 +357,85 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     return QJsonDocument(env);
 }
 
+
+// ANTS-4814 — the OTHER shape of agreement: several lanes finding one
+// defect SHAPE at unrelated locations. On a partition BY SUBSYSTEM that is
+// the agreement that matters, because lanes do not share files — so
+// identical file:line is the one form of agreement the partition makes
+// unlikely, and keying on it alone reported a run whose lanes agreed twice
+// over as barely agreeing at all.
+//
+// Mechanical, with no model and no similarity scoring: group the citations
+// by the UNQUALIFIED name of their enclosing symbol, reusing the outline
+// machinery workspace_search's enclosing_symbol already owns. Unqualified,
+// because the measured case was one defect repeated across sibling classes
+// (ChessView / ReversiView / DraughtsView), whose qualified names differ
+// by construction.
+//
+// Returns only groups that span two or more DISTINCT FILES, which is
+// what keeps this signal disjoint from findings (one location) and near
+// misses (one file). Advisory, like near misses: conflating a shared
+// symbol with a cited agreement would inflate what corroboration means,
+// and that strictness is the part worth keeping.
+static QJsonArray sharedSymbolGroups(
+        const QString &root,
+        const QList<IndieReviewEngine::LaneCitation> &citations,
+        int minLanes) {
+    QHash<QString, QJsonArray> outlineCache;
+    auto symbolsFor = [&](const QString &relFile) -> const QJsonArray & {
+        const auto it = outlineCache.find(relFile);
+        if (it != outlineCache.end()) return it.value();
+        QJsonArray syms;
+        const QString absPath = QDir::isAbsolutePath(relFile)
+            ? relFile : root + QLatin1Char('/') + relFile;
+        const QJsonObject outline = FileOutline::compute(
+            absPath, FileOutline::Mode::Auto,
+            /*includeDocComment=*/false, /*maxSymbols=*/2000);
+        if (outline.value("ok").toBool())
+            syms = outline.value("symbols").toArray();
+        return *outlineCache.insert(relFile, syms);
+    };
+    struct SymGroup {
+        QSet<QString> lanes;
+        QSet<QString> files;
+        QStringList   locations;   // "file:line (lane)", insertion order
+    };
+    QHash<QString, SymGroup> bySymbol;
+    for (const auto &c : citations) {
+        if (c.line < 0) continue;                    // bare-file citation
+        const QString qualified = RemoteControl::enclosingSymbolForLine(
+            symbolsFor(c.file), c.line);
+        if (qualified.isEmpty()) continue;
+        const int sep = qualified.lastIndexOf(QStringLiteral("::"));
+        const QString name = sep >= 0 ? qualified.mid(sep + 2) : qualified;
+        if (name.isEmpty()) continue;
+        SymGroup &g = bySymbol[name];
+        g.lanes.insert(c.lane);
+        g.files.insert(c.file);
+        g.locations << QStringLiteral("%1:%2 (%3)")
+                           .arg(c.file).arg(c.line).arg(c.lane);
+    }
+    QJsonArray shared;
+    QStringList names = bySymbol.keys();
+    std::sort(names.begin(), names.end());
+    for (const QString &name : std::as_const(names)) {
+        const SymGroup &g = bySymbol.value(name);
+        if (g.lanes.size() < minLanes) continue;
+        if (g.files.size() < 2) continue;   // findings / near misses own it
+        QJsonObject o;
+        o["symbol"] = name;
+        QJsonArray lanes, locs;
+        QStringList sortedLanes = g.lanes.values();
+        std::sort(sortedLanes.begin(), sortedLanes.end());
+        for (const QString &l : std::as_const(sortedLanes)) lanes.append(l);
+        for (const QString &l : g.locations) locs.append(l);
+        o["citing_lanes"] = lanes;
+        o["file_count"]   = g.files.size();
+        o["locations"]    = locs;
+        shared.append(o);
+    }
+    return shared;
+}
 
 QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     if (!m_roots) return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
@@ -578,89 +669,18 @@ QJsonDocument RemoteControl::corroborateWithRoot(const QJsonObject &req,
             "concluding the lanes did not agree.")
             .arg(nms.size()).arg(IndieReviewEngine::kNearMissLines);
     }
-    // ANTS-4814 — the OTHER shape of agreement: several lanes finding one
-    // defect SHAPE at unrelated locations. On a partition BY SUBSYSTEM that is
-    // the agreement that matters, because lanes do not share files — so
-    // identical file:line is the one form of agreement the partition makes
-    // unlikely, and keying on it alone reported a run whose lanes agreed twice
-    // over as barely agreeing at all.
-    //
-    // Mechanical, with no model and no similarity scoring: group the citations
-    // by the UNQUALIFIED name of their enclosing symbol, reusing the outline
-    // machinery workspace_search's enclosing_symbol already owns. Unqualified,
-    // because the measured case was one defect repeated across sibling classes
-    // (ChessView / ReversiView / DraughtsView), whose qualified names differ
-    // by construction.
-    //
-    // Reported only when the group spans two or more DISTINCT FILES, which is
-    // what keeps this signal disjoint from findings (one location) and near
-    // misses (one file). Advisory, like near misses: conflating a shared
-    // symbol with a cited agreement would inflate what corroboration means,
-    // and that strictness is the part worth keeping.
-    if (!stats.citations.isEmpty()) {
-        QHash<QString, QJsonArray> outlineCache;
-        auto symbolsFor = [&](const QString &relFile) -> const QJsonArray & {
-            const auto it = outlineCache.find(relFile);
-            if (it != outlineCache.end()) return it.value();
-            QJsonArray syms;
-            const QString absPath = QDir::isAbsolutePath(relFile)
-                ? relFile : root + QLatin1Char('/') + relFile;
-            const QJsonObject outline = FileOutline::compute(
-                absPath, FileOutline::Mode::Auto,
-                /*includeDocComment=*/false, /*maxSymbols=*/2000);
-            if (outline.value("ok").toBool())
-                syms = outline.value("symbols").toArray();
-            return *outlineCache.insert(relFile, syms);
-        };
-        struct SymGroup {
-            QSet<QString> lanes;
-            QSet<QString> files;
-            QStringList   locations;   // "file:line (lane)", insertion order
-        };
-        QHash<QString, SymGroup> bySymbol;
-        for (const auto &c : std::as_const(stats.citations)) {
-            if (c.line < 0) continue;                    // bare-file citation
-            const QString qualified =
-                enclosingSymbolForLine(symbolsFor(c.file), c.line);
-            if (qualified.isEmpty()) continue;
-            const int sep = qualified.lastIndexOf(QStringLiteral("::"));
-            const QString name = sep >= 0 ? qualified.mid(sep + 2) : qualified;
-            if (name.isEmpty()) continue;
-            SymGroup &g = bySymbol[name];
-            g.lanes.insert(c.lane);
-            g.files.insert(c.file);
-            g.locations << QStringLiteral("%1:%2 (%3)")
-                               .arg(c.file).arg(c.line).arg(c.lane);
-        }
-        QJsonArray shared;
-        QStringList names = bySymbol.keys();
-        std::sort(names.begin(), names.end());
-        for (const QString &name : std::as_const(names)) {
-            const SymGroup &g = bySymbol.value(name);
-            if (g.lanes.size() < minLanes) continue;
-            if (g.files.size() < 2) continue;   // findings / near misses own it
-            QJsonObject o;
-            o["symbol"] = name;
-            QJsonArray lanes, locs;
-            QStringList sortedLanes = g.lanes.values();
-            std::sort(sortedLanes.begin(), sortedLanes.end());
-            for (const QString &l : std::as_const(sortedLanes)) lanes.append(l);
-            for (const QString &l : g.locations) locs.append(l);
-            o["citing_lanes"] = lanes;
-            o["file_count"]   = g.files.size();
-            o["locations"]    = locs;
-            shared.append(o);
-        }
-        if (!shared.isEmpty()) {
-            env["shared_symbols"]       = shared;
-            env["shared_symbols_count"] = shared.size();
-            env["shared_symbols_hint"]  = QStringLiteral(
-                "%1 symbol(s) were cited by >= min_lanes distinct lanes in two "
-                "or more DIFFERENT files — the same defect shape in several "
-                "places, which a partition by subsystem produces and exact "
-                "(file, line) matching cannot see. ADVISORY: not findings, not "
-                "counted in total_findings.").arg(shared.size());
-        }
+    // ANTS-4814 — lanes that found one defect shape at unrelated locations.
+    const QJsonArray shared =
+        sharedSymbolGroups(root, stats.citations, minLanes);
+    if (!shared.isEmpty()) {
+        env["shared_symbols"]       = shared;
+        env["shared_symbols_count"] = shared.size();
+        env["shared_symbols_hint"]  = QStringLiteral(
+            "%1 symbol(s) were cited by >= min_lanes distinct lanes in two "
+            "or more DIFFERENT files — the same defect shape in several "
+            "places, which a partition by subsystem produces and exact "
+            "(file, line) matching cannot see. ADVISORY: not findings, not "
+            "counted in total_findings.").arg(shared.size());
     }
     // ANTS-1344 — surface truncation. `truncated` is the headline flag;
     // `truncated_lanes` lets the caller know which inputs to re-fetch
@@ -904,11 +924,7 @@ static QJsonObject vcGateToJson(const VerifyEngine::GateResult &r) {
     QJsonObject o;
     o["ran"]    = r.ran;
     o["passed"] = r.passed;
-    if (!r.ran || !r.skippedReason.isEmpty()) {
-        if (!r.skippedReason.isEmpty()) {
-            o["skipped_reason"] = r.skippedReason;
-        }
-    }
+    if (!r.skippedReason.isEmpty()) o["skipped_reason"] = r.skippedReason;
     if (r.ran) {
         o["exit_code"]       = r.exitCode;
         // Round duration to 1 decimal.
