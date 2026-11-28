@@ -50,7 +50,10 @@ for a queued connection passes against code that still joins.
   `finishToolDispatch` nor `transformReply` joins. `MainWindow` creates its
   `ClaudeIntegration` (in `setupStatusBarChrome`) before its `RemoteControl`,
   so the worker is joined before the `RemoteControl` an off-thread verb
-  calls is destroyed (ANTS-5090).
+  calls is destroyed (ANTS-5090). `~MainWindow`'s body deletes
+  `m_claudeIntegration`, then `m_remoteControl`, because the member
+  `m_rootProvider` those verbs read dies before `~QWidget` deletes the
+  children (ANTS-6636).
 - **INV-9** — one `transformReply` and one `finishToolDispatch` definition
   (ANTS-5072). The wrap lives in `transformReply`; `finishToolDispatch`,
   `postToolDispatch` and the dispatcher keep no copy, and `postToolDispatch`

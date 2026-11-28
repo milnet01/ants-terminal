@@ -226,6 +226,12 @@ void MainWindow::restoreSessions() {
     if (hadDefaultTab && m_tabWidget->count() > 1) {
         QWidget *defaultTab = m_tabWidget->widget(0);
         m_tabSessionIds.remove(defaultTab);
+        // ANTS-6636 — newTab() tracked its shell; release it as
+        // performTabClose does, or its PID stays in all three trackers.
+        if (auto *single = qobject_cast<TerminalWidget *>(defaultTab))
+            releaseTerminalShell(single);
+        for (auto *pane : defaultTab->findChildren<TerminalWidget *>(QString()))
+            releaseTerminalShell(pane);
         m_tabWidget->removeTab(0);
         defaultTab->deleteLater();
     }

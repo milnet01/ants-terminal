@@ -87,7 +87,7 @@ void MainWindow::setupFileMenu() {
         // cd to the previous working directory (shell-quote to prevent injection)
         if (!info.cwd.isEmpty()) {
             if (auto *t = focusedTerminal())
-                t->writeCommand("cd " + shellQuote(info.cwd) + "\n");
+                t->writeCommand("cd " + shellQuote(info.cwd));  // it adds the Enter
         }
         showStatusMessage("Restored tab: " + info.title, 3000);
     });
@@ -388,6 +388,7 @@ void MainWindow::setupViewMenu() {
             m_themeGroup->removeAction(a);
         themesMenu->clear();
         addThemeActions(themesMenu);
+        rebuildCommandPalette();  // ANTS-6636 — its theme entries are proxies
         showStatusMessage("Themes reloaded", 3000);
     });
 
@@ -483,8 +484,7 @@ void MainWindow::setupToolsMenu() {
                                   " Focus on bugs, security vulnerabilities, and code quality problems."
                                   " Ignore informational items like line counts and file sizes."
                                   " For each fix, explain what you changed and why.").arg(resultsFile);
-            QString cmd = claudeLaunch(t->shellCwd(), shellQuote(prompt)) + QLatin1Char('\n');
-            t->writeCommand(cmd);
+            t->writeCommand(claudeLaunch(t->shellCwd(), shellQuote(prompt)));
         });
         dlg->show();
     });

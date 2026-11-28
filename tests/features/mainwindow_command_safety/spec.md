@@ -25,6 +25,15 @@ tab's page widget and returns before painting when the new state matches it.
 The record is per tab, not per pane, so a pane in a split tab still redraws
 the icon after another pane cleared it.
 
+**INV-6 — a command gets one Enter.** `TerminalWidget::writeCommand` adds the
+newline, so Undo Close Tab's `cd` and the audit review's `claude` command pass
+no `\n` of their own.
+
+**INV-7 — the snippet buttons act on the snippet shown.** Each table row's
+name item stores its index into the snippets list (`Qt::UserRole`); Edit,
+Delete and Insert read that index, never the row number, and an edit or delete
+reloads the table with the search text still applied.
+
 ## Rationale
 
 The review command dropped the results path inside double quotes, so a `"` or
@@ -45,3 +54,6 @@ constructed.
 ## Regression history
 
 - **ANTS-5079:** the defects above. Locked by this spec.
+- **ANTS-6636:** two commands sent a stray second Enter, and with the search
+  box filtering, the snippet buttons acted on the wrong snippet. Locked by
+  INV-6 and INV-7.

@@ -58,3 +58,16 @@ TEST(MainwindowStatusProbes, ReviewProbeIsKeyedAndBounded) {
     EXPECT_TRUE(body.contains(QStringLiteral("guard->kill()")))
         << "a probe that never exits holds the in-flight flag forever";
 }
+
+// INV-5
+TEST(MainwindowStatusProbes, ReviewProbeErrorIsKeyedToo) {
+    const QString body = functionBody(source(),
+        QStringLiteral("void MainWindow::refreshReviewButton()"));
+    ASSERT_FALSE(body.isEmpty()) << "refreshReviewButton not found";
+    const int at = body.indexOf(QStringLiteral("&QProcess::errorOccurred"));
+    ASSERT_GE(at, 0) << "the probe has no error handler";
+    const QString handler = body.mid(at, 300);
+    EXPECT_TRUE(handler.contains(QStringLiteral("if (btn && probedTabIsCurrent()) btn->hide();")))
+        << "a failed probe hides the Review button on whichever tab is active";
+    EXPECT_FALSE(handler.contains(QStringLiteral("if (btn) btn->hide();")));
+}

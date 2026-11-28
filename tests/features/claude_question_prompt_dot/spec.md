@@ -77,6 +77,13 @@ best-effort: hook events reach Ants only via an installed hook POSTing
 to the UDS server, so the throttled scanner (INV-8) is the load-bearing
 clear.
 
+Every terminal hears both signals, so each clears only when its shell
+owns the hook's session: `shellForSessionId(lastHookSessionId())`
+equals its `shellPid()`, or, for an untracked session, it is the
+focused terminal. Otherwise the focused tab's next `PostToolUse` cleared
+a background tab's question dot, which could not re-light it
+(ANTS-6636).
+
 ### INV-7 — clear resets the sticky flag (no desync)
 
 `clearClaudeQuestionPrompt()` no-ops unless `m_claudeQuestionActive`,

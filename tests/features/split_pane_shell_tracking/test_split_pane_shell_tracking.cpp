@@ -116,3 +116,19 @@ TEST(SplitPaneShellTracking, ReleaseFallsBackToTheRecordedPid) {
     EXPECT_TRUE(pidFn.contains(QStringLiteral("return ptyChildPid();")));
     EXPECT_FALSE(pidFn.contains(QStringLiteral("m_lastShellPid")));
 }
+
+// INV-6
+TEST(SplitPaneShellTracking, DroppedDefaultTabIsReleased) {
+    const QString src = source();
+    const int from = src.indexOf(QStringLiteral("if (hadDefaultTab && m_tabWidget->count() > 1)"));
+    ASSERT_GE(from, 0) << "restoreSessions' default-tab removal not found";
+    const int to = src.indexOf(QStringLiteral("defaultTab->deleteLater()"), from);
+    ASSERT_GT(to, from);
+    const QString block = src.mid(from, to - from);
+    const int release = block.indexOf(QStringLiteral("releaseTerminalShell("));
+    const int removed = block.indexOf(QStringLiteral("m_tabWidget->removeTab(0)"));
+    ASSERT_GE(removed, 0);
+    ASSERT_GE(release, 0) << "the dropped default tab's PID stays in all three trackers";
+    EXPECT_LT(release, removed) << "release before removeTab, as performTabClose does";
+    EXPECT_TRUE(block.contains(QStringLiteral("findChildren<TerminalWidget *>(")));
+}

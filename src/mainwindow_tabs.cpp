@@ -453,14 +453,25 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     // question is still on screen, so this never clears prematurely.
     // clearClaudeQuestionPrompt no-ops unless a question is active and
     // resets the sticky flag so the next question re-lights.
+    // ANTS-6636 — every terminal hears these signals, so each clears only
+    // when its shell owns the hook's session. An untracked session falls
+    // back to the focused tab, as the detected handler above does.
     if (m_claudeIntegration) {
+        const auto ownsHookSession = [this, terminal]() {
+            const pid_t owner = m_claudeTabTracker
+                ? m_claudeTabTracker->shellForSessionId(
+                      m_claudeIntegration->lastHookSessionId())
+                : pid_t(0);
+            if (owner > 0) return owner == terminal->shellPid();
+            return terminal == focusedTerminal() || terminal == currentTerminal();
+        };
         connect(m_claudeIntegration, &ClaudeIntegration::toolFinished,
-                terminal, [terminal](const QString &, bool) {
-            terminal->clearClaudeQuestionPrompt();
+                terminal, [terminal, ownsHookSession](const QString &, bool) {
+            if (ownsHookSession()) terminal->clearClaudeQuestionPrompt();
         });
         connect(m_claudeIntegration, &ClaudeIntegration::sessionStopped,
-                terminal, [terminal](const QString &) {
-            terminal->clearClaudeQuestionPrompt();
+                terminal, [terminal, ownsHookSession](const QString &) {
+            if (ownsHookSession()) terminal->clearClaudeQuestionPrompt();
         });
     }
 }
@@ -721,13 +732,16 @@ void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {  // NOLINT(misc-no-re
                 moveTabRootKeys(splitter, child);
                 const QString label = m_tabWidget->tabText(tabIdx);
                 const QColor colour = m_coloredTabBar ? m_coloredTabBar->tabColor(tabIdx) : QColor();
+                // ANTS-6636 — a shell exiting in a background tab must not
+                // switch the user to that tab.
+                QWidget *wasCurrent = m_tabWidget->currentWidget();
 
                 child->setParent(nullptr);
                 splitter->setParent(nullptr);
                 m_tabWidget->removeTab(tabIdx);
                 m_tabWidget->insertTab(tabIdx, child, label);
                 if (colour.isValid()) m_coloredTabBar->setTabColor(tabIdx, colour);
-                m_tabWidget->setCurrentIndex(tabIdx);
+                m_tabWidget->setCurrentWidget(wasCurrent == splitter ? child : wasCurrent);
                 splitter->deleteLater();
             }
         }
@@ -833,12 +847,18 @@ void MainWindow::closeTab(int index) {
     // descendant running (vim, top, claude, tail -f, ...), ask before
     // tearing down. The dialog is async (Wayland-correct non-modal
     // pattern); confirmation calls performTabClose(idx) on Close-anyway.
-    TerminalWidget *term = activeTerminalInTab(w);
-    if (m_config.confirmCloseWithProcesses() && term && term->shellPid() > 0) {
-        const QString descendant = firstNonShellDescendant(term->shellPid());
-        if (!descendant.isEmpty()) {
-            showCloseTabConfirmDialog(w, descendant);
-            return;
+    // ANTS-6636 — every pane of a split tab, as closeEvent checks every
+    // pane of the window.
+    if (m_config.confirmCloseWithProcesses()) {
+        QList<TerminalWidget *> panes = w->findChildren<TerminalWidget *>(QString());
+        if (auto *single = qobject_cast<TerminalWidget *>(w)) panes.prepend(single);
+        for (TerminalWidget *term : panes) {
+            const QString descendant = term->shellPid() > 0
+                ? firstNonShellDescendant(term->shellPid()) : QString();
+            if (!descendant.isEmpty()) {
+                showCloseTabConfirmDialog(w, descendant);
+                return;
+            }
         }
     }
 
@@ -1004,13 +1024,17 @@ void MainWindow::showCloseWindowConfirmDialog(const QString &processName) {
         tr("Don't ask again (close silently in future)"));
 
     // ANTS-5560 — a cancelled close also cancels a pending Restart now.
-    connect(d.cancelBtn, &QPushButton::clicked, this, [] { g_relaunchOnQuit = false; });
+    // ANTS-6636 — every way out but Close anyway (Cancel, Escape, the title
+    // bar's close) rejects the dialog; Close anyway sets the flag first.
+    connect(d.dlg, &QDialog::rejected, this, [this] {
+        if (!m_closeConfirmed) g_relaunchOnQuit = false;
+    });
     connect(d.closeBtn, &QPushButton::clicked, this,
         [this, dlg = d.dlg, dontAsk = d.dontAsk]() {
             if (dontAsk->isChecked())
                 m_config.setConfirmCloseWithProcesses(false);
-            dlg->close();
             m_closeConfirmed = true;
+            dlg->close();
             close();
         });
 }

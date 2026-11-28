@@ -36,6 +36,10 @@ read in place.
 - **INV-5** — `PLUGINS.md` no longer describes `ants.notify()` as a no-op.
   The warning was accurate and is now false; a doc that keeps it tells plugin
   authors not to use a working function.
+- **INV-6** (ANTS-6636) — `notify-send` takes the title and body as text: its
+  argv is `{"--", shown, body.toHtmlEscaped()}`. Both come from the PTY or a
+  plugin, so without `--` a title such as `-w` or `--hint=…` is read as an
+  option, and an unescaped body is rendered as markup.
 
 ## Test shape
 

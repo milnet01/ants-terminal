@@ -785,6 +785,8 @@ private:
     // Auto-profile switching
     void checkAutoProfileRules(TerminalWidget *terminal);
     QString m_lastAutoProfile;
+    // The rules generation of m_config the regex caches were last built for.
+    quint64 m_autoProfileRulesGenSeen = 0;
 
     // Command snippets
     void showSnippetsDialog();

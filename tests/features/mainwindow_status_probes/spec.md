@@ -19,6 +19,10 @@ has that cwd.
 **INV-4 — the review probe has a timeout.** `refreshReviewButton` kills a probe
 still running after a fixed delay, so the in-flight flag cannot stay set.
 
+**INV-5 — a failed review probe is keyed to its cwd too.** The probe's
+`errorOccurred` handler hides the button only while the active tab still has
+the probed cwd, the same check the `finished` handler makes.
+
 ## Rationale
 
 The resume command put the session id in a shell line unquoted. The reaper's
@@ -36,3 +40,5 @@ constructed.
 ## Regression history
 
 - **ANTS-5080:** the four defects above. Locked by this spec.
+- **ANTS-6636:** the error handler hid the button without ANTS-5080's
+  current-tab check. Locked by INV-5.

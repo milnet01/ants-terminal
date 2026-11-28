@@ -108,6 +108,14 @@ TEST(ClaudeQuestionPromptDot, HookClearBeltWired) {
            "end-of-turn";
     EXPECT_TRUE(contains(belt, "clearClaudeQuestionPrompt()"))
         << "INV-6: both belt signals route through clearClaudeQuestionPrompt";
+    // ANTS-6636 — every terminal hears the belt; only the hook session's
+    // owner clears, or the focused tab's PostToolUse clears another tab's dot.
+    EXPECT_TRUE(contains(belt, "shellForSessionId(") &&
+                contains(belt, "lastHookSessionId()"))
+        << "INV-6: the belt clears every terminal's question dot, not only "
+           "the one whose shell owns the hook's session";
+    EXPECT_TRUE(contains(belt, "if (ownsHookSession()) terminal->clearClaudeQuestionPrompt();"))
+        << "INV-6: the belt's clear is not gated on the session's owner";
 }
 
 // INV-7 — clearClaudeQuestionPrompt resets the sticky flag and routes

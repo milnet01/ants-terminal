@@ -16,6 +16,10 @@ INV labels are qualified by the roadmap item that added them.
 | 4  | `showCloseWindowConfirmDialog`'s proceed path calls `close()` on the window (not only `dlg->close()`) and sets a `m_`-prefixed member flag to `true`; `closeEvent` reads that same flag. |
 | 5  | `showCloseWindowConfirmDialog`'s "don't ask again" path calls `m_config.setConfirmCloseWithProcesses(false)` — the same setting `closeTab` uses. |
 
+| ANTS-6636 | Statement |
+|----|-----------|
+| 6  | `showCloseWindowConfirmDialog` clears `g_relaunchOnQuit` on the dialog's `QDialog::rejected` signal, not on the Cancel button's `clicked`, so Escape and the title bar's close also cancel a pending Restart now. Close anyway sets `m_closeConfirmed = true` before `dlg->close()`, and the rejected handler leaves the flag alone when it is set. |
+
 ## Rationale
 
 `MainWindow::closeTab` asks before tearing down a tab whose shell has

@@ -117,6 +117,11 @@ TEST(ConfirmCloseWithProcesses, Main) {
            closeTabBody.contains(
                QStringLiteral("term->shellPid() > 0")),
            "INV-6/closeTab-probes-when-config-on");
+    // INV-6 (ANTS-6636): every pane of a split tab, not only the active one.
+    expect(closeTabBody.contains(
+               QStringLiteral("findChildren<TerminalWidget *>(")) &&
+           !closeTabBody.contains(QStringLiteral("activeTerminalInTab(w)")),
+           "INV-6/closeTab-probes-every-pane");
     expect(closeTabBody.contains(
                QStringLiteral("showCloseTabConfirmDialog(")) &&
            closeTabBody.contains(QStringLiteral("return;")),

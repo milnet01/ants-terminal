@@ -269,6 +269,15 @@ TEST(McpVerbOffthreadGuard, Main) {
                "INV-7/ClaudeIntegration-created-in-status-bar-chrome");
         expect(chrome != std::string::npos && rc != std::string::npos && chrome < rc,
                "INV-7/ClaudeIntegration-is-the-earlier-child-than-RemoteControl");
+        // ANTS-6636 — m_rootProvider, which the worker's verbs read through
+        // RemoteControl, is a member and dies before ~QWidget deletes the
+        // children. So ~MainWindow's body deletes both, ClaudeIntegration
+        // first, while the provider still lives.
+        const std::string dtor = bodyAfter(mw, "MainWindow::~MainWindow() {");
+        const size_t delCi = dtor.find("delete m_claudeIntegration;");
+        const size_t delRc = dtor.find("delete m_remoteControl;");
+        expect(delCi != std::string::npos && delRc != std::string::npos && delCi < delRc,
+               "INV-7/~MainWindow-joins-the-worker-before-its-members-die");
     }
 
     // INV-9 — one response pipeline, shared by every path: one transformReply

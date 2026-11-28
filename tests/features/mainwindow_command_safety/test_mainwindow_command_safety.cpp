@@ -80,3 +80,31 @@ TEST(MainwindowCommandSafety, ProgressIconRebuiltOnlyOnStateChange) {
     EXPECT_LT(record, paint) << "the state check comes after the icon is painted";
     EXPECT_TRUE(w.contains(QStringLiteral("drawn.toInt() == state) return;")));
 }
+
+// INV-6
+TEST(MainwindowCommandSafety, WriteCommandGetsNoSecondEnter) {
+    const QString undo = window(source(), QStringLiteral("\"&Undo Close Tab\""), 900);
+    ASSERT_FALSE(undo.isEmpty()) << "Undo Close Tab handler not found";
+    EXPECT_TRUE(undo.contains(QStringLiteral("writeCommand(\"cd \" + shellQuote(info.cwd));")))
+        << "the restored tab's cd is sent with a second Enter";
+    const QString review = window(source(),
+        QStringLiteral("&AuditDialog::reviewRequested"), 1400);
+    ASSERT_FALSE(review.isEmpty()) << "reviewRequested handler not found";
+    EXPECT_TRUE(review.contains(QStringLiteral("t->writeCommand(claudeLaunch(")))
+        << "the review command is sent with a second Enter into Claude";
+}
+
+// INV-7
+TEST(MainwindowCommandSafety, SnippetButtonsActOnTheShownSnippet) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpMainWindow(), "void MainWindow::showSnippetsDialog()");
+    ASSERT_FALSE(body.empty()) << "showSnippetsDialog not found";
+    const QString b = QString::fromStdString(body);
+    EXPECT_TRUE(b.contains(QStringLiteral("setData(Qt::UserRole")))
+        << "a table row does not record which snippet it shows";
+    EXPECT_EQ(b.count(QStringLiteral("table->currentRow()")), 1)
+        << "a button reads the filtered row number as an index into the snippets";
+    EXPECT_EQ(b.count(QStringLiteral("loadSnippets(searchEdit->text())")), 2)
+        << "an edit or delete reloads the table unfiltered while the search "
+           "text still shows";
+}

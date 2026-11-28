@@ -759,12 +759,11 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // when Qt 6.5+ is broadly available on Tumbleweed/Fedora/Arch and
     // becoming standard.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-    if (m_config.autoColorScheme()) {
-        connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged,
-                this, [this]() { onSystemColorSchemeChanged(); });
-        // Apply initial scheme
-        onSystemColorSchemeChanged();
-    }
+    // ANTS-6636 — wired whatever the setting, so turning it on later takes
+    // effect; the slot checks it. Its first call applies the initial scheme.
+    connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged,
+            this, [this]() { onSystemColorSchemeChanged(); });
+    onSystemColorSchemeChanged();
 #endif
 
     // Cleanup old sessions at startup, then once every 24 h for long-running
@@ -901,6 +900,16 @@ MainWindow::~MainWindow() {
             p->waitForFinished(500);
         }
     }
+
+    // ANTS-6636 — m_rootProvider, a member, dies as this body returns, and
+    // ~QWidget deletes the children only after that. ~ClaudeIntegration
+    // joins the dispatch worker, whose verbs read the provider through
+    // RemoteControl, so both go here while it still lives, ClaudeIntegration
+    // first (ANTS-5090: RemoteControl outlives the join).
+    delete m_claudeIntegration;
+    m_claudeIntegration = nullptr;
+    delete m_remoteControl;
+    m_remoteControl = nullptr;
 }
 
 // ANTS-5558 — one welcome dialog at a time: a second request raises it.
@@ -2345,7 +2354,11 @@ bool MainWindow::showDesktopNotification(const QString &title, const QString &bo
         tray->showMessage(shown, body);
         return true;
     }
-    return QProcess::startDetached(QStringLiteral("notify-send"), {shown, body});
+    // ANTS-6636 — both strings come from the PTY or a plugin: `--` keeps a
+    // leading `-` from reading as an option, and the body is escaped because
+    // notification servers render markup in it.
+    return QProcess::startDetached(QStringLiteral("notify-send"),
+                                   {QStringLiteral("--"), shown, body.toHtmlEscaped()});
 }
 
 void MainWindow::showStatusMessage(const QString &msg, int timeoutMs) {
@@ -2720,14 +2733,15 @@ void MainWindow::refreshReviewButton() {
     QPointer<MainWindow> self(this);
     m_reviewProbeInFlight = true;
     m_reviewProbeCwd = cwd;
+    // ANTS-5080 — apply the result only to the tab it was probed for.
+    const auto probedTabIsCurrent = [self, cwd]() {
+        TerminalWidget *now = self ? self->focusedTerminal() : nullptr;
+        return now && now->shellCwd() == cwd;
+    };
     connect(proc, &QProcess::finished, this,
-            [btn, guard, self, cwd](int exitCode, QProcess::ExitStatus status) {
-        // ANTS-5080 — apply the result only to the tab it was probed for.
-        bool stillCurrent = false;
-        if (auto *p = self.data()) {
-            TerminalWidget *now = p->focusedTerminal();
-            stillCurrent = now && now->shellCwd() == cwd;
-        }
+            [btn, guard, self, probedTabIsCurrent](int exitCode,
+                                                   QProcess::ExitStatus status) {
+        const bool stillCurrent = probedTabIsCurrent();
         if (btn && stillCurrent) {
             if (status != QProcess::NormalExit || exitCode != 0) {
                 btn->hide();           // not a git repo (128), git crash or error
@@ -2747,8 +2761,8 @@ void MainWindow::refreshReviewButton() {
         if (guard) guard->deleteLater();
     });
     connect(proc, &QProcess::errorOccurred, this,
-            [btn, guard, self](QProcess::ProcessError) {
-        if (btn) btn->hide();
+            [btn, guard, self, probedTabIsCurrent](QProcess::ProcessError) {
+        if (btn && probedTabIsCurrent()) btn->hide();  // ANTS-6636
         if (auto *p = self.data()) p->m_reviewProbeInFlight = false;
         if (guard) guard->deleteLater();
     });
@@ -3110,12 +3124,14 @@ void MainWindow::checkAutoProfileRules(TerminalWidget *terminal) {
     // orphaned regex over a power-user session that edits rules
     // many times) and `s_warnedInvalid` never re-warns when a
     // fixed-then-rebroken pattern gets edited a third time.
-    static quint64 s_lastRulesGen = 0;
+    // ANTS-6636 — the generation is per window (each has its own Config), so
+    // the last one seen is too; a shared one made two windows clear the
+    // shared caches on every tick.
     const quint64 currentGen = m_config.autoProfileRulesGeneration();
-    if (currentGen != s_lastRulesGen) {
+    if (currentGen != m_autoProfileRulesGenSeen) {
         s_patternCache.clear();
         s_warnedInvalid.clear();
-        s_lastRulesGen = currentGen;
+        m_autoProfileRulesGenSeen = currentGen;
     }
 
     for (const auto &rv : rules) {
@@ -3212,10 +3228,12 @@ void MainWindow::showSnippetsDialog() {
     // don't reference a stack variable that goes out of scope
     auto *snippets = new QJsonArray(m_config.snippets());
     connect(dialog, &QObject::destroyed, dialog, [snippets]() { delete snippets; });
+    // ANTS-6636 — a filtered row is not an index into *snippets, so each
+    // row's name item carries the index it shows.
     auto loadSnippets = [snippets, table](const QString &filter = "") {
         table->setRowCount(0);
-        for (const auto &sv : *snippets) {
-            QJsonObject s = sv.toObject();
+        for (qsizetype i = 0; i < snippets->size(); ++i) {
+            QJsonObject s = snippets->at(i).toObject();
             QString name = s.value("name").toString();
             QString cmd = s.value("command").toString();
             QString desc = s.value("description").toString();
@@ -3226,12 +3244,20 @@ void MainWindow::showSnippetsDialog() {
                 continue;
             int row = table->rowCount();
             table->insertRow(row);
-            table->setItem(row, 0, new QTableWidgetItem(name));
+            auto *nameItem = new QTableWidgetItem(name);
+            nameItem->setData(Qt::UserRole, static_cast<int>(i));
+            table->setItem(row, 0, nameItem);
             table->setItem(row, 1, new QTableWidgetItem(cmd));
             table->setItem(row, 2, new QTableWidgetItem(desc));
         }
     };
     loadSnippets();
+    // The selected row's index into *snippets, or -1.
+    auto selectedSnippet = [table]() {
+        const int row = table->currentRow();
+        const QTableWidgetItem *item = row >= 0 ? table->item(row, 0) : nullptr;
+        return item ? item->data(Qt::UserRole).toInt() : -1;
+    };
 
     connect(searchEdit, &QLineEdit::textChanged, dialog, [loadSnippets](const QString &text) {
         loadSnippets(text);
@@ -3250,7 +3276,7 @@ void MainWindow::showSnippetsDialog() {
     btnLayout->addWidget(insertBtn);
     layout->addLayout(btnLayout);
 
-    auto editSnippet = [this, snippets, loadSnippets](int editIdx = -1) {
+    auto editSnippet = [this, snippets, loadSnippets, searchEdit](int editIdx = -1) {
         QDialog editDlg(this);
         editDlg.setWindowTitle(editIdx >= 0 ? "Edit Snippet" : "Add Snippet");
         // ANTS-5681 — dialogs.md D1–D4.
@@ -3294,25 +3320,26 @@ void MainWindow::showSnippetsDialog() {
                 snippets->append(s);
 
             m_config.setSnippets(*snippets);
-            loadSnippets();
+            loadSnippets(searchEdit->text());
         }
     };
 
     connect(addBtn, &QPushButton::clicked, dialog, [editSnippet]() { editSnippet(-1); });
-    connect(editBtn, &QPushButton::clicked, dialog, [editSnippet, table]() {
-        int row = table->currentRow();
-        if (row >= 0) editSnippet(row);
+    connect(editBtn, &QPushButton::clicked, dialog, [editSnippet, selectedSnippet]() {
+        const int idx = selectedSnippet();
+        if (idx >= 0) editSnippet(idx);
     });
-    connect(deleteBtn, &QPushButton::clicked, dialog, [snippets, loadSnippets, table, this]() {
-        int row = table->currentRow();
-        if (row >= 0 && row < snippets->size()) {
-            snippets->removeAt(row);
+    connect(deleteBtn, &QPushButton::clicked, dialog,
+            [snippets, loadSnippets, selectedSnippet, searchEdit, this]() {
+        const int idx = selectedSnippet();
+        if (idx >= 0 && idx < snippets->size()) {
+            snippets->removeAt(idx);
             m_config.setSnippets(*snippets);
-            loadSnippets();
+            loadSnippets(searchEdit->text());
         }
     });
-    connect(insertBtn, &QPushButton::clicked, dialog, [this, table, snippets, dialog]() {
-        int row = table->currentRow();
+    connect(insertBtn, &QPushButton::clicked, dialog, [this, selectedSnippet, snippets, dialog]() {
+        const int row = selectedSnippet();
         if (row < 0 || row >= snippets->size()) return;
         QJsonObject s = (*snippets)[row].toObject();
         QString cmd = s.value("command").toString();

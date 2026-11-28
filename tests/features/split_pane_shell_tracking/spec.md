@@ -23,6 +23,12 @@ reads -1 once the PTY has reaped the child, and keeps that meaning.
 `lastShellPid()` when it is -1, so a shell that exited before its pane or tab
 closed leaves no state in the trackers for a reused PID to inherit.
 
+**INV-6 — the dropped default tab is released.** When `restoreSessions`
+removes the default tab `newTab()` opened and tracked, it calls
+`releaseTerminalShell` for each of its terminals
+(`findChildren<TerminalWidget *>`, and the tab widget itself) before
+`removeTab(0)`, as `performTabClose` does.
+
 ## Rationale
 
 `newTab` registered a shell with the per-tab Claude tracker and the
@@ -48,3 +54,5 @@ pane close released nothing, so closed panes' PIDs stayed in three trackers.
 - **Exited shells:** `releaseTerminalShell` read only `shellPid()`, which is
   -1 after the child is reaped, so the `shellExited` close paths released
   nothing. Locked by INV-5.
+- **ANTS-6636:** the default tab dropped after a session restore was never
+  released, so its PID stayed in all three trackers. Locked by INV-6.

@@ -118,3 +118,20 @@ TEST(PluginNotifyWiring, PluginsMdNoLongerCallsNotifyANoOp)
         << "nothing. It works now, and the warning tells plugin authors to "
         << "avoid a working function.";
 }
+
+// INV-6 (ANTS-6636) — the title and body come from the PTY or a plugin.
+// notify-send reads a leading `-` as an option without `--`, and
+// notification servers render markup in the body.
+TEST(PluginNotifyWiring, NotifySendTakesTheTextAsText)
+{
+    const std::string src = ants_test::slurpMainWindow();
+    if (src.empty()) return;
+
+    const QString body = QString::fromStdString(ants_test::slurpFunctionBody(
+        src, "bool MainWindow::showDesktopNotification("));
+    ASSERT_FALSE(body.isEmpty()) << "showDesktopNotification not found";
+    EXPECT_TRUE(body.contains(
+        QStringLiteral("{QStringLiteral(\"--\"), shown, body.toHtmlEscaped()}")))
+        << "ANTS-6636 INV-6: notify-send gets the title and body without an "
+        << "end-of-options marker, or with the body's markup unescaped.";
+}

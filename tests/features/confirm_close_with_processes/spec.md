@@ -57,8 +57,11 @@ no `setModal`, no `QDialogButtonBox`).
   `sh`, `ksh`, `dash`. Source: ANTS-1102.
 - **INV-6**: `MainWindow::closeTab` calls
   `firstNonShellDescendant` (via the helper) when
-  `m_config.confirmCloseWithProcesses()` returns true, gated
-  on `term && term->shellPid() > 0`. Source: ANTS-1102.
+  `m_config.confirmCloseWithProcesses()` returns true, for each
+  pane with `term->shellPid() > 0`. It checks every pane of a
+  split tab (`findChildren<TerminalWidget *>`), not only the
+  active one (`activeTerminalInTab`). Source: ANTS-1102,
+  ANTS-6636.
 - **INV-7**: `MainWindow::closeTab` routes to
   `showCloseTabConfirmDialog(...)` instead of tearing the tab
   down when a descendant is found, and **does not** push a
@@ -116,6 +119,13 @@ ANTS-5120's window-close dialog
 (`showCloseWindowConfirmDialog`), which does call
 `DialogChrome::install` and is the reference shape INV-12/INV-13
 grep against. The fix keeps the non-modal pattern INV-9/INV-14 pin.
+
+## Regression history — ANTS-6636
+
+`closeTab` probed only the active pane (`activeTerminalInTab`), so a
+split tab with `vim` in an unfocused pane closed without asking, while
+closing the window checked every pane. Found by the 2026-11-06 review.
+Locked by INV-6's every-pane check.
 
 ## Out of scope
 

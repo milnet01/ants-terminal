@@ -217,4 +217,30 @@ TEST(WindowCloseConfirm, Inv5_dontAskAgainWritesSameConfigSettingAsTabClose) {
     EXPECT_EQ(0, expect_failures()) << "Inv5_dontAskAgainWritesSameConfigSettingAsTabClose failed";
 }
 
+TEST(WindowCloseConfirm, Inv6_everyCancelClearsThePendingRelaunch) {
+    expect_reset();
+    const std::string cp = ants_test::slurpMainWindow();
+    ASSERT_FALSE(cp.empty()) << "ANTS-6636-INV-6: read mainwindow.cpp";
+    const std::string stripped = ants_test::stripComments(cp);
+
+    const std::string body = ants_test::slurpFunctionBody(
+        stripped, "void MainWindow::showCloseWindowConfirmDialog(");
+    expect(!body.empty(),
+           "ANTS-6636-INV-6: MainWindow::showCloseWindowConfirmDialog body extracted");
+
+    expect(contains(body, "&QDialog::rejected") && contains(body, "g_relaunchOnQuit = false"),
+           "ANTS-6636-INV-6: the relaunch flag is cleared on the dialog's rejected signal, "
+           "which Cancel, Escape and the title bar's close all reach");
+    expect(!contains(body, "cancelBtn, &QPushButton::clicked"),
+           "ANTS-6636-INV-6: clearing the flag on the Cancel button alone leaves Escape and "
+           "the title bar's close relaunching the app at the next quit");
+    const std::size_t confirmed = body.find("m_closeConfirmed = true");
+    const std::size_t dlgClose = body.find("dlg->close()");
+    expect(confirmed != std::string::npos && dlgClose != std::string::npos
+               && confirmed < dlgClose,
+           "ANTS-6636-INV-6: Close anyway sets m_closeConfirmed before dlg->close(), whose "
+           "rejected signal would otherwise cancel the relaunch it is closing for");
+    EXPECT_EQ(0, expect_failures()) << "Inv6_everyCancelClearsThePendingRelaunch failed";
+}
+
 }  // namespace
