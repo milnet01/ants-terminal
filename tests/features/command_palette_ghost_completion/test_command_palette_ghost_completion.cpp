@@ -223,3 +223,30 @@ TEST(CommandPaletteGhostCompletion, GhostHiddenUnlessCaretAtEnd) {
     edit.setGhostSuffix(QString());
     EXPECT_FALSE(render() == ghostEnd) << "the ghost does not paint with the caret at the end";
 }
+
+// I12 (ANTS-6985) — with the caret moved left the ghost is hidden (I11), so
+// Tab must not insert it either.
+TEST(CommandPaletteGhostCompletion, TabCommitsNothingWithCaretMidText) {
+    QAction action(QStringLiteral("Index Review"));
+    auto *palette = new CommandPalette(nullptr);
+    palette->setActions({&action});
+    palette->show();
+    auto *input = palette->findChild<GhostLineEdit *>("commandPaletteInput");
+    ASSERT_NE(input, nullptr);
+    input->setText(QStringLiteral("ind"));
+    QApplication::processEvents();
+    ASSERT_EQ(input->ghostSuffix(), QStringLiteral("ex Review"));
+
+    input->setCursorPosition(1);
+    sendKey(input, Qt::Key_Tab);
+    QApplication::processEvents();
+    EXPECT_EQ(input->text(), QStringLiteral("ind"))
+        << "Tab inserted the hidden suggestion with the caret mid-text";
+
+    // Control: at the end Tab still commits, so the check above is not vacuous.
+    input->setCursorPosition(3);
+    sendKey(input, Qt::Key_Tab);
+    QApplication::processEvents();
+    EXPECT_EQ(input->text(), QStringLiteral("index Review"));
+    delete palette;
+}

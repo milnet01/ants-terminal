@@ -162,7 +162,8 @@ The ids come from the Proposed-ID line's `ANTS-[0-9]+` tokens; that line is the
 authority (a finding may cite other ids in its prose, which are ignored — parity
 with the assigned-id set being the Proposed-ID line only, §"The un-triaged
 delta" step 3). The line is matched (case-insensitive) by the standard's
-canonical id-line regex `^ *(?:[-*] +)?\*{0,2} *proposed id[ *:]+(.*)$`, the
+canonical id-line regex (§"Maintainer triage", *Parser contract for the id
+line*), the
 value is capture-group-1 trimmed of whitespace and stray `*`, and a finding uses
 its **first** matching line — any later Proposed-ID line is ignored for both the
 gate and the retained/relocated line (§2.7). Today's `feedbackfile.cpp parse()`

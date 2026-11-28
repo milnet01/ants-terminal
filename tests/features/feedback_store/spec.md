@@ -16,7 +16,7 @@ never the live ones: the verbs' store sits under the bundle main's
 - `corpus_crlf_no_eol.md` — CRLF line endings and no final newline.
 - `golden_create.md` — what the file-backed `append_finding` wrote for a new
   file, made before the store change (INV-9). Its continuation line has
-  ANTS-6624's four-space indent.
+  ANTS-6624's four-space indent, and its note ANTS-6985's.
 
 ## What this test asserts
 
@@ -47,3 +47,6 @@ never the live ones: the verbs' store sits under the bundle main's
   import back and reports `imported:false`. A write that cannot open the file
   refuses `read_failed`, not `export_drift`. A stray H1 above a finding is not
   its entry heading.
+- **ANTS-6985** — a write whose chmod to 0444 fails refuses `write_failed`
+  and leaves the file unchanged, so the next write succeeds rather than
+  refusing `export_drift`.

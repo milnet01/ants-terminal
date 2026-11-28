@@ -1,10 +1,17 @@
 // The global-shortcuts portal reports every failure — see spec.md.
-// ANTS-5081. Source-scrape of src/globalshortcutsportal.cpp.
+// ANTS-5081. Source-scrape of src/globalshortcutsportal.cpp; INV-8 calls
+// the Response slot directly.
 
+#include "globalshortcutsportal.h"
+
+#include <QDBusMessage>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QMetaObject>
+#include <QSignalSpy>
 #include <QString>
+#include <QVariantMap>
 
 #include <gtest/gtest.h>
 
@@ -153,4 +160,21 @@ TEST(PortalFailurePaths, BindShortcutsTimesOut) {
         QStringLiteral("void GlobalShortcutsPortal::onBindShortcutsResponse("));
     EXPECT_TRUE(response.contains(QStringLiteral("m_bindsInFlight.remove(message.path());")))
         << "a Response that arrives does not cancel the timeout";
+}
+
+// INV-8 (ANTS-6985) — a Response for a bind no longer in flight, one the
+// timeout or the error reply already failed, fails nothing a second time.
+// Calls the slot directly; no portal or D-Bus call is made.
+TEST(PortalFailurePaths, LateBindResponseDoesNotFailTwice) {
+    GlobalShortcutsPortal portal;
+    QSignalSpy failed(&portal, &GlobalShortcutsPortal::sessionFailed);
+    const QDBusMessage late = QDBusMessage::createSignal(
+        QStringLiteral("/org/freedesktop/portal/desktop/request/1_0/ants_bind_late"),
+        QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"));
+    ASSERT_TRUE(QMetaObject::invokeMethod(&portal, "onBindShortcutsResponse",
+                                          Qt::DirectConnection, Q_ARG(uint, 2u),
+                                          Q_ARG(QVariantMap, QVariantMap()),
+                                          Q_ARG(QDBusMessage, late)));
+    EXPECT_EQ(failed.count(), 0)
+        << "a rejected Response for a bind that already failed emits sessionFailed again";
 }

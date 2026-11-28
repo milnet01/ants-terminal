@@ -867,6 +867,27 @@ TEST(McpFeedbackLog, Ants6624UnclosedFenceHidesNoLaterFinding) {
         EXPECT_NE(blk.idLine0, -1) << blk.heading.toStdString();
 }
 
+// ANTS-6985 — a note's first line is indented as its later lines are, so a
+// note that opens with a fence or a heading breaks no finding.
+TEST(McpFeedbackLog, Ants6985NoteFirstLineIsIndented) {
+    QVector<FeedbackFile::Finding> fs;
+    FeedbackFile::Finding f;
+    f.title = "Only"; f.what = "w";
+    fs << f;
+    for (const QString &note : {QStringLiteral("```\nnever closed"),
+                               QStringLiteral("### not a finding\nmore")}) {
+        const QString out = FeedbackFile::renderFindingBlock(
+            "2026-11-01", QString(), /*h1Heading=*/false, note, fs);
+        const QStringList lines =
+            (FeedbackFile::skeleton(QStringLiteral("P")) + QLatin1Char('\n') + out)
+                .split(QLatin1Char('\n'));
+        const auto blocks = FeedbackFile::enumerateFindingBlocks(lines);
+        ASSERT_EQ(blocks.size(), 1) << out.toStdString();
+        EXPECT_EQ(blocks.at(0).heading, QStringLiteral("### Only")) << out.toStdString();
+        EXPECT_NE(blocks.at(0).idLine0, -1) << out.toStdString();
+    }
+}
+
 // ANTS-6624 — a line indented two or more spaces is a field value's
 // continuation, so `Proposed ID` text in it is not the finding's id line.
 TEST(McpFeedbackLog, Ants6624ProposedIdInAContinuationIsNotTheIdLine) {

@@ -93,6 +93,7 @@ The test runs under `QT_QPA_PLATFORM=offscreen`. It builds a
 | I9 | Source-grep on `src/commandpalette.cpp` — exactly one `setAlphaF(0.45` literal (the dimmed-text color), at least one `cursorRect(` reference (paint position anchor). |
 | I10 | Sending `QKeyEvent(Escape)` to `m_input` hides the palette and emits `closed()` — regression guard on existing dismiss behaviour. |
 | I11 | (ANTS-6625) An unfocused `GhostLineEdit` holding `"ind"` with the caret at position 1 renders the same image with the ghost `"ex Review"` set as without it; with the caret at the end the ghost changes the image. |
+| I12 | (ANTS-6985) With `"ind"` typed and the caret moved to position 1, sending `QKeyEvent(Tab)` leaves `m_input->text()` as `"ind"`: Tab commits only a ghost that is shown. With the caret back at the end, Tab commits `"index Review"`. |
 
 The test verifies the failure mode by stashing the implementation,
 rebuilding, expecting non-zero exit, restoring, and confirming the

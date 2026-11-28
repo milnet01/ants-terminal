@@ -63,5 +63,7 @@ Result reimport(RoadmapStore &store, const QString &filePath, bool confirm);
 
 // Test seam: make the export write fail, as a full disk would.
 void setForceExportFailForTest(bool on);
+// Test seam: make the export's chmod to 0444 fail.
+void setForceChmodFailForTest(bool on);
 
 }  // namespace FeedbackStore

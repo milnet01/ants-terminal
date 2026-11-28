@@ -512,7 +512,9 @@ QString renderFindingBlock(const QString &date, const QString &sessionLabel,
                                      : QStringLiteral("## ");
     out += hashes + date;
     // ANTS-6624 — the heading is one line, as a title's is below; the note's
-    // later lines are indented as a field value's are.
+    // lines are indented as a field value's continuations are. ANTS-6985 —
+    // its first line too: no label precedes it, so a fence or heading there
+    // would sit at column 0.
     if (!sessionLabel.isEmpty())
         out += QStringLiteral(" — ") + QString(sessionLabel)
                    .replace(QStringLiteral("\r\n"), QStringLiteral(" "))
@@ -520,7 +522,7 @@ QString renderFindingBlock(const QString &date, const QString &sessionLabel,
     out += QStringLiteral("\n");
 
     if (!note.isEmpty())
-        out += QStringLiteral("\n") + indentContinuation(note) + QStringLiteral("\n");
+        out += QStringLiteral("\n    ") + indentContinuation(note) + QStringLiteral("\n");
 
     for (const Finding &f : findings) {
         // ANTS-3695 — a heading is one line by definition; a newline in the

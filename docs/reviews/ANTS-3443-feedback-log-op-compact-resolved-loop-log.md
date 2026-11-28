@@ -74,3 +74,4 @@ Record for [`../specs/ANTS-3443-feedback-log-op-compact-resolved.md`](../specs/A
   loop 6 returned zero verified findings across all severities. Signed off as
   implementation-ready — the shared `### ` scanner + the id-line regex are the
   only cross-spec commitments the implementer must honour (§2.6/§7).
+- **impl — ANTS-6985 doc fix (2026-11-28), no reviewer dispatched** — The Proposed-ID passage now points at mcp-feedback-files.md's id-line parser contract instead of quoting an old regex.

@@ -513,6 +513,32 @@ TEST(FeedbackStore, Ants6624UnreadableFileIsNotDrift) {
     EXPECT_EQ(r.code, QStringLiteral("read_failed")) << r.message.toStdString();
 }
 
+// ANTS-6985 — a write whose chmod to 0444 fails leaves the old file, which
+// still matches the rolled-back store, so the next write is not export_drift.
+TEST(FeedbackStore, Ants6985FailedChmodLeavesNoDrift) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    RoadmapStore store(dir.path() + "/s.sqlite");
+    ASSERT_TRUE(store.open());
+    const QString p = copyIn(dir, "corpus_mixed.md");
+    ASSERT_FALSE(p.isEmpty());
+    ASSERT_TRUE(FeedbackStore::load(store, p).imported);
+    const QByteArray before = readBytes(p);
+    const auto edit = [](const QString &in, bool, QString *out) {
+        *out = in + QStringLiteral("\nAn edit.\n");
+        return true;
+    };
+
+    FeedbackStore::setForceChmodFailForTest(true);
+    const FeedbackStore::Result failed = FeedbackStore::write(store, p, QString(), false, edit);
+    FeedbackStore::setForceChmodFailForTest(false);
+    EXPECT_EQ(failed.code, QStringLiteral("write_failed")) << failed.message.toStdString();
+    EXPECT_EQ(readBytes(p), before) << "the failed write left its text in the file";
+
+    const FeedbackStore::Result next = FeedbackStore::write(store, p, QString(), false, edit);
+    EXPECT_TRUE(next.code.isEmpty()) << next.code.toStdString() << ": "
+                                     << next.message.toStdString();
+}
+
 // ANTS-6624 — a stray H1 above a finding, such as a pasted shell comment in a
 // file written before ANTS-3695, is not its entry heading.
 TEST(FeedbackStore, Ants6624StrayH1IsNotTheEntryHeading) {

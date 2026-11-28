@@ -14,6 +14,7 @@ namespace FeedbackStore {
 namespace {
 
 bool g_forceExportFail = false;
+bool g_forceChmodFail = false;
 
 QString nowUtc() {
     return QDateTime::currentDateTimeUtc().toString(
@@ -93,7 +94,7 @@ Result importRow(RoadmapStore &store, const QString &key, const QString &path,
 }
 
 // § 4.4's file half: owner-write back first (QSaveFile refuses a read-only
-// target), the bytes through QSaveFile, then 0444.
+// target), the bytes and 0444 through QSaveFile.
 bool writeExport(const QString &path, const QString &text) {
     const bool existed = QFileInfo::exists(path);
     const QFileDevice::Permissions before =
@@ -106,14 +107,22 @@ bool writeExport(const QString &path, const QString &text) {
         sf.cancelWriting();
         ok = false;
     }
+    // ANTS-6624 — INV-5's 0444 is part of the write: a failed chmod fails it.
+    // ANTS-6985 — set on the temporary file before commit renames it, so a
+    // failed chmod leaves the old file, which still matches the rolled-back
+    // store.
+    if (ok && (g_forceChmodFail
+               || !sf.setPermissions(QFileDevice::ReadOwner | QFileDevice::ReadGroup
+                                     | QFileDevice::ReadOther))) {
+        sf.cancelWriting();
+        ok = false;
+    }
     if (ok) ok = sf.commit();
     if (!ok) {
         if (existed) QFile::setPermissions(path, before);
         return false;
     }
-    // ANTS-6624 — INV-5's 0444 is part of the write: a failed chmod fails it.
-    return QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::ReadGroup
-                                           | QFileDevice::ReadOther);
+    return true;
 }
 
 bool fileDrifted(const QString &path, const QString &exportSha) {
@@ -328,5 +337,6 @@ Result reimport(RoadmapStore &store, const QString &filePath, bool confirm) {
 }
 
 void setForceExportFailForTest(bool on) { g_forceExportFail = on; }
+void setForceChmodFailForTest(bool on) { g_forceChmodFail = on; }
 
 }  // namespace FeedbackStore

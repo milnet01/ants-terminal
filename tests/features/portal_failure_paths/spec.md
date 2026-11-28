@@ -35,6 +35,11 @@ timer. The timer, the error reply and `onBindShortcutsResponse` each remove
 the path; the timer and the error reply fail the bind (INV-6) only when the
 path was still there, so a bind fails at most once.
 
+**INV-8 — a late Response fails nothing.** `onBindShortcutsResponse` for a
+path no longer in `m_bindsInFlight` returns without calling
+`failPermanently`, so a rejected Response after the timer or the error reply
+does not emit `sessionFailed` a second time.
+
 ## Rationale
 
 `CreateSession`'s reply was watched, but `BindShortcuts` was sent with a bare
@@ -60,7 +65,8 @@ stops a later bind retrying.
 ## Test surface
 
 `test_portal_failure_paths.cpp` reads `src/globalshortcutsportal.cpp`, found
-beside `SRC_MAINWINDOW_CPP_PATH`, and checks the text.
+beside `SRC_MAINWINDOW_CPP_PATH`, and checks the text. INV-8 builds a
+`GlobalShortcutsPortal` and calls its Response slot directly.
 
 ## Regression history
 
@@ -69,3 +75,6 @@ beside `SRC_MAINWINDOW_CPP_PATH`, and checks the text.
 - **ANTS-6625:** `BindShortcuts` had no timeout, so a portal that never
   sent its Response left the shortcut unbound with no message. Locked by
   INV-7.
+- **ANTS-6985:** a rejected `BindShortcuts` Response arriving after the
+  timer or the error reply had failed the bind emitted `sessionFailed`
+  twice. Locked by INV-8.

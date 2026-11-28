@@ -210,7 +210,9 @@ void CommandPalette::updateGhostCompletion(const QString &filter) {
 
 void CommandPalette::commitGhost() {
     QString g = m_input->ghostSuffix();
-    if (g.isEmpty()) return;
+    // ANTS-6985 — the ghost shows only with the caret at the end (paintEvent);
+    // Tab commits only what is on screen.
+    if (g.isEmpty() || m_input->cursorPosition() != m_input->text().length()) return;
     // setText fires textChanged → filterActions → populateList →
     // updateGhostCompletion, which clears the ghost since the new
     // filter equals the action name exactly.

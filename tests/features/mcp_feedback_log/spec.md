@@ -37,3 +37,5 @@ Invariants exercised (docs/specs/ANTS-1962-feedback-log-mcp-tool-append.md §3 /
   finding; the session label is folded to one line. A line indented two or
   more spaces is never the id line. `set_title` splits the H1 at its first
   dash, so a title holding a dash is replaced and reported whole.
+- ANTS-6985 — the note's first line is indented four spaces too, so a
+  note opening with a fence or a heading hides or splits no finding.

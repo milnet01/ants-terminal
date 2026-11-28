@@ -317,8 +317,10 @@ void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,
                                                     const QVariantMap &results,
                                                     const QDBusMessage &message) {
     Q_UNUSED(results);
-    m_bindsInFlight.remove(message.path());
+    const bool inFlight = m_bindsInFlight.remove(message.path());
     detachResponseSlots(message.path());
+    // ANTS-6985 — the timeout or the error reply already failed this bind.
+    if (!inFlight) return;
     if (response != 0) {
         failPermanently(QStringLiteral(
             "BindShortcuts rejected (response code %1)").arg(response));
