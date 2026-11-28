@@ -134,6 +134,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The pre-push sanitizer gate skips a build-asan tree marked as interrupted straight away, without first running a CMake regeneration in it (ANTS-6656).**
+
+- **tools/check-roadmap.sh --allow exempts exactly the ids it names, and an id holding a bracket no longer crashes it (ANTS-6656).**
+
+- **tools/spec-header-survey.py accepts --values before or after the specs directory; split-motion-check.py names an unclosed window by its head; doc_symbols_locator_sample.py samples entries with no doc line (ANTS-6657).**
+
 - **The spec and contract-doc drift audit lanes say when their source index left out a file, so a finding may name text that was not read (ANTS-6652).**
 
 - **spec_conformance treats ~~~ fences as fences and counts only regex pcre2 fences as executable (ANTS-6652).**

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7041 -->
+<!-- ants-roadmap-id-high-water: ANTS=7042 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99976,16 +99976,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: test-audit-verify.
 
-- 📋 [ANTS-6656] **Fix the smaller bugs the 2026-11-06 reviews found in tools-ci-gate.**
+- ✅ [ANTS-6656] **Fix the smaller bugs the 2026-11-06 reviews found in tools-ci-gate.**
   2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1474 `tools/local-ci.sh:271-289` (Info)
   - row 1475 `tools/check-roadmap.sh:69` (Info)
+  2026-11-28 (c26c720c): rows 1474, 1475 fixed. Suite 6954/6954.
+  Follow-up: ANTS-7042.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: tools-ci-gate.
 
-- 📋 [ANTS-6657] **Fix the smaller bugs the 2026-11-06 reviews found in tools-roadmap-surveys.**
+- ✅ [ANTS-6657] **Fix the smaller bugs the 2026-11-06 reviews found in tools-roadmap-surveys.**
   4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1476 `tools/roadmap-conformance.py:128` (Info)
   - row 1477 `tools/spec-header-survey.py:256` (Info)
@@ -99996,6 +99998,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   --values must follow specs_dir.
   2026-11-18: row 1478 is now in callable_windows() (efbdeb02);
   same defect as ANTS-6080.
+  2026-11-28 (d14a9ac9): rows 1477, 1478, 1479 fixed; 1476 already
+  fixed (e701b5cd). Row 1477's 2026-11-18 "documented, not fixed"
+  note no longer applies. Suite 6954/6954.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -100428,6 +100433,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: test.
   Source: helper follow-ups 2026-11-28.
   Lanes: terminal-widget.
+
+- 📋 [ANTS-7042] **Wire tools/check-roadmap.sh into the pre-commit or CI gate, or drop its guard claim.**
+  No hook, CI step or test calls tools/check-roadmap.sh, yet its header
+  calls it a "pre-commit / CI guard". Seen while building ANTS-6656.
+  **Layman:** A roadmap check says it guards every commit, but nothing actually runs it.
+  Kind: chore.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: tools-ci-gate.
 
 ### Readability (2026-11-06 review)
 
@@ -115590,7 +115603,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22-tools.
   Lanes: tools.
 
-- 📋 [ANTS-6080] **tools/split-motion-check.py:1032-1033: matching() returning -1 prints an empty site.**
+- ✅ [ANTS-6080] **tools/split-motion-check.py:1032-1033: matching() returning -1 prints an empty site.**
   Lead 31 from the readability review of tools/, hooks/, cmake/ and
   packaging/ (2026-10-22).
   Location: tools/split-motion-check.py:1032-1033
@@ -115599,6 +115612,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
   2026-11-18: since efbdeb02 this is in callable_windows().
+  2026-11-28 (d14a9ac9): fixed as ANTS-6657 row 1478, the same
+  defect: an unclosed window inside a callable is named by its head.
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
