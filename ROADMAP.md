@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7045 -->
+<!-- ants-roadmap-id-high-water: ANTS=7046 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98820,7 +98820,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6624/6625 helpers 2026-11-27.
   Lanes: chrome-widgets, changelog-feedback.
 
-- 📋 [ANTS-6986] **Fix the bugs the ANTS-6626 and ANTS-6627 helpers found.**
+- ✅ [ANTS-6986] **Fix the bugs the ANTS-6626 and ANTS-6627 helpers found.**
   - docs/specs/ANTS-1248-workspace-search-mcp-tool-ripgrep.md still says
     workspace_search's schema requires pattern.
   - Tab tracker test INV-10 waits with contains("claude"), which matches
@@ -98836,6 +98836,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   claudeintegration_codenav.cpp still says pattern is required; a
   dropped or fired chip switch empties the tooltip instead of restoring
   the recommendation.
+  2026-11-28 (03cfd898): all four fixed; the codenav descriptor comment
+  fixed with them. Red then green; suite 6974/6974. The tooltip-restore
+  follow-up is filed separately.
   **Layman:** Small bugs in the Claude status widgets, a test and a spec, found while fixing others.
   Kind: fix.
   Source: ANTS-6626/6627 helpers 2026-11-27.
@@ -98901,6 +98904,19 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: ANTS-6636–6638 helpers 2026-11-27.
   Lanes: mcp-content-verbs, mainwindow, mcp-infra.
+
+- 📋 [ANTS-7046] **A dropped queued model switch restores the chip's recommendation tooltip instead of emptying it.**
+  maybeFireDeferredChipSwitch's two drop branches (ANTS-6986) set
+  the tooltip to an empty string. The chip stays visible, so until
+  the next re-score its tooltip is blank where it showed "Suggested
+  model: ... Reason: ...". The fired path hides the chip (ANTS-1840),
+  so emptying it there is harmless. Fix: keep the last recommendation
+  tooltip and restore it on a drop; extend model_switch_deferred_chip
+  INV-7.
+  **Layman:** After a queued model switch is cancelled, hovering the model chip shows its suggestion again, not a blank tip.
+  Kind: fix.
+  Source: ANTS-6986 helper follow-up 2026-11-28.
+  Lanes: claude-session-widgets.
 
 ### Other bugs (2026-11-06 review)
 

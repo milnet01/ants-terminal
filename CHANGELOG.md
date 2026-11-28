@@ -134,6 +134,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A background task in a helper transcript that was replaced on disk counts once, not twice (ANTS-6986).**
+
+- **Cancelling a queued model switch clears the model chip's "queued" tooltip (ANTS-6986).**
+
 - **When a program exits, the attribute reset waits until its last escape sequence or character is complete, so it cannot break the program's final output (ANTS-6658).**
 
 - **A program that closes the terminal just before it exits reports its real exit code and is reaped at once, not when the tab closes (ANTS-6658).**
