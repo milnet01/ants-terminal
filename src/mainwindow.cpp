@@ -787,10 +787,11 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // the main window boots normally.
     //
     // ANTS-5090 — keep this AFTER the status-bar chrome setup above, which
-    // creates m_claudeIntegration. Qt deletes children in creation order, so
-    // ~ClaudeIntegration joins the dispatch worker before RemoteControl is
-    // destroyed; an off-thread verb running a cmd*() at teardown still finds
-    // it alive. Locked by mcp_verb_offthread_guard INV-7.
+    // creates m_claudeIntegration. ~ClaudeIntegration must join the dispatch
+    // worker before RemoteControl is destroyed, so an off-thread verb running
+    // a cmd*() at teardown still finds it alive. ~MainWindow deletes the two
+    // in that order (ANTS-6636); Qt's creation-order deletion of children is
+    // the backstop. Locked by mcp_verb_offthread_guard INV-7.
     m_remoteControl = new RemoteControl(this, this, m_rootProvider.get());
     // ANTS-5144 — the listener is shared by every window and prefers a
     // visible one when it picks who serves a request.
@@ -2969,6 +2970,12 @@ void MainWindow::reapplyConfig() {
     applyTabListPanelConfig();  // ANTS-5645
     applyFixedWindowSize(false);  // ANTS-6742 — only if the size changed
 
+    // ANTS-6989 — turning automatic light/dark switching on applies the
+    // system's scheme now, not at the next system change. Only a change of
+    // the setting runs it, so a theme picked while it stays on is kept.
+    if (m_config.autoColorScheme() != m_autoColorSchemeSeen)
+        onSystemColorSchemeChanged();
+
 #ifdef ANTS_LUA_PLUGINS
     // Let plugins react to settings changes. The payload is empty: a
     // plugin reads what it needs through ants.settings.get.
@@ -3074,6 +3081,7 @@ void MainWindow::onConfigFileChanged(const QString &path) {
 // --- Dark/Light Mode Auto-Switching ---
 
 void MainWindow::onSystemColorSchemeChanged() {
+    m_autoColorSchemeSeen = m_config.autoColorScheme();  // ANTS-6989
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     if (!m_config.autoColorScheme()) return;
 

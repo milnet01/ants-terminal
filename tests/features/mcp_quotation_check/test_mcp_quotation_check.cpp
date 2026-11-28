@@ -422,6 +422,15 @@ TEST(QuotationCheck, Inv11DisplacedQuoteNearestOccurrenceDecides)
     EXPECT_EQ(resultAt(env, 3), "hit") << "a wrapped quotation takes the line it starts on";
     EXPECT_EQ(env.value("counts").toObject().value("hit_displaced").toInt(), 1);
 
+    // ANTS-6989 — the walk stops at the first occurrence on or past the cited
+    // line; the nearest still wins, and the earlier on a tie.
+    const QJsonObject walk = call(dir.path(), QJsonArray{
+        cited(q, 22, 0), cited(q, 30, 0), cited(q, 1, 0)});
+    ASSERT_TRUE(walk.value("ok").toBool()) << QJsonDocument(walk).toJson().toStdString();
+    EXPECT_EQ(findingFor(walk, 0).value("line").toInt(), 4) << "a tie takes the earlier";
+    EXPECT_EQ(findingFor(walk, 1).value("line").toInt(), 40);
+    EXPECT_EQ(findingFor(walk, 2).value("line").toInt(), 4);
+
     // The item's tolerance wins over the call's.
     const QJsonObject callTol = call(dir.path(), QJsonArray{cited(q, 10, 0)},
                                      QJsonObject{{"tolerance", 6}});

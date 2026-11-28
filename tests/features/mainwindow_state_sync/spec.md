@@ -26,6 +26,13 @@ constructor connects `QStyleHints::colorSchemeChanged` whatever
 `autoColorScheme()` reads; `onSystemColorSchemeChanged` checks the setting.
 Turning the setting on later then takes effect without a restart.
 
+**INV-5 — turning the setting on applies the system's scheme at once
+(ANTS-6989).** The slot records `autoColorScheme()` in
+`m_autoColorSchemeSeen` before it checks the setting. `reapplyConfig`, which
+both Settings and a config.json reload run, calls the slot when the setting
+differs from that record, so turning it on switches the theme without
+waiting for the next system change. A theme picked while it stays on is kept.
+
 ## Test surface
 
 `test_mainwindow_state_sync.cpp` reads the MainWindow sources
@@ -37,3 +44,5 @@ tabs, a palette, two windows, or a system colour-scheme change.
 
 - **ANTS-6636:** the four defects above, found by the 2026-11-06 reviews.
   Locked by this spec.
+- **ANTS-6989:** turning the setting on waited for the next system change.
+  Locked by INV-5.

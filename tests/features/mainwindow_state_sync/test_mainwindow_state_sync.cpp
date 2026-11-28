@@ -75,3 +75,22 @@ TEST(MainwindowStateSync, ColourSchemeSignalAlwaysConnected) {
     EXPECT_TRUE(has(slot, "if (!m_config.autoColorScheme()) return;"))
         << "INV-4: the slot must check the setting itself";
 }
+
+// INV-5 (ANTS-6989)
+TEST(MainwindowStateSync, TurningAutoColourSchemeOnAppliesItNow) {
+    const std::string reapply = body("void MainWindow::reapplyConfig(");
+    ASSERT_FALSE(reapply.empty()) << "reapplyConfig not found";
+    const std::size_t check =
+        reapply.find("if (m_config.autoColorScheme() != m_autoColorSchemeSeen)");
+    ASSERT_NE(check, std::string::npos)
+        << "INV-5: reapplyConfig must notice the setting changed";
+    EXPECT_NE(reapply.find("onSystemColorSchemeChanged();", check), std::string::npos)
+        << "INV-5: a changed setting must run the slot at once";
+    const std::string slot = body("void MainWindow::onSystemColorSchemeChanged(");
+    const std::size_t seen =
+        slot.find("m_autoColorSchemeSeen = m_config.autoColorScheme();");
+    ASSERT_NE(seen, std::string::npos)
+        << "INV-5: the slot must record the setting it saw";
+    EXPECT_LT(seen, slot.find("if (!m_config.autoColorScheme()) return;"))
+        << "INV-5: the slot records the setting before it returns when off";
+}

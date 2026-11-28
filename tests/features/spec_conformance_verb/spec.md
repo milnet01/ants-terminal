@@ -5,10 +5,10 @@ Owning spec:
 [`docs/specs/ANTS-4108-spec-conformance-verb.md`](../../../docs/specs/ANTS-4108-spec-conformance-verb.md).
 
 The engine lane (`tests/features/spec_conformance/`) covers `SpecConformance::run`.
-This lane covers only what the engine cannot reach: the MCP boundary. The handler
-needs a live `MainWindow`, so it splits the way `spec_lint_verb` does — behavioural
-rows drive the pure helper `RemoteControl::specConformanceBuildResponse`, wiring
-rows source-scrape the registration sites.
+This lane covers only what the engine cannot reach: the MCP boundary. Behavioural
+rows drive the pure helper `RemoteControl::specConformanceBuildResponse`, or the
+handler on a bare `RemoteControl`, which needs no `MainWindow`; wiring rows
+source-scrape the registration sites.
 
 ## What each row locks
 

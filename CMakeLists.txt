@@ -3573,6 +3573,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_last_selection/test_mcp_last_selection.cpp
                 # ANTS-5169 secrets hidden from the terminal-reading verbs.
                 tests/features/mcp_secret_redaction/test_mcp_secret_redaction.cpp
+                # ANTS-6989 terminal verbs refuse a number that is not whole.
+                tests/features/rc_whole_int_args/test_rc_whole_int_args.cpp
                 # ANTS-5184 instruction-like terminal text flagged to Claude.
                 tests/features/mcp_prompt_injection_hint/test_mcp_prompt_injection_hint.cpp
                 # ANTS-1636 find_sources MCP + pure-function tests.

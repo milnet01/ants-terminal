@@ -350,8 +350,9 @@ void describeMiss(QJsonObject &f, const QByteArray &needle, const Subject &s)
 }
 
 // ANTS-5732 (§ 2.3) — the line of the occurrence nearest `cited`, the earlier
-// on a tie, and whether it starts within `tolerance` of it. Every occurrence
-// is weighed, since a quotation can sit in the file more than once.
+// on a tie, and whether it starts within `tolerance` of it. A quotation can
+// sit in the file more than once. Occurrences come in line order, so the
+// walk stops at the first one on or past `cited`: later ones are farther.
 std::pair<int, bool> nearestOccurrence(const QByteArray &needle, const Subject &s,
                                        int cited, int tolerance)
 {
@@ -367,6 +368,8 @@ std::pair<int, bool> nearestOccurrence(const QByteArray &needle, const Subject &
             bestDistance = distance;
             best = line;
         }
+        if (line >= cited)   // ANTS-6989
+            break;
     }
     return {best, false};
 }

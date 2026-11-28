@@ -564,10 +564,13 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
                        (m_changelogCacheMtimeMs == mtime) && mtime != 0 &&
                        (nowMs - m_changelogCacheStampMs <= kRoadmapCacheTtlMs);
     if (!fresh) {
-        QString md;
         QFile f(clPath);
-        if (f.open(QIODevice::ReadOnly | QIODevice::Text))
-            md = QString::fromUtf8(f.readAll());
+        // ANTS-6989 — an unreadable file would parse as empty: no entries.
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+            return clErr(QStringLiteral("changelog_read_failed"),
+                         QStringLiteral("changelog_query: could not read \"%1\"")
+                             .arg(clPath));
+        const QString md = QString::fromUtf8(f.readAll());
         // Prefix P = project roadmap prefix (ANTS-3533 § 3). Sniff from
         // the ROADMAP.md at the repo root; fall back to "ANTS".
         const QString roadmapPath = findRoadmapUnder(callerCanonical);

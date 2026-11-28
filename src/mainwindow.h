@@ -781,6 +781,9 @@ private:
 
     // Dark/light mode auto-switching
     void onSystemColorSchemeChanged();
+    // ANTS-6989 — autoColorScheme() at the slot's last call, so
+    // reapplyConfig runs the slot when the setting changes.
+    bool m_autoColorSchemeSeen = false;
 
     // Auto-profile switching
     void checkAutoProfileRules(TerminalWidget *terminal);

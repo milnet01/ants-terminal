@@ -32,5 +32,5 @@ with the temporary directory as the project root.
 | INV-8 | `QuotationCheck.Inv8SubjectReadOncePerCall`, `QuotationCheck.Inv8HeldSubjectsStayUnderTheBudget` |
 | INV-9 | `QuotationCheck.Inv9Caps` |
 | INV-10 | `QuotationCheck.Inv10Registration` |
-| INV-11 | `QuotationCheck.Inv11DisplacedQuoteNearestOccurrenceDecides` (ANTS-5732) |
+| INV-11 | `QuotationCheck.Inv11DisplacedQuoteNearestOccurrenceDecides` (ANTS-5732; ANTS-6989 adds a tie and two cited lines the walk stops at) |
 | INV-12 | `QuotationCheck.Inv12NoLineChangesNothingAndShapesRefuse` (ANTS-5732) |

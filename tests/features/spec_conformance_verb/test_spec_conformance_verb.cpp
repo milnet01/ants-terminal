@@ -3,9 +3,9 @@
 // (tests/features/spec_conformance/) owns SpecConformance::run; this lane owns
 // only the MCP boundary.
 //
-// The handler needs a live MainWindow, so behavioural rows drive the pure
-// helper and wiring rows source-scrape the registration sites — the same split
-// tests/features/spec_lint_verb/ uses.
+// Behavioural rows drive the pure helper, or the handler on a bare
+// RemoteControl, which needs no MainWindow; wiring rows source-scrape the
+// registration sites.
 
 #include "remotecontrol.h"
 

@@ -739,6 +739,39 @@ TEST(ChangelogQueryHandler, Ants6637UnreadableFileRefusesLint) {
         << QJsonDocument(r).toJson().toStdString();
 }
 
+// ANTS-6989 — the other modes refuse the same way: an unreadable file never
+// reads as one with no entries.
+TEST(ChangelogQueryHandler, Ants6989UnreadableFileRefusesEveryMode) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/CHANGELOG.md");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(kLintFixture);
+    }
+    ASSERT_TRUE(QFile::setPermissions(path, QFileDevice::Permissions()));
+    {
+        QFile probe(path);
+        if (probe.open(QIODevice::ReadOnly)) {
+            QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+            GTEST_SKIP() << "a mode-000 file is still readable here (running as root?)";
+        }
+    }
+    for (const char *mode : {"entries", "version_index", "headline_only"}) {
+        RemoteControl rc(nullptr);
+        const QJsonObject r = rc.cmdChangelogQuery(QJsonObject{
+            {QStringLiteral("caller_cwd"), tmp.path()},
+            {QStringLiteral("mode"), QString::fromLatin1(mode)}}).object();
+        EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool())
+            << mode << ": " << QJsonDocument(r).toJson().toStdString();
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("changelog_read_failed"))
+            << mode << ": " << QJsonDocument(r).toJson().toStdString();
+    }
+    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+}
+
 // ANTS-5507 — the release checks. Pure: the store's and git's answers arrive
 // as ReleaseFacts, so each kind is driven by one fact.
 namespace {

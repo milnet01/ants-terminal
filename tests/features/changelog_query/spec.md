@@ -57,6 +57,9 @@ and source-scrapes the handler wiring.
 - **`ChangelogQueryHandler.Ants6637UnreadableFileRefusesLint`** — a
   CHANGELOG.md that exists but cannot be read refuses
   `changelog_read_failed`; it never lints as an empty, clean file.
+- **`ChangelogQueryHandler.Ants6989UnreadableFileRefusesEveryMode`** — the
+  `entries`, `version_index` and `headline_only` modes refuse the same way;
+  an unreadable file never reads as one with no entries.
 
 Mutations run 2026-09-28 (rebuilt, run, restored, byte-compared), each
 killed: drop the Theme exemption; report placeholder prose immediately; drop

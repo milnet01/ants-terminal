@@ -31,7 +31,9 @@
 #include <QStandardPaths>
 #include <QTimer>
 
+#include <initializer_list>
 #include <memory>
+#include <optional>
 #include <unistd.h>
 
 using namespace rcdetail;  // ANTS-3833
@@ -92,6 +94,14 @@ QJsonDocument newTabReply(int idx, bool started, bool rawBypass, int stripped) {
     out["ok"] = true;
     if (!rawBypass && stripped > 0) out["stripped"] = stripped;
     return QJsonDocument(out);
+}
+
+// ANTS-6989 — true when one of `vs` is a JSON number that is not a whole
+// int. toInt() reads 1.5 or 1e10 as 0, which the handler then acts on.
+bool anyNotWholeInt(std::initializer_list<QJsonValue> vs) {
+    for (const QJsonValue &v : vs)
+        if (v.isDouble() && !RemoteControl::wholeIntArg(v)) return true;
+    return false;
 }
 
 }  // namespace
@@ -532,13 +542,16 @@ QJsonDocument RemoteControl::cmdSelectWindow(const QJsonObject &req) {
     //     tab strip is unchanged.
     QJsonObject out;
     const QJsonValue tabVal = req.value("tab");
-    if (!tabVal.isDouble()) {
+    // ANTS-6989 — 1.5 or 1e10 refuses; toInt() would read it as tab 0.
+    const std::optional<int> tab =
+        tabVal.isDouble() ? wholeIntArg(tabVal) : std::nullopt;
+    if (!tab) {
         out["ok"] = false;
         out["error"] = QStringLiteral(
             "select-window: missing or non-integer \"tab\" field");
         return QJsonDocument(out);
     }
-    const int idx = tabVal.toInt();
+    const int idx = *tab;
     if (!m_main->selectTabForRemote(idx)) {
         out["ok"] = false;
         out["error"] = QStringLiteral(
@@ -566,6 +579,11 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     QJsonObject out;
     TerminalWidget *target = nullptr;
     const QJsonValue tabVal = req.value("tab");
+    const QJsonValue linesVal = req.value("lines");
+    const QJsonValue maxBytesVal = req.value("max_bytes");
+    if (anyNotWholeInt({tabVal, linesVal, maxBytesVal}))   // ANTS-6989
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
+            QStringLiteral("get-text: tab, lines and max_bytes take whole numbers")));
     if (tabVal.isDouble()) {
         const int idx = tabVal.toInt();
         target = m_main->wakeTerminalAtTab(idx);
@@ -586,7 +604,6 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     }
 
     int lines = 100;
-    const QJsonValue linesVal = req.value("lines");
     if (linesVal.isDouble()) {
         const int requested = linesVal.toInt();
         if (requested > 0) lines = std::min(requested, kGetTextMaxLines);
@@ -597,7 +614,6 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     // transport limit. Caller can lower (test harness) or raise (up
     // to the 16 MiB ceiling for non-MCP rc consumers).
     int maxBytes = RemoteControl::kGetTextDefaultBytesCap;
-    const QJsonValue maxBytesVal = req.value("max_bytes");
     if (maxBytesVal.isDouble()) {
         const int requested = maxBytesVal.toInt();
         if (requested > 0) maxBytes = requested;
@@ -634,6 +650,12 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     QJsonObject out;
     TerminalWidget *target = nullptr;
     const QJsonValue tabVal = req.value(QStringLiteral("tab"));
+    const QJsonValue linesVal = req.value(QStringLiteral("lines"));
+    const QJsonValue mr = req.value(QStringLiteral("max_results"));
+    if (anyNotWholeInt({tabVal, linesVal, mr}))   // ANTS-6989
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
+            QStringLiteral("recent_errors: tab, lines and max_results take "
+                           "whole numbers")));
     if (tabVal.isDouble()) {
         target = m_main->wakeTerminalAtTab(tabVal.toInt());
     } else {
@@ -648,14 +670,12 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     }
 
     int lines = 500;
-    const QJsonValue linesVal = req.value(QStringLiteral("lines"));
     if (linesVal.isDouble()) {
         const int requested = linesVal.toInt();
         if (requested > 0) lines = std::min(requested, kGetTextMaxLines);
     }
 
     ScrollbackErrors::Options opts;
-    const QJsonValue mr = req.value(QStringLiteral("max_results"));
     if (mr.isDouble()) opts.maxResults = mr.toInt();  // lib clamps ≤0 / >1000
 
     // ANTS-5169 — redact the scanned text, so every message and text field
@@ -697,6 +717,10 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
     QJsonObject out;
     TerminalWidget *target = nullptr;
     const QJsonValue tabVal = req.value(QStringLiteral("tab"));
+    const QJsonValue maxBytesVal = req.value(QStringLiteral("max_bytes"));
+    if (anyNotWholeInt({tabVal, maxBytesVal}))   // ANTS-6989
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
+            QStringLiteral("last_selection: tab and max_bytes take whole numbers")));
     if (tabVal.isDouble()) {
         target = m_main->wakeTerminalAtTab(tabVal.toInt());
     } else {
@@ -716,7 +740,6 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
     // ANTS-5098 — the same cap as get_text, applied after redaction so it
     // bounds what is sent and never cuts a secret in half.
     int maxBytes = RemoteControl::kGetTextDefaultBytesCap;
-    const QJsonValue maxBytesVal = req.value(QStringLiteral("max_bytes"));
     if (maxBytesVal.isDouble() && maxBytesVal.toInt() > 0)
         maxBytes = maxBytesVal.toInt();
 
@@ -787,6 +810,12 @@ QJsonDocument RemoteControl::cmdSetTitle(const QJsonObject &req) {
 
     int idx;
     const QJsonValue tabVal = req.value("tab");
+    if (anyNotWholeInt({tabVal})) {   // ANTS-6989 — toInt() reads 1.5 as tab 0
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "set-title: \"tab\" must be a whole tab index");
+        return QJsonDocument(out);
+    }
     if (tabVal.isDouble()) {
         idx = tabVal.toInt();
     } else {
