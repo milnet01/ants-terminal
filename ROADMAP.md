@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7006 -->
+<!-- ants-roadmap-id-high-water: ANTS=7007 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99508,7 +99508,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: model-switching.
 
-- 📋 [ANTS-6645] **Fix the smaller bugs the 2026-11-06 reviews found in plugins-lua.**
+- 🚧 [ANTS-6645] **Fix the smaller bugs the 2026-11-06 reviews found in plugins-lua.**
   6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 197 `pluginmanager.cpp:482-504` (Medium)
   - row 198 `pluginmanager.cpp:645` (Medium)
@@ -99516,6 +99516,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1455 `src/luaengine.cpp:351-353` (Info)
   - row 1456 `src/pluginmanager.cpp:307` (Info)
   - row 1457 `src/pluginmanager.cpp:220` (Info)
+  2026-11-28 (c38f38d0): rows 197, 198, 200, 1457 fixed; 1456 already
+  fixed; suite 6875/6875. Row 1455 waits on the user: `ants.get_output`
+  needs no permission (not live yet: setRecentOutput has no caller, so
+  it returns ""). Options: (a) expose get_output only to plugins granted
+  terminal.read, as other permissioned functions are, and update
+  PLUGINS.md (recommended: nothing can depend on it yet); (b) return ""
+  without terminal.read; (c) leave it until the output feed lands.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -100003,6 +100010,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: perf.
   Source: ANTS-6644 helper, 2026-11-28.
   Lanes: model-switching.
+
+- 📋 [ANTS-7007] **LuaEngine::loadScript leaves a chunk's return values on the Lua stack.**
+  Found by the ANTS-6645 helper: on success loadScript pops nothing, so
+  values the chunk returns stay on the stack (src/luaengine.cpp). A small
+  one-off leak per load.
+  **Layman:** Loading a plugin leaves a little unused data behind each time.
+  Kind: fix.
+  Source: ANTS-6645 helper, 2026-11-28.
+  Lanes: plugins-lua.
 
 ### Readability (2026-11-06 review)
 

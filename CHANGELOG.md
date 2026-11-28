@@ -124,6 +124,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A plugin whose `manifest.json` or `init.lua` is a named pipe no longer freezes the terminal or its plugin thread** (ANTS-6645)
+
+- **Plugin threads have room for Lua's deepest allowed recursion, and a plugin that catches its own timeout no longer has its next event cut short** (ANTS-6645)
+
 - **In the AI Assistant, pressing Enter while a reply is arriving no longer cancels it, Insert Cmd stays off for a cut-off reply, and its confirmation says the command will run** (ANTS-6644)
 
 - **The model recommender counts "planning" and "planned" as planning words; `model_switch_stats` counts old records only for the project asked about and settles ties the same way every run** (ANTS-6644)
