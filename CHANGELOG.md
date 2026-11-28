@@ -27,6 +27,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Under the Kitty keyboard protocol, Ctrl+letter is sent as CSI <letter>;5u and Shift+letter as plain text, as the protocol says (ANTS-6654).**
+
 - **The Bash and ROADMAP vetoes block through Claude Code's current permissionDecision:"deny" hook output (ANTS-6651).**
 
 - **trace caps max_bytes at 4 MiB, like the other read verbs (ANTS-6628).**
@@ -131,6 +133,34 @@ for security-relevant changes.
   The next query reads the files again.
 
 ### Fixed
+
+- **The spec and contract-doc drift audit lanes say when their source index left out a file, so a finding may name text that was not read (ANTS-6652).**
+
+- **spec_conformance treats ~~~ fences as fences and counts only regex pcre2 fences as executable (ANTS-6652).**
+
+- **spec_log refuses a status, loop label or loop body holding a line break, and creates a loop log in a spec whose only table is a fenced example (ANTS-6652).**
+
+- **spec_lint treats a test named only in a CMake comment as unwired, and accepts a Kind with trailing punctuation (ANTS-6652).**
+
+- **Private-marker CSI sequences such as XTSMGRAPHICS and XTSAVE/XTRESTORE no longer scroll the screen or reset the scroll region, and Neovim's XTGETTCAP probes no longer leave Sixel slivers (ANTS-6653).**
+
+- **Kitty graphics replies follow the image id and quiet flags, the a/A/i/I delete selectors work, and each screen keeps its own Kitty keyboard mode stack (ANTS-6653).**
+
+- **Entering the alternate screen starts from blank cells, and narrowing the window keeps the prompt on screen (ANTS-6653).**
+
+- **Deleting or inserting characters keeps OSC 8 links on their text and splits no wide character (ANTS-6653).**
+
+- **iTerm2 image widths such as 100px, 50% or auto keep the natural size; ConEmu OSC 9;N commands no longer pop up notifications; cursor reports honour origin mode; reset keeps the debug log and the scroll pause (ANTS-6653).**
+
+- **Mouse-reporting apps get button releases and drag motion without SGR mode, no left click from Back/Forward, and one wheel report per notch on touchpads (ANTS-6654).**
+
+- **Every failed command raises the failure notice, even with the same exit code as the one before (ANTS-6654).**
+
+- **The risky-paste preview wraps long lines; screen readers read a whole row as a line; bookmarks stay on their lines as old scrollback drops; rich copy keeps combining marks (ANTS-6654).**
+
+- **Click-to-move counts wide characters correctly, fish history suggests only commands, a settings reload keeps the bold and italic fonts, and Search Web shows for short selections on wide panes (ANTS-6654).**
+
+- **A failed screenshot save, editor launch or recording header write is reported (ANTS-6654).**
 
 - **git_state op:diff and spec_lint's since/staged runs name files as they are on disk, for names with spaces, quotes or accents, and whatever the user's diff settings (ANTS-6650).**
 
@@ -311,6 +341,10 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **iTerm2 inline images open only as PNG, JPEG or GIF, and a truncated image sequence is refused (ANTS-6653).**
+
+- **Pasted screenshots are private from the moment the file is created, and a plain-text file:// link asks before opening (ANTS-6654).**
 
 - **read_region and read_regions hide secrets and private keys when claude.mcp_redact_secrets is on, and say how many they hid (ANTS-6642).**
 

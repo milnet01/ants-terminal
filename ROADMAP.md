@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7029 -->
+<!-- ants-roadmap-id-high-water: ANTS=7041 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99307,7 +99307,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: hooks-packaging.
 
-- 🚧 [ANTS-6636] **Fix the smaller bugs the 2026-11-06 reviews found in mainwindow.**
+- ✅ [ANTS-6636] **Fix the smaller bugs the 2026-11-06 reviews found in mainwindow.**
   18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 57 `mainwindow_tabs.cpp:825` (Medium)
   - row 58 `mainwindow.cpp:2298` (Medium)
@@ -99350,6 +99350,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   carve-out for the two in-place deletes, asked of claude-config
   (message 2651); close this item when it lands, or rewrite the two
   call sites if refused.
+  2026-11-28 (a3f970dc): claude-config landed the qt.md carve-out
+  (re-mirrored in 8948095f). Two hand deletes replace at once and fit
+  it; the palette's closed() handler now uses deleteLater(). Every row
+  is closed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99858,7 +99862,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: shell-surface.
 
-- 📋 [ANTS-6652] **Fix the smaller bugs the 2026-11-06 reviews found in spec-engines.**
+- 🚧 [ANTS-6652] **Fix the smaller bugs the 2026-11-06 reviews found in spec-engines.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 373 `featurecoverage.cpp:755-756` (Medium)
   - row 375 `specconformance.cpp:28-32` (Medium)
@@ -99868,12 +99872,20 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 382 `speclint.cpp:654-655` (Low)
   - row 1430 `src/specconformance.cpp:175` (Info)
   - row 1431 `src/speclog.cpp:503` (Info)
+  2026-11-28 (37fb416b): rows 377, 378, 382, 1430, 1431 fixed; 373
+  fixed for the drift lanes (debt-sweep caller filed separately); 380
+  already fixed (bdc0d018); 375 fixed for ~~~ fences. Row 375's other
+  half waits on the user: an unterminated fence still stops the scan
+  with no report. Options: (a) add a fourth candidate kind
+  `unterminated_fence` and amend ANTS-4108 § 2.5's "exactly three"
+  (recommended: the author's action differs, close the fence, which is
+  § 2.5's own reason for separate kinds); (b) leave it.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: spec-engines.
 
-- 📋 [ANTS-6653] **Fix the smaller bugs the 2026-11-06 reviews found in terminal-grid.**
+- ✅ [ANTS-6653] **Fix the smaller bugs the 2026-11-06 reviews found in terminal-grid.**
   19 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 10 `terminalgrid.cpp:672–673, 797–800` (Medium)
   - row 11 `terminalgrid.cpp:3157` (Medium)
@@ -99894,12 +99906,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 29 `terminalgrid.h:963` (Low)
   - row 1296 `src/terminalgrid.cpp:1045` (Info)
   - row 1299 `src/osc133signmain.cpp:60` (Info)
+  2026-11-28 (46997321): rows 10-12, 15, 16, 19, 20, 22-29, 1296
+  fixed; 14 and 1299 already fixed; 17 moved to its own item. Suite
+  6932/6932, perf 19/19.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: terminal-grid.
 
-- 📋 [ANTS-6654] **Fix the smaller bugs the 2026-11-06 reviews found in terminal-widget.**
+- 🚧 [ANTS-6654] **Fix the smaller bugs the 2026-11-06 reviews found in terminal-widget.**
   25 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 33 `terminalwidget.cpp:3227-3238` (Medium)
   - row 34 `terminalwidget.cpp:3233` (Medium)
@@ -99926,6 +99941,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1303 `src/terminalwidget.cpp:6233` (Info)
   - row 1304 `src/terminalwidget.cpp:5730` (Info)
   - row 1305 `src/terminalwidget.cpp:5654` (Info)
+  2026-11-28 (6a8fe157): rows 33, 34, 36, 37, 40, 41, 44-47, 49-56,
+  1303, 1305 fixed; 1300 already fixed; 1304 not a bug (canFold needs
+  commandEndMs > 0); 35 and 1301 moved to their own items. Row 1302
+  waits on the user: plain copy writes a space for a wide character's
+  second half, HTML copy skips it. Options: (a) plain copy skips those
+  cells too, as most terminals do, in its own item since the a11y
+  offsets share the function (recommended); (b) leave both as they
+  are.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -100305,6 +100328,106 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: doc-fix.
   Source: helper follow-ups 2026-11-28.
   Lanes: hook-pack.
+
+- 📋 [ANTS-7030] **Debt-sweep's stale type-comment check says when its source index left out a file, as the drift lanes do.**
+  ANTS-6652 row 373's out-of-lane caller: debtsweepengine.cpp
+  detectStaleTypeComments ignores FeatureCoverage's truncatedOut.
+  **Layman:** One more review check should admit when it skipped a file that was too big.
+  Kind: review-fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: review-engines.
+
+- 📋 [ANTS-7031] **Refuse a line break in spec_log's table cells and append_inv fields too.**
+  ANTS-6652 row 377 covers status, loop label and loop body. The
+  append_loop `cells` and append_inv's body, inv_id and test are still
+  written as-is.
+  **Layman:** A spec tool can still break a table if a value contains a new line.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-7032] **Read CMake bracket comments and multi-line quoted strings in spec_lint's wiredTestDirs.**
+  wiredTestDirs reads line by line, so `#[[ ... ]]` and a quoted
+  string spanning lines are not handled (ANTS-6652 row 378 fixed `#`
+  line comments).
+  **Layman:** A spec check can misread some CMake comments as real test wiring.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: spec-engines.
+
+- 📋 [ANTS-7033] **Remap OSC 133 prompt-region line numbers through a width-change reflow of scrollback and screen.**
+  ANTS-6653 row 17, too big for that bundle: the reflow builds no
+  old-to-new line map; adding one touches the scrollback fast and slow
+  paths and the screen overflow push.
+  **Layman:** After resizing the window, the marks for where each command started can point at the wrong lines.
+  Kind: review-fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-7034] **Support the remaining Kitty graphics delete selectors (c, p, x, y, z, n, r, q and capitals).**
+  ANTS-6653 row 24 built a, A, i and I.
+  **Layman:** Some ways a program asks to remove a picture still do nothing.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-7035] **Echo I= in a Kitty graphics reply to a command given only I=.**
+  Such a reply says `i=0` and carries no `I=` field (seen while building
+  ANTS-6653 row 12).
+  **Layman:** A reply to a picture command uses the wrong id field.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-7036] **Make ants-osc133-sign and the grid trim the OSC 133 key the same way.**
+  The signer drops only one trailing newline; the grid trims all
+  leading and trailing whitespace. Generated keys are hex, so low risk.
+  **Layman:** The command-mark signer and checker disagree about spaces at the end of the key.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-7037] **Keep coloured-background blank rows when a narrowing reflow drops blank bottom rows.**
+  isBlankLine counts a row of spaces with a background colour as
+  blank, so ANTS-6653 row 16's fix can drop it.
+  **Layman:** Narrowing the window can drop a coloured empty row at the bottom of the screen.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-7038] **Send IME commits through the key path (selection clear, scroll reset, keystroke time, broadcast).**
+  ANTS-6654 row 35, too big for that bundle: the broadcast callback
+  carries a QKeyEvent, so it needs a text-carrying callback and a
+  MainWindow change.
+  **Layman:** Text typed through an input method skips some of what a normal key press does.
+  Kind: review-fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-7039] **Make Clear Scrollback clear the grid itself instead of typing escape codes into the shell.**
+  ANTS-6654 row 1301, too big: a TerminalGrid::clearScrollback shared
+  with CSI 3J, plus the search, bookmark and span-cache bookkeeping,
+  and a choice of whether the screen is cleared too.
+  **Layman:** Clear Scrollback should not type hidden codes into whatever program is running.
+  Kind: review-fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: terminal-widget, terminal-grid.
+
+- 📋 [ANTS-7040] **Report a recording that cannot open its file.**
+  startRecording emits no captureFailed when open() fails (ANTS-6654
+  row 53 checks the header write).
+  **Layman:** Starting a recording that can't create its file fails silently.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-7041] **Test the mouse report bytes in mouse_report_double_click now that encodeMouseReport exists.**
+  Its spec says the report bytes cannot be tested without a PTY;
+  TerminalWidget::encodeMouseReport (ANTS-6654) makes them testable.
+  **Layman:** A test note says something can't be tested that now can.
+  Kind: test.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: terminal-widget.
 
 ### Readability (2026-11-06 review)
 
