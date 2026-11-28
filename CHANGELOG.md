@@ -222,6 +222,10 @@ for security-relevant changes.
 
 ### Security
 
+- **`get_session_info` replies are framed as data, like every other verb that returns content from outside the server** (ANTS-6626)
+
+- **`read_log` leaves out the debug log's keystroke (`input`) and `pty` lines, which can hold typed passwords, unless `include_input_pty` is true; the count comes back as `input_pty_omitted`** (ANTS-6632)
+
 - **An SSH bookmark's Extra Args accept only ssh options; a stray word is named and refused, so a bookmark always connects to its own host** (ANTS-6978)
 
 - **Opening a link with the keyboard link-picker shows the same lookalike-link warning a click does** (ANTS-6967)

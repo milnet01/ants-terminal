@@ -99005,6 +99005,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-27: row 85 is built in
   /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/DEC-privacy.diff, not
   yet applied.
+  2026-11-28: row 85 shipped in 70ef7440 (get_session_info framed as
+  data; exempt set is token_usage, tool_info).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99151,6 +99153,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-27: row 441 is built in
   /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/DEC-privacy.diff
   (read_log include_input_pty, default false), not yet applied.
+  2026-11-28: row 441 shipped in 70ef7440 (read_log leaves out debug-log
+  input/pty lines unless include_input_pty:true; count in
+  input_pty_omitted; ANTS-1855 INV-15).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
