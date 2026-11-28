@@ -410,14 +410,21 @@ void addRowsPreview(QJsonObject &o, const QJsonArray &fullArr, const QString &do
     // sums row lengths instead of re-serialising the growing array for each
     // row, which made every rung quadratic in the row count. Compact JSON puts
     // only a comma between elements, so the array is 2 + rows + (rows - 1)
-    // bytes long.
+    // bytes long. Each entry is the row's own compact JSON: QJsonDocument
+    // serialises only an object or array, so the row is wrapped as {"v":row}
+    // and the wrapper's 5 leading and 1 trailing bytes are cut off here.
     QList<QByteArray> elBytesByRow;
     if (shapeBudget > 0) {
+        constexpr int kWrapHead = 5;   // {"v":
+        constexpr int kWrapTail = 1;   // }
         elBytesByRow.reserve(fullArr.size());
-        for (int i = 0; i < fullArr.size(); ++i)
-            elBytesByRow.append(QJsonDocument(QJsonObject{
+        for (int i = 0; i < fullArr.size(); ++i) {
+            const QByteArray wrapped = QJsonDocument(QJsonObject{
                 {QStringLiteral("v"), fullArr.at(i)}})
-                .toJson(QJsonDocument::Compact));
+                .toJson(QJsonDocument::Compact);
+            elBytesByRow.append(wrapped.mid(
+                kWrapHead, wrapped.size() - kWrapHead - kWrapTail));
+        }
     }
     // `headChars` 0 means no head; that rung only decides the omission.
     const auto buildShape = [&](int headChars) {
@@ -428,15 +435,12 @@ void addRowsPreview(QJsonObject &o, const QJsonArray &fullArr, const QString &do
             const QByteArray &elBytes = elBytesByRow.at(i);
             QJsonObject r;
             r[QStringLiteral("index")] = i;
-            // ANTS-6289 — less the 6-byte {"v":…} sizing wrapper.
-            r[QStringLiteral("bytes")] = static_cast<int>(elBytes.size() - 6);
+            r[QStringLiteral("bytes")] = static_cast<int>(elBytes.size());
             if (headChars > 0) {
-                // ANTS-5153 — elBytes is the {"v":row} wrapper built for
-                // sizing, so sample the row's own JSON.
                 QString firstChars =
                     fullArr.at(i).isString()
                         ? fullArr.at(i).toString()
-                        : QString::fromUtf8(elBytes.mid(5, elBytes.size() - 6));
+                        : QString::fromUtf8(elBytes);
                 if (firstChars.size() > headChars) {
                     firstChars.truncate(headChars);
                     firstChars += QChar(0x2026);

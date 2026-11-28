@@ -226,14 +226,9 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
         return responseText;
 
     const QJsonObject src = doc.object();
-    // ANTS-4524 — never narrow a 304. The dispatcher already skips projection
-    // on the CENTRAL etag short-circuit, but a verb whose envelope carries
-    // per-run measurements owns its own 304 (mcp-tools.md step 7,
-    // spec_conformance), and that one is invisible to the dispatcher. Before
-    // `fields=` was universal such a verb was told to decline the argument
-    // outright; there is no declining now, so the floor lives here, where it
-    // covers both. `{ok,unchanged,etag}` has no content to narrow, and
-    // narrowing it drops the `unchanged` that IS the answer.
+    // The rules below are the header's contract; each id's commit holds its
+    // reason. A 304 has no content to narrow, and a verb's own 304 never
+    // reaches the dispatcher's skip (ANTS-4524).
     if (src.value(QStringLiteral("unchanged")).toBool()) return responseText;
 
     QJsonObject out;
@@ -243,91 +238,31 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
         if (!name.isEmpty() && src.contains(name))
             out.insert(name, src.value(name));
     }
-    // ANTS-4877 — read before `fields_unmatched` lands, so it means "not one
-    // requested field matched" rather than "the reply is empty".
+    // Read before `fields_unmatched` lands: "no requested field matched".
     const bool matchedNothing = out.isEmpty();
-    // ANTS-4567 — name the requested fields the envelope did NOT carry, so an
-    // absence can be read positively. A caller probing read_region narrowed to
-    // a set that happened to be entirely inapplicable and got back
-    // `{"ok":true}`. That was the correct answer to "did this read spill?" — it
-    // did not — and was indistinguishable from the verb ignoring `fields`,
-    // from compaction having stripped the survivors, and from every name being
-    // misspelled. Absence carried the answer, and absence is the one thing a
-    // caller cannot read.
-    //
-    // Emitted only when something is missing, so an exactly-matching request
-    // is byte-identical to before. It is ANTS-4578's pattern — say what you
-    // did not honour — applied to the VALUES of `fields` rather than to the
-    // argument itself, and it survives the compaction step that runs after
-    // this one because a non-empty array is not dead weight.
     QJsonArray unmatched;
     for (const QJsonValue &f : fields) {
         if (!f.isString()) continue;
         const QString name = f.toString();
         if (!name.isEmpty() && !src.contains(name)) unmatched.append(name);
     }
-    // ANTS-4979 — not on a refusal. An `ok:false` envelope carries only the
-    // refusal floor below, so every requested name is "unmatched" by
-    // construction, and listing them pointed at the fields instead of at the
-    // `code` that says what actually went wrong.
     const bool refusal = isRefusal(src);
+    // Floor 1 — name the missing fields and the keys the envelope does carry,
+    // so an absence or a misspelling can be read (ANTS-4567, ANTS-4930). Not
+    // on a refusal, where every name is unmatched by construction (ANTS-4979).
     if (!unmatched.isEmpty() && !refusal) {
         out.insert(QStringLiteral("fields_unmatched"), unmatched);
-        // ANTS-4930 — `fields_unmatched` alone collapses three different facts
-        // into one array: a name this verb never carries, a name it carries
-        // only on another backend, and a name it carries only when there is
-        // something to report. Its documentation ("names the envelope does not
-        // carry") reads as the first, which is the caller-error reading, and
-        // only one of the three IS one.
-        //
-        // That cost a live defect in a shipped skill: a diagnostic branched on
-        // `warning`'s presence, was written and verified against a markdown
-        // project, and everywhere else read the field's absence as a clean
-        // parse — so the check could not fire. The reporter concluded `warning`
-        // was backend-specific. It is not; it is conditionally populated.
-        //
-        // Naming the keys the envelope DOES carry makes the branch mechanical
-        // without inventing an output schema. A misspelling is now visible
-        // directly — ask for `warnign` and `warning` is sitting in this list —
-        // and for the other two the caller can read the envelope's actual shape
-        // (`source`, `count`) instead of inferring from an absence. A true
-        // never-emits-this answer would need a declared output-field registry
-        // per verb, which is a different and much larger piece of work.
-        //
-        // Top-level keys only, and envelopes carry few, so this is cheap. It
-        // rides the same "emitted only when something is missing" rule as
-        // `fields_unmatched`, so an exactly-matching request stays
-        // byte-identical.
         QStringList present = src.keys();
         present.sort();
         QJsonArray available;
         for (const QString &k : present) available.append(k);
         out.insert(QStringLiteral("fields_available"), available);
     }
-    // ANTS-4877 — the narrowest floor: when NOT ONE requested
-    // field matched, carry `ok`. The floors below cover a refusal and a
-    // diagnostic, and the 304 returned above; a SUCCESS narrowed to nothing
-    // was left emitting `{"fields_unmatched":[...]}` alone, carrying no `ok`.
-    // That is byte-indistinguishable from a call that produced no envelope, so
-    // the caller cannot tell "it worked and your names were wrong" from "it
-    // did not work". ANTS-4567 chose this shape over the older `{}` and fixed
-    // the naming half; the success flag is the half it left.
-    //
-    // Fires ONLY when nothing matched. Where one name landed and another did
-    // not, the matched field is itself proof the call succeeded, so those
-    // replies stay byte-identical — as does an exactly matching request, which
-    // INV-4 pins.
+    // Floor 2 — a reply where no requested field matched still carries `ok`;
+    // a matched field already proves success (ANTS-4877).
     if (matchedNothing && src.contains(QStringLiteral("ok")))
         out.insert(QStringLiteral("ok"), src.value(QStringLiteral("ok")));
-    // ANTS-2112 — never blank a refusal. A fields=-narrowed read that hits a
-    // rate-limit / validation refusal carries its error in ok/code/error/
-    // retry_after_ms — none of which the caller's fields= would name — so the
-    // projection above yields `{}` and the model never sees the error or the
-    // retry hint. When the envelope is a refusal (ok present and false), carry
-    // the refusal floor verbatim regardless of fields=. Mirrors
-    // compactEnvelope's protected-key floor (isProtectedCompactKey); the
-    // sibling appendReadHints already bails on !ok. Successful (ok:true) reads
-    // are untouched — a narrowed success stays exactly as requested.
+    // Floor 3 — a refusal keeps its error and retry hint (ANTS-2112).
     if (refusal) {
         for (const QString &key : {QStringLiteral("ok"), QStringLiteral("code"),
                                    QStringLiteral("error"),
@@ -335,22 +270,8 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
             if (src.contains(key)) out.insert(key, src.value(key));
         }
     }
-    // ANTS-4698 — a DIAGNOSTIC floor, after the 304 and refusal floors
-    // above and admitted for their reason: a narrowed reply must not lose the
-    // field that says how to READ the fields it kept. ANTS-3583 added
-    // `warning` + `parseable_bullets` so that count:0 on a prose or id-less
-    // roadmap could not be misread as "nothing outstanding". Both are
-    // ordinary top-level keys, so `fields:["count","source"]` — the minimal
-    // claim-read the adopt-project skill prescribes — dropped the warning and
-    // handed back the bare zero that fix exists to prevent. The caller most
-    // likely to narrow is the token-careful one, so the fix was reachable
-    // only by not using the argument.
-    //
-    // `parseable_bullets` rides along because it is the DATUM the warning
-    // explains; a warning about a number, without the number, is half an
-    // answer. Generic rather than roadmap-keyed on purpose: `warning` names a
-    // diagnostic in any envelope that carries one, and this floor is the
-    // statement that a diagnostic outranks a caller's narrowing.
+    // Floor 4 — a diagnostic, and the datum it explains, outrank the caller's
+    // narrowing (ANTS-4698).
     for (const QString &key : {QStringLiteral("warning"),
                                QStringLiteral("parseable_bullets")}) {
         if (src.contains(key)) out.insert(key, src.value(key));
