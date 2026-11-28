@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7003 -->
+<!-- ants-roadmap-id-high-water: ANTS=7005 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99463,7 +99463,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6643] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-transport.**
+- ✅ [ANTS-6643] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-transport.**
   9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 74 `mcpdmain.cpp:197-202` (Medium)
   - row 75 `remotecontrol.cpp:202-213` (Medium)
@@ -99474,6 +99474,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1376 `src/remotecontrol.cpp:740` (Info)
   - row 1377 `src/remotecontrol.cpp:285` (Info)
   - row 1379 `src/remotecontrol.cpp:772` (Info)
+  2026-11-28 (4a932fac): rows 75-79, 1376 fixed; 74, 1377 already fixed;
+  1379 not a bug (comment added); suite 6866/6866. New defects filed as
+  separate items.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99962,6 +99965,24 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: enhancement.
   Source: ANTS-6642 helper, 2026-11-28.
   Lanes: code-index-search.
+
+- 📋 [ANTS-7004] **Bound the attribute runs in rcScrubLeakedToolXml's parameter regexes.**
+  Left after ANTS-6643 row 76: openers with no `>` and `name="` with no
+  closing quote are still quadratic, through the unbounded `[^>]*` and
+  `[^"]*` runs in the pair regex and reOrphanOpen (src/remotecontrol.cpp).
+  **Layman:** Cleaning leaked markup out of roadmap text can still be slow on two kinds of badly broken input.
+  Kind: fix.
+  Source: ANTS-6643 helper, 2026-11-28.
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-7005] **invariant_check's worktree hint trusts an unverified .git file.**
+  mainCheckoutOfWorktree in src/remotecontrol_state.cpp follows the gitdir:
+  line without the back-reference check ANTS-6643 row 75 added to
+  rcMainCheckoutOf. It shapes only the main_checkout hint.
+  **Layman:** One read-only hint can name the wrong main project for a folder that only claims to be a worktree.
+  Kind: fix.
+  Source: ANTS-6643 helper, 2026-11-28.
+  Lanes: mcp-state-workspace.
 
 ### Readability (2026-11-06 review)
 

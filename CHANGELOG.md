@@ -124,6 +124,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`ants-mcpd` finds the running terminal even when a leftover socket from a crashed one looks newer, and `ants-mcpd --call` gives up after 15 minutes without a reply instead of hanging** (ANTS-6643)
+
+- **Roadmap fields cut to their length limit never end in half an emoji; cleaning leaked markup stays fast on broken input; `roadmap_log` appends take the id prefix from the project's declared id format** (ANTS-6643)
+
 - **`apply_edits`, `mutation_probe` and `build_target_for` no longer hang on a named pipe or device path, and `file_outline` with a filter and a zero or negative `max_symbols` uses the default budget instead of hanging** (ANTS-6642)
 
 - **`last_audit_summary`'s scope tag no longer depends on `top_n` and never calls a report with a future date fresh; `similar_code` gives no body for a name defined more than once; `read_log` names the debug log in its not-a-file refusal** (ANTS-6642)
@@ -255,6 +259,8 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **A folder whose `.git` file falsely claims to be another project's worktree is no longer treated as that project, so its roadmap writes stay its own** (ANTS-6643)
 
 - **`roadmap_query` regex searches cannot hang: a nested-quantifier pattern is refused, every pattern has a step limit, and `body_match` is capped and cleaned like `query`** (ANTS-6641)
 
