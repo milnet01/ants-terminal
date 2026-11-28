@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6999 -->
+<!-- ants-roadmap-id-high-water: ANTS=7001 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94199,6 +94199,22 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: LottoTracker feedback 2026-11-28.
   Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-7000] **roadmap_log amend_field_batch accepts field:section (with before_id), as amend_field does.**
+  finbreak: moving 10 items into a new section took 10 amend_field calls,
+  because amend_field_batch's field enum lacks `section`.
+  **Layman:** Moving many roadmap items to another section takes one call instead of one per item.
+  Kind: enhancement.
+  Source: finbreak feedback 2026-11-28.
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-7001] **roadmap_log amend_body's reply says the body survived (body_bytes or a whole-body hash) beside the edited paragraph.**
+  finbreak: the reply carries only body_paragraph, which read as if the
+  rest of the body was dropped, so the caller read it back to check.
+  **Layman:** After editing part of a roadmap item, the reply makes clear the rest of the item is still there.
+  Kind: enhancement.
+  Source: finbreak feedback 2026-11-28.
+  Lanes: mcp-roadmap-batch.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
