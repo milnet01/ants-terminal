@@ -12,6 +12,9 @@ although the commit cut nothing the test reads (ANTS-6423, ANTS-6424).
   unchanged when the commit's window begins with the parent's.
 - **INV-3 — a real change still fails.** A commit that changes the text a
   window reads exits 1.
+- **INV-4 — an unclosed window is still named.** A window inside a callable
+  whose bracket never closes is listed unevaluated by its head
+  (`t.substr(`), not as an empty site (ANTS-6657).
 
 Test: `test_split_motion_scrapes.py` builds a throwaway git repository per
 case, commits a parent and a child, and runs the tool on the pair.

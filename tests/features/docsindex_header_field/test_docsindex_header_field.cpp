@@ -323,3 +323,26 @@ TEST(DocsIndexHeaderField, SurveyToolReproducesTheClasses) {
             << want.toStdString() << " missing from:\n" << out.toStdString();
     }
 }
+
+// INV-10 — the specs_dir survey reads its directory wherever `--values`
+// stands, so `--values <dir>` is not taken for a directory named "--values".
+TEST(DocsIndexHeaderField, SurveyToolTakesValuesBeforeTheDirectory) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = stage(dir, "corpus");
+
+    QProcess p;
+    p.start(QStringLiteral("python3"),
+            {QStringLiteral(ANTS_SOURCE_DIR "/tools/spec-header-survey.py"),
+             QStringLiteral("--values"), root + QStringLiteral("/docs")});
+    if (!p.waitForStarted(5000)) GTEST_SKIP() << "python3 unavailable";
+    ASSERT_TRUE(p.waitForFinished(30000));
+    EXPECT_EQ(p.exitCode(), 0);
+
+    const QString out = QString::fromUtf8(p.readAllStandardOutput());
+    const QString err = QString::fromUtf8(p.readAllStandardError());
+    EXPECT_TRUE(out.contains(QStringLiteral("wrapped Status:")))
+        << "no survey output; stderr:\n" << err.toStdString();
+    EXPECT_TRUE(out.contains(QStringLiteral("-- joined values")))
+        << "--values ignored; stdout:\n" << out.toStdString();
+}

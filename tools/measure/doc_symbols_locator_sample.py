@@ -35,5 +35,5 @@ if len(sys.argv)>1:
     for i,(d,s,loc,dl) in enumerate(random.sample(sorted(population),n)):
         f,ln=loc.rsplit(':',1); ln=int(ln)
         print(f'\n#{i+1} {s}  doc={d}:{dl}  ->  {loc}')
-        print('  DOC :', file_lines(d)[dl-1].strip()[:300])
+        print('  DOC :', file_lines(d)[dl-1].strip()[:300] if dl else '(no doc line recorded)')
         print('  CODE:', file_lines(f)[ln-1].strip()[:200])

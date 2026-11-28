@@ -19,6 +19,7 @@
 | INV-7 | `docsindex.cpp` adopts the shared rule and keeps no matcher of its own | `DocsIndexAdoptsTheSharedRule` |
 | INV-8 | A document with no `^## ` anywhere still yields its status (EOF flush) | `HeaderBlockIsFlushedAtEof` |
 | INV-9 | `tools/spec-header-survey.py --scope=docs-index` reproduces the five classes | `SurveyToolReproducesTheClasses` |
+| INV-10 | `tools/spec-header-survey.py --values <dir>` surveys `<dir>`: the flag may come before the directory (ANTS-6657) | `SurveyToolTakesValuesBeforeTheDirectory` |
 
 ## Fixtures
 

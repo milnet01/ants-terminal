@@ -1044,9 +1044,12 @@ def callable_windows(path: str, code: str, mask: str, lines: LineIndex,
                 if hs <= at <= he:
                     continue
                 for wm in WINDOW_CALL.finditer(mask, hs, he):
+                    # An unclosed window still needs a hand check: show its
+                    # head rather than an empty site.
+                    wclose = matching(mask, wm.end() - 1)
+                    wend = wclose + 1 if wclose >= 0 else wm.end()
                     site = Site(path, lines.line(wm.start()), lines.line(wm.start()),
-                                " ".join(code[receiver_start(mask, wm.start()):
-                                              matching(mask, wm.end() - 1) + 1].split()))
+                                " ".join(code[receiver_start(mask, wm.start()):wend].split()))
                     found.append((site, "inside `%s`, called with class text at line %d"
                                   % (name, lines.line(at))))
     return found

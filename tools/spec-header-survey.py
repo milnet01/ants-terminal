@@ -23,10 +23,9 @@ scanDoc does not look at every line: it skips any line over kMaxLineBytes and
 every line inside a fenced block before its matcher runs, and its old matcher
 required a non-empty same-line tail where headerField accepts an empty one.
 
-Usage:  python3 tools/spec-header-survey.py [specs_dir [--values]]
+Usage:  python3 tools/spec-header-survey.py [specs_dir] [--values]
         python3 tools/spec-header-survey.py --scope=docs-index [root]
---values also prints each wrapped field's joined value. It must follow
-specs_dir: the first argument is always read as the directory.
+--values also prints each wrapped field's joined value.
 Exit:   0 always (a survey, not a gate).
 """
 import re
@@ -262,7 +261,7 @@ def main():
     if "--scope=docs-index" in sys.argv:
         return main_docs_index(sys.argv)
 
-    specs_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "docs/specs")
+    specs_dir = Path(next((a for a in sys.argv[1:] if not a.startswith("--")), "docs/specs"))
     if not specs_dir.is_dir():
         print(f"no such directory: {specs_dir}", file=sys.stderr)
         return 0
