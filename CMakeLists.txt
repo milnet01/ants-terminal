@@ -995,6 +995,8 @@ set(_ants_mcp_registry_def
 
 add_library(ants_chrome_lib STATIC
     ${ANTS_MAINWINDOW_SOURCES_REL}
+    # Listed so AUTOMOC sees its Q_OBJECT class: no .cpp shares its name.
+    src/mainwindow_internal.h
     src/coloredtabbar.cpp
     src/tablistpanel.cpp
     src/commandpalette.cpp

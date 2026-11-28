@@ -313,7 +313,9 @@ window across `since_cursor` polls.
 - **INV-13** — Wall-clock budget (ANTS-5110): a scan running past
   `ReadLog::kDefaultTimeBudgetMs` (5 s) stops between lines and returns
   `time_budget_exhausted:true` + `truncated:true`; its `cursor` resumes
-  the scan with no line lost or repeated. *Test:*
+  the scan with no line lost or repeated. One line over `max_bytes` is
+  read to its end before the budget is checked again, so it can overrun
+  the budget (ANTS-6632). *Test:*
   `McpReadLog.TimeBudgetStopsAtALineAndResumes`.
 - **INV-14** — With `claude.mcp_redact_secrets` on, every entry in
   `lines` is `SecretRedact::scrub` of the raw line, and `redacted` is

@@ -4,6 +4,7 @@ Record for [`../specs/ANTS-1855-read-log-mcp-tool-filter.md`](../specs/ANTS-1855
 
 ## Cold-eyes loop log
 
+- **amend-6632 (2026-11-28)** — No reviewer dispatched (implementation fold-back, user decision 2026-11-28). INV-13 and B-INV-13 now say one line over max_bytes is read to its end before the time budget is checked, so it can overrun the budget. Behaviour unchanged.
 - **amend (2026-11-27) — ANTS-6632, not a review loop: no reviewer was dispatched.** — § 2.3 says the newest survivor is never popped, so one line can take `lines[]` past `max_bytes`; § 2.6 step 6 counts an armoured PGP key's `PRIVATE KEY BLOCK` markers. Records what was built, so no new gate.
 - **doc-fix (2026-10-19) — ANTS-5770, not a review loop: no reviewer
   was dispatched.** Brings the spec in line with shipped code: § 2.3

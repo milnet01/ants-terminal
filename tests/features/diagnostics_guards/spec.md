@@ -52,6 +52,10 @@ message `x.h: No such file or directory`, as `recent_errors` does.
 another instance holds the lock, this one does not rotate; the size is
 checked again once the lock is held.
 
+**INV-15 — a failed rotation turns file logging off** (ANTS-6632). When the
+log is still over its cap after a write's rotation, the file closes, stderr
+says so once, and no later write reopens it until `clear()`.
+
 ## Rationale
 
 The ANTS-5110 performance pass found each of these. For INV-1 and INV-2:
@@ -62,10 +66,10 @@ file without limit, and a FIFO path blocked the worker on open.
 
 `test_diagnostics_guards.cpp` reads `src/debuglog.cpp` and
 `src/remotecontrol_workspace.cpp` (located from the test's own path) for
-INV-1 and INV-2. INV-3 to INV-14 call `BuildCache` and
+INV-1 and INV-2. INV-3 to INV-15 call `BuildCache` and
 `DebugLog` directly, with the debug log in a temporary directory.
 
 ## Regression history
 
 - **ANTS-5110:** the defects above. Locked by this spec.
-- **ANTS-6632:** INV-10 to INV-14, from the 2026-11-06 reviews.
+- **ANTS-6632:** INV-10 to INV-15, from the 2026-11-06 reviews.

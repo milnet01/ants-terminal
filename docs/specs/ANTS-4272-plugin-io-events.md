@@ -323,6 +323,12 @@ relaunch like any other build.
   *Test:* `tests/features/plugin_io_events` source-scrape of the three
   bodies.
 
+- **INV-10** — `ants.get_output` is in the `ants` table only for an
+  engine holding `terminal.read`, as the `output` and `line` events are
+  (ANTS-6645). Breaks when `registerApi` adds it unconditionally.
+  *Test:* `tests/features/plugin_io_events`: a script run with and
+  without the permission sees the function present and absent.
+
 ## 4. RAM / build cost
 
 Per terminal: one coalescer, at most `kMaxChars` (16384) characters plus
@@ -332,9 +338,9 @@ build target outside the feature test, and no new dependency.
 
 ## 5. Out of scope
 
-- Wiring `ants.get_output()`, which still returns an empty string, and
-  gating it on `terminal.read` — deferred; not yet queued. ANTS-2001 is
-  closed, and `PluginManager::setRecentOutput` still has no caller.
+- Wiring `ants.get_output()`, which still returns an empty string —
+  deferred; not yet queued. ANTS-2001 is closed, and
+  `PluginManager::setRecentOutput` still has no caller.
 - A key veto — deferred; not yet queued.
 - `keypress` for IME commits and pastes — deferred; not yet queued.
 
@@ -342,7 +348,7 @@ build target outside the feature test, and no new dependency.
 
 Feature test: `tests/features/plugin_io_events/` (`spec.md`,
 `test_plugin_io_events.cpp`), in the bundle `build_target_for` names.
-Covers INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8 and INV-9.
+Covers INV-1 to INV-10.
 Label `features;fast`. Each test is seen to fail
 against the pre-change source before it passes.
 
@@ -369,6 +375,7 @@ against the pre-change source before it passes.
 | INV-7 | `tests/features/plugin_io_events`, OSC 133 test |
 | INV-8 | `tests/features/plugin_io_events`, pty test and `sendKeyData` scrape |
 | INV-9 | `tests/features/plugin_io_events`, source-scrape |
+| INV-10 | `tests/features/plugin_io_events`, `get_output` permission test |
 | § 2.8 stale sample | **nothing** — a limit of sampling on reads, accepted in § 2.10 |
 | § 2.8 full-screen password | **nothing** — a raw-mode password prompt looks like a shell prompt; not yet queued |
 

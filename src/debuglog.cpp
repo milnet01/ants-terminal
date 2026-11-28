@@ -29,6 +29,11 @@ constexpr qint64 kMaxLogBytes = qint64(10) * 1024 * 1024;
 // delete) a generation that has been rotated away.
 QByteArray g_openPath;
 
+// ANTS-6632 — set when a write's rotation left the log still over the cap.
+// File logging then stays off until clear(), so a write does not reopen the
+// file every time.
+bool g_rotationFailed = false;
+
 bool fdStillAtPath(int fd, const QByteArray &path) {
     struct stat atFd{};
     struct stat atPath{};
@@ -91,7 +96,7 @@ quint32 DebugLog::parseCategories(const QString &spec) {
 quint32 DebugLog::active() { return s_active.load(std::memory_order_relaxed); }
 
 void DebugLog::openLogFileLocked() {
-    if (s_active == 0 || s_file.isOpen()) return;
+    if (s_active == 0 || s_file.isOpen() || g_rotationFailed) return;
     const QString path = logFilePath();
     QDir().mkpath(QFileInfo(path).absolutePath());
     // ANTS-1170: rotate when the existing log exceeds the cap, so a
@@ -173,6 +178,7 @@ void DebugLog::clear() {
     if (s_file.isOpen()) s_file.close();
     QFile::remove(logFilePath());
     QFile::remove(logFilePath() + QStringLiteral(".1"));
+    g_rotationFailed = false;
     // ANTS-1190 — reopen if categories remain active. Without this,
     // the menu's "Clear Log File" action permanently silences future
     // ANTS_LOG calls until the user toggles a category off-and-on
@@ -209,6 +215,13 @@ void DebugLog::write(Category c, const QString &message) {
         if (s_file.size() > kMaxLogBytes) {
             s_file.close();
             openLogFileLocked();
+            if (s_file.isOpen() && s_file.size() > kMaxLogBytes) {
+                s_file.close();
+                g_rotationFailed = true;
+                fprintf(stderr, "DebugLog: could not rotate %s — debug "
+                                "logging to the file is off until the log "
+                                "is cleared\n", qPrintable(logFilePath()));
+            }
         }
     }
     // ANTS-5110 — with no category on there is no log file, and an

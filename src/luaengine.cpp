@@ -352,10 +352,6 @@ void LuaEngine::registerApi() {
     lua_pushcfunction(m_state, lua_ants_notify);
     lua_setfield(m_state, -2, "notify");
 
-    // ants.get_output(n)
-    lua_pushcfunction(m_state, lua_ants_get_output);
-    lua_setfield(m_state, -2, "get_output");
-
     // ants.get_cwd()
     lua_pushcfunction(m_state, lua_ants_get_cwd);
     lua_setfield(m_state, -2, "get_cwd");
@@ -392,6 +388,13 @@ void LuaEngine::registerApi() {
         lua_pushcfunction(m_state, lua_ants_clipboard_write);
         lua_setfield(m_state, -2, "write");
         lua_setfield(m_state, -2, "clipboard");
+    }
+
+    // ants.get_output(n) — requires "terminal.read", as the "output" and
+    // "line" events do: it reads what the terminal printed (ANTS-6645).
+    if (hasPermission("terminal.read")) {
+        lua_pushcfunction(m_state, lua_ants_get_output);
+        lua_setfield(m_state, -2, "get_output");
     }
 
     // settings.get / settings.set — requires "settings"
@@ -735,7 +738,7 @@ void LuaEngine::postUiUpdate(Update update) {
 
 int LuaEngine::lua_ants_get_output(lua_State *L) {
     LuaEngine *engine = getEngine(L);
-    if (engine) {
+    if (engine && engine->hasPermission("terminal.read")) {
         int n = luaL_optinteger(L, 1, 50);
         if (n < 0) n = 0;  // negative count would over-run lines.mid()
         // ANTS-5070 — build the result in a scope and push it protected, so

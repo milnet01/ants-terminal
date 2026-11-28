@@ -254,7 +254,7 @@ under-reporting drift.
 | `path` absent or empty | refuse `missing_field` |
 | `path` escapes the project root | refuse `bad_path` |
 | `path` is a directory | refuse `bad_args` |
-| in-root, does not exist | The verb refuses `not_found` (ANTS-5554). The engine alone: `ok:true`; every field below present, `citations[]` / `unparsed[]` empty, all `counts` and `count` / `returned` / `doc_lines` / `scanned_lines` / `unparsed_total` **0**, `path` echoed as given, `only` / `offset` echoed as coerced, `basename_index_size` the real index size, `truncated:false` (INV-47) |
+| in-root, does not exist | The verb refuses `not_found` (ANTS-5554). The engine alone refuses `read_failed`, so a document deleted after `doc_lint` listed it reports `check_failed` (INV-47) |
 | exists, but unreadable or over `maxDocBytes` | refuse `read_failed` (from `QFileInfo` in the handler) |
 | exists, but not decodable as UTF-8 | refuse `read_failed` (from the engine, which is reading it anyway — § 2.7) |
 
@@ -1432,23 +1432,18 @@ table says what — the argument lives there, not here.
   already served from the line cache are unaffected. *Test:* `maxTargetReads:2`
   with three *distinct* targets → first two `ok`, third `read_error`, flag set;
   the same fixture at the default → three `ok`, key absent.
-- **INV-47** — (The engine's rule. Since ANTS-5554, 2026-11-02, the verb refuses
-  such a path `not_found` first.) A well-formed but non-existent in-root `path` returns `ok:true`
-  with an empty `citations[]` and the same field set present with its **counts**
-  zeroed (matching ANTS-3601 INV-15) — not the whole set: § 2.1's row keeps
-  `path`, `only` and `offset` echoed and `basename_index_size` at the real index
-  size; a well-formed existing `path` returns the documented fields — `ok`,
-  `path`, `citations[]`, `counts`, `count`, `returned`, `only`, `offset`,
-  `doc_lines`, `scanned_lines`, `unparsed`, `unparsed_total`,
-  `basename_index_size`, `truncated`. *Test:* two `DocCitations::check` calls,
-  one per case, **both** asserting every listed key is present, and the
-  non-existent-path one additionally asserting each key's *value* against
-  § 2.1's row — presence alone would pass an implementation that invented them,
-  and that case is the one a caller cannot otherwise predict the shape of. Plus
-  a third call on a doc containing a NUL byte → `{ok:false,
-  code:"read_failed"}`, the one refusal `check` itself raises (§ 2.1's last
-  row); INV-18 disclaims it because `validate` never decodes, so without this
-  row it is specified and untested.
+- **INV-47** — (The engine's rule. The verb refuses a non-existent path
+  `not_found` first, ANTS-5554.) A well-formed existing `path` returns the
+  documented fields — `ok`, `path`, `citations[]`, `counts`, `count`,
+  `returned`, `only`, `offset`, `doc_lines`, `scanned_lines`, `unparsed`,
+  `unparsed_total`, `basename_index_size`, `truncated`. `check` itself refuses
+  `read_failed` in two cases: a non-existent in-root `path` (a document deleted
+  mid-run must not read as checked clean, ANTS-6634) and a doc that is not
+  valid UTF-8 (§ 2.1's last row). *Test:* a `DocCitations::check` call on an
+  existing doc asserting every listed key is present, plus one call on a
+  non-existent path and one on a doc containing a NUL byte, each →
+  `{ok:false, code:"read_failed"}`. INV-18 covers only `validate`'s
+  refusals, so without this row these two are specified and untested.
 - **INV-48** — The verb-contract minimum `mcp-tools.md` § Tests requires of
   every `Required` tool: a call with no `caller_cwd` refuses
   `caller_cwd_required`. It is the one refusal no other invariant can reach —

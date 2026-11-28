@@ -178,6 +178,32 @@ TEST(PluginIoEvents, WantsNeedsThePermission) {
     EXPECT_TRUE(pm.wants(PluginEvent::Prompt));
 }
 
+// INV-10 — ants.get_output exists only for a plugin granted terminal.read.
+TEST(PluginIoEvents, GetOutputNeedsTerminalRead) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString script = tmp.path() + QStringLiteral("/get_output.lua");
+    writeFile(script,
+              "if ants.get_output then ants.log('out:' .. ants.get_output(1))\n"
+              "else ants.log('absent') end\n");
+    const auto run = [&script](const QStringList &perms) {
+        LuaEngine engine;
+        engine.setPermissions(perms);
+        EXPECT_TRUE(engine.initialize());
+        engine.setRecentOutput(QStringLiteral("first\nsecond"));
+        QStringList log;
+        QObject::connect(&engine, &LuaEngine::logMessage,
+                         [&log](const QString &m) { log << m; });
+        EXPECT_TRUE(engine.loadScript(script)) << log.join('\n').toStdString();
+        return log;
+    };
+    const QStringList granted = run({QStringLiteral("terminal.read")});
+    EXPECT_TRUE(granted.contains(QStringLiteral("out:second"))) << granted.join('\n').toStdString();
+    const QStringList denied = run({});
+    EXPECT_TRUE(denied.contains(QStringLiteral("absent"))) << denied.join('\n').toStdString();
+    EXPECT_FALSE(denied.contains(QStringLiteral("out:second")));
+}
+
 #endif  // ANTS_LUA_PLUGINS
 
 // INV-3

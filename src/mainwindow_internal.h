@@ -43,8 +43,10 @@ QWidget *tabPageOf(const QTabWidget *tabs, QWidget *w);
 // the first click. Exclusive/radio group members (Themes, Opacity,
 // Scrollback) keep Qt's default "pick one and close" — the
 // actionGroup()->isExclusive() guard distinguishes a checkbox from a
-// radio. No Q_OBJECT needed: only the virtual eventFilter() is used.
+// radio. Q_OBJECT, as qt.md asks of every QObject subclass; AUTOMOC finds it
+// because CMakeLists.txt lists this header in ants_chrome_lib.
 class StayOpenOnToggleFilter : public QObject {
+    Q_OBJECT
 public:
     using QObject::QObject;
     bool eventFilter(QObject *obj, QEvent *ev) override {

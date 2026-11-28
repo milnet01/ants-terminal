@@ -286,3 +286,41 @@ TEST(DiagnosticsGuards, RotationWaitsForTheRotationLock) {
     DebugLog::setActive(0);
     EXPECT_TRUE(QFileInfo::exists(rotated)) << "the log never rotated once the lock was free";
 }
+
+// INV-15 — a failed rotation turns file logging off and says so once on
+// stderr, rather than reopening the log on every write.
+TEST(DiagnosticsGuards, FailedRotationStopsFileLogging) {
+    ScratchLog log;
+    ASSERT_TRUE(log.dir.isValid());
+    const QString path = DebugLog::logFilePath();
+    const QString rotated = path + QStringLiteral(".1");
+    // A non-empty directory at debug.log.1 makes the rotation's remove and
+    // rename both fail.
+    ASSERT_TRUE(QDir().mkpath(rotated));
+    {
+        QFile keep(rotated + QStringLiteral("/keep"));
+        ASSERT_TRUE(keep.open(QIODevice::WriteOnly));
+        QFile big(path);
+        ASSERT_TRUE(big.open(QIODevice::WriteOnly));
+        ASSERT_TRUE(big.resize(qint64(10) * 1024 * 1024 + 1));   // past the 10 MiB cap
+    }
+    const QString capture = log.dir.path() + "/stderr.txt";
+    std::fflush(stderr);
+    const int saved = ::dup(STDERR_FILENO);
+    const int fd = ::open(capture.toLocal8Bit().constData(),
+                          O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    ASSERT_GE(fd, 0);
+    ::dup2(fd, STDERR_FILENO);
+    ::close(fd);
+    DebugLog::setActive(DebugLog::Events);
+    DebugLog::write(DebugLog::Events, QStringLiteral("first line"));
+    DebugLog::write(DebugLog::Events, QStringLiteral("second line"));
+    DebugLog::setActive(0);
+    std::fflush(stderr);
+    ::dup2(saved, STDERR_FILENO);
+    ::close(saved);
+    EXPECT_FALSE(ScratchLog::read(path).contains("second line"))
+        << "file logging went on after the rotation failed";
+    EXPECT_EQ(ScratchLog::read(capture).count("could not rotate"), 1)
+        << "a failed rotation was not reported on stderr exactly once";
+}

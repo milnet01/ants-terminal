@@ -712,7 +712,7 @@ TEST(DocCitations, Inv46ReadBudgetExhausted) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-47 — the field set for both accepted shapes, and the one refusal `check`
+// INV-47 — the field set for an existing doc, and the two refusals `check`
 // raises itself.
 TEST(DocCitations, Inv47FieldSetAndEngineRefusal) {
     expect_reset();
@@ -733,31 +733,13 @@ TEST(DocCitations, Inv47FieldSetAndEngineRefusal) {
         expect(present.contains(QLatin1String(k)), "INV-47: key present on a real doc",
                QStringLiteral("%1 %2").arg(QLatin1String(k), render(present)));
 
-    // A well-formed in-root path that does not exist: ok, and every value
-    // predictable — presence alone would pass an implementation that invented
-    // the numbers.
-    const QJsonObject absent =
-        DocCitations::check(fx.root, fx.root + QStringLiteral("/nope.md"), opts);
-    for (const char *k : kKeys)
-        expect(absent.contains(QLatin1String(k)), "INV-47: same key set for a missing doc",
-               QStringLiteral("%1 %2").arg(QLatin1String(k), render(absent)));
-    expect(absent.value(QStringLiteral("ok")).toBool(), "INV-47: a missing doc is not a refusal",
-           render(absent));
-    expect(absent.value(QStringLiteral("path")).toString() == QStringLiteral("nope.md"),
-           "INV-47: path echoed", render(absent));
-    expect(cites(absent).isEmpty() && unparsed(absent).isEmpty(),
-           "INV-47: both arrays empty", render(absent));
-    for (const char *k : {"count", "returned", "doc_lines", "scanned_lines", "unparsed_total"})
-        expect(absent.value(QLatin1String(k)).toInt() == 0, "INV-47: zeroed",
-               QStringLiteral("%1 %2").arg(QLatin1String(k), render(absent)));
-    for (const QString &k : absent.value(QStringLiteral("counts")).toObject().keys())
-        expect(absent.value(QStringLiteral("counts")).toObject().value(k).toInt() == 0,
-               "INV-47: every count zeroed", QStringLiteral("%1 %2").arg(k, render(absent)));
-    expect(absent.value(QStringLiteral("basename_index_size")).toInt() == 1,
-           "INV-47: the index size is real, not zeroed with the rest", render(absent));
-    expect(absent.value(QStringLiteral("truncated")).toBool() == false
-               && absent.contains(QStringLiteral("truncated")),
-           "INV-47: truncated present and false", render(absent));
+    // A document deleted after it was listed (doc_lint's second pass) must
+    // not read as checked clean (ANTS-6634).
+    ASSERT_TRUE(QFile::remove(doc));
+    const QJsonObject absent = DocCitations::check(fx.root, doc, opts);
+    expect(!absent.value(QStringLiteral("ok")).toBool()
+               && absent.value(QStringLiteral("code")).toString() == QStringLiteral("read_failed"),
+           "INV-47: a vanished doc is the engine's own refusal", render(absent));
 
     // The refusal the handler cannot raise without decoding the doc itself.
     const QString nulDoc = fx.write(QStringLiteral("nul.md"), QByteArray("a\0b\n", 4));

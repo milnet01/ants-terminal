@@ -44,6 +44,8 @@ dispatch are locked by source-scrape.
   `time_budget_exhausted:true`, and its `cursor` resumes the scan
   (ANTS-1855 INV-13). The budget is checked after every line, so lines an
   `include` regex is slow to reject cannot run on past it (ANTS-6632).
+  One oversized line is drained to its end first, so it can overrun the
+  budget (ANTS-6632).
 - **B-INV-14** — with `redactSecrets` on (the default), each returned line
   is `SecretRedact::scrub` of the raw line, and `redacted` sums the
   replacements. A kept line inside a private-key block, including one in a

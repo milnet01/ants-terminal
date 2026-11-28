@@ -1494,12 +1494,16 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                   const Options &opts) {
     QStringList lines;
     const QFileInfo docInfo(docAbsPath);
-    // A path that is not a file reads as an empty document. Callers pass a
-    // file: docCitationsValidate refuses a missing one, and doc_lint passes
-    // only documents it enumerated.
+    // Callers pass a file: docCitationsValidate refuses a missing one, and
+    // doc_lint passes only documents it enumerated. One deleted since then
+    // refuses, so doc_lint reports check_failed rather than a clean check
+    // (ANTS-3636 INV-47). Another path that is not a file reads as empty.
     if (opts.docText) {
         lines = splitLines(*opts.docText);   // ANTS-5294 — never opened
-    } else if (docInfo.exists() && docInfo.isFile()) {
+    } else if (!docInfo.exists()) {
+        return mcp::refusal(QStringLiteral("read_failed"),
+            QStringLiteral("doc_citations: %1 does not exist").arg(docAbsPath));
+    } else if (docInfo.isFile()) {
         QFile f(docAbsPath);
         if (!f.open(QIODevice::ReadOnly)) return mcp::refusal(QStringLiteral("read_failed"),
             QStringLiteral("doc_citations: cannot open %1").arg(docAbsPath));

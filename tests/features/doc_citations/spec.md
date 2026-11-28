@@ -79,8 +79,9 @@ The citation grammar itself is `tests/features/doc_citations_scan/`; the
 - **INV-46** — past `maxTargetReads` a citation needing a fresh read is
   `read_error` and `read_budget_exhausted` is set.
   *Test:* `DocCitations.Inv46ReadBudgetExhausted`.
-- **INV-47** — the field set, for an existing doc and for a well-formed
-  non-existent one; plus the one refusal `check` itself raises.
+- **INV-47** — the field set for an existing doc; plus the two refusals
+  `check` itself raises, `read_failed` for a doc that no longer exists
+  (ANTS-6634) and for one that is not valid UTF-8.
   *Test:* `DocCitations.Inv47FieldSetAndEngineRefusal`.
 - **INV-17** — the two resumable caps drop whole trailing entries and emit
   `next_offset`; `maxUnparsed` does not.

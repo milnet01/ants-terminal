@@ -238,7 +238,9 @@ QJsonObject filter(const QString &path, const Options &opts) {
 
     // ANTS-5110 — a wall-clock budget, so a huge log cannot hold the worker.
     // Checked between lines, so `cursor` resumes the scan; after every line,
-    // as one slow include/exclude match can take most of the budget.
+    // as one slow include/exclude match can take most of the budget. An
+    // oversized line is drained whole first, so it can overrun the budget
+    // (ANTS-1855 INV-13).
     const qint64 budgetMs = opts.timeBudgetMs > 0 ? opts.timeBudgetMs
                                                   : kDefaultTimeBudgetMs;
     QElapsedTimer clock;

@@ -298,4 +298,10 @@ ANTS-5216 amendment: § 2.1's request block and § 2.7's `Options` block gain
 opt-in passes and their items; INV-22 lists the properties its test already
 asserts.
 
+**amend-6634 (2026-11-28)** — not a review loop; no reviewer was
+dispatched (user decision 2026-11-28). INV-47 and § 2.1: the engine
+refuses `read_failed` on a non-existent in-root path, so a document
+deleted during a `doc_lint` run reports `check_failed`. Test seen red on
+the old engine, then green.
+
 <!-- doc-examples: end -->

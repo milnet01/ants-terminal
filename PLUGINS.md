@@ -102,7 +102,7 @@ Optional but strongly recommended. **Manifest v2** (shipped in 0.6.0) adds
 |-------------------|-----------------------------------------------------------|
 | `clipboard.write` | `ants.clipboard.write(text)` — write system clipboard     |
 | `settings`        | `ants.settings.get(key)` / `ants.settings.set(key, v)` — per-plugin k/v store |
-| `terminal.read`   | the `"output"` and `"line"` events — what the terminal prints |
+| `terminal.read`   | the `"output"` and `"line"` events and `ants.get_output(n)` — what the terminal prints |
 | `input.keys`      | the `"keypress"` event — the keys you type, never during a password |
 
 Unknown permission strings (anything outside the table above) are
@@ -216,6 +216,9 @@ The rest are dropped, and the terminal logs how many.
 
 Returns the last `n` lines of visible scrollback as a single newline-joined
 string. Default `n = 50`.
+
+**🔒 Needs `terminal.read`.** Without it `ants.get_output` is absent, so
+check with `if ants.get_output then ... end`.
 
 > **⚠ Not yet wired (as of 0.7.95):** the host does not currently push a
 > buffer — `PluginManager::setRecentOutput()` has no call site — so
@@ -614,7 +617,7 @@ ants.notify("Hello", "Ants Terminal plugin system is alive.")
 ```lua
 -- init.lua — show a banner tag on the status bar based on hostname
 -- Uses ants.get_output() to sniff a prompt for hostname — imperfect but
--- illustrative.
+-- illustrative. Needs "terminal.read" in manifest.json's permissions.
 ants.on("prompt", function(_)
     local recent = ants.get_output(5)
     if recent:find("@prod") then

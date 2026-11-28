@@ -61,7 +61,8 @@ public:
     static QString logFilePath();
 
     // Delete debug.log and debug.log.1; debug.log is recreated at once if a
-    // category is still on. Safe to call at any time.
+    // category is still on, including after a failed rotation turned file
+    // logging off. Safe to call at any time.
     static void clear();
 
     // Write one line. Prefer ANTS_LOG, which skips building the message when
@@ -84,7 +85,8 @@ public:
 
 private:
     // Open the log file. Caller must hold s_mutex. Idempotent — does
-    // nothing if `s_active == 0` or `s_file.isOpen()`. Called by setActive
+    // nothing if `s_active == 0`, `s_file.isOpen()`, or a rotation failed
+    // (file logging is then off until clear()). Called by setActive
     // (first activation), clear (after deleting the file) and write (after
     // another instance moved the file, and to rotate past kMaxLogBytes).
     static void openLogFileLocked();

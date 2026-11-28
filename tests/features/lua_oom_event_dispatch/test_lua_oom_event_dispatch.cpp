@@ -210,7 +210,9 @@ TEST(LuaOomEventDispatch, Ants5070WarnUnderPressureNoLeak) {
     }
 
     LuaEngine engine;
-    engine.setPermissions(QStringList{QStringLiteral("settings")});
+    // get_output needs terminal.read (ANTS-4272 INV-10).
+    engine.setPermissions(QStringList{QStringLiteral("settings"),
+                                      QStringLiteral("terminal.read")});
     ASSERT_TRUE(engine.initialize()) << "LuaEngine::initialize failed";
 
     QStringList log;
