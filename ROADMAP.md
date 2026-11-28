@@ -98800,7 +98800,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6948/6956/6971/6981 helpers 2026-11-27.
   Lanes: audit-engine, mcp-state-workspace, terminal-grid.
 
-- 📋 [ANTS-6985] **Fix the bugs the ANTS-6624 and ANTS-6625 helpers found.**
+- ✅ [ANTS-6985] **Fix the bugs the ANTS-6624 and ANTS-6625 helpers found.**
   - Command palette: Tab still inserts the suggestion while the caret is
     mid-text, where the suggestion is now hidden (ANTS-6625).
   - globalshortcutsportal: onBindShortcutsResponse with a non-zero code
@@ -98812,6 +98812,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
     while the store rolls back; the next write refuses export_drift.
   - docs/specs/ANTS-3443-feedback-log-op-compact-resolved.md quotes the
     old Proposed ID regex.
+  2026-11-28 (236a3140): all five findings fixed. A note's first
+  line is now indented like the rest, so a note reads as a code block
+  in a Markdown viewer (parsers unaffected). Suite 6969/6969.
   **Layman:** Small bugs in the command palette, global hotkeys and feedback files, found while fixing others.
   Kind: fix.
   Source: ANTS-6624/6625 helpers 2026-11-27.
@@ -98826,6 +98829,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
     chip's "queued" tooltip.
   - walkHelperTranscripts restarts a replaced helper file from the top
     without clearing what it read, so its events can count twice.
+  2026-11-28: a helper diff is ready at
+  /mnt/Emulators/.claude/Scratchpad/Ants_Terminal/ANTS-6986.diff (all
+  four findings fixed), not yet applied or built. Follow-ups it names:
+  the workspace_search descriptor comment in
+  claudeintegration_codenav.cpp still says pattern is required; a
+  dropped or fired chip switch empties the tooltip instead of restoring
+  the recommendation.
   **Layman:** Small bugs in the Claude status widgets, a test and a spec, found while fixing others.
   Kind: fix.
   Source: ANTS-6626/6627 helpers 2026-11-27.
@@ -100009,13 +100019,21 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: tools-roadmap-surveys.
 
-- 📋 [ANTS-6658] **Fix the smaller bugs the 2026-11-06 reviews found in vt-parser-pty.**
+- 🚧 [ANTS-6658] **Fix the smaller bugs the 2026-11-06 reviews found in vt-parser-pty.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 2 `ptyhandler.cpp:621-625` (Medium)
   - row 3 `ptyhandler.cpp:624` (Low)
   - row 4 `vtparser.cpp:445` (Low)
   - row 5 `ptyhandler.cpp:651-671` (Low)
   - row 1294 `src/vtparser.cpp:375` (Info)
+  2026-11-28 (32b05532): rows 2, 4, 5 fixed; 3 fixed by documenting
+  it (the reset stays in rawBytes). Suite 6972/6972. Row 1294 waits on
+  the user: `CSI 2;J` parses as [2], `CSI ;2J` as [0,2]. Options: (a)
+  keep it, a dropped trailing parameter reads as default (recommended;
+  ANTS-6694 queues the comment); (b) push a trailing empty parameter as
+  0, as ECMA-48 does, touching every CSI consumer's params.size()
+  checks. Unverified side note: `CSI 1;m` may mean bold then reset in
+  xterm.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

@@ -134,6 +134,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **When a program exits, the attribute reset waits until its last escape sequence or character is complete, so it cannot break the program's final output (ANTS-6658).**
+
+- **A program that closes the terminal just before it exits reports its real exit code and is reaped at once, not when the tab closes (ANTS-6658).**
+
+- **In the command palette, Tab with the caret inside the typed text no longer inserts the hidden suggestion (ANTS-6985).**
+
+- **A failed global-shortcut bind reports "hotkey unavailable" only once (ANTS-6985).**
+
+- **A feedback-file note starting with a code fence or heading no longer hides the findings below it, and a write whose read-only step fails leaves the file unchanged (ANTS-6985).**
+
 - **verify_changes reads ctest's counts and full FAILED list even when the output is longer than the kept log tail (ANTS-6655).**
 
 - **A resumed test-audit round folds in findings from chunks reviewed in an earlier session, and a chunk whose brief cannot be built shows as a failed lane instead of sending a stub prompt (ANTS-6655).**
@@ -357,6 +367,8 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **Window titles, link addresses and clipboard (OSC 52) payloads no longer carry raw control characters (ANTS-6658).**
 
 - **iTerm2 inline images open only as PNG, JPEG or GIF, and a truncated image sequence is refused (ANTS-6653).**
 
