@@ -124,6 +124,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing a tab asks about running programs in every split pane, not only the focused one** (ANTS-6636)
+
+- **Claude's question dot clears only on the tab whose session answered; a background split's exit keeps the current tab; Escape or closing the dialog cancels a pending relaunch** (ANTS-6636)
+
+- **Closing the window stops the MCP worker before the parts it reads are gone; a restored session releases the default tab it replaces** (ANTS-6636)
+
+- **Undo Close Tab and the audit review command send one Enter; Reload User Themes rebuilds the theme list; the snippet buttons act on the row shown under a filter** (ANTS-6636)
+
+- **Auto-profile rules, the review button's error path and the follow-system-colour-scheme setting each keep to their own window or tab, and the colour-scheme setting works when turned on later** (ANTS-6636)
+
 - **MCP verbs check their input more strictly: whole-number tab and max_cases, a 200-entry batch cap, an unreadable CHANGELOG refused; ci_report, run_trace, doc_lint, version_check and changelog_log report their results more accurately** (ANTS-6637)
 
 - **build_status measures staleness from the build's start; read_log keeps exact-size lines, holds its time budget and redacts PGP private keys; Clear Log File removes the rotated log; two instances no longer rotate the debug log at once** (ANTS-6632)
@@ -221,6 +231,8 @@ for security-relevant changes.
 - **The status bar's task, background-task and model chips follow the focused tab's own Claude session when two tabs work in the same project** (ANTS-6227)
 
 ### Security
+
+- **Desktop notifications pass their title and text to `notify-send` as plain text, never as options or markup** (ANTS-6636)
 
 - **The release build takes linuxdeploy and its Qt plugin from fixed, tagged releases and checks each download's sha256 before running it** (ANTS-6630)
 

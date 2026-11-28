@@ -99218,7 +99218,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: hooks-packaging.
 
-- 📋 [ANTS-6636] **Fix the smaller bugs the 2026-11-06 reviews found in mainwindow.**
+- 🚧 [ANTS-6636] **Fix the smaller bugs the 2026-11-06 reviews found in mainwindow.**
   18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 57 `mainwindow_tabs.cpp:825` (Medium)
   - row 58 `mainwindow.cpp:2298` (Medium)
@@ -99248,6 +99248,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   target's sources), keep the in-place deletes, and ask claude-config
   for a qt.md carve-out (recommended). Row 70 (tr() retrofit):
   recommended to fold into ANTS-1080.
+  2026-11-28 (36d31dd0): 13 rows fixed, 1311 already fixed, 1313 not a
+  bug; suite 6821/6821 and an ASan e2e run clean. Open: rows 69 and 70
+  wait on the user (options in the notes above); row 62 is too big and
+  is recorded above.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
