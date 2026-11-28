@@ -46,9 +46,13 @@ public:
         All        = 0xFFFFFFFFu,
     };
 
-    // Parse a comma-separated list of category names (case-insensitive,
-    // "all" enables everything) into a bitmask. Recognised tokens match
-    // the lowercased enum names.
+    // Parse a comma-separated list of category names (case-insensitive)
+    // into a bitmask. Recognised tokens are the lowercased enum names,
+    // "all" (every category) and "none" or "off" (no category); unknown
+    // tokens are ignored. Parsing stops at the first "all", "none" or
+    // "off", so "paint,off" gives 0 and "paint,all" gives All. A whole
+    // spec that is a number is the legacy form: 1 is paint, 2 or more is
+    // paint and events, anything lower is none.
     static quint32 parseCategories(const QString &spec);
 
     // Active categories. Modified at runtime via the menu.

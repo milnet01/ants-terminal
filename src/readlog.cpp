@@ -166,6 +166,79 @@ private:
     QStringList m_markers;
 };
 
+// The next line of the file, as one of three outcomes.
+struct NextLine {
+    enum Kind {
+        Line,        // a complete line: `raw`, newline stripped
+        Oversized,   // longer than one read: drained and skipped
+        Unfinished,  // the file ends before its newline: still being written
+    } kind;
+    QByteArray raw;
+    QString markers;  // Oversized: its key-block markers, space-joined
+};
+
+// Reads one line, holding at most `readSize` - 1 bytes of it. A longer
+// line is drained in pieces and skipped whole, its key-block markers
+// still collected. Every read goes through `scratch` (ANTS-6367).
+NextLine readNextLine(QIODevice &f, qint64 readSize, QByteArray &scratch) {
+    QByteArray raw = BoundedReadLine::readTight(f, readSize, scratch);
+    if (raw.endsWith('\n')) {
+        raw.chop(1);
+        return {NextLine::Line, std::move(raw), {}};
+    }
+    if (f.atEnd()) return {NextLine::Unfinished, {}, {}};
+    PieceMarkers markers;
+    markers.feed(raw);
+    QByteArray piece;
+    do {
+        piece = BoundedReadLine::readTight(f, readSize, scratch);
+        markers.feed(piece);
+    } while (!piece.endsWith('\n') && !f.atEnd());
+    if (!piece.endsWith('\n')) return {NextLine::Unfinished, {}, {}};
+    return {NextLine::Oversized, {}, markers.line()};
+}
+
+// The lines[] array to return, and how many secrets it had redacted.
+struct Scrubbed {
+    QJsonArray lines;
+    int redacted = 0;
+};
+
+// ANTS-5707 — scrub the kept lines, then re-apply the byte cap: a
+// redaction label can be longer than the secret it replaces. Drops the
+// oldest lines until within maxBytes, keeping at least one.
+Scrubbed scrubAndRecap(const std::deque<Kept> &kept, bool redactSecrets,
+                       int maxBytes) {
+    struct Out { QString text; int redacted; int cost; };
+    std::vector<Out> out;
+    out.reserve(kept.size());
+    qint64 outBytes = 0;
+    for (const Kept &k : kept) {
+        Out o{QString::fromUtf8(k.raw), 0, 0};
+        if (k.pem == Pem::Inside) {
+            o.text = QStringLiteral("[REDACTED:private_key]");
+            o.redacted = 1;
+        } else if (redactSecrets) {
+            SecretRedact::Result r = SecretRedact::scrub(o.text);
+            o.text = std::move(r.text);
+            o.redacted = r.redactedCount;
+        }
+        o.cost = lineCost(o.text.toUtf8());
+        outBytes += o.cost;
+        out.push_back(std::move(o));
+    }
+    std::size_t first = 0;
+    while (outBytes > maxBytes && out.size() - first > 1)
+        outBytes -= out[first++].cost;
+
+    Scrubbed s;
+    for (std::size_t i = first; i < out.size(); ++i) {
+        s.lines.append(out[i].text);
+        s.redacted += out[i].redacted;
+    }
+    return s;
+}
+
 }  // namespace
 
 QJsonObject filter(const QString &path, const Options &opts) {
@@ -257,46 +330,30 @@ QJsonObject filter(const QString &path, const Options &opts) {
     // Every read goes through one buffer, so a kept line holds only its
     // own bytes and not a maxBytes-sized allocation (ANTS-6367).
     QByteArray scratch;
+    // readTight returns at most its size - 1 bytes, so + 2 keeps a line of
+    // exactly maxBytes with its newline.
+    const qint64 readSize = qint64(maxBytes) + 2;
     while (!f.atEnd()) {
         if (scanned > 0 && clock.elapsed() > budgetMs) {
             budgetExhausted = true;
             break;
         }
         const qint64 lineStart = f.pos();
-        // Never hold more than maxBytes of one line: a longer line is
-        // drained in pieces and skipped whole, its key-block markers still
-        // tracked. readTight returns at most its size - 1 bytes, so + 2
-        // keeps a line of exactly maxBytes with its newline.
-        const qint64 readSize = qint64(maxBytes) + 2;
-        QByteArray raw = BoundedReadLine::readTight(f, readSize, scratch);
-        if (!raw.endsWith('\n') && !f.atEnd()) {
-            PieceMarkers markers;
-            markers.feed(raw);
-            QByteArray piece;
-            do {
-                piece = BoundedReadLine::readTight(f, readSize, scratch);
-                markers.feed(piece);
-            } while (!piece.endsWith('\n') && !f.atEnd());
-            if (!piece.endsWith('\n')) {   // oversized AND still being written
-                cursorPos = lineStart;
-                break;
-            }
-            if (opts.redactSecrets) pems.classify(markers.line(), kept);
-            cursorPos = f.pos();
-            ++scanned;
-            ++oversizeSkipped;
-            continue;
-        }
-        const bool complete = raw.endsWith('\n');
-        if (!complete && f.atEnd()) {
-            // Partial trailing line — hold it; cursor stops before it.
+        NextLine next = readNextLine(f, readSize, scratch);
+        if (next.kind == NextLine::Unfinished) {
+            // Hold a line still being written; the cursor stops before it.
             cursorPos = lineStart;
             break;
         }
         cursorPos = f.pos();
-        if (complete) raw.chop(1);   // strip the '\n'
-
         ++scanned;
+        if (next.kind == NextLine::Oversized) {
+            if (opts.redactSecrets) pems.classify(next.markers, kept);
+            ++oversizeSkipped;
+            continue;
+        }
+
+        QByteArray raw = std::move(next.raw);
         const QString line = QString::fromUtf8(raw);
         const Pem pem = opts.redactSecrets ? pems.classify(line, kept)
                                            : Pem::Outside;
@@ -318,47 +375,17 @@ QJsonObject filter(const QString &path, const Options &opts) {
     }
 
     pems.finish(kept);
-
-    // ANTS-5707 — scrub the kept lines, then re-apply the byte cap: a
-    // redaction label can be longer than the secret it replaces.
-    struct Out { QString text; int redacted; int cost; };
-    std::vector<Out> out;
-    out.reserve(kept.size());
-    qint64 outBytes = 0;
-    for (const Kept &k : kept) {
-        Out o{QString::fromUtf8(k.raw), 0, 0};
-        if (k.pem == Pem::Inside) {
-            o.text = QStringLiteral("[REDACTED:private_key]");
-            o.redacted = 1;
-        } else if (opts.redactSecrets) {
-            SecretRedact::Result r = SecretRedact::scrub(o.text);
-            o.text = std::move(r.text);
-            o.redacted = r.redactedCount;
-        }
-        o.cost = lineCost(o.text.toUtf8());
-        outBytes += o.cost;
-        out.push_back(std::move(o));
-    }
-    std::size_t first = 0;
-    while (outBytes > maxBytes && out.size() - first > 1)
-        outBytes -= out[first++].cost;
+    const Scrubbed scrubbed = scrubAndRecap(kept, opts.redactSecrets, maxBytes);
 
     const int tailSelected = (opts.tail > 0)
                                  ? std::min(matched, tailLimit)
                                  : matched;
-    const int returned = static_cast<int>(out.size() - first);
+    const int returned = static_cast<int>(scrubbed.lines.size());
     const int linesDropped = tailSelected - returned;  // cap-removed (≥0)
-
-    QJsonArray lines;
-    int redacted = 0;
-    for (std::size_t i = first; i < out.size(); ++i) {
-        lines.append(out[i].text);
-        redacted += out[i].redacted;
-    }
 
     env["ok"] = true;
     env["path"] = path;
-    env["lines"] = lines;
+    env["lines"] = scrubbed.lines;
     env["matched"] = matched;
     env["scanned"] = scanned;
     env["returned"] = returned;
@@ -373,7 +400,7 @@ QJsonObject filter(const QString &path, const Options &opts) {
         env["time_budget_exhausted"] = true;
     }
     if (capClamped) env["bytes_cap_clamped"] = true;
-    if (redacted > 0) env["redacted"] = redacted;
+    if (scrubbed.redacted > 0) env["redacted"] = scrubbed.redacted;
     if (inputPtyOmitted > 0) env["input_pty_omitted"] = inputPtyOmitted;
     env["cursor"] = QString::number(cursorPos);
     if (cursorStale) {
