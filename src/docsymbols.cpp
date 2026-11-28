@@ -552,7 +552,7 @@ Locators locate(const QVector<Symbol> &symbols, const SourceLines &sourceLines) 
         QString qual;
         if (sep > 0) {
             qual = bare.left(sep);
-            qual = qual.mid(qual.lastIndexOf(QLatin1String("::")) + 1).remove(QLatin1Char(':'));
+            qual = qual.section(QStringLiteral("::"), -1);  // the innermost qualifier
         }
         const QString leaf = sep > 0 ? bare.mid(sep + 2) : bare;
 

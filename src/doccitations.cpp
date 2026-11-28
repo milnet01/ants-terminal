@@ -1717,7 +1717,10 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
             status = QStringLiteral("foreign_path");
             e.insert(QStringLiteral("path"), t.relPath);
             break;
-        default: {
+        case Target::OutOfRoot:
+        case Target::Unresolvable:
+            break;  // never reached: both went to unparsedRows above
+        case Target::Resolved: {
             e.insert(QStringLiteral("path"), t.relPath);
             const int cited = tok.endLine - tok.startLine + 1;
             // Not `emit` — that is a Qt keyword macro, and it expands to nothing.
