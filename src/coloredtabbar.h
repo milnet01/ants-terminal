@@ -178,11 +178,12 @@ private:
     IndicatorProvider m_indicatorProvider;
     QColor m_bg;  // opaque fill, see setBackgroundFill comment
     QColor m_hoverFill;  // hovered tab background, see setHoverFill
-    // resting / moused-over × glyph colour (theme textSecondary /
-    // textPrimary). paintEvent's wash cap also reads them as the tab
-    // name's resting and selected text colours.
-    QColor m_closeNormal;
-    QColor m_closeHover;
+    // The tab name's resting and selected text colours (theme
+    // textSecondary / textPrimary). paintEvent's wash cap reads them; the
+    // × glyph also uses them, resting and moused-over. A separate × colour
+    // needs its own members, or it changes every wash's strength.
+    QColor m_textResting;
+    QColor m_textSelected;
     QColor m_closeHoverBg;  // hover background (theme ansi-red), will-click cue
 };
 

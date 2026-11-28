@@ -282,8 +282,8 @@ int ColoredTabBar::labelWashAlpha(const QColor &tab, const QColor &background,
 void ColoredTabBar::setCloseGlyphColors(const QColor &normal,
                                         const QColor &hover,
                                         const QColor &hoverBg) {
-    m_closeNormal = normal;
-    m_closeHover = hover;
+    m_textResting = normal;
+    m_textSelected = hover;
     m_closeHoverBg = hoverBg;
     for (int i = 0; i < count(); ++i) installCloseButton(i);
 }
@@ -337,8 +337,8 @@ void ColoredTabBar::installCloseButton(int index) {
     // Tint only once colours have been supplied (applyTheme runs at
     // startup, so a tab added before the first theme apply is briefly
     // icon-less, then picked up by setCloseGlyphColors).
-    if (m_closeNormal.isValid()) {
-        btn->setIcon(makeCloseIcon(m_closeNormal, m_closeHover));
+    if (m_textResting.isValid()) {
+        btn->setIcon(makeCloseIcon(m_textResting, m_textSelected));
         btn->setStyleSheet(QStringLiteral(
             "QToolButton { border: none; background: transparent; padding: 0; }"
             "QToolButton:hover { background: %1; border-radius: 3px; }")
@@ -408,11 +408,8 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
 
         const QColor surface = m_bg.isValid() ? m_bg : QWidget::palette().color(QPalette::Window);
         const QColor fallbackText = QWidget::palette().color(QPalette::WindowText);
-        // The × glyph colours are the theme's textSecondary / textPrimary,
-        // the same colours the tab name uses; re-tinting the × alone would
-        // change every wash's strength.
-        const QColor resting = m_closeNormal.isValid() ? m_closeNormal : fallbackText;
-        const QColor selected = m_closeHover.isValid() ? m_closeHover : fallbackText;
+        const QColor resting = m_textResting.isValid() ? m_textResting : fallbackText;
+        const QColor selected = m_textSelected.isValid() ? m_textSelected : fallbackText;
         const double nameBottom = r.height() / 2.0 + fontMetrics().height() / 2.0 + kNameMargin;
         const double nameEnd = qBound(0.0, nameBottom / gradRect.height(), 1.0);
         // A hovered tab shows the selected text colour on the hover fill.
