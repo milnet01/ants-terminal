@@ -423,13 +423,14 @@ QString ClaudeAllowlistDialog::normalizeRule(const QString &raw) {
         rule = QStringLiteral("Bash(") + QLatin1String(kSudoPrefix) + rest + ")";
     }
 
-    // Bash commands without wildcard: Bash(git) → Bash(git *)
-    // Only for commands that would typically take arguments
+    // A bare Bash command gains a wildcard: Bash(git) → Bash(git *).
     static QRegularExpression bashNoWild(R"(^Bash\(([a-zA-Z0-9_./-]+)\)$)");
     m = bashNoWild.match(rule);
     if (m.hasMatch()) {
         QString cmd = m.captured(1);
-        // Single-word commands that are typically used with args
+        // Two stay bare, because the wildcard would allow far more than the
+        // user named: `env *` runs any command, and `make *` any target or
+        // makefile, where bare `make` builds only the default target.
         if (cmd != "make" && cmd != "env") {
             rule = QStringLiteral("Bash(") + cmd + " *)";
         }

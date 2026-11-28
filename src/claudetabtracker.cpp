@@ -341,7 +341,7 @@ void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {
 
 void ClaudeTabTracker::setBackgroundCounts(ShellEntry &entry,
                                            const QList<ClaudeBackgroundTask> &tasks) {
-    const ClaudeBgPendingCounts c = ClaudeBgTaskTracker::pendingCounts(tasks);
+    const ClaudeBgRunningCounts c = ClaudeBgTaskTracker::runningCounts(tasks);
     entry.state.backgroundShells = c.shells;
     entry.state.backgroundAgents = c.agents;
     entry.state.backgroundMonitors = c.monitors;

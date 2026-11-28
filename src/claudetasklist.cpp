@@ -66,13 +66,6 @@ bool ClaudeTaskListTracker::sameRow(const ClaudeTask &a, const ClaudeTask &b) co
     return a.id == b.id && a.status == b.status && a.subject == b.subject;
 }
 
-int ClaudeTaskListTracker::unfinishedCount() const {
-    // Pending only: the chip surfaces work the user can act on, and a task
-    // Claude is running is not. The dialog header still splits running from
-    // outstanding. History: ANTS-1216, ANTS-1218, ANTS-1221.
-    return pendingCount();
-}
-
 int ClaudeTaskListTracker::inProgressCount() const {
     int n = 0;
     for (const auto &t : m_tasks) {

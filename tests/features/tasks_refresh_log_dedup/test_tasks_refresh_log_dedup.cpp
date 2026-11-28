@@ -67,12 +67,11 @@ static int runMain() {
     // so dedup is not over-broadened into swallowing real transitions.
     inv(2,
         contains(sigBlock, ".arg(total)") &&
-            contains(sigBlock, ".arg(unfinished)") &&
             contains(sigBlock, ".arg(inProgress)") &&
             contains(sigBlock, ".arg(pending)") &&
             contains(sigBlock, ".arg(done)") &&
             contains(sigBlock, "branch"),
-        "tasks dedup signature must still key on total/unfinished/"
+        "tasks dedup signature must still key on total/"
         "inProgress/pending/done + branch");
 
     // INV-3 — mtime stays in the logged LINE (the ANTS-1458 latency
@@ -82,15 +81,15 @@ static int runMain() {
         "preMtimeMs must still be emitted in the ANTS_LOG line "
         "(latency context preserved on genuine changes)");
 
-    // INV-4 — exactly one field (mtime) was removed: the outer format
-    // string is 7 placeholders, not the pre-fix 8.
+    // INV-4 — the outer format string has exactly 6 placeholders, so no
+    // state field is dropped unnoticed.
     std::smatch m;
     const std::string region = src.substr(methodPos);
     std::regex fmtRe(R"(const QString sig = QStringLiteral\(\"([^\"]*)\"\))");
     if (std::regex_search(region, m, fmtRe)) {
-        inv(4, m[1].str() == "%1|%2|%3|%4|%5|%6|%7",
-            "tasks sig format string must be 7 placeholders "
-            "(%1..%7); found a different width");
+        inv(4, m[1].str() == "%1|%2|%3|%4|%5|%6",
+            "tasks sig format string must be 6 placeholders "
+            "(%1..%6); found a different width");
     } else {
         inv(4, false, "could not locate the tasks sig format literal");
     }

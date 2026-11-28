@@ -158,6 +158,12 @@ TEST(ClaudeStateResolver, Inv5bChoiceToolsAwaitInput) {
     r.tool = QStringLiteral("ExitPlanMode");
     r.planMode = true;
     EXPECT_EQ(claudestate::display(r), Display::AwaitingInput);
+    // ANTS-6666 — matched without case, like the Bash check (INV-5).
+    r.planMode = false;
+    r.tool = QStringLiteral("askuserquestion");
+    EXPECT_EQ(claudestate::display(r), Display::AwaitingInput);
+    r.tool = QStringLiteral("EXITPLANMODE");
+    EXPECT_EQ(claudestate::display(r), Display::AwaitingInput);
     // Only while the call is in flight: the same name on another state
     // is a finished call.
     r.base = ClaudeState::Thinking;

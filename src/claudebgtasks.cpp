@@ -62,9 +62,9 @@ int ClaudeBgTaskTracker::runningCount() const {
     return n;
 }
 
-ClaudeBgPendingCounts ClaudeBgTaskTracker::pendingCounts(
+ClaudeBgRunningCounts ClaudeBgTaskTracker::runningCounts(
         const QList<ClaudeBackgroundTask> &tasks) {
-    ClaudeBgPendingCounts c;
+    ClaudeBgRunningCounts c;
     for (const auto &t : tasks) {
         if (t.finished) continue;
         switch (t.kind) {

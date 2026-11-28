@@ -139,4 +139,4 @@ If the user reports the symptom again after this spec lands, the failure mode is
 3. **Parser pulling cross-session content from one JSONL** → ANTS-1158 boundary breach. Add INV there.
 4. **A new transition surface** (e.g., a future Claude Code version that introduces in-place /resume, or a hot-reload mode) — extend this spec's §4 "Out of scope" to "In scope" and add the corresponding INV.
 
-The existing diagnostic log lines in `refreshTasksButton` (`tasks/refresh:`) and `refreshBgTasksButton` (`bgtasks/refresh:`) already carry `prev-changed`, `path` basename, `total`, `unfinished`, and the hide-branch reason — sufficient to localise any of (1)-(3) without further instrumentation.
+The existing diagnostic log lines in `refreshTasksButton` (`tasks/refresh:`) and `refreshBgTasksButton` (`bgtasks/refresh:`) already carry `prev-changed`, `path` basename, `total`, `pending`, and the hide-branch reason — sufficient to localise any of (1)-(3) without further instrumentation.

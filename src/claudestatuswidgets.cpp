@@ -396,49 +396,8 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_modelBtn->setAccessibleName(tr("Model recommendation"));
     m_modelBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_modelBtn->hide();
-    connect(m_modelBtn, &QPushButton::clicked, this, [this]() {
-        if (!m_modelBtn) return;
-        // Read the tier from a stored property, NOT by reverse-parsing the
-        // visible (translatable / RTL-reorderable) label — that round-trip
-        // could write a garbage /model argument to the user's shell.
-        // indie-review-2026-05-21.
-        const QString tier = m_modelBtn->property("modelTier").toString();
-        if (tier.isEmpty()) return;
-        auto *focused = m_focusedTerminalProvider
-            ? m_focusedTerminalProvider() : nullptr;
-        if (!focused) return;
-        // ANTS-1915 — while the shell is busy, defer the switch instead:
-        // record the tier + owning shell PID and fire it when the shell next
-        // goes Idle (maybeFireDeferredChipSwitch on shellStateChanged). This
-        // gives the user a "switch without interrupting" path through Ants's
-        // own UI — the typed-`/model`-in-composer case stays blocked on
-        // Claude Code exposing composer state (tracked on the roadmap).
-        const ClaudeTabTracker::ShellState focusedState = shellStateOf(m_tracker, focused);
-        if (busyForModelSwitch(focusedState)) {
-            m_deferredChipTier     = tier;
-            m_deferredChipShellPid = focused->shellPid();
-            m_deferredChipClaudeStartMs = focusedState.claudeStartMs;
-            m_modelBtn->setToolTip(
-                tr("Switch to %1 queued — applies when Claude finishes this turn")
-                    .arg(tier));
-            focused->setFocus();
-            return;
-        }
-        sendModelSwitch(focused, tier);
-        // ANTS-1840 — the user just acted on the recommendation, so hide the
-        // chip immediately rather than letting it linger until the next
-        // assistant turn re-scores the transcript. We deliberately leave the
-        // mtime cache (m_modelChipPath / m_modelChipMtimeMs) untouched: the
-        // short-circuit in refreshModelChip then keeps the chip hidden until
-        // the transcript actually changes, at which point the new turn's
-        // message.model is re-scored and the chip re-shows only if still
-        // warranted (INV-4).
-        m_modelBtn->hide();
-        // ANTS-1849 — clicking the button stole keyboard focus from the
-        // terminal; return it so the user can keep typing without a manual
-        // click back into the terminal.
-        focused->setFocus();
-    });
+    connect(m_modelBtn, &QPushButton::clicked, this,
+            &ClaudeStatusBarController::onModelChipClicked);
 
     // ANTS-1888 — passive model + thinking-level chip. Placed
     // immediately after the recommender chip so when INV-14 hides
@@ -1314,7 +1273,6 @@ void ClaudeStatusBarController::refreshTasksButton() {
     const qint64 pollDurUs = pollTimer.nsecsElapsed() / 1000;
 
     const int total      = m_tasks->totalCount();
-    const int unfinished = m_tasks->unfinishedCount();
     const int inProgress = m_tasks->inProgressCount();
     const int pending    = m_tasks->pendingCount();
     const int done       = m_tasks->completedCount();
@@ -1351,11 +1309,10 @@ void ClaudeStatusBarController::refreshTasksButton() {
         // below (the ANTS-1458 latency column) so a genuine state change
         // still carries its mtime context — it is just no longer part of
         // the dedup key.
-        const QString sig = QStringLiteral("%1|%2|%3|%4|%5|%6|%7")
+        const QString sig = QStringLiteral("%1|%2|%3|%4|%5|%6")
             .arg(focusedTabPresent ? 1 : 0)
             .arg(pathShort)
             .arg(total)
-            .arg(unfinished)
             .arg(inProgress)
             .arg(pending)
             .arg(QStringLiteral("%1|%2").arg(done).arg(QLatin1String(branch)));
@@ -1365,7 +1322,7 @@ void ClaudeStatusBarController::refreshTasksButton() {
                      "tasks/refresh: focused-tab=%s cwd=%s path=%s "
                      "prev-changed=%s mtime=%lld rescan-mtime=%lld "
                      "mtime-delta-ms=%lld poll-dur-us=%lld "
-                     "delta=%+d total=%d unfinished=%d "
+                     "delta=%+d total=%d "
                      "in-progress=%d pending=%d done=%d → %s",
                      focusedTabPresent ? "yes" : "no",
                      cwdShort.toUtf8().constData(),
@@ -1376,7 +1333,7 @@ void ClaudeStatusBarController::refreshTasksButton() {
                      static_cast<long long>(mtimeDeltaMs),
                      static_cast<long long>(pollDurUs),
                      totalDelta,
-                     total, unfinished, inProgress, pending, done, branch);
+                     total, inProgress, pending, done, branch);
         }
     }
 
@@ -1794,6 +1751,53 @@ void ClaudeStatusBarController::refreshModelChip()
     m_modelBtn->show();
 }
 
+// ANTS-1226 — the recommender chip's click: send the recommended tier, or
+// queue it while Claude is busy.
+void ClaudeStatusBarController::onModelChipClicked()
+{
+    if (!m_modelBtn) return;
+    // Read the tier from a stored property, NOT by reverse-parsing the
+    // visible (translatable / RTL-reorderable) label — that round-trip
+    // could write a garbage /model argument to the user's shell.
+    // indie-review-2026-05-21.
+    const QString tier = m_modelBtn->property("modelTier").toString();
+    if (tier.isEmpty()) return;
+    auto *focused = m_focusedTerminalProvider
+        ? m_focusedTerminalProvider() : nullptr;
+    if (!focused) return;
+    // ANTS-1915 — while the shell is busy, defer the switch instead:
+    // record the tier + owning shell PID and fire it when the shell next
+    // goes Idle (maybeFireDeferredChipSwitch on shellStateChanged). This
+    // gives the user a "switch without interrupting" path through Ants's
+    // own UI — the typed-`/model`-in-composer case stays blocked on
+    // Claude Code exposing composer state (tracked on the roadmap).
+    const ClaudeTabTracker::ShellState focusedState = shellStateOf(m_tracker, focused);
+    if (busyForModelSwitch(focusedState)) {
+        m_deferredChipTier     = tier;
+        m_deferredChipShellPid = focused->shellPid();
+        m_deferredChipClaudeStartMs = focusedState.claudeStartMs;
+        m_modelBtn->setToolTip(
+            tr("Switch to %1 queued — applies when Claude finishes this turn")
+                .arg(tier));
+        focused->setFocus();
+        return;
+    }
+    sendModelSwitch(focused, tier);
+    // ANTS-1840 — the user just acted on the recommendation, so hide the
+    // chip immediately rather than letting it linger until the next
+    // assistant turn re-scores the transcript. We deliberately leave the
+    // mtime cache (m_modelChipPath / m_modelChipMtimeMs) untouched: the
+    // short-circuit in refreshModelChip then keeps the chip hidden until
+    // the transcript actually changes, at which point the new turn's
+    // message.model is re-scored and the chip re-shows only if still
+    // warranted (INV-4).
+    m_modelBtn->hide();
+    // ANTS-1849 — clicking the button stole keyboard focus from the
+    // terminal; return it so the user can keep typing without a manual
+    // click back into the terminal.
+    focused->setFocus();
+}
+
 // ANTS-1888 — Passive readout: current model tier + last-used thinking
 // level for the focused tab. Always shows when a Claude session is active
 // in the focused tab (the recommender chip suppresses itself when the
@@ -2062,6 +2066,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     const qint64 msSinceOverride =
         (lastOverrideMs > 0) ? (nowMs - lastOverrideMs) : -1;
 
+    // The gate decide() reads. -1 in a ms field means "not known".
     ModelAutoSwitch::Gate gate;
     gate.enabled              = true;
     gate.focusedState         = s.state;
@@ -2071,49 +2076,28 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     gate.floor                = floor;
     gate.ticksTargetStable    = m_autoSwitchStability.ticksStable;
     gate.msSinceLastSwitch    = dwellMs;
-    // ANTS-1894 INV-3 — configurable min-dwell folded into the gate so
-    // dwell_time_insufficient is observable as a near-miss reason. The
-    // pre-1894 pre-decide short-circuit is removed; decide()
-    // now applies max(kMinDwellMs, configuredMinDwellMs) via the new
-    // effectiveMinDwellMs helper.
+    // decide() waits max(kMinDwellMs, this) between switches.
     gate.configuredMinDwellMs = minDwellMs;
     gate.msSinceLastOverride  = msSinceOverride;
-    // ANTS-1908 — populate composerStaleMs from the keystroke
-    // timestamp. -1 when no keystroke recorded yet (matches the gate
-    // sentinel exactly), else the elapsed ms.
+    // Time since the last keystroke; -1 before the first one.
     gate.composerStaleMs      = (lastKeystrokeMs > 0)
         ? (nowMs - lastKeystrokeMs)
         : -1;
-    // ANTS-1914 — populate the configurable composer-stale threshold
-    // (default -1 = use kComposerStaleVetoMs).
+    // -1 = use kComposerStaleVetoMs.
     gate.composerStaleThresholdMs = composerStaleThresholdMs;
-    // ANTS-1917 — idle end-of-session suppression. idleElapsedMs is how long
-    // the focused shell has sat in Idle (re-stamped each turn boundary, so a
-    // fresh between-turns gap reads small and a walk-away grows unboundedly).
-    // -1 = not idle or no idleSinceMs stamp yet → the idle gates don't fire.
-    // The ceiling is configurable via claude.auto_model_idle_ceiling_sec
-    // (default kIdleEndOfSessionMs / 1000); a value <= 0 disables the idle
-    // gates entirely by leaving idleElapsedMs at -1.
-    // ANTS-1959 — idleElapsedMs also drives downgrade_requires_active_work
-    // (idle ⇒ no downgrade); under the default ceiling (180 s > 0) it is always
-    // populated when the shell is idle, so idle downgrades are suppressed.
+    // Time the focused shell has sat Idle; -1 when it is not Idle or has no
+    // idleSinceMs stamp. Always set when Idle, because decide() never downgrades an idle session; only the
+    // end-of-session ceiling is configurable, and idle_ceiling_sec <= 0 moves
+    // it out of reach.
     const int idleCeilingSec = autoCfg.value("idle_ceiling_sec").toInt(
         static_cast<int>(ModelAutoSwitch::kIdleEndOfSessionMs / 1000));
-    // ANTS-1959 never-downgrade-at-idle is a SAFETY INVARIANT, not a tunable:
-    // populate idleElapsedMs whenever the shell is idle so decide()'s
-    // downgrade_requires_active_work guard always holds. The end-of-session
-    // *ceiling* stays configurable — idle_ceiling_sec <= 0 disables only that
-    // gate (by pushing the ceiling out of reach), never the downgrade guard.
-    // (indie-review 2026-06-04 — previously a single `if (idleCeilingSec > 0)`
-    // gated both, so setting the knob to 0 silently lost the safety guard.)
     if (s.state == ClaudeState::Idle && s.idleSinceMs > 0)
         gate.idleElapsedMs = nowMs - s.idleSinceMs;
     gate.idleCeilingMs = (idleCeilingSec > 0)
         ? static_cast<qint64>(idleCeilingSec) * 1000
         : std::numeric_limits<qint64>::max();
-
-    // ANTS-1959 — long-ToolUse safe-downgrade window. Stamp when we first
-    // see ToolUse; clear when the state leaves it.
+    // How long the current ToolUse has run; -1 outside ToolUse. A long one
+    // lifts the not-idle veto.
     if (s.state == ClaudeState::ToolUse) {
         if (m_toolUseSinceMs <= 0) m_toolUseSinceMs = nowMs;
         gate.toolUseElapsedMs = nowMs - m_toolUseSinceMs;

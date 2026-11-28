@@ -1021,7 +1021,7 @@ TEST(ClaudeBgTasksButton, Ants5773AgentAndMonitorKinds) {
 
     QList<ClaudeBackgroundTask> all = agent;
     all << mon;
-    const ClaudeBgPendingCounts c = ClaudeBgTaskTracker::pendingCounts(all);
+    const ClaudeBgRunningCounts c = ClaudeBgTaskTracker::runningCounts(all);
     EXPECT_EQ(c.shells, 0);
     EXPECT_EQ(c.agents, 1);
     EXPECT_EQ(c.monitors, 1);
@@ -1173,7 +1173,7 @@ TEST(ClaudeBgTasksButton, Ants6321HelperShellCounts) {
                helperShell("2026-10-30T18:09:02.000Z", "bmm9vec7y", out));
 
     const auto tasks = ClaudeBgTaskTracker::parseTranscript(tp);
-    const ClaudeBgPendingCounts counts = ClaudeBgTaskTracker::pendingCounts(tasks);
+    const ClaudeBgRunningCounts counts = ClaudeBgTaskTracker::runningCounts(tasks);
     EXPECT_EQ(counts.shells, 1) << "the helper's unfinished shell is running";
     EXPECT_EQ(counts.agents, 0) << "the helper itself has completed";
 }
@@ -1190,7 +1190,7 @@ TEST(ClaudeBgTasksButton, Ants6321OnlyOwnSessionsHelpersCount) {
     writeLines(helperFile(dir, "other", "ahelper"),
                helperShell("2026-10-30T18:09:02.000Z", "bother", out));
 
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).shells, 0);
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::parseTranscript(tp)).shells, 0);
 }
 
 // INV-13 — either transcript's notice ends the shell, in either order. The
@@ -1208,14 +1208,14 @@ TEST(ClaudeBgTasksButton, Ants6321HelperShellEnds) {
     writeLines(helperFile(dir, "a", "ahelper"),
                shell + QList<QJsonObject>{helperLine(
                    userNotification("2026-10-30T18:31:02.000Z", "b", "failed"))});
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(
                   ClaudeBgTaskTracker::parseTranscript(endInHelper)).shells, 0);
 
     const QString endInMain = dir.filePath(QStringLiteral("m.jsonl"));
     writeLines(endInMain, helperCompleted(ahelper)
         + QList<QJsonObject>{queueNotification("2026-10-30T18:31:01.000Z", "b", "failed")});
     writeLines(helperFile(dir, "m", "ahelper"), shell);
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(
                   ClaudeBgTaskTracker::parseTranscript(endInMain)).shells, 0)
         << "the main transcript is walked first, so its notice comes before the start";
 }
@@ -1306,12 +1306,12 @@ TEST(ClaudeBgTasksButton, Ants6322PausedAgentStaysPending) {
     writeLines(tp, agentLaunched(out)
         + QList<QJsonObject>{agentNotice("2026-10-31T06:12:40.000Z", "ahelper", "completed",
                                          kPausedSummary)});
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1)
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1)
         << "the helper paused; it has not ended";
 
     appendLines(tp, {agentNotice("2026-10-31T06:30:00.000Z", "ahelper", "completed",
                                  QStringLiteral("finished"))});
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 0);
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 0);
 }
 
 // ANTS-5773 INV-15 — a helper whose last notice was a pause ends when its meta
@@ -1371,14 +1371,14 @@ TEST(ClaudeBgTasksButton, Ants6326PauseFlagDoesNotLatchAgentFinished) {
 
     ClaudeBgTaskTracker tracker;
     tracker.setTranscriptPath(tp);
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(tracker.tasks()).agents, 1)
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(tracker.tasks()).agents, 1)
         << "paused on its own shell: the flag does not end it";
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(tracker.tasks()).shells, 1);
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(tracker.tasks()).shells, 1);
 
     appendLines(helper, {helperLine(userNotification("2026-10-31T06:20:00.000Z", "b", "completed"))});
     writeMeta(running);
     tracker.poll();
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(tracker.tasks()).agents, 1)
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(tracker.tasks()).agents, 1)
         << "its shell ended and it resumed: the earlier flag must not have stuck";
 
     writeMeta(stopped);
@@ -1414,16 +1414,16 @@ TEST(ClaudeBgTasksButton, Ants6832ResumedAgentRunsAgain) {
     const QJsonObject ended = agentNotice("2026-11-18T14:00:38.000Z", "ahelper", "completed",
                                           QStringLiteral("finished"));
     writeLines(tp, agentLaunched(out) + QList<QJsonObject>{ended});
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 0);
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 0);
 
     appendLines(tp, agentResumed("2026-11-18T14:23:27.715Z", "ahelper"));
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1)
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1)
         << "revived by SendMessage: running again";
     const qint64 newerProcess = QDateTime::fromString("2026-11-18T14:20:00.000Z", Qt::ISODateWithMs)
                                     .toMSecsSinceEpoch();
     ClaudeTranscript::Cursor cursor;
     ClaudeBgTaskAccum acc;
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(
                   ClaudeBgTaskTracker::parseIncremental(tp, cursor, acc, newerProcess)).agents, 1)
         << "resumed under a newer Claude process: the resume is its start";
 
@@ -1431,12 +1431,12 @@ TEST(ClaudeBgTasksButton, Ants6832ResumedAgentRunsAgain) {
     repeated["operation"] = "remove";
     repeated["timestamp"] = "2026-11-18T14:24:00.000Z";
     appendLines(tp, {repeated});
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1)
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1)
         << "a remove record repeating the old notice ends nothing";
 
     appendLines(tp, {agentNotice("2026-11-18T14:40:00.000Z", "ahelper", "completed",
                                  QStringLiteral("finished"))});
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 0)
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 0)
         << "its next end notice ends it";
 }
 
@@ -1449,7 +1449,7 @@ TEST(ClaudeBgTasksButton, Ants6832ResumedUntrackedAgentRuns) {
     writeLines(tp, QList<QJsonObject>{agentNotice("2026-11-18T14:00:38.000Z", "afore",
                                                   "completed", QStringLiteral("finished"))}
                    + agentResumed("2026-11-18T14:23:27.715Z", "afore"));
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1);
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1);
 }
 
 
@@ -1488,7 +1488,7 @@ TEST(ClaudeBgTasksButton, Ants6404ExpiredMonitorEnds) {
     const auto expired = ClaudeBgTaskTracker::parseTranscript(tp);
     ASSERT_EQ(expired.size(), 1);
     EXPECT_TRUE(expired[0].finished) << "the expiry notice ends the monitor";
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(expired).monitors, 0);
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(expired).monitors, 0);
 }
 
 // ANTS-6627 — a helper's last line still being written is not a move, so a
@@ -1520,7 +1520,7 @@ TEST(ClaudeBgTasksButton, Ants6627PartialHelperLineIsNotAMove) {
     appendRaw(end.mid(end.size() / 2));
     EXPECT_TRUE(ClaudeBgTaskTracker::walkHelperTranscripts(tp, acc))
         << "the finished line is read";
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 0);
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 0);
 }
 
 // ANTS-6986 — a helper file replaced by a shorter one is re-read from the
@@ -1540,13 +1540,13 @@ TEST(ClaudeBgTasksButton, Ants6986ReplacedHelperCountsOnce) {
     ClaudeTranscript::Cursor cursor;
     ClaudeBgTaskAccum acc;
     ClaudeBgTaskTracker::parseIncremental(tp, cursor, acc);
-    ASSERT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 1);
+    ASSERT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 1);
 
     // The same launch, written shorter: the cursor cannot resume.
     writeLines(helper, helperShell("2026-10-30T18:09:02.000Z", "b", shortOut));
     ASSERT_LT(QFileInfo(helper).size(), acc.helperCursors.value(helper).offset);
     EXPECT_TRUE(ClaudeBgTaskTracker::walkHelperTranscripts(tp, acc));
-    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 1)
+    EXPECT_EQ(ClaudeBgTaskTracker::runningCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 1)
         << "a re-read helper's launch must not count twice";
 }
 

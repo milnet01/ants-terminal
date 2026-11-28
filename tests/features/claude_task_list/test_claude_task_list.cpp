@@ -458,15 +458,13 @@ void testInv12_dialogRebuildsOnTasksChanged() {
            "ANTS-1158-INV-12: dialog connects tracker tasksChanged to rebuild slot");
 }
 
-// ----- ANTS-1221: unfinishedCount excludes in_progress -----
+// ----- ANTS-1221: pendingCount excludes in_progress -----
 //
-// Pre-fix contract: `unfinishedCount() = pending + in_progress`.
 // User repro 2026-05-10 (screenshot): "41 tasks — 40 done, 1 running,
 // 0 outstanding" but chip read "☰ 1/41". A single in_flight task kept
-// the chip lit even though *the user* had nothing to action.
-// Fix-a (chosen): `unfinishedCount()` counts `pending` only — chip
-// surfaces user-actionable work, not Claude's in-flight work.
-void testAnts1221Inv1_unfinishedExcludesInProgress() {
+// the chip lit even though *the user* had nothing to action. The
+// outstanding count is `pendingCount()`, which leaves running tasks out.
+void testAnts1221Inv1_pendingExcludesInProgress() {
     QTemporaryDir dir;
     if (!dir.isValid()) { expect(false, "ANTS-1221-INV-1 setup"); return; }
 
@@ -493,10 +491,6 @@ void testAnts1221Inv1_unfinishedExcludesInProgress() {
     expect(tracker.inProgressCount() == 1,
            "ANTS-1221-INV-1: inProgressCount counts only in_progress entries",
            "got in_progress=" + std::to_string(tracker.inProgressCount()));
-    expect(tracker.unfinishedCount() == tracker.pendingCount(),
-           "ANTS-1221-INV-1: unfinishedCount() == pendingCount() — running excluded",
-           "got unfinished=" + std::to_string(tracker.unfinishedCount()) +
-           " pending=" + std::to_string(tracker.pendingCount()));
 }
 
 // All-running fixture. The contract evolved across three IDs:
@@ -1330,7 +1324,7 @@ TEST(ClaudeTaskList, Inv13DialogAntiRegressionWaylandFlake) {
 
 TEST(ClaudeTaskList, Ants1221Inv1UnfinishedExcludesInProgress) {
     const int before = expect_failures();
-    testAnts1221Inv1_unfinishedExcludesInProgress();
+    testAnts1221Inv1_pendingExcludesInProgress();
     if (expect_failures() > before) FAIL();
 }
 

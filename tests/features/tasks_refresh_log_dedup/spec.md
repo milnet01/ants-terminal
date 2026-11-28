@@ -33,9 +33,9 @@ bar + tracker, out of scope at this tier (same rationale as
 | # | Lane | Statement |
 |---|------|-----------|
 | 1 | dedup-key | The tasks `const QString sig = …;` construction in `refreshTasksButton` does NOT reference `preMtimeMs` — the transcript mtime is excluded from the dedup key. |
-| 2 | key-state | The same sig construction still keys on the task state: `.arg(total)`, `.arg(unfinished)`, `.arg(inProgress)`, `.arg(pending)`, `.arg(done)` and the visibility `branch` — so dedup is not over-broadened into hiding real transitions. |
+| 2 | key-state | The same sig construction still keys on the task state: `.arg(total)`, `.arg(inProgress)`, `.arg(pending)`, `.arg(done)` and the visibility `branch` — so dedup is not over-broadened into hiding real transitions. |
 | 3 | latency-preserved | `preMtimeMs` is still emitted in the `ANTS_LOG` line (the ANTS-1458 `mtime=` latency column), so a genuine change still records its mtime context. |
-| 4 | sig-width | The tasks sig `QStringLiteral` format string is 7 placeholders (`%1`…`%7`), not the pre-fix 8 — i.e. exactly one field (mtime) was removed, nothing else dropped. |
+| 4 | sig-width | The tasks sig `QStringLiteral` format string is 6 placeholders (`%1`…`%6`): focus, path, total, in-progress, pending, and done with the branch. |
 
 ## Acceptance
 

@@ -17,6 +17,9 @@ See `docs/specs/ANTS-1873-single-source-truth-claude-state.md` for the full cont
 ## Coverage
 
 - INV-1..INV-7 — behavioural tests of the pure helper.
+- ANTS-5718 / ANTS-6666 — an `AskUserQuestion` or `ExitPlanMode` call
+  in flight is `AwaitingInput`; both names match without case, like the
+  Bash check (`Inv5bChoiceToolsAwaitInput`).
 - INV-8, INV-9, INV-10 — source-grep against
   `src/claudestatuswidgets.cpp`.
 - INV-11 — regression-locked by the existing claude-status test

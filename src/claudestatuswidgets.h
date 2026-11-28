@@ -305,6 +305,9 @@ private slots:
     // `/model <fromTier>\r` and seeds m_lastOverrideMsByProject so
     // the gate's 10-min cool-down (ANTS-1890) trips on the next tick.
     void onUndoSwitchClicked();
+    // Recommender-chip click: sends the chip's tier, or queues it for
+    // maybeFireDeferredChipSwitch while Claude is busy.
+    void onModelChipClicked();
 
 private:
     void apply();   // private status-label renderer (formerly

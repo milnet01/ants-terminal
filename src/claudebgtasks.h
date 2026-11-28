@@ -47,7 +47,7 @@ struct ClaudeBgPendingCall {
 };
 
 // ANTS-5773 — running tasks by kind.
-struct ClaudeBgPendingCounts {
+struct ClaudeBgRunningCounts {
     int shells = 0;
     int agents = 0;
     int monitors = 0;
@@ -113,7 +113,7 @@ public:
     // walk; applies the processStartMs rule above.
     static QList<ClaudeBackgroundTask> finalize(const ClaudeBgTaskAccum &acc,
                                                 qint64 processStartMs = 0);
-    static ClaudeBgPendingCounts pendingCounts(const QList<ClaudeBackgroundTask> &tasks);
+    static ClaudeBgRunningCounts runningCounts(const QList<ClaudeBackgroundTask> &tasks);
 
     // The start time of the Claude process this tracker's transcript belongs
     // to, passed to parseIncremental and finalize. 0 = unknown.
