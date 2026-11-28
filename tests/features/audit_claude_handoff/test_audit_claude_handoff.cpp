@@ -111,7 +111,7 @@ TEST_F(AuditClaudeHandoff, BaselineIsCheapAndStandardsAreNamed) {
     f.message = QStringLiteral("a finding");
     r.findings = {f};
     r.findingCount = 1;
-    const QString text = dlg.plainTextResultsForTest({r});
+    const QString text = dlg.claudeReviewHandoffForTest({r});
     ASSERT_FALSE(text.isEmpty());
 
     // INV-1

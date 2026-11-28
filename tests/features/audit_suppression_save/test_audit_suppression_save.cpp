@@ -58,8 +58,8 @@ TEST(AuditSuppressionSave, UnsavedSuppressionDoesNotHide) {
 // INV-3 — ANTS-6381
 TEST(AuditSuppressionSave, ClaudeExportSkipsSuppressedFindings) {
     const QString body = functionBody(auditSource(),
-        QStringLiteral("QString AuditDialog::plainTextResults() const"));
-    ASSERT_FALSE(body.isEmpty()) << "plainTextResults not found";
+        QStringLiteral("QString AuditDialog::claudeReviewHandoff() const"));
+    ASSERT_FALSE(body.isEmpty()) << "claudeReviewHandoff not found";
     EXPECT_TRUE(body.contains(QStringLiteral("isSuppressed(f)")))
         << "the Review-with-Claude export hands over suppressed findings";
 }

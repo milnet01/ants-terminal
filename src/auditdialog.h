@@ -51,7 +51,7 @@ public:
     QList<AuditCheck> checksForTest() const;
     // ANTS-6855 — the Review-with-Claude text for `results`, which replace
     // the completed results.
-    QString plainTextResultsForTest(const QList<CheckResult> &results);
+    QString claudeReviewHandoffForTest(const QList<CheckResult> &results);
 
     // ANTS-5084 — the changed files, and with includeLines the changed lines,
     // of the last `commits` commits, read from git. Touches no dialog state,
@@ -703,7 +703,7 @@ private:
     QPushButton *m_autofixBtn = nullptr;
     QPushButton *m_sarifBtn = nullptr;
     QPushButton *m_htmlBtn = nullptr;
-    QString plainTextResults() const;
+    QString claudeReviewHandoff() const;
 
     // Filter bar — shown once results exist. Severity pill toggles, a live
     // text filter, and a "sort by confidence" toggle. All live-re-render.

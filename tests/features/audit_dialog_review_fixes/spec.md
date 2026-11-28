@@ -16,7 +16,7 @@ ANTS-6621. Each invariant names its row in
   modal prompt, the allow and defer paths remove the finding they prompted
   for, matched by its fields, never by the index taken before the prompt.
 - **INV-4 — the Claude hand-off is scrubbed** (row 298). The Review-with-Claude
-  handler writes `SecretRedact::scrub(plainTextResults())`.
+  handler writes `SecretRedact::scrub(claudeReviewHandoff())`.
 - **INV-5 — an AI rationale justifies only a false positive** (row 299). The
   SARIF suppression falls back to `aiReasoning` only when the verdict is
   empty or `FALSE_POSITIVE`.
@@ -48,7 +48,7 @@ ANTS-6621. Each invariant names its row in
 
 ## Test surface
 
-INV-9's hand-off half builds the text with `plainTextResultsForTest`. The rest
+INV-9's hand-off half builds the text with `claudeReviewHandoffForTest`. The rest
 read the AuditDialog sources with comments stripped.
 
 ## Regression history

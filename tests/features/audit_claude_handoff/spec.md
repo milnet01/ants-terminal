@@ -1,7 +1,7 @@
 # The audit's Claude hand-off starts on real findings
 
 The Audit dialog's Review-with-Claude button hands a Claude session the text
-`AuditDialog::plainTextResults` builds. On 2026-11-21 that text sent a
+`AuditDialog::claudeReviewHandoff` builds. On 2026-11-21 that text sent a
 session into a full build and test run for over 10 minutes. Its most serious
 findings were all false alarms, and its clang-tidy section was mostly
 progress lines. This contract pins the hand-off and the rules behind those
@@ -43,7 +43,7 @@ false alarms.
 
 `test_audit_claude_handoff.cpp` in the `test_dialogs` bundle. It builds a
 real `AuditDialog` over a scratch project. INV-1 and INV-2 read
-`plainTextResultsForTest`. INV-3 runs the check's filter through
+`claudeReviewHandoffForTest`. INV-3 runs the check's filter through
 `AuditEngine::applyFilter` over captured clang-tidy output. INV-8 runs the
 check's command with a stand-in `clang-tidy` first on `PATH`. INV-4 to INV-7
 run each check's own command from the project folder with `/bin/bash -c`, as

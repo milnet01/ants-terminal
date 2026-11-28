@@ -85,7 +85,7 @@ TEST(AuditDialogReviewFixes, ClaudeHandoffIsScrubbed) {
         QStringLiteral("connect(m_reviewBtn, &QPushButton::clicked"),
         QStringLiteral("emit reviewRequested("));
     ASSERT_FALSE(region.isEmpty()) << "the Review-with-Claude handler not found";
-    EXPECT_TRUE(region.contains(QStringLiteral("SecretRedact::scrub(plainTextResults())")))
+    EXPECT_TRUE(region.contains(QStringLiteral("SecretRedact::scrub(claudeReviewHandoff())")))
         << "the hand-off file carries secrets_scan and gitleaks snippets verbatim";
 }
 
@@ -152,7 +152,7 @@ TEST(AuditDialogReviewFixes, PercentInANameIsNotFilledIn) {
     f.message = QStringLiteral("the message");
     r.findings = {f};
     r.findingCount = 1;
-    const QString text = dlg.plainTextResultsForTest({r});
+    const QString text = dlg.claudeReviewHandoffForTest({r});
     EXPECT_TRUE(text.contains(QStringLiteral("src/a%1.cpp:7  the message")))
         << "a %1 in the file name took the message";
     EXPECT_TRUE(text.contains(QStringLiteral("rule %6")))

@@ -539,7 +539,7 @@ QString AuditDialog::exportHtml() const {
 // Plain-text export for the Claude Review handoff
 // ---------------------------------------------------------------------------
 
-QString AuditDialog::plainTextResults() const {
+QString AuditDialog::claudeReviewHandoff() const {
     if (m_completedResults.isEmpty()) return {};
 
     QString header = "Project Audit Results\n"

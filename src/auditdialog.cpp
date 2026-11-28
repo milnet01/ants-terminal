@@ -263,9 +263,9 @@ QList<AuditCheck> AuditDialog::checksForTest() const {
     return m_checks;
 }
 
-QString AuditDialog::plainTextResultsForTest(const QList<CheckResult> &results) {
+QString AuditDialog::claudeReviewHandoffForTest(const QList<CheckResult> &results) {
     m_completedResults = results;
-    return plainTextResults();
+    return claudeReviewHandoff();
 }
 
 // Returns false when the project lives on a filesystem that doesn't enforce
@@ -2171,7 +2171,7 @@ void AuditDialog::buildUI() {
         // ANTS-6621 — scrubbed as the AI-triage prompts are (ANTS-4448): the
         // snippets are verbatim source, and for a secrets_scan or gitleaks
         // finding the snippet is the credential.
-        const QString text = SecretRedact::scrub(plainTextResults()).text;
+        const QString text = SecretRedact::scrub(claudeReviewHandoff()).text;
         if (text.isEmpty()) return;
 
         auto *tmp = new QTemporaryFile(QDir::tempPath() + "/ants-audit-XXXXXX.txt");

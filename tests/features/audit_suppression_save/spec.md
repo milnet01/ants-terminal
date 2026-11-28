@@ -13,7 +13,7 @@ key to `m_suppressedKeys`; otherwise it reports the failure and returns
 false.
 
 **INV-3 — the Review-with-Claude export holds no suppressed finding.**
-`AuditDialog::plainTextResults` skips every finding `isSuppressed` reports,
+`AuditDialog::claudeReviewHandoff` skips every finding `isSuppressed` reports,
 and counts each check's total and corroborated tag from what is left.
 
 **INV-4 — a line-above `cppcheck-suppress` or `nosemgrep` is honoured.**
