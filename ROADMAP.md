@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7044 -->
+<!-- ants-roadmap-id-high-water: ANTS=7045 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99844,7 +99844,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: shared-utilities.
 
-- 🚧 [ANTS-6651] **Fix the smaller bugs the 2026-11-06 reviews found in shell-surface.**
+- ✅ [ANTS-6651] **Fix the smaller bugs the 2026-11-06 reviews found in shell-surface.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 268 `hooks/ants-inbox-notice.sh:89` (Medium)
   - row 275 `_common.sh:108` (Low)
@@ -99867,6 +99867,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   under $XDG_RUNTIME_DIR so it never stays on disk; (c) an
   ExecStopPost cleanup (misses a bad working directory). Live hooks
   change only after tools/install-hooks.sh.
+  2026-11-28: the user chose (a), dismiss, for row 280: the leftover
+  .env is mode 0600 and the next start, clean or the 30-day prune
+  removes it. Every row is now closed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99890,6 +99893,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `unterminated_fence` and amend ANTS-4108 § 2.5's "exactly three"
   (recommended: the author's action differs, close the fence, which is
   § 2.5's own reason for separate kinds); (b) leave it.
+  2026-11-28: the user chose (a) for row 375: add a fourth candidate
+  kind `unterminated_fence` and amend ANTS-4108 § 2.5's "exactly three".
+  To build.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99924,7 +99930,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: terminal-grid.
 
-- 🚧 [ANTS-6654] **Fix the smaller bugs the 2026-11-06 reviews found in terminal-widget.**
+- ✅ [ANTS-6654] **Fix the smaller bugs the 2026-11-06 reviews found in terminal-widget.**
   25 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 33 `terminalwidget.cpp:3227-3238` (Medium)
   - row 34 `terminalwidget.cpp:3233` (Medium)
@@ -99959,6 +99965,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   cells too, as most terminals do, in its own item since the a11y
   offsets share the function (recommended); (b) leave both as they
   are.
+  2026-11-28: the user chose (a) for row 1302; it moved to ANTS-7045.
+  Every other row is closed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -100019,7 +100027,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: tools-roadmap-surveys.
 
-- 🚧 [ANTS-6658] **Fix the smaller bugs the 2026-11-06 reviews found in vt-parser-pty.**
+- ✅ [ANTS-6658] **Fix the smaller bugs the 2026-11-06 reviews found in vt-parser-pty.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 2 `ptyhandler.cpp:621-625` (Medium)
   - row 3 `ptyhandler.cpp:624` (Low)
@@ -100034,6 +100042,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   0, as ECMA-48 does, touching every CSI consumer's params.size()
   checks. Unverified side note: `CSI 1;m` may mean bold then reset in
   xterm.
+  2026-11-28: the user chose (a), keep, for row 1294: a dropped trailing
+  parameter reads as default. ANTS-6694 adds the comment. Every row is
+  now closed.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -100225,6 +100236,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   redaction (sqAttachBody; similar_code). ANTS-6642 row 124's
   decision named only read_region and read_regions; ask the user
   before widening it.
+  2026-11-28: the user widened ANTS-6642 row 124's decision: blank
+  secrets in find_definition include_body and similar_code bodies too.
+  To build.
   **Layman:** Two more code-reading tools should hide passwords the way read_region now does.
   Kind: security.
   Source: helper follow-ups 2026-11-28.
@@ -100479,6 +100493,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: helper follow-ups 2026-11-28.
   Lanes: test-tools.
+
+- 📋 [ANTS-7045] **Plain-text copy skips a wide character's second cell, as the HTML copy does.**
+  Row 1302 of docs/reviews/close-findings-2026-11-06.md
+  (src/terminalwidget.cpp, the plain-copy path): plain copy writes a
+  space for a wide character's second half; HTML copy skips it. The
+  user chose (2026-11-28) to skip it in plain copy too, as most
+  terminals do. The screen-reader text offsets share the function:
+  keep their cell-to-offset mapping right, and test both.
+  **Layman:** Copying Chinese, Japanese or emoji text stops adding a stray space after each character.
+  Kind: fix.
+  Source: user decision 2026-11-28 (ANTS-6654 row 1302).
+  Lanes: terminal-widget.
 
 ### Readability (2026-11-06 review)
 
