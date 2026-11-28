@@ -23,5 +23,9 @@ under `home` that yields a command.
 `TerminalWidget::loadHistory`: it starts a `QThread::create` worker that
 calls `shellhistory::load`, and calls neither `readAll` nor `QFile`.
 
+**INV-5 — a fish file yields only its commands** (ANTS-6654).
+`shellhistory::parseFish` keeps the `- cmd: ` lines and drops fish's
+`when:` and `paths:` metadata, and `load` reads the fish file through it.
+
 Test: `test_shell_history_tail.cpp`, suite `ShellHistoryTail`, in the
 `test_vt` bundle.

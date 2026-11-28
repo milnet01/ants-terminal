@@ -71,7 +71,9 @@ the invariants are source-scrape assertions against
   `updateScrollBar()`.
 
 - **INV-12 / right-click bounds the selection first** (ANTS-5078).
-  `contextMenuEvent` computes `selCellBound` before calling `selectedText()`.
+  `contextMenuEvent` checks `selLines <= 200` before calling `selectedText()`.
+  The bound counts lines, not cells, so a short selection on a wide pane
+  still gets Search Web (ANTS-6654).
 
 - **INV-13 / recording decodes across batches** (ANTS-5078). `onVtBatch`
   decodes through `m_recordDecoder`, not `QString::fromUtf8` per batch.

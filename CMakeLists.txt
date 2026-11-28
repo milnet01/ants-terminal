@@ -2583,6 +2583,11 @@ if(ANTS_TESTS)
                 # ANTS-6853 — one pointer shape over the terminal text.
                 tests/features/terminal_pointer_shape/test_terminal_pointer_shape.cpp
                 tests/features/search_matches_follow_scrollback/test_search_matches_follow_scrollback.cpp
+                # ANTS-6654 — Kitty text keys, mouse reports, and the
+                # terminal widget's smaller review fixes.
+                tests/features/kitty_key_text_encoding/test_kitty_key_text_encoding.cpp
+                tests/features/mouse_report_encoding/test_mouse_report_encoding.cpp
+                tests/features/terminal_widget_review_fixes/test_terminal_widget_review_fixes.cpp
                 # ANTS-2119 M2 — OSC 8 phishing classifier (static; needs the full
                 # TerminalWidget link set, same as terminal_a11y above).
                 tests/features/osc8_homograph_guard/test_osc8_homograph_guard.cpp

@@ -321,8 +321,8 @@ TEST(ImagePasteUriList, RasterPasteIsPrivateQuotedAndAnnouncedOnSave) {
     const QString body = bodyOf(src, kPasteFn);
     if (body.isEmpty()) return;
 
-    const int save = body.indexOf(QStringLiteral("img.save(filename)"));
-    CHECK(save > 0, "pasteFromClipboard's img.save(filename) call was not "
+    const int save = body.indexOf(QStringLiteral("img.save(&file, \"PNG\")"));
+    CHECK(save > 0, "pasteFromClipboard's img.save(&file, \"PNG\") call was not "
                     "found — raster branch moved or restructured?");
     if (save <= 0) return;
     const int worker = body.lastIndexOf(QStringLiteral("QThread::create("), save);
@@ -334,8 +334,13 @@ TEST(ImagePasteUriList, RasterPasteIsPrivateQuotedAndAnnouncedOnSave) {
     if (announce <= save) return;
     const QString path = body.mid(save, announce - save);
 
-    CHECK(path.contains(QStringLiteral("setOwnerOnlyPerms(filename)")),
-          "ANTS-5077: a pasted screenshot must be narrowed to owner-only");
+    // ANTS-6654 — created owner-only, so it is never readable mid-save.
+    const QString opened = body.mid(worker, save - worker);
+    CHECK(opened.contains(QStringLiteral("openOwnerOnlyForWrite(file, filename)")),
+          "ANTS-6654: a pasted screenshot must be created owner-only before "
+          "the save writes it");
+    CHECK(body.mid(announce).contains(QStringLiteral("emit captureFailed(")),
+          "ANTS-6654: a failed screenshot save must tell the user");
     CHECK(path.contains(QStringLiteral("shellQuote(filename)")),
           "ANTS-5077: the pasted screenshot path must go through shellQuote()");
     CHECK(path.contains(QStringLiteral("if (*saved)")),

@@ -272,8 +272,11 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // 0.6.9 — trigger system bundle: forward shell-integration + iTerm2 hooks
     // out as Qt signals so MainWindow can dispatch them as plugin events.
     m_grid->setCommandFinishedCallback([this](int exitCode, qint64 durationMs) {
-        if (takeEventBudget(m_commandFinishedBudget))   // ANTS-5079
-            emit commandFinished(exitCode, durationMs);
+        if (!takeEventBudget(m_commandFinishedBudget)) return;   // ANTS-5079
+        emit commandFinished(exitCode, durationMs);
+        // ANTS-6654 — per finished command, so a second failure with the
+        // same code is reported too.
+        if (exitCode != 0) emit commandFailed(exitCode, lastCommandOutput());
     });
     m_grid->setUserVarCallback([this](const QString &name, const QString &value) {
         emit userVarChanged(name, value);
@@ -2287,23 +2290,22 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
             // wheel buttons: 64 up, 65 down, 66 left, 67 right. Modifiers
             // now ride along (Shift is consumed by the scrollback-override
             // guard above, so only Ctrl/Alt reach here).
+            // ANTS-6654 — a high-resolution wheel or touchpad sends many
+            // small deltas; one report goes out per 120 units (a notch).
             const QPoint d = event->angleDelta();
-            int button = -1;
-            if (qAbs(d.y()) >= qAbs(d.x())) {
-                if (d.y() > 0)      button = 64;  // wheel up
-                else if (d.y() < 0) button = 65;  // wheel down
-            } else {
-                if (d.x() > 0)      button = 66;  // wheel left
-                else if (d.x() < 0) button = 67;  // wheel right
-            }
-            if (button >= 0) {
-                int mods = 0;
-                if (event->modifiers() & Qt::ShiftModifier) mods |= 4;
-                if (event->modifiers() & Qt::AltModifier)   mods |= 8;
-                if (event->modifiers() & Qt::ControlModifier) mods |= 16;
+            const bool vertical = qAbs(d.y()) >= qAbs(d.x());
+            const int notches = takeWheelNotches(
+                vertical ? m_wheelReportAccum.ry() : m_wheelReportAccum.rx(),
+                vertical ? d.y() : d.x());
+            const int button = vertical ? (notches > 0 ? 64 : 65)   // up / down
+                                        : (notches > 0 ? 66 : 67);  // left / right
+            int mods = 0;
+            if (event->modifiers() & Qt::ShiftModifier) mods |= 4;
+            if (event->modifiers() & Qt::AltModifier)   mods |= 8;
+            if (event->modifiers() & Qt::ControlModifier) mods |= 16;
+            for (int i = 0; i < qAbs(notches); ++i)
                 emitMouseReport(button, col, row, mods,
                                 /*press=*/true, /*release=*/false);
-            }
             return;
         }
     }
@@ -2595,6 +2597,12 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {  // NOLINT(performance-unnece
     if (droppedFromFront > 0 && (!m_searchMatches.empty() || m_searchScanNext >= 0))
         shiftSearchMatches(static_cast<int>(
             std::min<qint64>(droppedFromFront, std::numeric_limits<int>::max())));
+    // ANTS-6654 — bookmarks are global lines too: they move with their lines,
+    // and one whose line was dropped goes.
+    if (droppedFromFront > 0 && !m_bookmarks.empty()) {
+        std::erase_if(m_bookmarks, [&](int bm) { return bm < droppedFromFront; });
+        for (int &bm : m_bookmarks) bm -= static_cast<int>(droppedFromFront);
+    }
     // ANTS-6767 — the batch could change only the lines that were on screen
     // before it; scrollback above them is fixed. Re-match those, so new
     // output and lines rewritten in place show their matches.
@@ -2743,14 +2751,6 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {  // NOLINT(performance-unnece
     // once output settles.
     if (!m_claudeDetectTimer.isActive())
         m_claudeDetectTimer.start();
-
-    int exitCode = m_grid->lastExitCode();
-    if (exitCode != 0 && exitCode != m_lastTrackedExitCode) {
-        m_lastTrackedExitCode = exitCode;
-        emit commandFailed(exitCode, lastCommandOutput());
-    } else if (exitCode == 0) {
-        m_lastTrackedExitCode = 0;
-    }
 
     // Trigger rules pattern-match raw bytes, same as legacy.
     checkTriggers(batch->rawBytes);
@@ -2978,15 +2978,19 @@ void TerminalWidget::pasteFromClipboard(QClipboard::Mode mode) {
                 + "_" + uid + ".png";
             // ANTS-5077 — encoding a screenshot to PNG can take long
             // enough to freeze the window, so the save runs on a worker.
-            // The file is made owner-only like the session log and removed
-            // if that fails; the path is pasted quoted like the uri-list
-            // path (a configured directory may hold a space or `$(`), and
-            // announced only once the file exists. `this` as the delivery
-            // context drops it if the tab closes first.
+            // The file is created owner-only (ANTS-6654: never readable by
+            // others, even before the save ends) and removed if the save
+            // fails; the path is pasted quoted like the uri-list path (a
+            // configured directory may hold a space or `$(`), and announced
+            // only once the file exists. `this` as the delivery context
+            // drops it if the tab closes first.
             auto saved = std::make_shared<bool>(false);
             QThread *worker = QThread::create([img, filename, saved]() {
-                if (!img.save(filename)) return;
-                if (setOwnerOnlyPerms(filename)) *saved = true;
+                QFile file;
+                if (!openOwnerOnlyForWrite(file, filename)) return;
+                const bool ok = img.save(&file, "PNG");
+                file.close();
+                if (ok) *saved = true;
                 else QFile::remove(filename);
             });
             connect(worker, &QThread::finished, worker, &QObject::deleteLater);
@@ -2995,6 +2999,9 @@ void TerminalWidget::pasteFromClipboard(QClipboard::Mode mode) {
                         if (*saved) {
                             pasteToTerminal(shellQuote(filename).toUtf8());
                             emit imagePasted(img);
+                        } else {
+                            emit captureFailed(tr("Image not pasted: could not save %1")
+                                                   .arg(filename));
                         }
                     }, Qt::QueuedConnection);
             worker->start();
@@ -3081,9 +3088,6 @@ void TerminalWidget::showSendConfirmation(const QString &objectName,
         lines = lines.mid(0, maxLines);
         truncated = true;
     }
-    for (QString &ln : lines) {
-        if (ln.size() > 120) ln = ln.left(117) + "...";
-    }
     if (truncated) {
         lines << QString("… (%1 more lines)")
                      .arg(previewNormalised.count('\n') + 1 - maxLines);
@@ -3107,15 +3111,19 @@ void TerminalWidget::showSendConfirmation(const QString &objectName,
     headline->setWordWrap(true);
     layout->addWidget(headline);
 
-    auto *previewLabel = new QLabel(lines.join('\n'), dlg);
-    previewLabel->setTextFormat(Qt::PlainText);
-    previewLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    previewLabel->setStyleSheet(
-        "QLabel { font-family: monospace; padding: 6px 8px;"
-        "         border: 1px solid palette(mid);"
-        "         background: palette(alternate-base); }");
-    previewLabel->setWordWrap(false);
-    layout->addWidget(previewLabel);
+    // ANTS-6654 — a long line wraps instead of being cut: its tail is where a
+    // dangerous command can hide. The box scrolls, so a long payload cannot
+    // push the buttons off screen. Plain text, as ANTS-5029 requires.
+    auto *previewBox = new QPlainTextEdit(lines.join('\n'), dlg);
+    previewBox->setReadOnly(true);
+    previewBox->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    previewBox->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    previewBox->setStyleSheet(
+        "QPlainTextEdit { font-family: monospace;"
+        "                 border: 1px solid palette(mid);"
+        "                 background: palette(alternate-base); }");
+    previewBox->setMinimumWidth(previewBox->fontMetrics().horizontalAdvance(QLatin1Char('M')) * 82);
+    layout->addWidget(previewBox);
 
     auto *btnRow = new QHBoxLayout;
     auto *cancelBtn = new QPushButton("Cancel", dlg);
@@ -3433,13 +3441,22 @@ QByteArray TerminalWidget::encodeKittyKey(const QKeyEvent *event) const {
         return QByteArray("\x1B[27;") + QByteArray::number(modVal) + "u";
     }
 
+    // ANTS-6654 — a text key's code comes from the key, not its text: with
+    // Ctrl held, text() is the control byte (Ctrl+a gives 0x01).
+    const auto textKeyCode = [&]() -> int {
+        if (key >= Qt::Key_A && key <= Qt::Key_Z) return 'a' + (key - Qt::Key_A);
+        const QString text = event->text();
+        if (!text.isEmpty() && text.at(0).unicode() >= 0x20)
+            return text.at(0).toLower().unicode();
+        if (key >= Qt::Key_Space && key <= Qt::Key_AsciiTilde) return key;
+        return 0;
+    };
+
     // Flag 8 (all keys as escape codes): encode everything via CSI u
     if (flags & 8) {
         if (keyCode == 0) {
-            // Text-producing key — use the Unicode codepoint (lowercase)
-            QString text = event->text();
-            if (text.isEmpty()) return {};
-            keyCode = text.at(0).toLower().unicode();
+            keyCode = textKeyCode();
+            if (keyCode == 0) return {};
         }
         if (keyCode > 0) {
             QByteArray result = QByteArray("\x1B[") + QByteArray::number(keyCode);
@@ -3453,12 +3470,12 @@ QByteArray TerminalWidget::encodeKittyKey(const QKeyEvent *event) const {
 
     // Flag 1 (disambiguate): ctrl+key and alt+key use CSI u
     if ((flags & 1) && keyCode == 0) {
-        QString text = event->text();
-        if (text.isEmpty()) return {};
-        int cp = text.at(0).toLower().unicode();
+        const int cp = textKeyCode();
+        if (cp == 0) return {};
 
-        // Only encode if there are modifiers that would be ambiguous
-        if (modVal > 1 && cp >= 0x20) {
+        // Only encode if there are modifiers that would be ambiguous. Shift
+        // alone is not: Shift+a is sent as the text "A" (ANTS-6654).
+        if (modVal > 1 && modVal != 2) {
             QByteArray result = QByteArray("\x1B[") + QByteArray::number(cp);
             result += ";" + QByteArray::number(modVal);
             result += "u";
@@ -3533,6 +3550,11 @@ void TerminalWidget::copySelectionRich() {
                     runStyle = style;
                 }
                 runText += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
+                // ANTS-6654 — the marks too, as the plain half has them.
+                if (const auto *comb = combiningAt(line, col)) {
+                    for (const uint32_t combCp : *comb)
+                        runText += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
+                }
             }
             flushRun();
             if (line < endLine) html += '\n';
@@ -3565,7 +3587,14 @@ void TerminalWidget::clickToMoveCursor(int col, int row) {
     int clickGlobalLine = m_grid->scrollbackSize() + row;
     if (clickGlobalLine != cursorGlobalLine) return;  // Only same line
 
-    int delta = col - cursorCol;
+    // ANTS-6654 — one arrow moves one character, and a wide character takes
+    // two columns: count the characters between, not the columns. A click on
+    // a wide character's right half lands on the character.
+    if (col > 0 && cellAtGlobal(clickGlobalLine, col).isWideCont) --col;
+    int delta = 0;
+    for (int c = std::min(col, cursorCol); c < std::max(col, cursorCol); ++c)
+        if (!cellAtGlobal(clickGlobalLine, c).isWideCont) ++delta;
+    if (col < cursorCol) delta = -delta;
     if (delta == 0) return;
 
     QByteArray arrows;
@@ -3872,37 +3901,61 @@ void TerminalWidget::emitMouseReport(int button, int col, int row,
                                      int mods, bool press, bool release) {
     if (!hasPty()) return;
     if (row < 1 || row > m_grid->rows()) return;
+    ptyWrite(encodeMouseReport(button, col, row, mods, press, release,
+                               m_grid->mouseSgrMode()));
+}
 
-    if (m_grid->mouseSgrMode()) {
+QByteArray TerminalWidget::encodeMouseReport(int button, int col, int row, int mods,
+                                             bool press, bool release, bool sgr) {
+    // Motion events set the +32 motion bit. The no-button motion case
+    // already carries it via button==35 (3 + 32); only a button-held drag
+    // (button 0/1/2) needs the flag added. ANTS-1664 — pre-fix this
+    // unconditionally added +32, so SGR-any-mode reported 67 instead of 35
+    // for no-button motion. ANTS-6654 — the normal encoding needs it too.
+    const int motion = (!press && !release && button < 32) ? 32 : 0;
+    if (sgr) {
         // SGR mode: CSI < button;col;row M/m
-        char suffix = release ? 'm' : 'M';
-        int btn = button + mods;
-        // Motion events set the +32 motion bit. The no-button motion case
-        // already carries it via button==35 (3 + 32); only a button-held drag
-        // (button 0/1/2) needs the flag added. ANTS-1664 — pre-fix this
-        // unconditionally added +32, so SGR-any-mode reported 67 instead of 35
-        // for no-button motion.
-        if (!press && !release && button < 32) btn += 32; // drag motion
-        QString seq = QString("\x1B[<%1;%2;%3%4").arg(btn).arg(col).arg(row).arg(suffix);
-        ptyWrite(seq.toUtf8());
-    } else {
-        // X10/normal mode: CSI M Cb Cx Cy (all + 32). 0.7.53 — clamp
-        // col/row at 223 so col+32 stays <= 255; otherwise a byte ≥
-        // 0xE0 looks like a UTF-8 lead and the apps reading the
-        // emit stream mis-frame subsequent bytes as continuations.
-        if (release) return; // X10 doesn't report release
-        const int colC = std::min(col, 223);
-        const int rowC = std::min(row, 223);
-        char cb = static_cast<char>(button + mods + 32);
-        char cx = static_cast<char>(colC + 32);
-        char cy = static_cast<char>(rowC + 32);
-        QByteArray seq;
-        seq.append("\x1B[M");
-        seq.append(cb);
-        seq.append(cx);
-        seq.append(cy);
-        ptyWrite(seq);
+        const char suffix = release ? 'm' : 'M';
+        return QString("\x1B[<%1;%2;%3%4").arg(button + mods + motion).arg(col)
+            .arg(row).arg(suffix).toUtf8();
     }
+    // Normal mode (1000/1002/1003): CSI M Cb Cx Cy (all + 32). 0.7.53 — clamp
+    // col/row at 223 so col+32 stays <= 255; otherwise a byte ≥ 0xE0 looks
+    // like a UTF-8 lead and the apps reading the emit stream mis-frame
+    // subsequent bytes as continuations. ANTS-6654 — a release is reported
+    // as button 3, as xterm does; only X10 mode 9, which Ants does not
+    // offer, leaves releases out.
+    const int cbButton = release ? 3 : button + motion;
+    QByteArray seq("\x1B[M");
+    seq.append(static_cast<char>(cbButton + mods + 32));
+    seq.append(static_cast<char>(std::min(col, 223) + 32));
+    seq.append(static_cast<char>(std::min(row, 223) + 32));
+    return seq;
+}
+
+int TerminalWidget::takeWheelNotches(int &accum, int delta) {
+    accum += delta;
+    const int notches = accum / 120;  // truncates toward zero, either sign
+    accum -= notches * 120;
+    return notches;
+}
+
+int TerminalWidget::mouseReportButton(Qt::MouseButton button, Qt::MouseButtons held,
+                                      bool press, bool release) {
+    // ANTS-6654 — a press or release names its own button; Back, Forward and
+    // the other extra buttons have no report code here, so they send none.
+    if (press || release) {
+        switch (button) {
+        case Qt::LeftButton:   return 0;
+        case Qt::MiddleButton: return 1;
+        case Qt::RightButton:  return 2;
+        default:               return -1;
+        }
+    }
+    if (held & Qt::LeftButton)   return 0;
+    if (held & Qt::MiddleButton) return 1;
+    if (held & Qt::RightButton)  return 2;
+    return 35;  // motion with no button
 }
 
 void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release) {
@@ -3912,15 +3965,8 @@ void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release
     int row = cell.x() - m_grid->scrollbackSize() + m_scrollOffset + 1; // 1-based screen row
     if (row < 1 || row > m_grid->rows()) return;
 
-    int button = 0;
-    if (event->button() == Qt::LeftButton || (event->buttons() & Qt::LeftButton))
-        button = 0;
-    else if (event->button() == Qt::MiddleButton || (event->buttons() & Qt::MiddleButton))
-        button = 1;
-    else if (event->button() == Qt::RightButton || (event->buttons() & Qt::RightButton))
-        button = 2;
-    else if (!press && !release)
-        button = 35; // motion with no button
+    const int button = mouseReportButton(event->button(), event->buttons(), press, release);
+    if (button < 0) return;
 
     // Add modifier bits
     int mods = 0;
@@ -4777,9 +4823,22 @@ void TerminalWidget::openHyperlink(UrlSpan span, int globalLine) {
             if (box.exec() != QMessageBox::Open) return;
         }
     }
+    // ANTS-6654 — a file:// URL printed as plain text hands a local file to
+    // its default application, so it opens only once the user agrees.
+    if (!span.isOsc8 && QUrl(span.url).isLocalFile()) {
+        QMessageBox box(this);
+        box.setWindowTitle("Open local file");
+        box.setIcon(QMessageBox::Question);
+        box.setText(QString("Open this file with its default application?"));
+        box.setInformativeText(QUrl(span.url).toLocalFile());
+        box.setStandardButtons(QMessageBox::Open | QMessageBox::Cancel);
+        box.setDefaultButton(QMessageBox::Cancel);
+        if (box.exec() != QMessageBox::Open) return;
+    }
     // ants-audit: scheme-validated — OSC 8 URLs filtered to
-    // http/https/mailto at ingestion (TerminalGrid::handleOsc); file-path
-    // spans go through openFileAtPath, never here.
+    // http/https/mailto at ingestion (TerminalGrid::handleOsc); URLs found in
+    // plain text are http(s), ftp or file (file:// asks first, above); bare
+    // file-path spans go through openFileAtPath, never here.
     QDesktopServices::openUrl(QUrl(span.url));
 }
 
@@ -4924,8 +4983,13 @@ void TerminalWidget::openFileAtPath(const QString &path) {
     } else {
         args << "--" << filePathSafe;
     }
+    // ANTS-6654 — xdg-utils before 1.2 rejects `--` as an unknown option.
+    // pathSafe already keeps the path from reading as a flag.
+    if (editorBase == "xdg-open") args.removeAll(QStringLiteral("--"));
 
-    QProcess::startDetached(editor, args);
+    // ANTS-6654 — a launch that fails says so.
+    if (!QProcess::startDetached(editor, args))
+        emit captureFailed(tr("Could not open %1 with %2").arg(filePath, editor));
 }
 
 // --- Search ---
@@ -5600,7 +5664,16 @@ void TerminalWidget::startRecording(const QString &path) {
         .arg(m_grid->cols())
         .arg(m_grid->rows())
         .arg(QDateTime::currentSecsSinceEpoch());
-    m_recordFile->write(header.toUtf8() + "\n");
+    // ANTS-6654 — a cast with no header is no cast: a failed write (a full
+    // disk) stops here and says so.
+    const QByteArray headerLine = header.toUtf8() + "\n";
+    if (m_recordFile->write(headerLine) != headerLine.size() || !m_recordFile->flush()) {
+        m_recordFile->close();
+        QFile::remove(path);
+        m_recordFile.reset();
+        emit captureFailed(tr("Not recording: could not write %1").arg(path));
+        return;
+    }
 
     m_recordTimer.start();
     m_recordDecoder = QStringDecoder(QStringDecoder::Utf8);  // ANTS-5078
@@ -6013,9 +6086,11 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
         // ANTS-5078 — decide from the selection's bounds before building its
         // text. After Select All over a long scrollback, every right-click
         // copied the whole history just to compare its length with 200.
-        const qint64 selCellBound =
-            (qint64(std::abs(m_selEnd.x() - m_selStart.x())) + 1) * m_grid->cols();
-        QString sel = selCellBound <= 800 ? selectedText().trimmed() : QString();
+        // ANTS-6654 — bound by lines, not cells: the lines are joined by
+        // '\n', so text under 200 characters spans at most about 200 lines,
+        // and a cell bound hid the entry for short selections on wide panes.
+        const int selLines = std::abs(m_selEnd.x() - m_selStart.x()) + 1;
+        QString sel = selLines <= 200 ? selectedText().trimmed() : QString();
         if (!sel.isEmpty() && sel.length() < 200) {
             QAction *searchAction = menu.addAction("Search Web");
             connect(searchAction, &QAction::triggered, this, [sel]() {

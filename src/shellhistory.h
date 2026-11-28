@@ -23,6 +23,10 @@ QByteArray readTail(const QString &path, qint64 maxBytes = kMaxBytes);
 // format (": <time>:0;<command>") and fish's ("- cmd: <command>").
 QStringList parse(const QByteArray &content);
 
+// parse() over a fish history file's "- cmd: " lines only; its "when:" and
+// "paths:" lines are not commands (ANTS-6654).
+QStringList parseFish(const QByteArray &content);
+
 // The commands of the first of zsh, bash and fish history under homeDir
 // that holds any.
 QStringList load(const QString &homeDir);

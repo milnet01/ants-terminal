@@ -87,12 +87,13 @@ hold the same guarantees about `pasteFromClipboard`.
   *Test:* `NullMimeDataGuardedBeforeAnyDereference`.
 - **INV-7** (ANTS-5077) — in the raster (`hasImage()`) branch of
   `pasteFromClipboard`, a
-  `QThread::create` worker runs `img.save(filename)` and narrows the saved
-  file to owner-only with `setOwnerOnlyPerms(filename)`, so the PNG encode
-  never runs on the GUI thread. The delivery back on the widget pastes
-  `shellQuote(filename)` and emits `imagePasted` only after checking the
-  worker's result. `imagePasted` is emitted nowhere else in
-  `terminalwidget.cpp`, so a failed save announces nothing.
+  `QThread::create` worker creates the file owner-only with
+  `openOwnerOnlyForWrite(file, filename)` (ANTS-6654: never readable by
+  others, even mid-save) and runs `img.save(&file, "PNG")`, so the PNG
+  encode never runs on the GUI thread. The delivery back on the widget
+  pastes `shellQuote(filename)` and emits `imagePasted` only after checking
+  the worker's result; a failed save emits `captureFailed` instead.
+  `imagePasted` is emitted nowhere else in `terminalwidget.cpp`.
   *Test:* `RasterPasteIsPrivateQuotedAndAnnouncedOnSave`.
 - **INV-8** (ANTS-5580) — a clipboard payload naming local image files
   (`text/uri-list`), even with a plain-text `file://` address beside it,

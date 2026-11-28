@@ -116,6 +116,49 @@ TEST(TerminalA11y, BoundaryNavigation) {
     }
 }
 
+// INV-10 (ANTS-6654) — a line is one terminal row, '\n' included.
+TEST(TerminalA11y, LineBoundaryIsTheRow) {
+    Harness h;
+    h.feed("foo bar\r\nbaz");                       // text "foo bar\nbaz"
+    installTerminalAccessibilityFactory();
+    QAccessible::setActive(true);
+    QAccessibleTextInterface *ti = QAccessible::queryAccessibleInterface(&h.w)->textInterface();
+    ASSERT_NE(ti, nullptr);
+
+    int s = -1, e = -1;
+    EXPECT_EQ(ti->textAtOffset(5, QAccessible::LineBoundary, &s, &e),
+              QStringLiteral("foo bar\n"));
+    EXPECT_EQ(s, 0);
+    EXPECT_EQ(e, 8);
+    EXPECT_EQ(ti->textAtOffset(9, QAccessible::LineBoundary, &s, &e), QStringLiteral("baz"));
+    EXPECT_EQ(s, 8);
+    EXPECT_EQ(e, 11);
+    EXPECT_EQ(ti->textBeforeOffset(9, QAccessible::LineBoundary, &s, &e),
+              QStringLiteral("foo bar\n"));
+    EXPECT_EQ(ti->textAfterOffset(2, QAccessible::LineBoundary, &s, &e), QStringLiteral("baz"));
+    EXPECT_EQ(ti->textAfterOffset(9, QAccessible::LineBoundary, &s, &e), QString());
+    EXPECT_EQ(s, 11);
+    EXPECT_EQ(ti->textBeforeOffset(2, QAccessible::ParagraphBoundary, &s, &e), QString());
+}
+
+// INV-11 (ANTS-6654) — on a boundary, the segment before is the adjacent one.
+TEST(TerminalA11y, TextBeforeABoundaryIsTheAdjacentSegment) {
+    Harness h;
+    h.feed("foo bar");
+    installTerminalAccessibilityFactory();
+    QAccessible::setActive(true);
+    QAccessibleTextInterface *ti = QAccessible::queryAccessibleInterface(&h.w)->textInterface();
+    ASSERT_NE(ti, nullptr);
+
+    int s = -1, e = -1;
+    // Offset 4 starts "bar"; the word segment before it is the space.
+    EXPECT_EQ(ti->textBeforeOffset(4, QAccessible::WordBoundary, &s, &e), QStringLiteral(" "));
+    EXPECT_EQ(s, 3);
+    EXPECT_EQ(e, 4);
+    // Mid-word, the segment before the word holding the offset: also the space.
+    EXPECT_EQ(ti->textBeforeOffset(5, QAccessible::WordBoundary, &s, &e), QStringLiteral(" "));
+}
+
 // INV-6 — rect/offset round-trip on single-column ASCII + the -1 cases.
 TEST(TerminalA11y, RectOffsetRoundTrip) {
     Harness h;

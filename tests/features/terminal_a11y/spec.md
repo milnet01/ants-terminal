@@ -43,6 +43,13 @@ and at zero cost when no AT is active.
 - **INV-9** — when active, `notifyAccessibilityChanged()` emits exactly
   one `QAccessibleTextCursorEvent` per call, carrying
   `accessibleCaretOffset()`.
+- **INV-10** (ANTS-6654) — `LineBoundary` and `ParagraphBoundary` are one
+  terminal row, its `'\n'` included: `textAtOffset` returns the row holding
+  the offset, `textBeforeOffset` the row above, `textAfterOffset` the row
+  below, and an empty string past either end.
+- **INV-11** (ANTS-6654) — `textBeforeOffset` at an offset on a boundary
+  returns the segment that ends there: for `"foo bar"`, offset 4 (the start
+  of `bar`) gives the space, not `foo`.
 
 ## Scope
 

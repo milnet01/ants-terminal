@@ -588,6 +588,18 @@ public:
     // as rect(). Issues what is pending first, as the pacer's tick would.
     QRegion takeOutputDamageForTest();
     int cellHeightForTest() const { return m_cellHeight; }
+    // ANTS-6654 — the mouse-report encoding, pure so it is testable without a
+    // PTY. `button` is xterm's base code (0-2, 35 for bare motion, 64-67 for
+    // the wheel); sgr picks mode 1006 over the normal CSI M form.
+    static QByteArray encodeMouseReport(int button, int col, int row, int mods,
+                                        bool press, bool release, bool sgr);
+    // The base code for a mouse event, or -1 for a button with none (Back,
+    // Forward and other extra buttons).
+    static int mouseReportButton(Qt::MouseButton button, Qt::MouseButtons held,
+                                 bool press, bool release);
+    // Adds `delta` wheel units to `accum` and takes out whole notches (120
+    // units each); the sign gives the direction.
+    static int takeWheelNotches(int &accum, int delta);
     // ANTS-2119 M2 — OSC 8 phishing classification, split out of openHyperlink so
     // the policy is unit-testable without the modal dialog. Pure: no widget state.
     enum class HyperlinkWarning : quint8 {
@@ -1119,9 +1131,6 @@ private:
     QString a11yComposeCols(int globalLine, int beginCol, int endCol) const;
     QStringList a11yViewportLines() const;
 
-    // Exit code tracking for error detection
-    int m_lastTrackedExitCode = 0;
-
     // ANTS-1780 — IME pre-edit (composition) text. Held between
     // inputMethodEvent updates so paintEvent can render in-progress
     // CJK / dead-key composition inline at the cursor. Empty when not
@@ -1167,6 +1176,8 @@ private:
     // Smooth scrolling
     double m_smoothScrollTarget = 0.0;
     double m_smoothScrollCurrent = 0.0;
+    // ANTS-6654 — wheel units not yet reported to a mouse-reporting app.
+    QPoint m_wheelReportAccum;
     QTimer m_smoothScrollTimer;
     void smoothScrollStep();
 

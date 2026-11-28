@@ -95,6 +95,23 @@ TEST(ShellHistoryTail, Inv3ShellOrder) {
     EXPECT_EQ(shellhistory::load(home.path()), QStringList{"from-fish"});
 }
 
+// INV-5 (ANTS-6654) — a fish file's metadata lines are not commands.
+TEST(ShellHistoryTail, Inv5FishKeepsOnlyCommands) {
+    const QByteArray fish =
+        "- cmd: cargo build\n"
+        "  when: 1700000000\n"
+        "- cmd: vim notes.md\n"
+        "  when: 1700000001\n"
+        "  paths:\n"
+        "    - notes.md\n";
+    EXPECT_EQ(shellhistory::parseFish(fish), (QStringList{"vim notes.md", "cargo build"}));
+
+    QTemporaryDir home;
+    ASSERT_TRUE(home.isValid());
+    writeFile(home.filePath(".local/share/fish/fish_history"), fish);
+    EXPECT_EQ(shellhistory::load(home.path()), (QStringList{"vim notes.md", "cargo build"}));
+}
+
 // INV-4 — the widget hands the read to a worker.
 TEST(ShellHistoryTail, Inv4WidgetLoadsOnAWorker) {
     const QString body = functionBody(readSource(QStringLiteral(SRC_TERMINALWIDGET_PATH)),

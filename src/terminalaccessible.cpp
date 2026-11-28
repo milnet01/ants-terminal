@@ -4,6 +4,8 @@
 #include <QTextBoundaryFinder>
 #include <QWidget>
 
+#include <utility>
+
 // ANTS-1078 — see docs/specs/ANTS-1078-screen-reader-accessibility.md. This adapter is pure Qt-a11y
 // glue; every content decision (viewport text, caret offset, cell rects)
 // lives in TerminalWidget's accessible*() helpers.
@@ -15,13 +17,27 @@ QTextBoundaryFinder::BoundaryType toFinderType(QAccessible::TextBoundaryType b) 
     case QAccessible::CharBoundary:     return QTextBoundaryFinder::Grapheme;
     case QAccessible::WordBoundary:     return QTextBoundaryFinder::Word;
     case QAccessible::SentenceBoundary: return QTextBoundaryFinder::Sentence;
-    // Line finds wrap opportunities (roughly after each space), not
-    // terminal rows, so a "line" request gets a fragment (ANTS-5831).
+    // Line and paragraph never reach the finder: see isRowBoundary.
     case QAccessible::LineBoundary:
-    case QAccessible::ParagraphBoundary: return QTextBoundaryFinder::Line;
+    case QAccessible::ParagraphBoundary:
     case QAccessible::NoBoundary:       return QTextBoundaryFinder::Grapheme; // unused
     }
     return QTextBoundaryFinder::Grapheme;
+}
+
+// ANTS-6654 — a line or paragraph is one terminal row: the text up to and
+// including its '\n'. QTextBoundaryFinder::Line finds wrap opportunities,
+// which gave a screen reader a word-sized fragment.
+bool isRowBoundary(QAccessible::TextBoundaryType b) {
+    return b == QAccessible::LineBoundary || b == QAccessible::ParagraphBoundary;
+}
+
+// The row holding `offset` as [start, end); an offset on a '\n' belongs to
+// the row that '\n' ends.
+std::pair<int, int> rowAt(const QString &s, int offset) {
+    const int start = offset > 0 ? int(s.lastIndexOf(QLatin1Char('\n'), offset - 1)) + 1 : 0;
+    const int nl = int(s.indexOf(QLatin1Char('\n'), offset));
+    return {start, nl < 0 ? int(s.size()) : nl + 1};
 }
 
 } // namespace
@@ -68,6 +84,11 @@ QString TerminalWidgetAccessible::textAtOffset(int offset,
         *startOffset = 0; *endOffset = s.size(); return s;
     }
     offset = qBound(0, offset, s.size());
+    if (isRowBoundary(boundaryType)) {
+        const auto [start, end] = rowAt(s, offset);
+        *startOffset = start; *endOffset = end;
+        return s.mid(start, end - start);
+    }
     QTextBoundaryFinder f(toFinderType(boundaryType), s);
     f.setPosition(offset);
     int start = f.isAtBoundary() ? offset : f.toPreviousBoundary();
@@ -87,9 +108,17 @@ QString TerminalWidgetAccessible::textBeforeOffset(int offset,
         *startOffset = 0; *endOffset = 0; return {};
     }
     offset = qBound(0, offset, s.size());
+    if (isRowBoundary(boundaryType)) {
+        const int rowStart = rowAt(s, offset).first;
+        if (rowStart == 0) { *startOffset = 0; *endOffset = 0; return {}; }
+        const auto [start, end] = rowAt(s, rowStart - 1);
+        *startOffset = start; *endOffset = end;
+        return s.mid(start, end - start);
+    }
     QTextBoundaryFinder f(toFinderType(boundaryType), s);
     f.setPosition(offset);
-    int end = f.toPreviousBoundary();
+    // ANTS-6654 — on a boundary, the segment before ends right here.
+    int end = f.isAtBoundary() ? offset : f.toPreviousBoundary();
     if (end <= 0) { *startOffset = 0; *endOffset = 0; return {}; }
     f.setPosition(end);
     int start = f.toPreviousBoundary();
@@ -106,6 +135,13 @@ QString TerminalWidgetAccessible::textAfterOffset(int offset,
         *startOffset = s.size(); *endOffset = s.size(); return {};
     }
     offset = qBound(0, offset, s.size());
+    if (isRowBoundary(boundaryType)) {
+        const int rowEnd = rowAt(s, offset).second;
+        if (rowEnd >= s.size()) { *startOffset = s.size(); *endOffset = s.size(); return {}; }
+        const auto [start, end] = rowAt(s, rowEnd);
+        *startOffset = start; *endOffset = end;
+        return s.mid(start, end - start);
+    }
     QTextBoundaryFinder f(toFinderType(boundaryType), s);
     f.setPosition(offset);
     int start = f.toNextBoundary();

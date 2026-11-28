@@ -213,11 +213,15 @@ TEST(TerminalWidgetHotPathPerf, Inv12RightClickBoundsSelectionFirst) {
     const QString body = functionBody(
         tw(), QStringLiteral("void TerminalWidget::contextMenuEvent("));
     ASSERT_FALSE(body.isEmpty()) << "contextMenuEvent not found";
-    const int bound = body.indexOf(QStringLiteral("selCellBound"));
+    // ANTS-6654 — the bound counts lines; a cell bound hid Search Web for a
+    // short selection on a wide pane.
+    const int bound = body.indexOf(QStringLiteral("selLines <= 200"));
     const int text = body.indexOf(QStringLiteral("selectedText()"));
-    ASSERT_GE(bound, 0) << "no selection bound before the Search Web text";
+    ASSERT_GE(bound, 0) << "no line bound before the Search Web text";
     ASSERT_GE(text, 0);
     EXPECT_LT(bound, text);
+    EXPECT_FALSE(body.contains(QStringLiteral("selCellBound")))
+        << "the Search Web bound still counts cells";
 }
 
 // INV-13 (ANTS-5078) — recording decodes UTF-8 with a stateful decoder.

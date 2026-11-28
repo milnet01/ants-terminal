@@ -2942,12 +2942,12 @@ void MainWindow::reapplyConfig() {
             m_config.claudeContextWindowTokens());
 
     applyFontSizeToAll(m_config.fontSize());
-    const QString family = m_config.fontFamily();
+    // ANTS-6654 — applyConfigToTerminal sets the font family and then the
+    // per-style families; a second setFontFamily after it reset those.
     for (auto *t : liveTerminals()) {
         applyConfigToTerminal(t);
         t->setHighlightRules(m_config.highlightRules());
         t->setTriggerRules(m_config.triggerRules());
-        if (!family.isEmpty()) t->setFontFamily(family);
     }
 
     // Per-tab Claude glyph toggle lives in the paint-provider closure —

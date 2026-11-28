@@ -47,17 +47,20 @@ QStringList parse(const QByteArray &content) {
     return entries;
 }
 
+QStringList parseFish(const QByteArray &content) {
+    QByteArray commands;
+    for (const QByteArray &line : content.split('\n'))
+        if (line.trimmed().startsWith("- cmd: ")) commands += line + '\n';
+    return parse(commands);
+}
+
 QStringList load(const QString &homeDir) {
-    const QStringList paths = {
-        homeDir + "/.zsh_history",
-        homeDir + "/.bash_history",
-        homeDir + "/.local/share/fish/fish_history",
-    };
-    for (const QString &path : paths) {
-        QStringList entries = parse(readTail(path));
+    for (const QString &name : {QStringLiteral("/.zsh_history"),
+                                QStringLiteral("/.bash_history")}) {
+        QStringList entries = parse(readTail(homeDir + name));
         if (!entries.isEmpty()) return entries;
     }
-    return {};
+    return parseFish(readTail(homeDir + "/.local/share/fish/fish_history"));
 }
 
 }  // namespace shellhistory
