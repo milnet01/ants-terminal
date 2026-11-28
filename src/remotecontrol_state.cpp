@@ -466,7 +466,7 @@ static QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
     // load-bearing fields (sarif_path / source_format / counts /
     // top_findings); omit run_at / html_path when blank.
     if (!s.runAtIso.isEmpty())  ok["run_at"]    = s.runAtIso;
-    ok["sarif_path"] = s.sarifPath;
+    ok["sarif_path"] = s.sourcePath;
     if (!s.htmlPath.isEmpty())  ok["html_path"] = s.htmlPath;
     // ANTS-1459 — name the source format on every response so the
     // caller doesn't have to guess from sarif_path's extension.

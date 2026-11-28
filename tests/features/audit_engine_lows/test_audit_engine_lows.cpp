@@ -34,9 +34,15 @@ QString functionBody(const QString &src, const QString &signature) {
 
 // INV-1
 TEST(AuditEngineLows, ContextFilterCapsFileReads) {
-    const QString body = functionBody(source("src/auditengine.cpp"),
+    const QString src = source("src/auditengine.cpp");
+    const QString filter = functionBody(src,
         QStringLiteral("FilterResult applyFilter("));
-    ASSERT_FALSE(body.isEmpty()) << "applyFilter not found";
+    ASSERT_FALSE(filter.isEmpty()) << "applyFilter not found";
+    EXPECT_TRUE(filter.contains(QStringLiteral("contextFileLines(")))
+        << "applyFilter reads context files through contextFileLines";
+    const QString body = functionBody(src,
+        QStringLiteral("const QStringList &contextFileLines("));
+    ASSERT_FALSE(body.isEmpty()) << "contextFileLines not found";
     const int cap = body.indexOf(QStringLiteral("<= kMaxContextFileBytes"));
     const int read = body.indexOf(QStringLiteral("src.readAll()"));
     ASSERT_GE(read, 0);

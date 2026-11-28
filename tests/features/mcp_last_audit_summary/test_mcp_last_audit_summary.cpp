@@ -334,13 +334,14 @@ TEST(McpLastAuditSummary, Inv3SeverityResolvedFromRuleIndex) {
 TEST(McpLastAuditSummary, Inv1EngineDoesNotReadHtml) {
     expect_reset();
     const std::string ec = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP_PATH);
-    // summariseSarif derives htmlPath but never opens it for read.
+    // summariseSarif derives htmlPath (through htmlReportFor, defined just
+    // above it) but never opens it for read.
     // QFile::exists is allowed (just stat); QFile::open is not.
     const std::string body = [&]() {
-        const auto pos = ec.find("summariseSarif(");
+        const auto pos = ec.find("QString htmlReportFor(");
         return pos == std::string::npos ? std::string{} : ec.substr(pos);
     }();
-    expect(!body.empty(), "INV-1", "summariseSarif body not found");
+    expect(!body.empty(), "INV-1", "htmlReportFor body not found");
     // Strict gate: the body should never call open() on the htmlCandidate
     // / htmlPath variables. Pattern matches `<varname>.open(`.
     expect(body.find("htmlCandidate.open(") == std::string::npos &&

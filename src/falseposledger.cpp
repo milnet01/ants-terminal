@@ -80,7 +80,7 @@ QString surrogateAwareTruncate(const QString &in, int cap) {
 // let an entry's field break out — a `\n` onto its own line, or (ANTS-1673)
 // an ESC injecting a terminal escape sequence into the brief header.
 // Strips ALL C0 controls (0x00–0x1F) + DEL (0x7F), not just CR/LF.
-QString stripLineBreaks(const QString &in) {
+QString stripControlChars(const QString &in) {
     QString out;
     out.reserve(in.size());
     for (const QChar &ch : in) {
@@ -137,9 +137,9 @@ LedgerEntry parseLine(const QByteArray &raw, bool *ok) {
     }
     e.claim     = surrogateAwareTruncate(e.claim, kClaimCap);
     e.rationale = surrogateAwareTruncate(e.rationale, kRationaleCap);
-    e.lane      = stripLineBreaks(e.lane);
-    e.topic     = stripLineBreaks(e.topic);
-    e.loggedBy  = stripLineBreaks(e.loggedBy);
+    e.lane      = stripControlChars(e.lane);
+    e.topic     = stripControlChars(e.topic);
+    e.loggedBy  = stripControlChars(e.loggedBy);
     *ok = true;
     return e;
 }
@@ -328,7 +328,9 @@ QString formatForBrief(const QList<LedgerEntry> &entries,
         block += QStringLiteral("````\n");
         block += QStringLiteral("[LEDGER-ENTRY-END]\n\n");
 
-        // INV-15: cap on block size, sentinel on truncation.
+        // INV-15: cap on block size, sentinel on truncation. Unlike the
+        // entry-count cap above, which drops the OLDEST entries, this one
+        // keeps the oldest that fit and drops every newer entry.
         const qint64 blockBytes = block.toUtf8().size();
         const bool lastEntry = i + 1 == entries.size();
         if (outBytes + blockBytes + (lastEntry ? 0 : truncatedBytes)

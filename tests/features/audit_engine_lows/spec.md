@@ -3,8 +3,9 @@
 ## Invariants
 
 **INV-1 — the context filter reads only source-sized files.** `applyFilter`
-in `src/auditengine.cpp` skips a referenced file larger than
-`kMaxContextFileBytes` instead of reading it whole.
+in `src/auditengine.cpp` reads each referenced file through
+`contextFileLines`, which skips one larger than `kMaxContextFileBytes`
+instead of reading it whole.
 
 **INV-2 — the false-positive ledger cache is locked.** `loadEntries` in
 `src/falseposledger.cpp` holds a mutex around its function-static cache,

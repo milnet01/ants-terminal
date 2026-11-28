@@ -235,14 +235,20 @@ bool lineHasCode(const QString &source, const QString &path, int line) {
     // method now reads + size-caps the file and forwards `source` here.
     if (line <= 0) return true;
 
-    // State: 0=code, 1=line-comment (until \n), 2=block-comment,
-    // 3=string, 4=C++ raw string (ANTS-1759), 5=Python triple-quoted
-    // string, 6=Lua long bracket (ANTS-1270).
-    int state = 0;
+    enum class Lex {
+        Code,
+        LineComment,   // until \n
+        BlockComment,
+        String,
+        RawString,     // C++ raw string (ANTS-1759)
+        TripleString,  // Python triple-quoted string (ANTS-1270)
+        LongBracket,   // Lua long bracket (ANTS-1270)
+    };
+    Lex state = Lex::Code;
     int curLine = 1;
     bool hasCodeOnLine = false;
     QChar stringQuote;
-    QString rawTerminator;  // ")" + d-char-seq + "\"" for state 4
+    QString rawTerminator;  // ")" + d-char-seq + "\"" for Lex::RawString
 
     // ANTS-1270 — comment/string syntax is language-specific. The default
     // C-style lexer (//, /* */, ", ', raw strings) misclassifies # comments
@@ -281,7 +287,10 @@ bool lineHasCode(const QString &source, const QString &path, int line) {
             // which are pure string-literal data inside a multi-line call,
             // and shouldn't trigger security regex matches. Escape chars
             // (`\`) also don't count as code on their own.
-            if (state == 0 && !c.isSpace() &&
+            // This check reads the state BEFORE the switch below moves it,
+            // so an opening quote is still seen in Lex::Code; that is why
+            // the quote characters are excluded here.
+            if (state == Lex::Code && !c.isSpace() &&
                 c != ',' && c != ';' &&
                 c != '(' && c != ')' &&
                 c != '{' && c != '}' &&
@@ -303,21 +312,21 @@ bool lineHasCode(const QString &source, const QString &path, int line) {
         }
 
         if (c == '\n') {
-            if (state == 1) state = 0;
+            if (state == Lex::LineComment) state = Lex::Code;
             ++curLine;
             continue;
         }
 
         switch (state) {
-        case 0:  // code
+        case Lex::Code:
             if (syntax == Syntax::Hash) {
-                if (c == '#') { state = 1; }
+                if (c == '#') { state = Lex::LineComment; }
                 else if (pyTriple && (c == '"' || c == '\'') &&
                          i + 2 < source.size() &&
                          source[i + 1] == c && source[i + 2] == c) {
-                    stringQuote = c; state = 5; i += 2;  // consume the triple
+                    stringQuote = c; state = Lex::TripleString; i += 2;  // consume the triple
                 }
-                else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
+                else if (c == '"' || c == '\'') { state = Lex::String; stringQuote = c; }
                 break;
             }
             if (syntax == Syntax::Lua) {
@@ -327,17 +336,17 @@ bool lineHasCode(const QString &source, const QString &path, int line) {
                 if (c == '-' && n == '-') {
                     if (i + 3 < source.size() && source[i + 2] == QLatin1Char('[') &&
                         source[i + 3] == QLatin1Char('[')) {
-                        rawTerminator = QStringLiteral("]]"); state = 6; i += 3;
-                    } else { state = 1; ++i; }
+                        rawTerminator = QStringLiteral("]]"); state = Lex::LongBracket; i += 3;
+                    } else { state = Lex::LineComment; ++i; }
                 }
                 else if (c == '[' && n == '[') {
-                    rawTerminator = QStringLiteral("]]"); state = 6; ++i;
+                    rawTerminator = QStringLiteral("]]"); state = Lex::LongBracket; ++i;
                 }
-                else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
+                else if (c == '"' || c == '\'') { state = Lex::String; stringQuote = c; }
                 break;
             }
-            if (c == '/' && n == '/') { state = 1; ++i; }
-            else if (c == '/' && n == '*') { state = 2; ++i; }
+            if (c == '/' && n == '/') { state = Lex::LineComment; ++i; }
+            else if (c == '/' && n == '*') { state = Lex::BlockComment; ++i; }
             else if (c == '"' && i > 0 && source[i - 1] == QLatin1Char('R') &&
                      isRawStringPrefix(source, i - 1)) {
                 // ANTS-1759 — C++ raw string R"delim( ... )delim". Capture
@@ -358,41 +367,41 @@ bool lineHasCode(const QString &source, const QString &path, int line) {
                 }
                 if (isRaw) {
                     rawTerminator = QLatin1Char(')') + delim + QLatin1Char('"');
-                    state = 4;
+                    state = Lex::RawString;
                     i = j;  // resume after '(' (loop does ++i)
                 } else {
-                    state = 3; stringQuote = c;
+                    state = Lex::String; stringQuote = c;
                 }
             }
-            else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
+            else if (c == '"' || c == '\'') { state = Lex::String; stringQuote = c; }
             break;
-        case 1:  // line comment — terminated only by newline (handled above)
+        case Lex::LineComment:  // line comment — terminated only by newline (handled above)
             break;
-        case 2:  // block comment
-            if (c == '*' && n == '/') { state = 0; ++i; }
+        case Lex::BlockComment:
+            if (c == '*' && n == '/') { state = Lex::Code; ++i; }
             break;
-        case 3:  // string
+        case Lex::String:
             if (c == '\\') { ++i; }  // skip escape
-            else if (c == stringQuote) state = 0;
+            else if (c == stringQuote) state = Lex::Code;
             break;
-        case 4:  // C++ raw string — ends only at )delim" (no escapes)
+        case Lex::RawString:  // C++ raw string — ends only at )delim" (no escapes)
             if (c == QLatin1Char(')') &&
                 source.mid(i, rawTerminator.size()) == rawTerminator) {
                 i += rawTerminator.size() - 1;  // loop does ++i
-                state = 0;
+                state = Lex::Code;
             }
             break;
-        case 5:  // ANTS-1270 — Python triple-quoted string (""" or ''')
+        case Lex::TripleString:  // ANTS-1270 — Python triple-quoted string (""" or ''')
             if (c == stringQuote && i + 2 < source.size() &&
                 source[i + 1] == stringQuote && source[i + 2] == stringQuote) {
                 i += 2;  // consume the closing triple (loop does ++i)
-                state = 0;
+                state = Lex::Code;
             }
             break;
-        case 6:  // ANTS-1270 — Lua long bracket (string / --[[ comment ]]), L0
+        case Lex::LongBracket:  // ANTS-1270 — Lua long bracket (string / --[[ comment ]]), L0
             if (c == QLatin1Char(']') && n == QLatin1Char(']')) {
                 ++i;  // consume the second ']' (loop does ++i)
-                state = 0;
+                state = Lex::Code;
             }
             break;
         default: break;  // every state set above has its case

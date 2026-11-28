@@ -476,6 +476,33 @@ bool contextWindowContains(const QStringList &fileLines, int lineNo,
     }
     return false;
 }
+
+// The lines of `relPath`, read once per applyFilter call and kept in
+// `cache`. Empty when the file is unreadable, too big, or outside the
+// project.
+const QStringList &contextFileLines(QHash<QString, QStringList> &cache,
+                                    const QString &relPath,
+                                    const QString &projectPath) {
+    auto cached = cache.constFind(relPath);
+    if (cached != cache.constEnd()) return *cached;
+    QStringList lines;
+    const QString abs = resolveProjectPath(relPath, projectPath);
+    // ANTS-5085 — the 4 MiB cap the dialog's AuditLineCache uses
+    // (lineIsCode caps at 2 MiB); a context window needs a source file,
+    // not a generated blob.
+    constexpr qint64 kMaxContextFileBytes = 4LL * 1024 * 1024;
+    // ANTS-6463 — a path in the tool's output that leads out of the
+    // project is not read.
+    QFile src;
+    if (!abs.isEmpty() &&
+        PathValidation::openInsideProject(src, projectPath, abs) &&
+        src.size() <= kMaxContextFileBytes) {
+        src.setTextModeEnabled(true);
+        lines = QString::fromUtf8(src.readAll())
+                    .split('\n', Qt::KeepEmptyParts);
+    }
+    return *cache.insert(relPath, lines);
+}
 }  // namespace
 
 FilterResult applyFilter(const QString &raw,
@@ -555,33 +582,12 @@ FilterResult applyFilter(const QString &raw,
 
         if (hasContextFilter) {
             const QRegularExpressionMatch m = fileLineRe.match(line);
-            if (m.hasMatch()) {
-                const QString relPath = m.captured(1);
-                const int lineNo = m.captured(2).toInt();
-                auto cached = fileCache.constFind(relPath);
-                if (cached == fileCache.constEnd()) {
-                    QStringList lines;  // stays empty when unreadable
-                    const QString abs = resolveProjectPath(relPath, projectPath);
-                    // ANTS-5085 — the 4 MiB cap the dialog's AuditLineCache
-                    // uses (lineIsCode caps at 2 MiB); a context window
-                    // needs a source file, not a generated blob.
-                    constexpr qint64 kMaxContextFileBytes = 4LL * 1024 * 1024;
-                    // ANTS-6463 — a path in the tool's output that leads
-                    // out of the project is not read.
-                    QFile src;
-                    if (!abs.isEmpty() &&
-                        PathValidation::openInsideProject(src, projectPath, abs) &&
-                        src.size() <= kMaxContextFileBytes) {
-                        src.setTextModeEnabled(true);
-                        lines = QString::fromUtf8(src.readAll())
-                                    .split('\n', Qt::KeepEmptyParts);
-                    }
-                    cached = fileCache.insert(relPath, lines);
-                }
-                if (contextWindowContains(*cached, lineNo, f.contextWindow,
-                                          f.dropIfContextContains))
-                    continue;
-            }
+            if (m.hasMatch() &&
+                contextWindowContains(
+                    contextFileLines(fileCache, m.captured(1), projectPath),
+                    m.captured(2).toInt(), f.contextWindow,
+                    f.dropIfContextContains))
+                continue;
         }
 
         out << line;
@@ -844,6 +850,11 @@ int levelOrdinal(const QString &level) {
 // Foreign-SARIF fallback when the rule index doesn't carry severity
 // (per spec § 3.1 step 4). Maps level → 3 of the 5 internal labels;
 // BLOCKER/MINOR are unreachable from foreign SARIF by design.
+// The native parsers below (summariseCppcheckXml, summariseClangTidyText,
+// summariseSemgrepJson) map "error" to MAJOR, not CRITICAL. This mapping
+// is the ANTS-1254 spec's; no record gives a reason for theirs. Folding
+// them into one rule changes the severities last_audit_summary reports
+// for one side.
 QString severityFromLevel(const QString &level) {
     if (level == QStringLiteral("error")) return QStringLiteral("CRITICAL");
     if (level == QStringLiteral("note"))  return QStringLiteral("INFO");
@@ -929,6 +940,46 @@ void tallyAndPool(AuditSummary &s, QList<AuditSummaryFinding> &pool,
     if (ord >= floorOrd) pool.append(std::move(asf));
 }
 
+// Spec § 3.1 step 8 — the HTML report beside the SARIF at `sarifPath`,
+// or "" if there is none. Stats and lists only; never opens a file.
+// Two naming schemes write SARIF + HTML pairs:
+//   - AuditCache (headless runs): audit-<iso>-<sha>.{sarif,html}; found
+//     by the same-stem sibling only.
+//   - AuditDialog (GUI): audit-YYYYMMDD-HHmmss.{sarif,html}; the same-stem
+//     sibling, else the lexicographically last audit-*.html in the folder
+//     stamped within ±60 s of the SARIF.
+QString htmlReportFor(const QString &sarifPath) {
+    const QFileInfo sarifInfo(sarifPath);
+    QString htmlCandidate = sarifInfo.absoluteFilePath();
+    // ANTS-6622 — strip ".sarif" only when the path has it.
+    if (htmlCandidate.endsWith(QStringLiteral(".sarif"), Qt::CaseInsensitive))
+        htmlCandidate.chop(6);
+    htmlCandidate.append(QStringLiteral(".html"));
+    if (QFile::exists(htmlCandidate)) return htmlCandidate;
+
+    // No sibling: a GUI-named SARIF can match a GUI report a few seconds off.
+    const QString sarifBase = sarifInfo.completeBaseName();  // "audit-YYYYMMDD-HHmmss"
+    QDateTime sarifStamp;
+    if (sarifBase.startsWith(QStringLiteral("audit-")) && sarifBase.size() == 21) {
+        sarifStamp = QDateTime::fromString(
+            sarifBase.mid(6), QStringLiteral("yyyyMMdd-HHmmss"));
+    }
+    if (!sarifStamp.isValid()) return {};
+    const QDir cacheDir = sarifInfo.absoluteDir();
+    const QStringList htmls = cacheDir.entryList(
+        QStringList{QStringLiteral("audit-*.html")},
+        QDir::Files, QDir::Name | QDir::Reversed);
+    for (const QString &name : htmls) {
+        if (name.size() != 26) continue;  // "audit-YYYYMMDD-HHmmss.html"
+        const QDateTime stamp = QDateTime::fromString(
+            name.mid(6, 15), QStringLiteral("yyyyMMdd-HHmmss"));
+        if (!stamp.isValid()) continue;
+        if (std::abs(sarifStamp.secsTo(stamp)) <= 60)
+            return cacheDir.absoluteFilePath(name);
+    }
+    return {};
+}
+
 }  // namespace
 
 std::optional<AuditSummary> summariseSarif(
@@ -950,7 +1001,7 @@ std::optional<AuditSummary> summariseSarif(
     if (runs.isEmpty()) return std::nullopt;  // INV-10 → not_audited
 
     AuditSummary s;
-    s.sarifPath    = sarifPath;
+    s.sourcePath   = sarifPath;
     s.sourceFormat = QStringLiteral("sarif");  // ANTS-1459
 
     const int floorOrd = levelOrdinal(levelFloor);
@@ -1055,41 +1106,7 @@ std::optional<AuditSummary> summariseSarif(
     rankAndClamp(pool, topN);
     s.topFindings = std::move(pool);
 
-    // Spec § 3.1 step 8 — derive htmlPath.
-    QFileInfo sarifInfo(sarifPath);
-    QString htmlCandidate = sarifInfo.absoluteFilePath();
-    // ANTS-6622 — strip ".sarif" only when the path has it.
-    if (htmlCandidate.endsWith(QStringLiteral(".sarif"), Qt::CaseInsensitive))
-        htmlCandidate.chop(6);
-    htmlCandidate.append(QStringLiteral(".html"));
-    if (QFile::exists(htmlCandidate)) {
-        s.htmlPath = std::move(htmlCandidate);
-    } else {
-        // Fallback (a) failed; lex-max audit-*.html within ±60 s.
-        // Filename pattern: audit-YYYYMMDD-HHmmss.{sarif,html}.
-        const QString sarifBase = sarifInfo.completeBaseName();  // "audit-YYYYMMDD-HHmmss"
-        QDateTime sarifStamp;
-        if (sarifBase.startsWith(QStringLiteral("audit-")) && sarifBase.size() == 21) {
-            sarifStamp = QDateTime::fromString(
-                sarifBase.mid(6), QStringLiteral("yyyyMMdd-HHmmss"));
-        }
-        if (sarifStamp.isValid()) {
-            QDir cacheDir = sarifInfo.absoluteDir();
-            const QStringList htmls = cacheDir.entryList(
-                QStringList{QStringLiteral("audit-*.html")},
-                QDir::Files, QDir::Name | QDir::Reversed);
-            for (const QString &name : htmls) {
-                if (name.size() != 26) continue;  // "audit-YYYYMMDD-HHmmss.html"
-                const QDateTime stamp = QDateTime::fromString(
-                    name.mid(6, 15), QStringLiteral("yyyyMMdd-HHmmss"));
-                if (!stamp.isValid()) continue;
-                if (std::abs(sarifStamp.secsTo(stamp)) <= 60) {
-                    s.htmlPath = cacheDir.absoluteFilePath(name);
-                    break;
-                }
-            }
-        }
-    }
+    s.htmlPath = htmlReportFor(sarifPath);
 
     return s;
 }
@@ -1118,7 +1135,7 @@ std::optional<AuditSummary> summariseCppcheckXml(
     if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
 
     AuditSummary s;
-    s.sarifPath    = xmlPath;  // historical field name; XML path lives here
+    s.sourcePath   = xmlPath;
     s.sourceFormat = QStringLiteral("cppcheck-xml");
     // ANTS-2123 — countSuppressed stays 0 here by construction: cppcheck's XML
     // carries no per-finding suppression metadata (inconclusive/--suppress are
@@ -1213,7 +1230,7 @@ std::optional<AuditSummary> summariseClangTidyText(
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return std::nullopt;
 
     AuditSummary s;
-    s.sarifPath    = textPath;
+    s.sourcePath   = textPath;
     s.sourceFormat = QStringLiteral("clang-tidy-text");
     // ANTS-2123 — countSuppressed stays 0 here by construction: clang-tidy's
     // text output carries no per-finding suppression metadata (NOLINT-ignored
@@ -1294,7 +1311,7 @@ std::optional<AuditSummary> summariseSemgrepJson(
     if (results.isEmpty() && !errors.isEmpty()) return std::nullopt;
 
     AuditSummary s;
-    s.sarifPath    = jsonPath;
+    s.sourcePath   = jsonPath;
     s.sourceFormat = QStringLiteral("semgrep-json");
 
     const int floorOrd = levelOrdinal(levelFloor);

@@ -400,7 +400,9 @@ struct AuditSummaryFinding {
 };
 
 struct AuditSummary {
-    QString sarifPath;
+    // The file the summary was read from: SARIF, cppcheck XML, clang-tidy
+    // text or semgrep JSON (see sourceFormat). Wire key: `sarif_path`.
+    QString sourcePath;
     QString htmlPath;         // "" if no sibling within ±60 s
     QString runAtIso;         // empty if SARIF lacks invocations
     int     countError      = 0;
@@ -446,9 +448,7 @@ std::optional<AuditSummary> summariseSarif(
 // ANTS-1459 — parse cppcheck's native XML output (--xml --xml-version=2)
 // and return the same AuditSummary shape so last_audit_summary callers
 // don't have to branch on source format. Discovered separately from
-// SARIF; the result struct carries `sarifPath` set to the XML path
-// for cache-key consistency (the field is misnamed historically;
-// rename out of scope for ANTS-1459).
+// SARIF; the result's `sourcePath` holds the XML path.
 // Severity mapping:
 //   cppcheck "error"        → level="error"   severity="MAJOR"
 //   cppcheck "warning"      → level="warning" severity="MAJOR"

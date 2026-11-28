@@ -9,7 +9,7 @@ SARIF fixtures + source-grep checks for the wiring INVs (5, 7).
 
 | ID | Source | Check |
 |---:|--------|-------|
-| INV-1 | spec § 4 | Reads SARIF only — never the HTML. Verified by source-grep that `summariseSarif` doesn't reference `.html`. |
+| INV-1 | spec § 4 | Reads SARIF only — never the HTML. Verified by source-grep that `summariseSarif` and its `htmlReportFor` helper never `open()` the HTML. |
 | INV-2 | spec § 4 | Single-entry mtime cache wired up: `m_auditSummary*` private members declared in `remotecontrol.h`. |
 | INV-3 | spec § 4 | `top_findings[]` sort order: level desc → confidence desc → file asc → line asc. Verified by parsing a 5-finding fixture and asserting positions. |
 | INV-4 | spec § 4 | `counts` reflects the full set, not the filtered `top_findings[]`. Verified by parsing with `severity_floor: error` and asserting `counts.warning > 0`. |

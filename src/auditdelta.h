@@ -48,7 +48,7 @@ DeltaResult computeDelta(const QJsonArray &current,
 // keeping the head. `merged` lists current findings before carried-forward
 // ones, so the overflow shed is carried-forward first (ANTS-1870 § 2.5).
 // Returns true when entries were dropped; the sidecar then records
-// truncated:true.
+// truncated:true. A negative `maxEntries` means no cap.
 bool capRecordedFindings(QJsonArray &merged, int maxEntries);
 
 // ANTS-1706 — the findings in `current` whose `fp` is absent from

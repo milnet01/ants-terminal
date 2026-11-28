@@ -131,7 +131,7 @@ not reused. The standard mandates true append: `open(O_APPEND)` + a single
   …) as JSON escapes in **every** string field — `claim`, `rationale`, and
   also `lane` / `topic` / `logged_by` — so no field can break the
   one-physical-line JSONL framing (INV-3). No write-side control-char
-  stripping is needed (the read side's `stripLineBreaks`,
+  stripping is needed (the read side's `stripControlChars`,
   `falseposledger.cpp:67`, handles brief-injection sanitisation on the way
   out). `QJsonObject` serialises keys in sorted order; readers are key-keyed,
   so order is irrelevant.
@@ -339,7 +339,7 @@ Refusal: `{ok:false, code, error}` with `code` ∈ {`bad_args`, `no_project`,
   `topic` / `timestamp` / `loggedBy` match what was written (post-trim).
   *Test:* write then `loadEntries`; field-equality — seed `lane`/`topic`/
   `logged_by` with **control-char-free** values, since `parseLine` runs
-  `stripLineBreaks` on those three on read (`falseposledger.cpp:124-126`), so
+  `stripControlChars` on those three on read (`falseposledger.cpp:124-126`), so
   a tag containing C0/DEL would not round-trip byte-for-byte (that read-side
   strip is by design — those fields land outside the brief's data fence;
   `claim`/`rationale` are unaffected). (`LedgerEntry` fields are camelCase per

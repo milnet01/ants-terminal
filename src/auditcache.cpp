@@ -61,6 +61,59 @@ bool writePrivateJson(const QString &path, const QJsonObject &doc) {
     return true;
 }
 
+// INV-4 — delete the files named in the history entries `reaped` dropped
+// from the manifest. `dir` is the cache dir; `lastRun` and `history` are
+// the entries the committed manifest kept. Every dropped entry is one this
+// module wrote, so its basenames came from sarifPathFor / htmlPathFor and
+// live in `dir`.
+//
+// ANTS-2119 M1 — a basename is not unique: sarifPathFor stamps a 1-second
+// timestamp + the commit SHA, so two sweeps in the same second on the same
+// commit share one. A file a kept entry still names is never deleted (the
+// spec §2.4 keep_files guard; also covers a hand-merged manifest that
+// duplicates a basename).
+void reapDroppedArtefacts(const QString &dir, const QJsonArray &reaped,
+                          const QJsonObject &lastRun,
+                          const QJsonArray &history) {
+    QSet<QString> keep;
+    auto addKeep = [&keep](const QJsonObject &e) {
+        for (const char *k : kArtefactKeys) {
+            const QString b = e.value(QLatin1String(k)).toString();
+            if (!b.isEmpty()) keep.insert(b);
+        }
+    };
+    addKeep(lastRun);
+    for (const QJsonValue &v : history) addKeep(v.toObject());
+
+    const QString canonDir = QFileInfo(dir).canonicalFilePath();
+    const auto reapOne = [&](const QString &basename) {
+        if (basename.isEmpty() || keep.contains(basename)) return;
+        QString abs = basename;
+        if (!abs.startsWith(QLatin1Char('/'))) {
+            abs = dir + QLatin1Char('/') + abs;
+        }
+        // Defence in depth: never delete files outside our cache dir.
+        // canonicalFilePath resolves symlinks + `..`, so a tampered
+        // manifest can't escape via a symlink planted inside
+        // .audit_cache. indie-review-2026-05-21.
+        const QString canonAbs = QFileInfo(abs).canonicalFilePath();
+        if (canonAbs.isEmpty() || canonDir.isEmpty()) return;
+        if (!canonAbs.startsWith(canonDir + QLatin1Char('/'))) return;
+        // ANTS-2004 — surface remove failures (spec §2.4); a left-over
+        // file is now a harmless orphan (manifest no longer names it),
+        // but the warning flags a permission/FS problem in the cache.
+        if (QFile::exists(canonAbs) && !QFile::remove(canonAbs)) {
+            qWarning() << "AuditCache: failed to reap dropped artefact"
+                       << canonAbs;
+        }
+    };
+    for (const QJsonValue &v : reaped) {
+        const QJsonObject e = v.toObject();
+        for (const char *k : kArtefactKeys)
+            reapOne(e.value(QLatin1String(k)).toString());
+    }
+}
+
 }  // namespace
 
 QString cacheDir(const QString &canonProject) {
@@ -327,7 +380,7 @@ RecordedRun recordRun(const QString &canonProject,
     // orphan the SARIF it pointed at.
     fsyncParentDir(manifestPath);
 
-    // Reaper (INV-4): delete sarif/html named in dropped entries — only
+    // Reaper (INV-4): delete the files named in dropped entries — only
     // AFTER the new manifest is durably committed. ANTS-2004 — deleting
     // before commit() meant a disk-full / permission failure at commit
     // left files removed but the *old* manifest still on disk, so its
@@ -335,59 +388,7 @@ RecordedRun recordRun(const QString &canonProject,
     // refs). Reaping post-commit makes the manifest and the filesystem
     // consistent in either outcome: on commit failure we returned above
     // with the old files intact; here the manifest no longer names them.
-    // Each dropped entry is a JSON object we ourselves wrote, so the
-    // filenames came from sarifPathFor/htmlPathFor — they live in
-    // <root>/.audit_cache/ by construction. Resolve basename-only
-    // entries to absolute paths.
-    //
-    // ANTS-2119 M1 — but a dropped entry's basename is NOT guaranteed unique:
-    // sarifPathFor stamps a 1-second timestamp + the commit SHA (no per-run
-    // nonce), so two sweeps in the same second on the same commit share a
-    // basename. If one twin is dropped while the other is kept, reaping the
-    // dropped entry would delete the file the kept entry still points at. Build
-    // the set of basenames still referenced by the kept manifest (new last_run +
-    // surviving history[]) and never reap one of them — the spec §2.4 keep_files
-    // guard the implementation had dropped (also covers a hand-merged manifest
-    // that duplicates a basename).
-    QSet<QString> keep;
-    auto addKeep = [&keep](const QJsonObject &e) {
-        for (const char *k : kArtefactKeys) {
-            const QString b = e.value(QLatin1String(k)).toString();
-            if (!b.isEmpty()) keep.insert(b);
-        }
-    };
-    addKeep(lastRun);
-    for (const QJsonValue &v : history) addKeep(v.toObject());
-
-    for (const QJsonValue &v : reaped) {
-        const QJsonObject e = v.toObject();
-        auto reapOne = [&](const QString &basename) {
-            if (basename.isEmpty()) return;
-            // ANTS-2119 M1 — a surviving entry still references this file.
-            if (keep.contains(basename)) return;
-            QString abs = basename;
-            if (!abs.startsWith(QLatin1Char('/'))) {
-                abs = dir + QLatin1Char('/') + abs;
-            }
-            // Defence in depth: never delete files outside our cache dir.
-            // canonicalFilePath resolves symlinks + `..`, so a tampered
-            // manifest can't escape via a symlink planted inside
-            // .audit_cache. indie-review-2026-05-21.
-            const QString canonAbs = QFileInfo(abs).canonicalFilePath();
-            const QString canonDir = QFileInfo(dir).canonicalFilePath();
-            if (canonAbs.isEmpty() || canonDir.isEmpty()) return;
-            if (!canonAbs.startsWith(canonDir + QLatin1Char('/'))) return;
-            // ANTS-2004 — surface remove failures (spec §2.4); a left-over
-            // file is now a harmless orphan (manifest no longer names it),
-            // but the warning flags a permission/FS problem in the cache.
-            if (QFile::exists(canonAbs) && !QFile::remove(canonAbs)) {
-                qWarning() << "AuditCache: failed to reap dropped artefact"
-                           << canonAbs;
-            }
-        };
-        for (const char *k : kArtefactKeys)
-            reapOne(e.value(QLatin1String(k)).toString());
-    }
+    reapDroppedArtefacts(dir, reaped, lastRun, history);
 
     out.ok = true;
     return out;

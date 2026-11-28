@@ -952,9 +952,8 @@ ParsedOutput parseToolOutput(const QString &tool,
                         o.value(QStringLiteral("Results")).toArray());
                 }
             }
-            out.rawCount = arr.size();
             // ANTS-3590 — count of non-finding placeholder entries dropped
-            // below; subtracted from rawCount after the loop.
+            // below; rawCount is set after the loop, without them.
             int emptyEntries = 0;
             // ANTS-1870 — iterate EVERY entry so `findings` collects the full
             // non-suppressed set; the `< sampleCap` gate now applies only to

@@ -366,7 +366,7 @@ TEST(mcp_audit_run, Ants3472MypyNoteSeverityExcluded) {
 TEST(mcp_audit_run, Ants3590DropsEmptyJsonEntries) {
     expect_reset();
     const std::string cpp = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
-    const auto pos = cpp.find("out.rawCount = arr.size();");
+    const auto pos = cpp.find("int emptyEntries = 0;");
     ASSERT_NE(pos, std::string::npos);
     const auto blockEnd = cpp.find("Line-based fallback for plain-text tools",
                                    pos);
