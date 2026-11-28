@@ -2494,6 +2494,7 @@ void ClaudeStatusBarController::maybeFireDeferredChipSwitch(pid_t shellPid) {
                 || ss.claudeStartMs != m_deferredChipClaudeStartMs) {
             m_deferredChipTier.clear();
             m_deferredChipShellPid = 0;
+            if (m_modelBtn) m_modelBtn->setToolTip(QString());   // ANTS-6986
             return;
         }
         // Keep waiting while non-Idle OR a permission prompt is pending
@@ -2517,6 +2518,7 @@ void ClaudeStatusBarController::maybeFireDeferredChipSwitch(pid_t shellPid) {
     if (!term) {                 // tab closed before the turn ended — drop it.
         m_deferredChipTier.clear();
         m_deferredChipShellPid = 0;
+        if (m_modelBtn) m_modelBtn->setToolTip(QString());       // ANTS-6986
         return;
     }
 

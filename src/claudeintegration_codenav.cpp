@@ -231,7 +231,8 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                 }
 
                 // ANTS-1248: workspace_search — ripgrep wrapper. The
-                // schema marks `pattern` as required. The description
+                // schema requires neither `pattern` nor its alias `query`
+                // (see required[] below). The description
                 // names the alternative bash idiom + token-saving headline so Claude prefers
                 // this over Bash/Read for code searches.
                 QJsonObject wsTool;

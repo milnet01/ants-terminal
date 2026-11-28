@@ -537,6 +537,28 @@ int checkProjectCwdScopedTranscript() {
     return 0;
 }
 
+// Start a `claude`-named child (a symlink to sleep) and wait, without running
+// the event loop, until its argv[0] is the fake claude. Before execve the
+// child still carries this binary's argv, which also contains "claude".
+// Returns its pid, or 0.
+pid_t startFakeClaude(QProcess &proc, const QString &fakeClaude, const QString &cwd) {
+    proc.setProgram(fakeClaude);
+    proc.setArguments({QStringLiteral("30")});
+    proc.setWorkingDirectory(cwd);
+    proc.start();
+    if (!proc.waitForStarted(3000)) return 0;
+    const pid_t child = static_cast<pid_t>(proc.processId());
+    for (int i = 0; i < 300; ++i) {
+        QFile f(QStringLiteral("/proc/%1/cmdline").arg(child));
+        if (f.open(QIODevice::ReadOnly)
+                && QFileInfo(QString::fromLocal8Bit(f.readAll().split('\0').value(0)))
+                           .fileName() == QFileInfo(fakeClaude).fileName())
+            return child;
+        QThread::msleep(10);
+    }
+    return 0;
+}
+
 // INV-10 (ANTS-5156) — a transcript created AFTER Claude is detected still
 // binds. Claude Code creates its .jsonl only when the first message is sent,
 // so the lookup at detection time finds nothing. The tracker must retry on
@@ -579,26 +601,13 @@ int checkTranscriptBindsAfterClaudeStarts() {
         return 1;
     }
     QProcess proc;
-    proc.setProgram(fakeClaude);
-    proc.setArguments({QStringLiteral("30")});
-    proc.setWorkingDirectory(cwd);
-    proc.start();
-    if (!proc.waitForStarted(3000)) {
-        std::fprintf(stderr, "[INV-10] FAIL fake claude failed to start\n");
-        return 1;
-    }
     auto stopProc = qScopeGuard([&]() {
         proc.kill();
         proc.waitForFinished(3000);
     });
-    // Wait out the mid-execve window so the cmdline names claude.
-    const pid_t child = static_cast<pid_t>(proc.processId());
-    const bool execed = QTest::qWaitFor([&]() {
-        QFile f(QStringLiteral("/proc/%1/cmdline").arg(child));
-        return f.open(QIODevice::ReadOnly) && f.readAll().contains("claude");
-    }, 3000);
-    if (!execed) {
-        std::fprintf(stderr, "[INV-10] FAIL fake claude cmdline never named claude\n");
+    const pid_t child = startFakeClaude(proc, fakeClaude, cwd);
+    if (child == 0) {
+        std::fprintf(stderr, "[INV-10] FAIL fake claude did not start\n");
         return 1;
     }
 
@@ -696,28 +705,6 @@ int checkTranscriptBindsAfterClaudeStarts() {
     }
     std::printf("[%-32s] followed the new session id; bad ids ignored  PASS\n",
                 "INV-11-rebind-after-clear");
-    return 0;
-}
-
-// Start a `claude`-named child (a symlink to sleep) and wait, without running
-// the event loop, until its argv[0] is the fake claude. Before execve the
-// child still carries this binary's argv, which also contains "claude".
-// Returns its pid, or 0.
-pid_t startFakeClaude(QProcess &proc, const QString &fakeClaude, const QString &cwd) {
-    proc.setProgram(fakeClaude);
-    proc.setArguments({QStringLiteral("30")});
-    proc.setWorkingDirectory(cwd);
-    proc.start();
-    if (!proc.waitForStarted(3000)) return 0;
-    const pid_t child = static_cast<pid_t>(proc.processId());
-    for (int i = 0; i < 300; ++i) {
-        QFile f(QStringLiteral("/proc/%1/cmdline").arg(child));
-        if (f.open(QIODevice::ReadOnly)
-                && QFileInfo(QString::fromLocal8Bit(f.readAll().split('\0').value(0)))
-                           .fileName() == QFileInfo(fakeClaude).fileName())
-            return child;
-        QThread::msleep(10);
-    }
     return 0;
 }
 

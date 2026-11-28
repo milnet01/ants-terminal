@@ -1523,6 +1523,33 @@ TEST(ClaudeBgTasksButton, Ants6627PartialHelperLineIsNotAMove) {
     EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 0);
 }
 
+// ANTS-6986 — a helper file replaced by a shorter one is re-read from the
+// top. The launch it repeats keeps its one row, so the shell counts once.
+TEST(ClaudeBgTasksButton, Ants6986ReplacedHelperCountsOnce) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString longOut = dir.filePath(QStringLiteral("b-long-output-name.output"));
+    const QString shortOut = dir.filePath(QStringLiteral("b.output"));
+    touchFile(longOut);
+    touchFile(shortOut);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, {});
+    const QString helper = helperFile(dir, "s", "ahelper");
+    writeLines(helper, helperShell("2026-10-30T18:09:02.000Z", "b", longOut));
+
+    ClaudeTranscript::Cursor cursor;
+    ClaudeBgTaskAccum acc;
+    ClaudeBgTaskTracker::parseIncremental(tp, cursor, acc);
+    ASSERT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 1);
+
+    // The same launch, written shorter: the cursor cannot resume.
+    writeLines(helper, helperShell("2026-10-30T18:09:02.000Z", "b", shortOut));
+    ASSERT_LT(QFileInfo(helper).size(), acc.helperCursors.value(helper).offset);
+    EXPECT_TRUE(ClaudeBgTaskTracker::walkHelperTranscripts(tp, acc));
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::finalize(acc)).shells, 1)
+        << "a re-read helper's launch must not count twice";
+}
+
 // ANTS-6627 — a foreground helper's result with a completion status ends no
 // task, though its text names a running one; a BashOutput-style result does.
 TEST(ClaudeBgTasksButton, Ants6627ForegroundAgentResultEndsNothing) {

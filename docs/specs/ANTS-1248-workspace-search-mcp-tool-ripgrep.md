@@ -28,7 +28,7 @@ adds ~80 bytes of wrapper formatting per session).
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `pattern`     | string  | (required) | Literal or regex; mode picked by `regex`. |
+| `pattern`     | string  | (required; alias `query`) | Literal or regex; mode picked by `regex`. |
 | `regex`       | bool    | `false`    | When `true`, pattern is treated as Rust regex (ripgrep default). |
 | `lane`        | string  | `""`       | Subdir under repo root (e.g. `"src"`, `"docs"`, `"tests/features"`). Empty = whole repo. **Path-escape guard**: resolved via `QFileInfo::canonicalFilePath()` (resolves symlinks, unlike lexical `cleanPath`); rejected if the canonical result doesn't startsWith the project root. NFC-normalised before compare; bytes < 0x20 rejected; `\` reserved (Linux-only, no Windows-style path semantics). |
 | `glob`        | string  | `""`       | Passed as ripgrep `--glob`. Capped at 256 bytes; rejected if it contains `..` segments. |
@@ -114,8 +114,10 @@ Error shape (mirrors existing IPC verbs):
 - **INV-6.** No persistent state — `cmdWorkspaceSearch` is stateless;
   no cache, no warm-up. Simpler is correct.
 - **INV-7.** MCP tools/list entry declares `pattern`, `regex`, `lane`,
-  `glob`, `max_results`, `context`, `case` in `inputSchema.properties`
-  with `pattern` required.
+  `glob`, `max_results`, `context`, `case` in `inputSchema.properties`.
+  `required[]` leaves `pattern` out, because its alias `query` may
+  replace it; the handler refuses `bad_pattern` when both are missing
+  (INV-1).
 - **INV-8.** Stderr capture is capped at 4 KiB; populated only in
   the `ok:false` branch.
 - **INV-9.** `glob` is NFC-normalised before validation, then

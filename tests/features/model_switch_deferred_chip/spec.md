@@ -44,6 +44,8 @@ Ants-owned chip-click path, where Ants knows both the intent and the state.
   its Claude start time differs from the recorded one, the deferral is
   dropped without sending `/model`, before the keep-waiting check: a later
   Claude in that shell never receives a switch queued for an earlier one.
+- **INV-7** (ANTS-6986) — Each drop (INV-5, INV-6) clears the chip's
+  "queued" tooltip before it returns, as a fired switch does.
 
 ## Test files
 - `test_deferred_chip_wiring.cpp` → `test_claude` (source-grep wiring guard,

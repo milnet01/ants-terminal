@@ -112,3 +112,27 @@ TEST(DeferredChipSwitch, Inv6DeferralEndsWithItsSession) {
     EXPECT_LT(dropPos, waitPos)
         << "INV-6: the drop must come before the keep-waiting return";
 }
+
+// INV-7 (ANTS-6986) — a dropped deferral clears the chip's "queued" tooltip,
+// as a fired one does: both drop branches reset it before they return.
+TEST(DeferredChipSwitch, Inv7DroppedDeferralClearsQueuedTooltip) {
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string body = functionBody(
+        src, "void ClaudeStatusBarController::maybeFireDeferredChipSwitch");
+    ASSERT_FALSE(body.empty()) << "maybeFireDeferredChipSwitch body not found";
+    const std::string clearTip = "m_modelBtn->setToolTip(QString());";
+    const auto endedPos = body.find("ss.state == ClaudeState::NotRunning");
+    const auto waitPos = body.find("ss.state != ClaudeState::Idle");
+    ASSERT_NE(endedPos, std::string::npos);
+    ASSERT_NE(waitPos, std::string::npos);
+    const auto endedTip = body.find(clearTip, endedPos);
+    EXPECT_TRUE(endedTip != std::string::npos && endedTip < waitPos)
+        << "INV-7: the session-ended drop must clear the queued tooltip";
+    const auto noTermPos = body.find("if (!term)");
+    const auto sendPos = body.find("sendModelSwitch(term,");
+    ASSERT_NE(noTermPos, std::string::npos);
+    ASSERT_NE(sendPos, std::string::npos);
+    const auto noTermTip = body.find(clearTip, noTermPos);
+    EXPECT_TRUE(noTermTip != std::string::npos && noTermTip < sendPos)
+        << "INV-7: the tab-closed drop must clear the queued tooltip";
+}

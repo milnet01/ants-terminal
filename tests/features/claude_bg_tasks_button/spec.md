@@ -252,6 +252,12 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   A completion result of any other call still ends the task it names.
   Behavioral: `Ants6627ForegroundAgentResultEndsNothing`.
 
+- **INV-20** (a re-read helper counts once, ANTS-6986): a helper file
+  that cannot be resumed (replaced, truncated, rewritten) is read again
+  from the top into the shared accumulator. A background launch it
+  repeats MUST keep its one task, not start a second.
+  Behavioral: `Ants6986ReplacedHelperCountsOnce`.
+
 ## How to verify pre-fix code fails
 
 ```bash

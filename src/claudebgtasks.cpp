@@ -306,7 +306,10 @@ void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
             call.startedAt = QDateTime::fromString(ts, Qt::ISODateWithMs);
             if (!toolUseId.isEmpty()) acc.calls.insert(toolUseId, call);
 
-            if (flagged) appendTask(acc, toolUseId, call, ts);
+            // ANTS-6986 — a helper file re-read from the top repeats a launch
+            // already folded in; it keeps its row rather than counting twice.
+            if (flagged && !acc.idxByToolUseId.contains(toolUseId))
+                appendTask(acc, toolUseId, call, ts);
         }
     } else if (type == QLatin1String("user")) {
         const QJsonObject msg = ev.value(QStringLiteral("message")).toObject();
@@ -484,6 +487,8 @@ bool ClaudeBgTaskTracker::walkHelperTranscripts(const QString &path, ClaudeBgTas
     for (const QFileInfo &helper : helpers) {
         ClaudeTranscript::Cursor &cursor = acc.helperCursors[helper.filePath()];
         if (cursor.primed && helper.size() == cursor.offset) continue;
+        // A replaced file is re-read from the top into the shared accumulator,
+        // so its events repeat; applyBgEvent keeps one row per launch.
         if (!ClaudeTranscript::canResume(helper.filePath(), cursor)) cursor = {};
         // ANTS-6627 — moved only when an event was folded in: a last line
         // still being written leaves the size ahead of the cursor every poll.
