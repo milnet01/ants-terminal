@@ -236,13 +236,19 @@ Check validatePath(const QString &rawPath,
         return pc;
     }
 
-    QString joined;
-    if (QFileInfo(nfc).isAbsolute()) {
-        joined = nfc;
-    } else {
-        joined = QDir(rootCanonical).filePath(nfc);
+    // ANTS-6650 — the name as given first: a file stored decomposed (NFD)
+    // exists under that form only. NFC is the fallback.
+    const auto joinedOf = [&rootCanonical](const QString &p) {
+        return QFileInfo(p).isAbsolute() ? p : QDir(rootCanonical).filePath(p);
+    };
+    QString chosen = rawPath;
+    QString joined = joinedOf(rawPath);
+    QString resolved = QFileInfo(joined).canonicalFilePath();
+    if (resolved.isEmpty() && nfc != rawPath) {
+        chosen = nfc;
+        joined = joinedOf(nfc);
+        resolved = QFileInfo(joined).canonicalFilePath();
     }
-    const QString resolved = QFileInfo(joined).canonicalFilePath();
 
     // ANTS-1455 — allowOutsideRoot=true skips the project-root anchor
     // check but still applies the NFC + control-char + backslash +
@@ -300,7 +306,7 @@ Check validatePath(const QString &rawPath,
 
     // ANTS-1250-INV-5: prefix `./` when leading char is `-` so the
     // value cannot be misread as a CLI flag when passed positionally.
-    QString form = nfc;
+    QString form = chosen;
     if (form.startsWith(QLatin1Char('-'))) {
         form = QStringLiteral("./") + form;
     }

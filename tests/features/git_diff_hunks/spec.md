@@ -43,6 +43,14 @@ by this pure parser (reuse-over-rewrite).
 - **INV-8 (combined diff, ANTS-5111)** — a `diff --cc` or `diff --combined`
   line ends the current file and its section is skipped, so its headers and
   lines never attach to the previous file.
+- **INV-9 (header path decoded, ANTS-6650)** — `GitWrap::diffHeaderPath`
+  drops the tab git appends to a name holding a space and decodes a
+  C-quoted name (`\"`, `\\`, `\t`, `\ooo`), so the path is the name on disk.
+- **INV-10 (diff settings ignored, ANTS-6650)** — `git_state op:diff` runs
+  git with `-c core.quotePath=false --no-ext-diff --src-prefix=a/
+  --dst-prefix=b/`: in a repository with `diff.mnemonicPrefix=true`, a
+  staged name holding a space and a non-ASCII name come back as on disk.
+  This case runs git.
 
 ## MCP layer (not asserted here — behavioural, manual)
 

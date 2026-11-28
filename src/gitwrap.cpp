@@ -14,6 +14,7 @@ namespace GitWrap {
 
 namespace {
 constexpr int kReadSliceMs = 200;   // ANTS-6512 — one wait between reads
+constexpr int kStartWaitMs = 5000;  // ANTS-6650 — the longest wait for exec
 }  // namespace
 
 Result run(const QString &workingDir, const QStringList &argv,
@@ -34,7 +35,9 @@ Result runWithin(const QString &workingDir, const QStringList &argv,
     // ANTS-1250-INV-6: argv form of QProcess::start. Never the
     // shell-interpolated single-string form.
     HostExec::start(p, QStringLiteral("git"), argv);
-    if (!p.waitForStarted(500)) {
+    // ANTS-6650 — a missing git fails at once; a slow start on a loaded
+    // machine is not a missing git, so wait up to the run's own budget.
+    if (!p.waitForStarted(std::clamp(budgetMs, 1, kStartWaitMs))) {
         r.started = false;
         return r;
     }
@@ -122,17 +125,10 @@ QVector<DiffFile> parseDiffHunks(const QByteArray &unifiedDiff,
         // added / removed line whose text begins with `+` / `-`), so gate the
         // path parse on "no hunk yet" to resolve that unified-diff ambiguity.
         if (cur.hunks.isEmpty()
-            && line.startsWith(QLatin1String("--- "))) {
-            QString p = line.mid(4);
-            if (p.startsWith(QLatin1String("a/"))) p = p.mid(2);
-            if (p != QLatin1String("/dev/null")) cur.path = p;
-            continue;
-        }
-        if (cur.hunks.isEmpty()
-            && line.startsWith(QLatin1String("+++ "))) {
-            QString p = line.mid(4);
-            if (p.startsWith(QLatin1String("b/"))) p = p.mid(2);
-            if (p != QLatin1String("/dev/null")) cur.path = p;
+            && (line.startsWith(QLatin1String("--- "))
+                || line.startsWith(QLatin1String("+++ ")))) {
+            const QString p = diffHeaderPath(line);
+            if (!p.isEmpty()) cur.path = p;
             continue;
         }
         if (line.startsWith(QLatin1String("@@ "))) {
@@ -157,6 +153,42 @@ QVector<DiffFile> parseDiffHunks(const QByteArray &unifiedDiff,
     }
     flush();
     return out;
+}
+
+QString diffHeaderPath(const QString &line) {
+    const QLatin1String prefix(line.startsWith(QLatin1Char('-')) ? "a/" : "b/");
+    QString p = line.mid(4);
+    if (p.endsWith(QLatin1Char('\t'))) p.chop(1);   // a name with a space
+    if (p.size() >= 2 && p.startsWith(QLatin1Char('"')) && p.endsWith(QLatin1Char('"'))) {
+        // git's quote.c: \a \b \t \n \v \f \r \" \\ and \ooo, one byte each.
+        const QByteArray q = p.mid(1, p.size() - 2).toUtf8();
+        QByteArray raw;
+        for (qsizetype i = 0; i < q.size(); ++i) {
+            const char c = q.at(i);
+            if (c != '\\' || i + 1 == q.size()) { raw += c; continue; }
+            const char e = q.at(++i);
+            const auto octal = [](char d) { return d >= '0' && d <= '7'; };
+            if (octal(e) && i + 2 < q.size() && octal(q.at(i + 1)) && octal(q.at(i + 2))) {
+                raw += char(((e - '0') << 6) | ((q.at(i + 1) - '0') << 3) | (q.at(i + 2) - '0'));
+                i += 2;
+                continue;
+            }
+            switch (e) {
+            case 'a': raw += '\a'; break;
+            case 'b': raw += '\b'; break;
+            case 't': raw += '\t'; break;
+            case 'n': raw += '\n'; break;
+            case 'v': raw += '\v'; break;
+            case 'f': raw += '\f'; break;
+            case 'r': raw += '\r'; break;
+            default:  raw += e;    break;   // a quote or a backslash
+            }
+        }
+        p = QString::fromUtf8(raw);
+    }
+    if (p == QLatin1String("/dev/null")) return {};
+    if (p.startsWith(prefix)) p = p.mid(2);
+    return p;
 }
 
 QVector<AddedLine> addedLines(const DiffFile &file, const QString &match) {

@@ -3473,7 +3473,9 @@ void TerminalWidget::copySelectionRich() {
     if (!m_hasSelection) return;
 
     // Build both plain text and HTML
-    QString plainText = selectedText();
+    // ANTS-6650 — through the clipboardguard funnel, as a setText copy is.
+    QString plainText = clipboardguard::sanitize(selectedText(),
+                                                 clipboardguard::Source::Trusted);
 
     // RC-44 (audit 2026-09-26) — ordered by (line, col) as selectedText()
     // orders them; ordering by line alone left a right-to-left selection on

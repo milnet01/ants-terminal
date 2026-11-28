@@ -42,6 +42,12 @@ Source-grep + behavioural drive of the pure `sanitize` helper.
   by source-grep that both `clipboardguard::Source::UntrustedPty`
   and `clipboardguard::Source::UntrustedPlugin` appear in the
   codebase (each at a single call site, which is enough).
+- **INV-9** (ANTS-6650) The untrusted cap never keeps half of a
+  surrogate pair: a pair straddling `kUntrustedMaxChars` is dropped
+  whole. Behavioural drive.
+- **INV-10** (ANTS-6650) The rich copy in `src/terminalwidget.cpp`,
+  which writes through `setMimeData`, passes its text through
+  `clipboardguard::sanitize`. Asserted by source-grep.
 
 ## CMake wiring
 

@@ -69,9 +69,10 @@ public:
 
     // Pure helper (static, testable): given the NUL-separated output of
     // `git ls-files -z …` and the working-tree root, return the sorted,
-    // de-duplicated set of absolute directories that contain those files.
+    // de-duplicated set of absolute directories that contain those files,
+    // with each one's ancestors up to topLevel (ANTS-6650).
     // An empty topLevel gives paths relative to the working directory, with
-    // "." for top-level files.
+    // "." for the top level.
     // This is the gitignore-aware directory set a git consumer watches.
     static QStringList directoriesContaining(const QString &topLevel,
                                              const QByteArray &lsFilesZeroSep);

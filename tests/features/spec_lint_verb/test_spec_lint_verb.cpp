@@ -1206,6 +1206,30 @@ TEST(SpecLintVerb, Ants5537ProjectRootBelowRepoTop) {
     expectInv2Only(callLint(root, s), "staged:true");
 }
 
+// ANTS-6650 — the scoped run reads git's a/ and b/ headers. A repository with
+// diff.mnemonicPrefix=true prints c/ and w/ in their place unless the verb
+// asks for a/ and b/, and the spec then matched no document: its edit read as
+// out of the diff.
+TEST(SpecLintVerb, Ants6650ScopedRunIgnoresUserDiffPrefixes) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp.path());
+    ASSERT_TRUE(makeRepo(root, twoUntested()));
+    ASSERT_TRUE(gitRun(root, {QStringLiteral("config"), QStringLiteral("diff.mnemonicPrefix"),
+                              QStringLiteral("true")}));
+    ASSERT_TRUE(writeText(root + QLatin1Char('/') + kSpecRel,
+                          twoUntested(QStringLiteral("second rule, reworded."))));
+
+    QJsonObject q;
+    q[QStringLiteral("since")] = QStringLiteral("HEAD");
+    const QJsonObject r = callLint(root, q);
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r).toStdString();
+    const QJsonArray noTest = findingsOfKind(r, "invariant_no_test");
+    ASSERT_EQ(noTest.size(), 1) << "the edit to INV-2 was not seen as in the diff: "
+                                << dump(r).toStdString();
+    EXPECT_EQ(noTest.at(0).toObject().value(QStringLiteral("line")).toInt(), 6);
+}
+
 // ANTS-4890 — the verb reads `spec_test_clause_coverage` from the project's
 // .ants/project.json on every call, so INV-2, whose *Test:* clause names its
 // test, is reported only until the project opts in.

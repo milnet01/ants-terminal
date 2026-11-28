@@ -162,3 +162,67 @@ TEST(DirTreeWatcher, DirectoriesContainingEmpty) {
     EXPECT_TRUE(DirTreeWatcher::directoriesContaining("/repo", QByteArray()).isEmpty());
     EXPECT_TRUE(DirTreeWatcher::directoriesContaining("/repo", QByteArray("\0", 1)).isEmpty());
 }
+
+// INV-5 (ANTS-6650) — a folder that holds only folders is in the set too, up
+// to the root, so a folder made inside it is noticed.
+TEST(DirTreeWatcher, DirectoriesContainingKeepsAncestors) {
+    QByteArray z;
+    z += "src/ui/w.cpp";       z += '\0';
+    const QStringList dirs =
+        DirTreeWatcher::directoriesContaining("/repo", z);
+    EXPECT_EQ(dirs, (QStringList{QStringLiteral("/repo"), QStringLiteral("/repo/src"),
+                                 QStringLiteral("/repo/src/ui")}));
+    EXPECT_EQ(DirTreeWatcher::directoriesContaining(QString(), z),
+              (QStringList{QStringLiteral("."), QStringLiteral("src"),
+                           QStringLiteral("src/ui")}));
+}
+
+// INV-8 (ANTS-6650) — a watched folder moved out of the tree stops
+// reporting: its kernel watch is released, not left to fire changed() for
+// edits made wherever it went.
+TEST(DirTreeWatcher, MovedOutFolderStopsReporting) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString inside = tmp.path() + "/tree/a";
+    const QString away = tmp.path() + "/away";
+    ASSERT_TRUE(QDir().mkpath(inside));
+    DirTreeWatcher w;
+    ASSERT_TRUE(w.ok());
+    int fired = 0;
+    QObject::connect(&w, &DirTreeWatcher::changed, [&fired] { ++fired; });
+    ASSERT_EQ(w.addDirs({inside}), 1);
+
+    ASSERT_TRUE(QDir().rename(inside, away));
+    ASSERT_TRUE(pumpUntil([&fired] { return fired > 0; }, 3000));
+    pumpUntil([] { return false; }, 800);   // let the release's own event settle
+    EXPECT_EQ(w.watchCount(), 0);
+    fired = 0;
+
+    ASSERT_TRUE(writeFile(away + "/after.txt", "x\n"));
+    pumpUntil([] { return false; }, 1200);
+    EXPECT_EQ(fired, 0) << "a folder moved out of the tree still fired changed()";
+}
+
+// INV-8 (ANTS-6650) — after a parent is renamed, re-seeding the new names
+// forgets the old ones, so a folder made again under an old name is watched.
+TEST(DirTreeWatcher, RenamedParentDoesNotBlockTheOldName) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString a = tmp.path() + "/a";
+    const QString c = tmp.path() + "/c";
+    ASSERT_TRUE(QDir().mkpath(a + "/b"));
+    DirTreeWatcher w;
+    ASSERT_TRUE(w.ok());
+    int fired = 0;
+    QObject::connect(&w, &DirTreeWatcher::changed, [&fired] { ++fired; });
+    ASSERT_EQ(w.addDirs({a, a + "/b"}), 2);
+
+    ASSERT_TRUE(QDir().rename(a, c));
+    ASSERT_TRUE(pumpUntil([&fired] { return fired > 0; }, 3000));
+    pumpUntil([] { return false; }, 800);
+    w.addDirs({c, c + "/b"});
+
+    ASSERT_TRUE(QDir().mkpath(a + "/b"));
+    EXPECT_EQ(w.addDirs({a, a + "/b"}), 4)
+        << "the old name a/b still counted as watched after its parent moved";
+}

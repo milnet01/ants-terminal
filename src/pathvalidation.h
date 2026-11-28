@@ -19,7 +19,8 @@ inline constexpr char kFeedbackSuffix[] = "_Ants_MCP_Feedback.md";
 // Result of a single validation call.
 //   bad=true   → caller returns `err` as the response envelope.
 //   bad=false  → argvForm is the safe-for-argv form of the path
-//                (NFC-normalised; `./` prefix when starts with `-`).
+//                (as given when that names an existing file, else
+//                NFC-normalised; `./` prefix when starts with `-`).
 //                resolved is the canonical-filesystem form if the
 //                path exists, or an empty string if it does not.
 //                Callers that require existence check resolved.isEmpty().

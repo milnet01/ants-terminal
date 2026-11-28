@@ -128,6 +128,28 @@ TEST(ClipboardRedaction, Main) {
                 "Lua plugin clipboard glue in mainwindow.cpp does not classify as UntrustedPlugin");
     }
 
+    // INV-9 (ANTS-6650): the cap never keeps half of a surrogate pair.
+    {
+        QString in(clipboardguard::kUntrustedMaxChars - 1, QLatin1Char('D'));
+        in += QString::fromUcs4(U"\U0001F600x");   // a pair across the cut
+        const QString out = clipboardguard::sanitize(
+            in, clipboardguard::Source::UntrustedPty);
+        if (out.size() != clipboardguard::kUntrustedMaxChars - 1 ||
+            (!out.isEmpty() && out.back().isHighSurrogate()))
+            fail("INV-9",
+                "UntrustedPty sanitise cut a surrogate pair in two");
+    }
+
+    // INV-10 (ANTS-6650): the rich copy's setMimeData text goes through
+    // sanitize, as a setText copy does.
+    {
+        const std::string tw = ants_test::slurpFile(TERMINALWIDGET_CPP);
+        if (contains(tw, "setMimeData(") &&
+            !contains(tw, "clipboardguard::sanitize(selectedText()"))
+            fail("INV-10",
+                "copySelectionRich puts unsanitised text on the clipboard");
+    }
+
     std::fprintf(stderr,
         "OK — clipboard redaction funnel INVs hold.\n");
     return;

@@ -54,6 +54,11 @@ void DirTreeWatcher::addOne(const QString &dir) {
     const int wd = inotify_add_watch(m_fd, QFile::encodeName(dir).constData(),
                                      kMask);
     if (wd < 0) return;
+    // ANTS-6650 — the kernel hands back the same descriptor for a folder it
+    // already watches under another name (a parent was renamed): drop the
+    // stale name, or it blocks a later folder made there.
+    if (const auto old = m_wdToPath.constFind(wd); old != m_wdToPath.cend())
+        m_pathToWd.remove(old.value());
     m_wdToPath.insert(wd, dir);
     m_pathToWd.insert(dir, wd);
 }
@@ -73,6 +78,9 @@ void DirTreeWatcher::onActivated() {
             // A watched directory was removed / auto-invalidated: drop its wd
             // so watchCount stays honest and a re-seed can re-add it.
             if (ev->mask & (IN_IGNORED | IN_DELETE_SELF | IN_MOVE_SELF)) {
+                // ANTS-6650 — a moved folder keeps its kernel watch, which
+                // would go on reporting from wherever it went. Release it.
+                if (ev->mask & IN_MOVE_SELF) inotify_rm_watch(m_fd, ev->wd);
                 const QString gone = m_wdToPath.take(ev->wd);
                 if (!gone.isEmpty()) {
                     m_pathToWd.remove(gone);
@@ -113,7 +121,16 @@ QStringList DirTreeWatcher::directoriesContaining(const QString &topLevel,
         const QString relPath = QString::fromUtf8(rel);
         const QString abs = root.isEmpty()
             ? relPath : root + QLatin1Char('/') + relPath;
-        dirs.insert(QFileInfo(abs).path());   // the file's directory
+        // ANTS-6650 — the file's directory and each ancestor up to the root:
+        // a folder holding only folders must be watched too, or a folder
+        // made inside it goes unseen. A folder already in has its ancestors.
+        for (QString dir = QFileInfo(abs).path(); !dirs.contains(dir);) {
+            dirs.insert(dir);
+            if (dir == root || dir == QLatin1String(".")) break;
+            const QString up = QFileInfo(dir).path();
+            if (up == dir || up.size() < root.size()) break;
+            dir = up;
+        }
     }
     QStringList out(dirs.begin(), dirs.end());
     out.sort();

@@ -85,6 +85,13 @@ struct DiffFile {
 QVector<DiffFile> parseDiffHunks(const QByteArray &unifiedDiff,
                                  bool includeLines);
 
+// ANTS-6650 — the path a `--- ` or `+++ ` header line names: git's C-quoting
+// decoded, the tab git appends to a name holding a space dropped, and the
+// a/ (or b/) prefix stripped. Empty for /dev/null. Callers run git with
+// `-c core.quotePath=false` and `--no-ext-diff --src-prefix=a/
+// --dst-prefix=b/`, so the user's diff settings cannot change the headers.
+QString diffHeaderPath(const QString &line);
+
 // ANTS-5508 — the pure halves of git_state's added-lines diff, log stat and
 // rename sweep. Contract: tests/features/git_state_filters/spec.md.
 

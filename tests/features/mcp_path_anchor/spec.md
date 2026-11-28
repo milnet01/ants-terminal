@@ -68,6 +68,11 @@ Spec source: `docs/specs/ANTS-1295-per-tool-cwd-anchor-enforcement.md`.
 - **PV-8 NFC normalisation.** A path expressed in NFD form
   canonicalises identically to its NFC form; both accept.
 
+- **PV-14 NFD file name resolves (ANTS-6650).** A file whose name is
+  stored decomposed is reached by that name: `resolved` is the file
+  and `argvForm` is the name as given. The name is tried as given
+  first and in NFC form second.
+
 - **PV-9 non-existent escape rejects.** A path like
   `nonexistent/../../etc/passwd` where the prefix doesn't exist
   still rejects: `QDir::cleanPath` folds the `..`, and the cleaned

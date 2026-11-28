@@ -307,6 +307,30 @@ TEST(McpPathAnchor, NfdRootDoesNotFalseReject) {
         << check.err.value(QStringLiteral("error")).toString().toStdString();
 }
 
+// PV-14: ANTS-6650 — a file whose name is stored decomposed (NFD) is reached
+// by that name. validatePath used only the NFC form, which names no file on
+// disk, so the file read as missing and git got the wrong pathspec.
+TEST(McpPathAnchor, NfdFileNameResolves) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QString nfdName = QStringLiteral("cafe");
+    nfdName += QChar(0x0301);
+    nfdName += QStringLiteral(".txt");
+    ASSERT_NE(nfdName, nfdName.normalized(QString::NormalizationForm_C));
+    QFile f(root + QLatin1Char('/') + nfdName);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("n");
+    f.close();
+
+    const auto check = PathValidation::validatePath(
+        nfdName, root, QStringLiteral("file_outline"));
+    EXPECT_FALSE(check.bad);
+    EXPECT_EQ(check.resolved, root + QLatin1Char('/') + nfdName)
+        << "the decomposed name did not resolve to the file on disk";
+    EXPECT_EQ(check.argvForm, nfdName);
+}
+
 // PV-12: ANTS-1832 shared helper — isInsideProject accepts a path inside
 // the project and rejects a traversal escape.
 TEST(McpPathAnchor, IsInsideProjectAnchors) {

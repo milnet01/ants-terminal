@@ -918,11 +918,15 @@ SpecLintScope specLintReadScope(const QString &root, const QString &since,
         return s;
     }   // staged with no commit yet: `git diff --cached` uses the empty tree
 
-    QStringList argv{QStringLiteral("diff")};
+    // ANTS-6650 — plain a/ and b/ headers, whatever the user's diff
+    // settings say, for GitWrap::diffHeaderPath.
+    QStringList argv{QStringLiteral("-c"), QStringLiteral("core.quotePath=false"),
+                     QStringLiteral("diff")};
     if (staged) argv << QStringLiteral("--cached");
     argv << QStringLiteral("--relative") << QStringLiteral("--unified=0")
          << QStringLiteral("--no-renames") << QStringLiteral("--no-color")
-         << QStringLiteral("--no-ext-diff");
+         << QStringLiteral("--no-ext-diff") << QStringLiteral("--src-prefix=a/")
+         << QStringLiteral("--dst-prefix=b/");
     if (!staged) argv << s.base.toString();
     argv << QStringLiteral("--") << relDocs;
     const GitWrap::Result diff = GitWrap::run(root, argv);
@@ -943,11 +947,10 @@ SpecLintScope specLintReadScope(const QString &root, const QString &since,
             if (!inHeader) continue;
             if (line.startsWith(QLatin1String("--- "))) {
                 oldNull = line == QLatin1String("--- /dev/null");
-                oldPath = line.startsWith(QLatin1String("--- a/")) ? line.mid(6) : QString();
+                oldPath = GitWrap::diffHeaderPath(line);
             } else if (line.startsWith(QLatin1String("+++ "))) {
                 if (line == QLatin1String("+++ /dev/null")) deleted.insert(oldPath);
-                else if (oldNull && line.startsWith(QLatin1String("+++ b/")))
-                    newFiles.insert(line.mid(6));
+                else if (oldNull) newFiles.insert(GitWrap::diffHeaderPath(line));
             }
         }
     }

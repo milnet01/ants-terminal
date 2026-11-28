@@ -3,7 +3,8 @@
 // ANTS-1014 — Clipboard-write redaction funnel.
 //
 // All `QApplication::clipboard()->setText(...)` sites must route
-// through this header instead, declaring the source's trust shape.
+// through this header instead, declaring the source's trust shape. A
+// `setMimeData(...)` site passes its text through `sanitize` first.
 // The 7th-audit memory flagged OSC 52 (PTY-driven clipboard writes)
 // as an exfiltration vector that needs a centralised hygiene layer.
 //
@@ -40,8 +41,11 @@ inline constexpr int kUntrustedMaxChars = 1 * 1024 * 1024;  // 1,048,576 chars
 //   legitimate user flow).
 inline QString sanitize(QString text, Source source) {
     text.remove(QChar(0));
-    if (source != Source::Trusted && text.size() > kUntrustedMaxChars)
-        text.truncate(kUntrustedMaxChars);
+    if (source != Source::Trusted && text.size() > kUntrustedMaxChars) {
+        // ANTS-6650 — never keep half of a surrogate pair at the cut.
+        const bool split = text.at(kUntrustedMaxChars - 1).isHighSurrogate();
+        text.truncate(kUntrustedMaxChars - (split ? 1 : 0));
+    }
     return text;
 }
 

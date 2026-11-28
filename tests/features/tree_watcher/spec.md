@@ -27,8 +27,9 @@ tracked path) both catches edits and uses ≈4× fewer watches.
   not grow `watchCount()`; a non-existent path is skipped, not fatal.
 - **INV-5 (`directoriesContaining` purity)** — given `git ls-files -z` output
   (NUL-separated relative paths) and a working-tree root, it returns the sorted,
-  de-duplicated set of absolute directories that contain those files. Empty
-  input → empty list. This is the gitignore-aware watch set (ls-files already
+  de-duplicated set of absolute directories that contain those files, with
+  each one's ancestors up to the root, so a folder holding only folders is
+  watched too (ANTS-6650). Empty input → empty list. This is the gitignore-aware watch set (ls-files already
   excludes ignored trees), so no separate exclude mechanism is needed.
 - **INV-6 (consumer wiring)** — `diffviewer.cpp` drives live refresh through
   `DirTreeWatcher` (not `QFileSystemWatcher`), seeds the watch set from
@@ -41,6 +42,11 @@ tracked path) both catches edits and uses ≈4× fewer watches.
   passed to `setRescanNames`. A plain file edit leaves it false.
   `diffviewer.cpp` re-runs `git ls-files` on a change only when it is true;
   Refresh always does (ANTS-5109).
+- **INV-8 (moved folders, ANTS-6650)** — a watched folder that moves has its
+  kernel watch released, so it stops reporting from where it went. Adding a
+  folder the kernel already watches under another name (its parent was
+  renamed) forgets the old name, so a folder made again under that name is
+  watched.
 
 ## Pass / fail
 

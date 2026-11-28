@@ -1912,9 +1912,13 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
                            "mutually exclusive"));
     }
 
+    // ANTS-6650 — plain a/ and b/ headers, whatever the user's diff
+    // settings say, for GitWrap::diffHeaderPath.
     QStringList argv;
-    argv << QStringLiteral("diff")
-         << QStringLiteral("--no-color");
+    argv << QStringLiteral("-c") << QStringLiteral("core.quotePath=false")
+         << QStringLiteral("diff")
+         << QStringLiteral("--no-color") << QStringLiteral("--no-ext-diff")
+         << QStringLiteral("--src-prefix=a/") << QStringLiteral("--dst-prefix=b/");
     if (addedOnly)  argv << QStringLiteral("--unified=0");
     else if (hunks) argv << QStringLiteral("--unified=%1").arg(context);
     else            argv << QStringLiteral("--numstat");

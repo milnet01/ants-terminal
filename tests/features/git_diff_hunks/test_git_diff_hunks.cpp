@@ -2,9 +2,21 @@
 //
 // Behavioral + pure: drives GitWrap::parseDiffHunks against literal
 // unified-diff fixtures. No git, no QProcess, no repo — the parser is a
-// pure byte→struct transform, so every case runs unconditionally.
+// pure byte→struct transform, so every case runs unconditionally. INV-10 is
+// the exception: it runs git_state op:diff against a real repository.
 
 #include "gitwrap.h"
+#include "remotecontrol.h"
+
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QProcess>
+#include <QSet>
+#include <QStandardPaths>
+#include <QTemporaryDir>
 
 #include <gtest/gtest.h>
 
@@ -182,4 +194,77 @@ TEST(GitDiffHunks, CombinedDiffIsNotPartOfPreviousFile) {
     ASSERT_EQ(a->hunks.size(), 1);
     EXPECT_EQ(a->hunks.at(0).lines.size(), 2)
         << "combined-diff lines were appended to the previous file's hunk";
+}
+
+// INV-9 (ANTS-6650) — a header names the file as it is on disk: the tab git
+// appends to a name holding a space is dropped, and a C-quoted name (a quote,
+// a backslash, a control byte, or a non-ASCII byte under the default
+// core.quotePath) is decoded.
+TEST(GitDiffHunks, Ants6650HeaderPathsAreDecoded) {
+    const QByteArray diff =
+        "diff --git a/my file.txt b/my file.txt\n"
+        "--- a/my file.txt\t\n"
+        "+++ b/my file.txt\t\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+        "diff --git \"a/\\303\\251 \\\"q\\\"\\ttab.txt\" \"b/\\303\\251 \\\"q\\\"\\ttab.txt\"\n"
+        "--- \"a/\\303\\251 \\\"q\\\"\\ttab.txt\"\t\n"
+        "+++ \"b/\\303\\251 \\\"q\\\"\\ttab.txt\"\t\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n";
+    const QVector<DiffFile> r = GitWrap::parseDiffHunks(diff, false);
+    ASSERT_EQ(r.size(), 2);
+    EXPECT_EQ(r.at(0).path, QStringLiteral("my file.txt"));
+    EXPECT_EQ(r.at(1).path, QString::fromUtf8("\xc3\xa9 \"q\"\ttab.txt"));
+    EXPECT_EQ(GitWrap::diffHeaderPath(QStringLiteral("--- /dev/null")), QString());
+}
+
+namespace {
+
+bool git6650(const QString &cwd, const QStringList &args) {
+    QProcess p;
+    p.setWorkingDirectory(cwd);
+    p.start(QStandardPaths::findExecutable(QStringLiteral("git")), args);
+    return p.waitForFinished(60000) && p.exitStatus() == QProcess::NormalExit &&
+           p.exitCode() == 0;
+}
+
+bool write6650(const QString &path, const QByteArray &bytes) {
+    QFile f(path);
+    return f.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+           f.write(bytes) == bytes.size();
+}
+
+}  // namespace
+
+// INV-10 (ANTS-6650) — git_state op:diff names files as they are on disk
+// whatever the repository's diff settings say: diff.mnemonicPrefix (c/ and i/
+// in place of a/ and b/), a name holding a space, a non-ASCII name.
+TEST(GitDiffHunks, Ants6650GitStateDiffIgnoresUserDiffSettings) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(git6650(root, {QStringLiteral("init"), QStringLiteral("-q")}));
+    ASSERT_TRUE(git6650(root, {QStringLiteral("config"), QStringLiteral("diff.mnemonicPrefix"),
+                               QStringLiteral("true")}));
+    const QString spaced = QStringLiteral("my file.txt");
+    const QString accented = QString::fromUtf8("caf\xc3\xa9.txt");
+    ASSERT_TRUE(write6650(root + QLatin1Char('/') + spaced, "one\n"));
+    ASSERT_TRUE(write6650(root + QLatin1Char('/') + accented, "one\n"));
+    ASSERT_TRUE(git6650(root, {QStringLiteral("add"), QStringLiteral("-A")}));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdGitState({{QStringLiteral("caller_cwd"), root},
+                                            {QStringLiteral("op"), QStringLiteral("diff")},
+                                            {QStringLiteral("staged"), true},
+                                            {QStringLiteral("hunks"), true}}).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    QSet<QString> paths;
+    for (const auto &v : out.value(QStringLiteral("files")).toArray())
+        paths.insert(v.toObject().value(QStringLiteral("path")).toString());
+    EXPECT_EQ(paths, (QSet<QString>{spaced, accented}))
+        << QJsonDocument(out).toJson().toStdString();
 }
