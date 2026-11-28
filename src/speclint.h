@@ -254,8 +254,9 @@ QStringList parseRequiredSections(const QString &standardText,
 // behaviour is the right direction for a check that suppresses findings.
 QSet<int> invariantNumbers(const QString &text);
 
-// The members of `existing` whose feature test `cmakeText` names: the gatherer's
-// half of `Options::wiredTestDirs`, taking the text so it opens nothing.
+// The members of `existing` whose feature test `cmakeText` names outside a `#`
+// comment: the gatherer's half of `Options::wiredTestDirs`, taking the text so
+// it opens nothing.
 QSet<QString> wiredTestDirs(const QString &cmakeText, const QSet<QString> &existing);
 
 }  // namespace SpecLint

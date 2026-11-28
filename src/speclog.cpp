@@ -26,6 +26,16 @@ EditResult fail(const QString &code, const QString &error) {
     return r;
 }
 
+// ANTS-6652 — the Status value, a loop label and a loop body are each written
+// as one line; a line break in one would write lines the caller never meant,
+// a heading or a bullet among them. Empty when `value` holds none.
+QString lineBreakError(const QString &arg, const QString &value) {
+    if (!value.contains(QLatin1Char('\n')) && !value.contains(QLatin1Char('\r')))
+        return {};
+    return QStringLiteral("spec_log: `%1` holds a line break, and it is written "
+                          "as one line. Nothing was written.").arg(arg);
+}
+
 // A `## ` section boundary: exactly two hashes + space (`### `+ never
 // ends a `## ` section).
 bool isLevel2Heading(const QString &line) {
@@ -138,6 +148,9 @@ InsertResult insertAtSectionEnd(QStringList lines, int hdrIdx,
 
 EditResult setStatus(const QString &content, const QString &newStatus,
                      bool preserveBody) {
+    if (const QString e = lineBreakError(QStringLiteral("status"), newStatus);
+        !e.isEmpty())
+        return fail(QStringLiteral("bad_args"), e);
     bool ewn = false;
     QStringList lines = toLines(content, ewn);
 
@@ -187,6 +200,9 @@ EditResult setStatus(const QString &content, const QString &newStatus,
 }
 
 EditResult appendStatus(const QString &content, const QString &text) {
+    if (const QString e = lineBreakError(QStringLiteral("status"), text);
+        !e.isEmpty())
+        return fail(QStringLiteral("bad_args"), e);
     bool ewn = false;
     QStringList lines = toLines(content, ewn);
     // SpecParse owns the field's extent, as for setStatus (ANTS-3785), so the
@@ -509,8 +525,10 @@ static EditResult createLoopLog(QStringList lines, const QString &label,
     // Emitting the heading anyway is what made the failure self-perpetuating —
     // the next call took the table arm and wrote into the one-bullet section
     // beneath the real table, leaving the file with two logs.
-    for (const QString &l : lines) {
-        if (!l.trimmed().startsWith(QLatin1Char('|')))
+    // ANTS-6652 — a table inside a fenced example is not a log.
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    for (int i = 0; i < lines.size(); ++i) {
+        if (fence.at(i) || !lines.at(i).trimmed().startsWith(QLatin1Char('|')))
             continue;
         return fail(QStringLiteral("unrecognised_format"),
                     QStringLiteral(
@@ -551,6 +569,9 @@ static EditResult createLoopLog(QStringList lines, const QString &label,
 
 EditResult appendLoop(const QString &content, const QString &label,
                       const QString &body, const QStringList &cells) {
+    for (const QString &e : {lineBreakError(QStringLiteral("label"), label),
+                             lineBreakError(QStringLiteral("body"), body)})
+        if (!e.isEmpty()) return fail(QStringLiteral("bad_args"), e);
     bool ewn = false;
     QStringList lines = toLines(content, ewn);
     const QString bullet = QStringLiteral("- **") + label +

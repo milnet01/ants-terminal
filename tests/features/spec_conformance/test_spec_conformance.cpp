@@ -99,7 +99,7 @@ TEST(spec_conformance, Inv1IndentedFenceIsNotScanned) {
     const QJsonObject env = SpecConformance::run(p);
     ASSERT_TRUE(env.value("ok").toBool());
     EXPECT_EQ(env.value("cases_run").toInt(), 0)
-        << "fenceDelimLen counts from index 0 — an indented fence is not one";
+        << "a fence opens at column 0 only — an indented fence is not one";
     EXPECT_TRUE(arr(env, "findings").isEmpty());
     EXPECT_TRUE(arr(env, "candidates").isEmpty())
         << "invisible, NOT a candidate — this failure is silent by design";
@@ -441,4 +441,39 @@ TEST(spec_conformance, Ants5100OversizedSpecIsRefused) {
     const QJsonObject env = SpecConformance::run(p);
     EXPECT_FALSE(env.value("ok").toBool(true));
     EXPECT_EQ(env.value("code").toString(), QStringLiteral("too_large"));
+}
+
+// ANTS-6652 — a fence's body is skipped whatever its character: a ~~~ fence
+// holding a ```regex example is one fence, so the example yields no case.
+TEST(spec_conformance, Ants6652TildeFenceBodyIsNotScanned) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString p = writeSpec(d, "tilde.md",
+        "~~~markdown\n"
+        "```regex pcre2\n^zzz\n```\n\n"
+        "| input | expected |\n|---|---|\n| `qqq` | `zzz` |\n"
+        "~~~\n");
+    const QJsonObject env = SpecConformance::run(p);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("cases_run").toInt(), 0)
+        << "the regex fence is inside a ~~~ fence, an illustration";
+    EXPECT_TRUE(arr(env, "findings").isEmpty());
+    ASSERT_EQ(arr(env, "skipped_fences").size(), 1);
+    EXPECT_EQ(at(env, "skipped_fences", 0).value("tag").toString(),
+              QStringLiteral("markdown"));
+}
+
+// ANTS-6652 — `executable_fences` counts only fences the verb can run: a bare
+// `regex` fence and a `regex python` fence run nothing.
+TEST(spec_conformance, Ants6652OnlyPcre2FencesAreExecutable) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString p = writeSpec(d, "noexec.md",
+        fence("regex", "^(a)") + fence("regex python", "(?P<w>a)"));
+    const QJsonObject env = SpecConformance::run(p);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("executable_fences").toInt(), 0)
+        << "neither fence can run, so the run checked nothing";
+    EXPECT_EQ(arr(env, "candidates").size(), 1);
+    EXPECT_EQ(arr(env, "refusals").size(), 1);
 }

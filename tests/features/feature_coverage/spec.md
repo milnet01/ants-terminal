@@ -111,7 +111,7 @@ body.
 17. **Empty title list → false.** A bullet vs `[]` always returns
     `false` (nothing to match against).
 
-## On-disk runners (invariants 18-24)
+## On-disk runners (invariants 18-25)
 
 The two runners compose the parsers above with a real project tree.
 These invariants pin the resolution rules, which is where both lanes
@@ -165,6 +165,13 @@ have misfired on projects whose layout differs from this one's.
     `BlobOptions::maxFileBytes`. An id past it in a feature file is not
     seen, so its CHANGELOG bullet is reported uncovered
     (`Ants6523FeatureFilesAreReadToTheBound`).
+
+25. **A bounded blob says so** (ANTS-6652). `truncatedOut` is set when
+    a file over `maxFileBytes` is skipped, as when the total bound is
+    reached. A drift lane whose blob was bounded and that reports
+    findings opens with one `.:1:` line saying the index is incomplete;
+    with no findings, or an unbounded blob, it adds nothing
+    (`Ants6652BoundedBlobIsReportedByTheDriftLanes`).
 
 ## Acceptance
 

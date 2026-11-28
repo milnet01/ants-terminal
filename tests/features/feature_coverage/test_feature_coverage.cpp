@@ -636,3 +636,38 @@ TEST(FeatureCoverage, Ants6523FeatureFilesAreReadToTheBound) {
     EXPECT_TRUE(out.contains(QStringLiteral("FIBR-7777")))
         << "an id past the per-file bound counted as covered, so the file was read whole";
 }
+
+// ANTS-6652 — a file skipped for its size sets truncatedOut, as the total
+// bound does, and a drift lane with findings then says its index is
+// incomplete: a name held only in the skipped file reads as drift.
+TEST(FeatureCoverage, Ants6652BoundedBlobIsReportedByTheDriftLanes) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(writeFile(root + "/src/app.py", "def render():\n    return 1\n"));
+    ASSERT_TRUE(writeFile(root + "/tests/features/word/spec.md",
+                          "# Word\n\nRenamed away: `ghost_symbol_xyz`.\n"));
+    ASSERT_TRUE(writeFile(root + "/docs/standards/s.md",
+                          "# S\n\nRenamed away: `ghost_literal_abc`.\n"));
+    const QString note = QStringLiteral(".:1: the source index is incomplete");
+
+    EXPECT_FALSE(FeatureCoverage::runSpecDriftCheck(root).contains(note))
+        << "an unbounded blob adds no line";
+    EXPECT_FALSE(FeatureCoverage::runContractDocDriftStandardsCheck(root).contains(note));
+
+    const qint64 bound = FeatureCoverage::BlobOptions{}.maxFileBytes;
+    ASSERT_TRUE(writeFile(root + "/data/huge.json",
+                          QString(int(bound) + 1024, QLatin1Char('x'))));
+    bool cut = false;
+    FeatureCoverage::BlobOptions o;
+    o.truncatedOut = &cut;
+    FeatureCoverage::buildProjectSourceBlob(root, o);
+    EXPECT_TRUE(cut) << "a file skipped for its size must say so";
+
+    const QString spec = FeatureCoverage::runSpecDriftCheck(root);
+    EXPECT_TRUE(spec.startsWith(note)) << spec.toStdString();
+    EXPECT_TRUE(spec.contains(QStringLiteral("ghost_symbol_xyz")));
+    const QString docs = FeatureCoverage::runContractDocDriftStandardsCheck(root);
+    EXPECT_TRUE(docs.startsWith(note)) << docs.toStdString();
+    EXPECT_TRUE(docs.contains(QStringLiteral("ghost_literal_abc")));
+}

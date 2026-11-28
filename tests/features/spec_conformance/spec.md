@@ -62,3 +62,11 @@ Label: `features;fast`.
 A fence whose pattern `QRegularExpression` cannot compile is refused with
 code `bad_pattern`, the compile error and the pattern, and none of its rows
 run. *Test:* `Ants5100InvalidPatternIsRefused`.
+
+## ANTS-6652 — fence characters and the executable count
+
+A `~~~` fence is a fence: its body, a `regex` fence example included, yields
+no case, and the fence is listed in `skipped_fences`. *Test:*
+`Ants6652TildeFenceBodyIsNotScanned`. `executable_fences` counts only
+`regex pcre2` fences; a bare `regex` or `regex python` fence is not one.
+*Test:* `Ants6652OnlyPcre2FencesAreExecutable`.

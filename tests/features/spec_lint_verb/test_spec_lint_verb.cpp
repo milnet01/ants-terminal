@@ -269,6 +269,22 @@ TEST(SpecLintVerb, Ants6312ScriptTestsCountAsWired) {
     EXPECT_EQ(SpecLint::wiredTestDirs(cmake, existing), want);
 }
 
+// ANTS-6652 — a test source named only in a `#` comment is not wired:
+// commenting it out is how a test is unwired. A `#` inside a quoted argument
+// does not start a comment.
+TEST(SpecLintVerb, Ants6652CommentedOutTestIsNotWired) {
+    const QSet<QString> existing{QStringLiteral("live"), QStringLiteral("gone"),
+                                 QStringLiteral("trailing"),
+                                 QStringLiteral("quoted")};
+    const QString cmake = QStringLiteral(
+        "    tests/features/live/test_live.cpp\n"
+        "#    tests/features/gone/test_gone.cpp\n"
+        "    src/x.cpp  # was tests/features/trailing/test_trailing.cpp\n"
+        "    COMMAND bash \"a#b/tests/features/quoted/test_quoted.sh\")\n");
+    const QSet<QString> want{QStringLiteral("live"), QStringLiteral("quoted")};
+    EXPECT_EQ(SpecLint::wiredTestDirs(cmake, existing), want);
+}
+
 // ANTS-4390 — the global standards repo must be able to check its own specs.
 // `~/.claude` has NO `docs/standards/` because it IS the standards set, so
 // every candidate path missed and `sections_checked` came back false on the
@@ -1320,6 +1336,16 @@ TEST(SpecLintVerb, Ants5511StatusVocabulary) {
 TEST(SpecLintVerb, Ants5511KindTaxonomy) {
     EXPECT_EQ(headerKinds(withLine("**Kind:** implement.", "**Kind:** Review-Fix")), QStringList{});
     EXPECT_EQ(headerKinds(withLine("**Kind:** implement.", "**Kind:** process.")),
+              QStringList{QStringLiteral("header_kind_unknown")});
+}
+
+// ANTS-6652 — trailing punctuation is not part of the kind, as it is not part
+// of the Status word: only a full stop used to be dropped.
+TEST(SpecLintVerb, Ants6652KindDropsTrailingPunctuation) {
+    for (const char *ok : {"**Kind:** feature,", "**Kind:** feature;",
+                           "**Kind:** review-fix:", "**Kind:** fix."})
+        EXPECT_EQ(headerKinds(withLine("**Kind:** implement.", ok)), QStringList{}) << ok;
+    EXPECT_EQ(headerKinds(withLine("**Kind:** implement.", "**Kind:** process,")),
               QStringList{QStringLiteral("header_kind_unknown")});
 }
 

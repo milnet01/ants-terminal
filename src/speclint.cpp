@@ -415,10 +415,22 @@ QSet<QString> wiredTestDirs(const QString &cmakeText, const QSet<QString> &exist
     static const QRegularExpression re(
         QStringLiteral(R"(tests/features/([a-z0-9_]+)/test_[a-z0-9_]+\.(?:cpp|sh|py)\b)"));
     QSet<QString> wired;
-    auto it = re.globalMatch(cmakeText);
-    while (it.hasNext()) {
-        const QString name = it.next().captured(1);
-        if (existing.contains(name)) wired.insert(name);
+    // ANTS-6652 — a `#` comment does not wire a test: commenting a source out
+    // is how a test is unwired. A `#` inside a quoted argument is text.
+    for (const QString &line : cmakeText.split(QLatin1Char('\n'))) {
+        int cut = line.size();
+        bool quoted = false;
+        for (int i = 0; i < line.size(); ++i) {
+            const QChar c = line.at(i);
+            if (c == QLatin1Char('\\')) ++i;
+            else if (c == QLatin1Char('"')) quoted = !quoted;
+            else if (c == QLatin1Char('#') && !quoted) { cut = i; break; }
+        }
+        auto it = re.globalMatch(line.left(cut));
+        while (it.hasNext()) {
+            const QString name = it.next().captured(1);
+            if (existing.contains(name)) wired.insert(name);
+        }
     }
     return wired;
 }
@@ -652,7 +664,9 @@ void checkHeaderBlock(const QStringList &lines, const QVector<bool> &fence,
                 QStringLiteral("Status is not in the lifecycle: %1").arg(value));
         } else if (name == QLatin1String("Kind")) {
             QString kind = value.section(QLatin1Char(' '), 0, 0).toLower();
-            if (kind.endsWith(QLatin1Char('.'))) kind.chop(1);
+            // ANTS-6652 — trailing punctuation is not part of the kind, as
+            // statusWord drops it from Status: `feature,` is `feature`.
+            while (!kind.isEmpty() && kind.back().isPunct()) kind.chop(1);
             if (!RoadmapParse::canonicalKinds().contains(kind))
                 add(QStringLiteral("header_kind_unknown"), i + 1,
                     QStringLiteral("Kind is not in the roadmap taxonomy: %1")

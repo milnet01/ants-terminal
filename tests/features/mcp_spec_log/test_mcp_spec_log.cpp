@@ -1161,6 +1161,51 @@ TEST(McpSpecLog, Ants4886StillCreatesTheSectionOnASpecThatHasNoLogYet) {
     EXPECT_TRUE(r.content.contains(QStringLiteral("- **Loop 1 (2026-09-06)** — ")));
 }
 
+// T19 (ANTS-6652) — a table inside a fenced example is not a loop log under an
+// unrecognised heading, so a spec whose only table is fenced gets a new log.
+TEST(McpSpecLog, Ants6652FencedTableDoesNotBlockANewLoopLog) {
+    const QString spec = QStringLiteral(
+        "# A spec\n\n## 1. Problem\n\n"
+        "```markdown\n| Loop | Date |\n|---|---|\n| 1 | 2026-09-06 |\n```\n");
+
+    const SpecLog::EditResult r = SpecLog::appendLoop(
+        spec, QStringLiteral("Loop 1 (2026-09-06)"),
+        QStringLiteral("Seven verified, seven fixed."), QStringList{});
+
+    ASSERT_TRUE(r.ok) << r.code.toStdString() << ": " << r.error.toStdString();
+    EXPECT_EQ(r.rowShape, QStringLiteral("bullet"));
+    EXPECT_TRUE(r.content.contains(QStringLiteral("## Cold-eyes loop log")));
+}
+
+// T18 (ANTS-6652) — a one-line field with a line break in it would write extra
+// lines, here a heading; each op refuses and writes nothing.
+TEST(McpSpecLog, Ants6652LineBreakInAOneLineFieldRefuses) {
+    const QString spec = QString::fromUtf8(kSpec);
+    const QString injected = QStringLiteral("accepted\n## Injected");
+
+    const SpecLog::EditResult set = SpecLog::setStatus(spec, injected);
+    EXPECT_FALSE(set.ok) << set.content.toStdString();
+    EXPECT_EQ(set.code, QStringLiteral("bad_args"));
+
+    const SpecLog::EditResult app = SpecLog::appendStatus(spec, injected);
+    EXPECT_FALSE(app.ok) << app.content.toStdString();
+    EXPECT_EQ(app.code, QStringLiteral("bad_args"));
+
+    const SpecLog::EditResult label = SpecLog::appendLoop(
+        spec, QStringLiteral("Loop 2\r\n## Injected"), QStringLiteral("x"));
+    EXPECT_FALSE(label.ok) << label.content.toStdString();
+    EXPECT_EQ(label.code, QStringLiteral("bad_args"));
+
+    const SpecLog::EditResult body =
+        SpecLog::appendLoop(spec, QStringLiteral("Loop 2"), injected);
+    EXPECT_FALSE(body.ok) << body.content.toStdString();
+    EXPECT_EQ(body.code, QStringLiteral("bad_args"));
+
+    const SpecLog::EditResult clean =
+        SpecLog::appendLoop(spec, QStringLiteral("Loop 2"), QStringLiteral("x"));
+    EXPECT_TRUE(clean.ok) << "the one-line form still writes";
+}
+
 // ANTS-5100 — append_inv's duplicate guard reads the invariants the parser
 // reads (SpecParse::invariantsSection, the one definition) plus any table row
 // anchor in that section. It matched only `- **INV-N` across the whole file:

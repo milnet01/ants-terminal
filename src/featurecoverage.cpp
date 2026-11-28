@@ -550,8 +550,9 @@ QString buildProjectSourceBlob(const QString &projectPath,
             if (!opts.includeMarkdownContents &&
                 name.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
                 continue;
-            if (fi.size() > opts.maxFileBytes) continue;   // ANTS-5100
-            if (blobBytes + fi.size() > opts.maxBlobBytes) {
+            // ANTS-5100 — over either bound, skipped; ANTS-6652 — and said so.
+            if (fi.size() > opts.maxFileBytes ||
+                blobBytes + fi.size() > opts.maxBlobBytes) {
                 if (opts.truncatedOut) *opts.truncatedOut = true;
                 continue;
             }
@@ -739,6 +740,19 @@ const QSet<QString> &specStopwords() {
     return stopwords();
 }
 
+// ANTS-6652 — a drift lane's findings, plus one project-level line when the
+// blob left a file out: a name held only there reads as drift, so the lane
+// says its findings may overcount.
+static QString withTruncationNote(const QString &findings, bool truncated) {
+    if (!truncated || findings.isEmpty()) return findings;
+    const BlobOptions bounds;
+    return QStringLiteral(".:1: the source index is incomplete (a file over %1 MiB "
+                          "or past the %2 MiB total was not read), so a name held "
+                          "only there reads as drift\n")
+               .arg(bounds.maxFileBytes >> 20).arg(bounds.maxBlobBytes >> 20) +
+           findings;
+}
+
 QString runSpecDriftCheck(const QString &projectPath) {
     // Bail cleanly when the project doesn't use the convention. The audit
     // framework treats empty output as "no findings" — the whole lane
@@ -757,8 +771,10 @@ QString runSpecDriftCheck(const QString &projectPath) {
     // friends), where every cited test file read as drift. The manifest makes
     // the file's existence the evidence, which is what the citation claims.
     // A symbol that exists nowhere is unaffected: it is in no path either.
+    bool truncated = false;
     const QString sourceBlob = buildProjectSourceBlob(
-        projectPath, BlobOptions{.appendPathManifest = true});
+        projectPath,
+        BlobOptions{.appendPathManifest = true, .truncatedOut = &truncated});
     if (sourceBlob.isEmpty()) return {};
 
     // ANTS-5067 — index once, then answer every token against it. Measured on
@@ -797,7 +813,7 @@ QString runSpecDriftCheck(const QString &projectPath) {
                        .arg(relPath, QString::number(d.line)).arg(d.token);
         }
     }
-    return out.trimmed();
+    return withTruncationNote(out, truncated).trimmed();
 }
 
 QSet<QString> loadAllowlist(const QString &projectPath) {
@@ -862,9 +878,11 @@ static QString contractDocDriftIn(const QString &projectPath,
     // *.md bodies excluded so doc prose can't self-satisfy a literal; a path
     // manifest so quoted filenames still resolve (§ 2.3). Designated
     // initializers guard against a silent field-swap (CLAUDE.md § 5 idiom).
+    bool truncated = false;
     const QString blob = buildProjectSourceBlob(
         projectPath,
-        BlobOptions{.includeMarkdownContents = false, .appendPathManifest = true});
+        BlobOptions{.includeMarkdownContents = false, .appendPathManifest = true,
+                    .truncatedOut = &truncated});
     if (blob.isEmpty()) return {};
 
     // ANTS-5067 — index once per lane, then answer every token against it.
@@ -917,7 +935,7 @@ static QString contractDocDriftIn(const QString &projectPath,
                        .arg(relPath, QString::number(t.line)).arg(t.token);
         }
     }
-    return out.trimmed();
+    return withTruncationNote(out, truncated).trimmed();
 }
 
 // ANTS-3849 — the two registered lanes. Standards is the readable half and is

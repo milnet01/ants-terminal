@@ -168,8 +168,9 @@ struct BlobOptions {
                                            //         file's project-relative
                                            //         path (before all gates)
     // ANTS-5100 — bounds. A file over maxFileBytes is not read (its path can
-    // still enter the manifest); content stops being added once the blob
-    // reaches maxBlobBytes, and *truncatedOut (when set) says so.
+    // still enter the manifest); a file that would take the blob past
+    // maxBlobBytes is skipped. *truncatedOut (when set) says whether either
+    // skip happened (ANTS-6652).
     qint64 maxFileBytes = 2 * 1024 * 1024;
     qint64 maxBlobBytes = 64 * 1024 * 1024;
     bool  *truncatedOut = nullptr;
@@ -232,6 +233,9 @@ const QSet<QString> &specStopwords();
 // layout. Return `file:line: message` stdout exactly as a shell-based
 // audit check would, so the downstream `parseFindings` / dedup / suppress
 // pipeline in auditdialog.cpp handles them uniformly.
+//
+// ANTS-6652 — the drift lanes (1 and 3) open with one `.:1:` line when the
+// blob was bounded and they report findings: those may name text left out.
 //
 // Factored out of AuditDialog so headless test-drivers and the audit
 // dialog share one implementation. Only Qt::Core is required — no

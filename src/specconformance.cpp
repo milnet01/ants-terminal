@@ -25,11 +25,11 @@ namespace {
 
 void addRow(QJsonArray &a, const QJsonObject &o) { a.append(o); }
 
-// A fence opens with >= 3 backticks at column 0. Returns the run length, or 0.
-int fenceDelimLen(const QString &line) {
-    int n = 0;
-    while (n < line.size() && line.at(n) == QLatin1Char('`')) ++n;
-    return (n >= 3) ? n : 0;
+// A fence opens at column 0 (INV-1: an indented fence is not one) with a run
+// of three or more backticks or tildes, under MarkdownScan's shared rule.
+// Returns the fence character, null when `line` opens none; *run gets its length.
+QChar fenceAt(const QString &line, int *run = nullptr) {
+    return MarkdownScan::fenceOpenerChar(line, 0, run);
 }
 
 // Strip ONE layer of surrounding backticks. `` -> "" ; `a` -> "a".
@@ -124,16 +124,16 @@ QJsonObject run(const QString &absPath, const Options &opt) {
     bool truncated = false;
 
     for (int i = 0; i < lines.size(); ++i) {
-        const int delim = fenceDelimLen(lines.at(i));
-        if (delim == 0) continue;
+        int delim = 0;
+        const QChar fenceChar = fenceAt(lines.at(i), &delim);
+        if (fenceChar.isNull()) continue;
 
-        // ---- top-level fence: find its close, at the same delimiter length --
+        // ---- top-level fence: find its close, the same character in a run at
+        // least as long (ANTS-6652: a ~~~ fence's body is not scanned either) --
         const QString info = lines.at(i).mid(delim).trimmed();
         int close = -1;
         for (int j = i + 1; j < lines.size(); ++j) {
-            if (fenceDelimLen(lines.at(j)) >= delim &&
-                lines.at(j).trimmed().count(QLatin1Char('`')) ==
-                    lines.at(j).trimmed().size()) {
+            if (MarkdownScan::fenceCloses(lines.at(j), fenceChar, delim, 0)) {
                 close = j;
                 break;
             }
@@ -161,7 +161,6 @@ QJsonObject run(const QString &absPath, const Options &opt) {
             addRow(skippedFences, sf);
             continue;
         }
-        ++taggedFences;
 
         // ---- precedence: engine -> pattern cap -> table -> bad_pattern -> input cap
         if (infoWords.size() < 2) {
@@ -179,6 +178,9 @@ QJsonObject run(const QString &absPath, const Options &opt) {
             addRow(refusals, r);
             continue;
         }
+        // ANTS-6652 — counted only once the engine is pcre2: a bare `regex`
+        // or `regex python` fence runs nothing, so it is not executable.
+        ++taggedFences;
 
         QStringList body;
         for (int j = fenceLine; j < close; ++j) body << lines.at(j);
@@ -197,7 +199,7 @@ QJsonObject run(const QString &absPath, const Options &opt) {
         for (int j = close + 1; j < lines.size(); ++j) {
             const QString t = lines.at(j).trimmed();
             if (t.isEmpty()) continue;
-            if (fenceDelimLen(lines.at(j)) > 0 || t.startsWith(QLatin1Char('#')))
+            if (!fenceAt(lines.at(j)).isNull() || t.startsWith(QLatin1Char('#')))
                 break;
             if (t.startsWith(QLatin1Char('|'))) {
                 const QStringList c = cellsOf(t);
@@ -305,8 +307,8 @@ QJsonObject run(const QString &absPath, const Options &opt) {
     out[QStringLiteral("ok")]         = true;
     out[QStringLiteral("path")]       = absPath;
     // ANTS-4370 — the counters that make a zero legible. `executable_fences`
-    // is 0 with `skipped_fences` non-empty exactly when the corpus is tagged
-    // for another language, which is the case that read as a pass.
+    // counts the `regex pcre2` fences; 0 with `skipped_fences` non-empty is
+    // a corpus tagged for another language, the case that read as a pass.
     out[QStringLiteral("executable_fences")] = taggedFences;
     if (!skippedFences.isEmpty()) {
         out[QStringLiteral("skipped_fences")] = skippedFences;

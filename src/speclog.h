@@ -52,7 +52,8 @@ struct EditResult {
 
 // op:"set_status" — replace the first `**Status:**` field's WHOLE extent
 // (its opener plus any continuation lines) with one new line. ANTS-3785.
-// `unrecognised_format` when the spec has no Status line.
+// `unrecognised_format` when the spec has no Status line; `bad_args` when
+// `newStatus` holds a line break (ANTS-6652).
 // ANTS-4136 — `preserveBody` keeps the field's CONTINUATION LINES and
 // rewrites only the opener's value. A spec's Status is a wrapped field and
 // this corpus routinely carries a paragraph there (review-loop counts,
@@ -65,8 +66,8 @@ EditResult setStatus(const QString &content, const QString &newStatus,
 // op:"append_status" (ANTS-4959) — add `text` after a space at the END of the
 // Status field's last line, rewrapping nothing. For recording a later event
 // ("Built 2026-11-03.") without retyping the field or cutting it at a wrap.
-// `line` is the 1-based line the text landed on; `unrecognised_format` as
-// for setStatus.
+// `line` is the 1-based line the text landed on; `unrecognised_format` and
+// `bad_args` as for setStatus.
 EditResult appendStatus(const QString &content, const QString &text);
 
 // op:"append_loop" — append a `- **<label>** — <body>` bullet at the end
@@ -75,9 +76,10 @@ EditResult appendStatus(const QString &content, const QString &text);
 // Without one, a single `## Loop log` heading, optionally numbered
 // (`## 8. Loop log`), is the log (ANTS-6755).
 // Creates the section at EOF when absent (repaired, not refused), unless
-// the file holds a markdown table anywhere: then the log is taken to be
-// under a heading this verb does not recognise, and the call refuses
-// `unrecognised_format` (ANTS-4886).
+// the file holds a markdown table outside a fence: then the log is taken to
+// be under a heading this verb does not recognise, and the call refuses
+// `unrecognised_format` (ANTS-4886). A `label` or `body` holding a line
+// break refuses `bad_args` (ANTS-6652).
 // ANTS-4364 — `cells` is the TABLE form: one string per column, ordered to
 // match the table's own header. Where the section holds a table and `cells`
 // is empty the call REFUSES (`format_mismatch`; a wrong cell count is

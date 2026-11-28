@@ -63,3 +63,9 @@ Invariants exercised (docs/specs/ANTS-1963-spec-log-mcp-tool-write.md §3 / §6)
   there, the spec is byte-identical, `path` names the file written and
   `followed_from` the spec. A link to a missing file refuses `not_found`
   naming it; a link leaving the project refuses `bad_path`.
+- T18 — (ANTS-6652) a `status`, `label` or `body` holding a line break
+  refuses `bad_args` from `set_status`, `append_status` and `append_loop`,
+  and nothing is written. *Test:* `Ants6652LineBreakInAOneLineFieldRefuses`.
+- T19 — (ANTS-6652) a table inside a fenced example is not a loop log: a
+  spec whose only table is fenced gets a new loop-log section. *Test:*
+  `Ants6652FencedTableDoesNotBlockANewLoopLog`.
