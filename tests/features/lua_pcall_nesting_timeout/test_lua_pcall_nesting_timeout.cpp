@@ -5,6 +5,7 @@
 //   A2 — Source-nested catch terminates within slack (100-deep).
 //   A3 — Recovery: a fresh pcall after kill runs normally.
 //   A4 — Benign plugins not penalised (~10k instr, ≤ 100 ms).
+//   A5 — A kill caught by init.lua does not stop the next event (ANTS-6645).
 // Source:
 //   S1 — m_killed declared on LuaEngine.
 //   S2 — m_killed = false in startPcallBudget.
@@ -260,6 +261,54 @@ void runA4(const QString &dir) {
     engine.shutdown();
 }
 
+// A5 — ANTS-6645: init.lua catches its own budget kill with a tail-called
+// pcall, so loadScript returns normally with the timed-out flag set. The
+// next event's handlers must all run, with no "timed out" log.
+void runA5(const QString &dir) {
+    LuaEngine engine;
+    if (!engine.initialize()) {
+        expect(false, "A5/init", QStringLiteral("LuaEngine::initialize failed"));
+        return;
+    }
+    engine.setPcallBudgetMs(kBudgetMs);
+    bool timedOutLogged = false;
+    QObject::connect(&engine, &LuaEngine::logMessage,
+                     [&timedOutLogged](const QString &m) {
+        if (m.contains(QStringLiteral("timed out"))) timedOutLogged = true;
+    });
+    const QByteArray script =
+        "ants.on('theme_changed', function() end)\n"
+        "ants.on('theme_changed', function()\n"
+        "  _G.ants_test_a5_ran = true\n"
+        "end)\n"
+        "return pcall(function() while true do end end)\n";
+    const QString path = writeTemp(dir, "a5_caught.lua", script);
+    if (path.isEmpty()) return;
+    const bool loaded = engine.loadScript(path);
+    expect(loaded, "A5a/caught-kill-script-loads",
+           QStringLiteral("a chunk that catches its own kill and returns "
+                          "must load"));
+    if (!loaded) { QFile::remove(path); return; }
+
+    engine.fireEvent(PluginEvent::ThemeChanged, QString());
+    expect(!timedOutLogged, "A5b/no-false-timeout-log",
+           QStringLiteral("a handler that finished in budget was reported "
+                          "as timed out (m_timedOut left over from "
+                          "init.lua)"));
+
+    const QByteArray check =
+        "if not _G.ants_test_a5_ran then\n"
+        "  error('second handler did not run')\n"
+        "end\n";
+    const QString checkPath = writeTemp(dir, "a5_check.lua", check);
+    expect(engine.loadScript(checkPath), "A5c/second-handler-ran",
+           QStringLiteral("the event stopped after its first handler"));
+
+    QFile::remove(path);
+    QFile::remove(checkPath);
+    engine.shutdown();
+}
+
 void runRuntimeChecks() {
     const QString dir =
         QStandardPaths::writableLocation(QStandardPaths::TempLocation)
@@ -270,6 +319,7 @@ void runRuntimeChecks() {
     runA2(dir);
     runA3(dir);
     runA4(dir);
+    runA5(dir);
     QDir().rmdir(dir);
 }
 

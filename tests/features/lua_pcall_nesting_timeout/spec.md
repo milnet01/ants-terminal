@@ -50,6 +50,13 @@ re-broken.
 - **A4 — Benign plugins not penalised.** Load a script that runs ~10
   000 instructions of trivial Lua and returns. Wall-clock ≤ 100 ms.
   Proves the count-1 latch isn't sticky across pcalls (Invariant 7).
+- **A5 — A kill caught by init.lua does not stop the next event
+  (ANTS-6645).** `init.lua` registers two `theme_changed` handlers, then
+  ends with `return pcall(function() while true do end end)`. The
+  tail-called `pcall` catches the budget kill and the chunk returns
+  normally. Firing `theme_changed` runs both handlers and logs no
+  "timed out". Pre-fix `startPcallBudget` left `m_timedOut` set, so the
+  event stopped after its first handler.
 
 ### Source checks
 

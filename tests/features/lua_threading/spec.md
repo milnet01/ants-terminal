@@ -42,6 +42,12 @@ responsive no matter what a plugin does.
   prompt that pumps the event loop delivers an earlier plugin's palette
   entry inside `scanAndLoad()`. The receiver sees `pluginsAboutToLoad`,
   then the entry, then `pluginsReloaded`.
+- **R7 (INV-9, ANTS-6645) — the worker stack holds twice the deepest
+  recursion.** `Ants6645WorkerStackHoldsTwiceTheDeepestRecursion`: on a
+  thread sized `LuaEngine::kWorkerStackBytes`, `string.gsub` callbacks
+  nest until Lua raises "C stack overflow". The stack they used, read
+  from frame addresses, is at most half the thread's stack. About
+  400 KiB is used, so the old 512 KiB stack fails.
 
 ## Structural invariants (source)
 

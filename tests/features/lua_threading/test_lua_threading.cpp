@@ -40,6 +40,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <lua.hpp>
 #include "../../_support/srcgrep.h"
 
 ANTS_TEST_SCOPE();
@@ -836,4 +838,50 @@ TEST(LuaThreading, Ants6846SetupPluginsConnectsBeforeItLoads) {
     EXPECT_GT(load, lastConnect) << "a connect runs after scanAndLoad()";
     EXPECT_NE(body.find("&PluginManager::pluginsAboutToLoad"), std::string::npos)
         << "the palette clear is not on pluginsAboutToLoad";
+}
+
+// ANTS-6645 — INV-9: the worker stack holds twice the deepest recursion the
+// sandbox allows, string.gsub callbacks nested to Lua's C-call limit. Each
+// level records how far down the stack it reached; the frame address, not a
+// local's, so a sanitizer's fake stack cannot hide the real depth.
+namespace {
+uintptr_t g_lowestFrame = 0;
+
+int recordFrame(lua_State *) {
+    const auto at = reinterpret_cast<uintptr_t>(__builtin_frame_address(0));
+    if (g_lowestFrame == 0 || at < g_lowestFrame) g_lowestFrame = at;
+    return 0;
+}
+}  // namespace
+
+TEST(LuaThreading, Ants6645WorkerStackHoldsTwiceTheDeepestRecursion) {
+    size_t used = 0;
+    QString err;
+    QThread *worker = QThread::create([&used, &err] {
+        const auto top = reinterpret_cast<uintptr_t>(__builtin_frame_address(0));
+        g_lowestFrame = 0;
+        lua_State *L = luaL_newstate();
+        luaL_openlibs(L);
+        lua_register(L, "record_frame", recordFrame);
+        const int r = luaL_dostring(L,
+            "local function g()\n"
+            "  return (string.gsub('a', 'a', function()\n"
+            "    record_frame() return g() end))\n"
+            "end\n"
+            "local ok, e = pcall(g)\n"
+            "return tostring(e)\n");
+        err = QString::fromUtf8(lua_tostring(L, -1));
+        if (r != LUA_OK) err.prepend(QStringLiteral("script failed: "));
+        lua_close(L);
+        used = top - g_lowestFrame;
+    });
+    worker->setStackSize(LuaEngine::kWorkerStackBytes);
+    worker->start();
+    worker->wait();
+    delete worker;
+    ASSERT_TRUE(err.contains(QStringLiteral("stack overflow")))
+        << "the recursion did not reach Lua's C-call limit: " << qPrintable(err);
+    EXPECT_LE(used * 2, static_cast<size_t>(LuaEngine::kWorkerStackBytes))
+        << "recursion to the C-call limit used " << used / 1024
+        << " KiB of a " << LuaEngine::kWorkerStackBytes / 1024 << " KiB stack";
 }

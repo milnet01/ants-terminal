@@ -4284,8 +4284,8 @@ if(ANTS_TESTS)
 
     # ANTS-1217 Phase 6 — test_lua bundle (gated on LUA_FOUND). Subject:
     # luaengine + pluginmanager. lua_sandbox_hardening drives the live
-    # LuaEngine API; plugin_manifest_safety is a source-grep test on
-    # pluginmanager.cpp. Bundle links ants_lua_lib + ants_core_lib per
+    # LuaEngine API; plugin_manifest_safety greps pluginmanager.cpp and
+    # drives a real PluginManager. Bundle links ants_lua_lib + ants_core_lib per
     # the Phase 7 architecture.
     if(LUA_FOUND)
         ants_add_gui_bundle(test_lua

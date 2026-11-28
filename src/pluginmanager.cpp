@@ -215,7 +215,7 @@ void PluginManager::finishTeardown(LuaEngine *engine, QThread *thread,
         // otherwise deliver queued sendToTerminal/eventCompleted/etc. into a
         // PluginManager that may already be destroyed (it is parented to
         // MainWindow, torn down at app exit while zombies are never joined).
-        QObject::disconnect(engine, nullptr, this, nullptr);
+        if (engine) QObject::disconnect(engine, nullptr, this, nullptr);
         m_demoted.remove(engine);
         m_execStart.remove(engine);
         m_zombies.append(Zombie{thread, engine});
@@ -416,9 +416,11 @@ static void parseManifestInto(PluginInfo &info, const QJsonObject &obj) {
 }
 
 // Fills `info` from the plugin's optional manifest.json. A missing,
-// unreadable, oversized or unparseable manifest leaves `info` as it is.
+// unreadable, oversized or unparseable manifest leaves `info` as it is, and
+// so does one that is not a regular file (ANTS-6645: opening a FIFO here
+// would block the GUI thread at every startup).
 static void readManifestInto(PluginInfo &info, const QString &manifestPath) {
-    if (!QFile::exists(manifestPath)) return;
+    if (!QFileInfo(manifestPath).isFile()) return;
     QFile f(manifestPath);
     if (!f.open(QIODevice::ReadOnly)) return;
     // 0.7.33: cap manifest size before reading. Pre-fix `f.readAll()`
@@ -513,7 +515,9 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
 
         QString initLua = canonicalPlugin + "/init.lua";
 
-        if (!QFile::exists(initLua)) continue;
+        // ANTS-6645 — a regular file only: opening a FIFO blocks until a
+        // writer appears, which would wedge the plugin's worker.
+        if (!QFileInfo(initLua).isFile()) continue;
 
         // Reject a symlinked init.lua. The plugin directory is already
         // canonicalised, but a symlink at init.lua itself could point

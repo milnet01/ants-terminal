@@ -1,16 +1,32 @@
 // Feature-conformance test for spec.md —
 //
-// Source-grep test. PluginManager::scanAndLoad must:
+// Source-grep checks. PluginManager::scanAndLoad must:
 //   I1: cap manifest reads at 1 MiB via kMaxManifestBytes (in
 //       readManifestInto, which scanAndLoad calls).
 //   I2: pass QDir::NoSymLinks to entryList.
 //   I3: anchor on canonicalFilePath of m_pluginDir.
 //   I4: per-entry canonical-containment reject.
+// Runtime (ANTS-6645): a FIFO manifest.json or init.lua is never opened.
+
+#include "pluginmanager.h"
 
 #include "../../_support/expect.h"
 
-#include <string>
+#include <QCoreApplication>
+#include <QDir>
+#include <QElapsedTimer>
+#include <QFile>
+#include <QStandardPaths>
+#include <QUuid>
 
+#include <atomic>
+#include <chrono>
+#include <string>
+#include <thread>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
@@ -110,4 +126,107 @@ static int runMain() {
 
 TEST(PluginManifestSafety, Main) {
     ASSERT_EQ(0, runMain());
+}
+
+// ANTS-6645 — opening a FIFO for reading blocks until a writer appears, so
+// scanAndLoad must not open a plugin file that is not a regular file.
+namespace {
+
+// Opens `path` for writing without blocking, over and over until finish().
+// That open succeeds only while something holds the FIFO open for reading,
+// so opens() counts Ants' attempts to read it; each success also frees the
+// blocked reader, so the old code fails instead of hanging.
+class FifoWatch {
+public:
+    explicit FifoWatch(const QString &path)
+        : m_path(QFile::encodeName(path)), m_thread([this] {
+              while (!m_stop.load()) {
+                  const int fd = ::open(m_path.constData(), O_WRONLY | O_NONBLOCK);
+                  if (fd >= 0) { ++m_opens; ::close(fd); }
+                  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+              }
+          }) {}
+    ~FifoWatch() { finish(); }
+    FifoWatch(const FifoWatch &) = delete;
+    FifoWatch &operator=(const FifoWatch &) = delete;
+    int opens() const { return m_opens.load(); }
+    void finish() {
+        m_stop = true;
+        if (m_thread.joinable()) m_thread.join();
+    }
+
+private:
+    QByteArray m_path;
+    std::atomic<bool> m_stop{false};
+    std::atomic<int> m_opens{0};
+    std::thread m_thread;   // last: it starts once the members above exist
+};
+
+void pump(int ms) {
+    QElapsedTimer t; t.start();
+    while (t.elapsed() < ms)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+}
+
+// A plugins root holding one plugin, `piped`, whose `fifoName` is a FIFO and
+// whose other file is a regular one. Returns the root, or empty on failure.
+QString makePluginWithFifo(const QString &fifoName) {
+    const QString root =
+        QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+        + QStringLiteral("/ants-plugin-fifo-")
+        + QUuid::createUuid().toString(QUuid::Id128);
+    const QString plugin = root + QStringLiteral("/piped");
+    QDir().mkpath(plugin);
+    for (const QString &name : {QStringLiteral("init.lua"),
+                                QStringLiteral("manifest.json")}) {
+        const QString path = plugin + QLatin1Char('/') + name;
+        if (name == fifoName) {
+            if (::mkfifo(QFile::encodeName(path).constData(), 0600) != 0)
+                return {};
+        } else {
+            QFile f(path);
+            if (!f.open(QIODevice::WriteOnly)) return {};
+            if (name == QStringLiteral("manifest.json")) f.write("{}");
+        }
+    }
+    return root;
+}
+
+}  // namespace
+
+TEST(PluginManifestSafety, Ants6645FifoManifestIsNotOpened) {
+    const QString root = makePluginWithFifo(QStringLiteral("manifest.json"));
+    ASSERT_FALSE(root.isEmpty()) << "could not build the FIFO plugin";
+    FifoWatch watch(root + QStringLiteral("/piped/manifest.json"));
+    {
+        PluginManager pm;
+        pm.setPluginDir(root);
+        pm.scanAndLoad({QStringLiteral("piped")});
+        pump(200);
+    }
+    watch.finish();
+    QDir(root).removeRecursively();
+    EXPECT_EQ(watch.opens(), 0)
+        << "scanAndLoad opened a FIFO manifest.json on the GUI thread";
+}
+
+TEST(PluginManifestSafety, Ants6645FifoInitLuaIsNotLoaded) {
+    const QString root = makePluginWithFifo(QStringLiteral("init.lua"));
+    ASSERT_FALSE(root.isEmpty()) << "could not build the FIFO plugin";
+    FifoWatch watch(root + QStringLiteral("/piped/init.lua"));
+    bool listed = false;
+    {
+        PluginManager pm;
+        pm.setPluginDir(root);
+        pm.scanAndLoad({QStringLiteral("piped")});
+        for (const PluginInfo &p : pm.plugins())
+            if (p.name == QStringLiteral("piped")) listed = true;
+        // Only the old code has a worker reading the FIFO; give the watch
+        // time to free it before teardown.
+        if (listed) pump(500);
+    }
+    watch.finish();
+    QDir(root).removeRecursively();
+    EXPECT_FALSE(listed) << "a plugin whose init.lua is a FIFO was listed";
+    EXPECT_EQ(watch.opens(), 0) << "a FIFO init.lua was opened";
 }

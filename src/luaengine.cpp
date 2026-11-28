@@ -313,6 +313,10 @@ void LuaEngine::startPcallBudget() {
     // well-behaved-plugin hot path (one bool store + one lua_sethook
     // call, both touching the same lua_State cache line).
     m_killed = false;
+    // ANTS-6645 — and the timed-out flag: a script that caught the last
+    // budget kill and returned normally left it set, so the next handler
+    // was stopped as if it had timed out.
+    m_timedOut = false;
     lua_sethook(m_state, &LuaEngine::instructionHook,
                 LUA_MASKCOUNT | LUA_MASKLINE, 100000);
     // The default budget and why it is that size: see m_pcallBudgetMs.

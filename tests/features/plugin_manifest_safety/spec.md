@@ -115,6 +115,23 @@ plugin if it doesn't equal the canonical root or start with
 `continue`s — silently skipping a hostile entry without
 aborting the whole scan.
 
+### Invariant 5 — only regular files are opened (ANTS-6645)
+
+`scanAndLoad` opens `init.lua` and `manifest.json` only when
+`QFileInfo::isFile()` is true. Opening a FIFO for reading blocks until a
+writer appears: a FIFO `manifest.json` froze the GUI thread at every
+startup, and a FIFO `init.lua` wedged the plugin's worker. A plugin whose
+`init.lua` is not a regular file is skipped; a `manifest.json` that is
+not one is treated as absent.
+
+Runtime tests, each with the FIFO watched by a thread that opens it for
+writing without blocking (that open succeeds only while a reader waits,
+and frees the reader, so pre-fix code fails rather than hangs):
+
+- `Ants6645FifoManifestIsNotOpened` — the manifest FIFO is never opened.
+- `Ants6645FifoInitLuaIsNotLoaded` — the plugin is not listed and its
+  `init.lua` FIFO is never opened.
+
 ## How this test anchors to reality
 
 Source-grep on `src/pluginmanager.cpp`. The cap pattern is
@@ -122,7 +139,8 @@ recognisable by the `kMaxManifestBytes` constant + the
 `f.read(kMaxManifestBytes)` call. The path-safety pattern is
 recognisable by `canonicalFilePath()` + the `NoSymLinks`
 flag + the `startsWith(canonicalRootPrefix)` containment
-check.
+check. Invariant 5 is checked at run time instead, on a real
+`PluginManager`.
 
 ## Regression history
 
@@ -130,3 +148,6 @@ check.
 - **Flagged:** ROADMAP "Lua: cap manifest size + canonical
   plugin path" — `pluginmanager.cpp:138-143`.
 - **Fixed:** 0.7.33.
+- **ANTS-6645 (Invariant 5):** a FIFO `manifest.json` or `init.lua` was
+  opened. Flagged by the 2026-11-06 code review; fixed by requiring a
+  regular file.

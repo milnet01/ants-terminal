@@ -424,7 +424,7 @@ unbuilt: [`ANTS-4272-plugin-io-events.md`](ANTS-4272-plugin-io-events.md).
   plugin; the handler records arrival order; asserts it matches.
 - **INV-9** — Per-plugin memory stays bounded: `MAX_LUA_MEMORY` (10 MiB)
   is unchanged and each worker thread's stack is explicitly capped
-  (≤ ~512 KiB); the zombie list is bounded by the number of plugins that
+  (≤ ~1 MiB); the zombie list is bounded by the number of plugins that
   ran away this session. *Test:* assert `MAX_LUA_MEMORY` unchanged;
   assert the worker stack size is set at thread creation; assert zombie
   bookkeeping is per-runaway, not per-event.
@@ -460,11 +460,10 @@ unbuilt: [`ANTS-4272-plugin-io-events.md`](ANTS-4272-plugin-io-events.md).
 - **Per loaded plugin:** existing 10 MiB Lua-heap cap (unchanged) + one
   worker `QThread` with an explicitly small stack + `QThread`/event-queue
   bookkeeping. For a handful of plugins this is low single-digit MiB.
-  The stack cap is a *chosen* small value (~512 KiB) with comfortable
-  headroom, not a derived figure: the sandbox can't deep-recurse (Lua
-  bounds C-call depth at `LUAI_MAXCCALLS` = 200, and the `ants.*` shims
-  are shallow), so a small stack is safe; the exact number is tuned at
-  implementation time if any test trips a stack guard.
+  The stack cap (1 MiB) is twice the deepest recursion the sandbox
+  allows: Lua bounds C-call depth at `LUAI_MAXCCALLS` = 200, and nested
+  `string.gsub` callbacks at that depth use about 400 KiB (ANTS-6645).
+  The `LuaThreading` test of that recursion keeps the margin.
 - **Zombies:** bounded by the number of plugins that hit the
   uninterruptible-C-call path in a session (rare, author error). Each
   holds its ≤ 10 MiB VM + stack until its C call returns or the process
