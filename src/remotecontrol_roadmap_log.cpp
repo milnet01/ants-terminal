@@ -1147,10 +1147,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
             // never knew about (id_hint at or below the file's high-water).
             if (newId <= maxFileId) {
                 return rlErr(QStringLiteral("id_taken"),
+                    // ANTS-6641 — the floor spans more than this file.
                     QStringLiteral("roadmap_log: id_hint %1 is at or below "
-                                   "the highest existing %2-NNNN id in "
-                                   "ROADMAP.md (%3) — pick a value > %3 or "
-                                   "omit the hint")
+                                   "the highest %2-NNNN id already used in "
+                                   "ROADMAP.md, CHANGELOG.md, docs/roadmap/ "
+                                   "or the roadmap store (%3) — pick a value "
+                                   "> %3 or omit the hint")
                         .arg(newId).arg(pfx).arg(maxFileId));
             }
         } else if (maxFileId >= newId) {
@@ -1505,12 +1507,6 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
         blockedByOpen = linkCheck->openBlockers;
     }
 
-    // Idempotent re-annotate, mirroring appendBodyNote()'s
-    // noteAlreadyPresent: the markdown path does not append a note
-    // the bullet already carries, and a caller re-running an
-    // annotate must not get a second copy for having migrated.
-    const bool alreadyPresent =
-        !note.isEmpty() && before->body.contains(note);
     // ANTS-5395 — a pass block's body ends in its `---` separator and opens
     // with a dated Status line. The note goes above the separator, inside the
     // item, and a status change re-dates that line: keeping the planning date
@@ -1522,18 +1518,27 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
     // theirs; any other note is a Progress bullet at the item's end.
     const bool noteIsResolution = isPassFormat && !annotateMode
                          && targetStatusWord == QLatin1String("shipped");
+    // The note as it would be written.
+    const QString noteBlock = (note.isEmpty() || !isPassFormat) ? note
+        : PassHeadingWrite::formatPassNote(note,
+              noteIsResolution ? PassHeadingWrite::PassNoteKind::Resolution
+                               : PassHeadingWrite::PassNoteKind::Progress,
+              today);
+    // Idempotent re-annotate, mirroring appendBodyNote()'s
+    // noteAlreadyPresent: the markdown path does not append a note
+    // the bullet already carries, and a caller re-running an
+    // annotate must not get a second copy for having migrated.
+    // ANTS-6641 — whole lines, as there: a substring test skipped a short
+    // note such as "Done." that any line of the body happened to contain.
+    const bool alreadyPresent = rlBodyHoldsNote(before->body, noteBlock);
     QString newBody = before->body;
     if (!note.isEmpty() && !alreadyPresent) {
         if (!isPassFormat)
             newBody = rlAppendBodyNote(before->body, note);
         else if (noteIsResolution)
-            newBody = PassHeadingWrite::insertPassNoteAboveStatus(before->body,
-                PassHeadingWrite::formatPassNote(
-                    note, PassHeadingWrite::PassNoteKind::Resolution, today));
+            newBody = PassHeadingWrite::insertPassNoteAboveStatus(before->body, noteBlock);
         else
-            newBody = PassHeadingWrite::insertPassNote(before->body,
-                PassHeadingWrite::formatPassNote(
-                    note, PassHeadingWrite::PassNoteKind::Progress, today));
+            newBody = PassHeadingWrite::insertPassNote(before->body, noteBlock);
     }
     if (isPassFormat && !annotateMode && before->status != targetStatusWord) {
         // ANTS-5404 — write the word this roadmap already uses for the new
@@ -1568,7 +1573,9 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
         if (!rlItemUnchanged(store, *itemPk, *before, err, &deriveCode))
             return false;
         bool wrote = false;
-        if (!annotateMode) {
+        // ANTS-6641 — a flip to the status the item already has writes no
+        // status, records no history row and stamps nothing.
+        if (!annotateMode && before->status != targetStatusWord) {
             if (!store.setItemField(*itemPk, QStringLiteral("status"),
                                     targetStatusWord,
                                     QStringLiteral("asserted"), err))
@@ -1954,21 +1961,32 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 QStringLiteral("roadmap_log: a pass-headings roadmap has no "
                                "anchors — address the pass by `id` (PASS-N-M) "
                                "or `headline`"));
-        // Only the locate is used. The markdown these compute is discarded:
-        // the store is written, and its render publishes the file.
-        const PassHeadingWrite::WriteResult passHit = annotateMode
-            ? PassHeadingWrite::annotatePass(markdown, locId, locHeadline, note)
-            : PassHeadingWrite::flipPassStatus(
-                  markdown, locId, locHeadline,
-                  PassHeadingWrite::passStatusKeyword(targetStatusWord));
-        if (!passHit.ok)
-            return rlErr(passHit.code.isEmpty() ? QStringLiteral("bullet_not_found")
-                                                : passHit.code,
-                QStringLiteral("roadmap_log: no pass matched the locator"));
+        // ANTS-6641 — an id the store holds is written even where the file is
+        // behind (ANTS-4485); a headline, or an id the store lacks, is located
+        // in the file.
+        QString passId, passHeadline;
+        if (!locId.isEmpty() &&
+            passStoreTarget->store->findItem(passStoreTarget->projectId, locId)) {
+            passId = locId;
+        } else {
+            // Only the locate is used. The markdown these compute is discarded:
+            // the store is written, and its render publishes the file.
+            const PassHeadingWrite::WriteResult passHit = annotateMode
+                ? PassHeadingWrite::annotatePass(markdown, locId, locHeadline, note)
+                : PassHeadingWrite::flipPassStatus(
+                      markdown, locId, locHeadline,
+                      PassHeadingWrite::passStatusKeyword(targetStatusWord));
+            if (!passHit.ok)
+                return rlErr(passHit.code.isEmpty() ? QStringLiteral("bullet_not_found")
+                                                    : passHit.code,
+                    QStringLiteral("roadmap_log: no pass matched the locator"));
+            passId       = passHit.matchedId;
+            passHeadline = passHit.matchedHeadline;
+        }
         return rlStoreFlipOrAnnotate({
             .req = &req, .store = passStoreTarget->store,
             .projectId = passStoreTarget->projectId,
-            .id = passHit.matchedId, .headline = passHit.matchedHeadline,
+            .id = passId, .headline = passHeadline,
             .fileStatus = QString(),   // a pass's Status line is a keyword
             .format = QStringLiteral("pass-headings"),
             .fileName = QFileInfo(roadmapPath).fileName(),
@@ -2148,6 +2166,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             if (noteAlreadyPresent)
                 out["note_already_present"] = true;
         }
+        // ANTS-6641 — the dry run carries these too, as the store path's does.
+        rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), noteScrubbedNames);
+        // ANTS-2089 — confirm-after compact echo (ants-v1 flip).
+        if (rcReturnHeadlineOnly(req)) {
+            out["post_bullets"] = QJsonArray{ rcCompactBullet(
+                v1target.id,
+                rcStatusWord(out.value(QStringLiteral("to_status"))
+                                 .toString()),
+                v1target.headline) };
+        }
         // ANTS-2136 — dry_run preview (ants-v1 path): the locator
         // resolved and the surgery is computed in-memory; return the
         // would-be edit WITHOUT writing ROADMAP.md.
@@ -2160,15 +2188,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
             return rlErr(QStringLiteral("roadmap_write_failed"), err);
         rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(updated.toUtf8().size()));
-        rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), noteScrubbedNames);
-        // ANTS-2089 — confirm-after compact echo (ants-v1 flip).
-        if (rcReturnHeadlineOnly(req)) {
-            out["post_bullets"] = QJsonArray{ rcCompactBullet(
-                v1target.id,
-                rcStatusWord(out.value(QStringLiteral("to_status"))
-                                 .toString()),
-                v1target.headline) };
-        }
         return QJsonDocument(out);
     };
 
@@ -2556,6 +2575,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         out["note_line"]     = noteLine + 1;
         if (noteAlreadyPresent) out["note_already_present"] = true;
     }
+    // ANTS-6641 — the format key, and the dry run's scrub report and compact
+    // echo, as the ants-v1 and store paths give them.
+    out["format"] = QStringLiteral("gfm");
+    rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), noteScrubbedNames);
+    // ANTS-2089 — confirm-after compact echo (GFM flip).
+    if (rcReturnHeadlineOnly(req)) {
+        out["post_bullets"] = QJsonArray{ rcCompactBullet(
+            target.boldId,
+            rcStatusWord(out.value(QStringLiteral("to_status")).toString()),
+            target.headline) };
+    }
 
     // ANTS-2136 — dry_run preview: the locator resolved, the surgery is
     // computed in-memory (status emoji / appended note / would-be anchor),
@@ -2584,14 +2614,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
 
     // 14. The write's own keys.
     rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(updated.toUtf8().size()));
-    rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), noteScrubbedNames);
-    // ANTS-2089 — confirm-after compact echo (GFM flip).
-    if (rcReturnHeadlineOnly(req)) {
-        out["post_bullets"] = QJsonArray{ rcCompactBullet(
-            target.boldId,
-            rcStatusWord(out.value(QStringLiteral("to_status")).toString()),
-            target.headline) };
-    }
     return QJsonDocument(out);
 }
 
@@ -2759,6 +2781,27 @@ struct RlFileLocate {
     QString format;
 };
 
+// ANTS-6641 — flip's suggestions, for a file locate that missed or matched
+// several: up to three of the matches, else the nearest ids for an id locator
+// or the nearest headlines for a headline one.
+QJsonArray rlFileSuggestions(const QStringList &ids, const QStringList &heads,
+                             const QVector<int> &matches, const QString &locId,
+                             const QString &locHeadline) {
+    QVector<int> pick = matches.mid(0, 3);
+    if (matches.isEmpty()) {
+        if (!locId.isEmpty())            pick = rcRankIdsBySharedPrefix(ids, locId, 3);
+        else if (!locHeadline.isEmpty()) pick = rcRankHeadlines(heads, locHeadline, 3);
+    }
+    QJsonArray out;
+    for (const int idx : std::as_const(pick)) {
+        QJsonObject s;
+        s["headline"] = heads.at(idx);
+        if (!ids.at(idx).isEmpty()) s["id"] = ids.at(idx);
+        out.append(s);
+    }
+    return out;
+}
+
 // Returns the refusal envelope, or fills `out`. `bigEnough` is the file size
 // past kRoadmapMinParseableSize, below which the ants-v1 walk is not tried.
 std::optional<QJsonDocument> rlLocateInFile(
@@ -2766,12 +2809,13 @@ std::optional<QJsonDocument> rlLocateInFile(
         const QString &callerCanonical, const QString &locId,
         const QString &locAnchor, const QString &locHeadline, RlFileLocate &out) {
     auto rlSugErr = [](const QString &code, const QString &message,
-                       int matched) {
+                       int matched, const QJsonArray &suggestions) {
         QJsonObject env;
         env["ok"]      = false;
         env["code"]    = code;
         env["error"]   = message;
         env["matched"] = matched;
+        env["suggestions"] = suggestions;   // ANTS-6641
         return QJsonDocument(env);
     };
     int &bodyAnchorLine      = out.bodyAnchorLine;
@@ -2838,6 +2882,11 @@ std::optional<QJsonDocument> rlLocateInFile(
                 }
             }
             if (vm.size() != 1) {
+                QStringList ids, heads;
+                for (const GfmBullet &b : bullets) {
+                    ids << b.boldId;
+                    heads << rcGfmCanonicalHeadline(b.headline);
+                }
                 return rlSugErr(m.isEmpty()
                         ? QStringLiteral("bullet_not_found")
                         : QStringLiteral("bullet_ambiguous"),
@@ -2847,7 +2896,7 @@ std::optional<QJsonDocument> rlLocateInFile(
                         : QStringLiteral("roadmap_log: locator matched %1 GFM "
                                          "bullets — narrow with id/anchor")
                             .arg(m.size()),
-                    m.size());
+                    m.size(), rlFileSuggestions(ids, heads, m, locId, locHeadline));
             }
             const AntsV1Bullet &t = v1.at(vm.first());
             if (t.insideFenced) {
@@ -2887,6 +2936,11 @@ std::optional<QJsonDocument> rlLocateInFile(
                     m.append(i);
         }
         if (m.size() != 1) {
+            QStringList ids, heads;
+            for (const AntsV1Bullet &b : v1) {
+                ids << b.id;
+                heads << b.headline;
+            }
             return rlSugErr(m.isEmpty()
                     ? QStringLiteral("bullet_not_found")
                     : QStringLiteral("bullet_ambiguous"),
@@ -2895,7 +2949,7 @@ std::optional<QJsonDocument> rlLocateInFile(
                                      "ants-v1 bullets")
                     : QStringLiteral("roadmap_log: locator matched %1 ants-v1 "
                                      "bullets — narrow with id").arg(m.size()),
-                m.size());
+                m.size(), rlFileSuggestions(ids, heads, m, locId, locHeadline));
         }
         const AntsV1Bullet &t = v1.at(m.first());
         if (t.insideFenced) {
@@ -3018,6 +3072,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     }
     QStringList newTextScrubbedNames;
     rcScrubLeakedToolXml(newText, newTextScrubbedNames);
+    // ANTS-6641 — a headline is one line, on both backends: a line break in
+    // `new_text` would end the bullet's head line and start new structure.
+    if (headlineMode && (newText.contains(QLatin1Char('\n')) ||
+                         newText.contains(QLatin1Char('\r'))))
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: op:\"amend_headline\" takes a "
+                           "`new_text` with no line break — a headline is one "
+                           "line"));
     // ANTS-4576 — `new_text` is caller prose landing in a body § 2.6 re-parses,
     // which is what a `note` is (ANTS-4549); one rule, one owner, named for the
     // argument it fired on. Body mode only: the headline is not a trailer
@@ -3268,7 +3330,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             // deliberately: the column holds the headline TEXT alone — the
             // marker, id brackets, status emoji and bold delimiters are
             // composed by the render and are not in the value, so `new_text`
-            // has no structure here to damage. Uniqueness IS enforced, for
+            // has no prefix here to damage; a line break is refused above.
+            // Uniqueness IS enforced, for
             // the reason it is on the body: a phrase occurring twice must not
             // be clobbered on a guess.
             if (headlineMode) {
@@ -3296,8 +3359,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                                        "times in the headline — narrow it to "
                                        "a unique substring").arg(hHits));
                 }
-                const QString newHeadline =
-                    QString(beforeHeadline).replace(oldText, newText);
+                // ANTS-6641 — the sanitising append gives a headline: control
+                // characters dropped, 500 characters.
+                const QString newHeadline = rcSanitizeBulletField(
+                    QString(beforeHeadline).replace(oldText, newText), 500);
                 // The one structural property the column DOES carry: a bullet
                 // with no headline cannot be located by headline again, and
                 // the render has nothing to emit for it.
@@ -3700,7 +3765,9 @@ struct RlFieldChange {
 
 // Reads `id`, `field` and `value` from `src` — the request, or one batch
 // entry. Returns a refusal, or an empty object when `out` is filled.
-QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out) {
+// ANTS-6641 — `opName` is the op the caller sent, which the refusals name.
+QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out,
+                                 const QString &opName) {
     auto rlErr = [](const QString &code, const QString &message) {
         return mcp::refusal(code, message);
     };
@@ -3709,8 +3776,8 @@ QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out) {
     const QJsonObject &req = src;
     if (id.isEmpty())
         return rlErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: op:\"amend_field\" needs `id` — the "
-                           "store's own key, and the only locator it takes"));
+            QStringLiteral("roadmap_log: op:\"%1\" needs `id` — the store's "
+                           "own key, and the only locator it takes").arg(opName));
     // A new column here needs a branch in BOTH ternary chains below
     // (`tm` and `oldValue`): each falls through to `evidence`.
     static const QStringList kEditable = {
@@ -3726,9 +3793,9 @@ QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out) {
     }
     if (!req.contains(QStringLiteral("value")))
         return rlErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: op:\"amend_field\" needs `value` (the "
-                           "key must be present; for layman an empty string "
-                           "clears the column)"));
+            QStringLiteral("roadmap_log: op:\"%1\" needs `value` (the key must "
+                           "be present; for layman an empty string clears the "
+                           "column)").arg(opName));
 
     const bool isList = (field == QLatin1String("lanes") ||
                          field == QLatin1String("evidence"));
@@ -3742,17 +3809,15 @@ QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out) {
     QStringList evNotPath;                       // ANTS-4527
     if (isList) {
         QStringList items;
-        // ANTS-5094 — each evidence element gets append's sanitising
-        // (rlFillItemBody): control characters dropped, a newline or comma
-        // folded to a space, 500 characters. Stored raw, a newline published
-        // an extra line in ROADMAP.md and a comma split the element in two.
+        // ANTS-5094 — each element gets append's sanitising (rlFillItemBody):
+        // control characters dropped, a newline or comma folded to a space,
+        // 500 characters. Stored raw, a newline published an extra line in
+        // ROADMAP.md and a comma split the element in two. ANTS-6641 — lanes
+        // as well as evidence.
         const auto addItem = [&](const QString &raw) {
-            QString t = raw;
-            if (field == QLatin1String("evidence")) {
-                t = rcSanitizeBulletField(t, 500);
-                t.replace(QChar('\n'), QChar(' '));
-                t.replace(QChar(','), QChar(' '));
-            }
+            QString t = rcSanitizeBulletField(raw, 500);
+            t.replace(QChar('\n'), QChar(' '));
+            t.replace(QChar(','), QChar(' '));
             t = t.trimmed();
             if (!t.isEmpty()) items << t;
         };
@@ -3950,7 +4015,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
         return QJsonDocument(env);
     }
     RlFieldChange change;
-    if (const QJsonObject r = rlPrepareFieldChange(req, &change); !r.isEmpty())
+    if (const QJsonObject r = rlPrepareFieldChange(req, &change, QStringLiteral("amend_field")); !r.isEmpty())
         return QJsonDocument(r);
     const QString &id = change.id;
 
@@ -4078,7 +4143,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req
             continue;
         }
         RlFieldChange change;
-        if (const QJsonObject r = rlPrepareFieldChange(entry, &change); !r.isEmpty()) {
+        if (const QJsonObject r = rlPrepareFieldChange(entry, &change, QStringLiteral("amend_field_batch")); !r.isEmpty()) {
             skip(i, id, r);
             continue;
         }
@@ -4360,6 +4425,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
         row[QStringLiteral("index")] = i;
         row[QStringLiteral("id")]    = id;
         if (patch.wrapped) row[QStringLiteral("wrapped_match")] = true;
+        // ANTS-6641 — what the scrub removed, as amend_body reports it (ANTS-6391).
+        rcPutScrubbed(row, QStringLiteral("note_scrubbed_params"), scrubbed);
         amended.append(row);
     }
 
@@ -4517,6 +4584,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
     env[QStringLiteral("amended")]       = amended;
     env[QStringLiteral("amended_count")] = amended.size();
     env[QStringLiteral("replacements")]  = replacements;
+    // ANTS-6641 — what the scrub removed, as amend_body reports it (ANTS-6391).
+    rcPutScrubbed(env, QStringLiteral("note_scrubbed_params"), scrubbed);
     return QJsonDocument(env);
 }
 
@@ -4539,7 +4608,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
             return rlErr(QStringLiteral("bad_op_combo"),
                 QStringLiteral("roadmap_log: pass `id` for one move or "
                                "`locators` for several, not both"));
-        for (const QJsonValue &v : req.value(QStringLiteral("locators")).toArray()) {
+        // ANTS-6641 — the cap amend_batch and amend_field_batch hold.
+        const QJsonArray locators = req.value(QStringLiteral("locators")).toArray();
+        if (locators.size() > 500)
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: `locators` holds at most 500 "
+                               "entries; got %1").arg(locators.size()));
+        for (const QJsonValue &v : locators) {
             const QJsonObject loc = v.toObject();
             const QString lid = loc.value(QStringLiteral("id")).toString().trimmed();
             if (lid.isEmpty() || loc.contains(QStringLiteral("anchor"))

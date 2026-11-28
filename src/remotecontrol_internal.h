@@ -396,6 +396,9 @@ std::optional<QString> rlRedundantTrailerRunStripped(const RoadmapStore::ItemWri
 // when the removal would change a key's value.
 std::optional<QString> rlRepeatedTrailerDeclarationsStripped(const RoadmapStore::ItemWrite &w, bool *conflict);
 QString rlAppendBodyNote(const QString &body, const QString &note);
+// ANTS-6641 — true when `note`'s lines stand in `body` as whole lines, in one
+// run (each compared trimmed). The store path's "note already present" test.
+bool rlBodyHoldsNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
 // ANTS-4485 — resolve an `id` or `headline` locator against the STORE on a
 // store-backed project (docs/specs/ANTS-4485-store-backed-locate.md § 4.3).

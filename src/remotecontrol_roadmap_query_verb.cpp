@@ -10,6 +10,7 @@
 #include "projectsettings.h"   // ANTS-3771 — the declared id format
 #include "mcpspill.h"        // ANTS-2094 — read_spill
 #include "mcpprojection.h"
+#include "regexharden.h"     // ANTS-6641 — the nested-quantifier refusal
 #include "paginationengine.h"
 #include "roadmapfoldin.h"
 #include "roadmaplinks.h"   // ANTS-4079 — `links` on id fetches
@@ -1265,11 +1266,29 @@ auto RemoteControl::RoadmapQueryCall::parseTextFilters() -> std::optional<QJsonD
                 .arg(QRegularExpression(queryArg).errorString());
         return QJsonDocument(o);
     }
+    // ANTS-6641 — a quantifier nested under a quantifier is refused up front.
+    // The matcher's step limit is the backstop for shapes this cannot see.
+    const auto nestedQuantifier = [](const char *arg, const QString &pattern)
+            -> std::optional<QJsonDocument> {
+        if (!ants::regex::isCatastrophicRegex(pattern)) return std::nullopt;
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        o[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_query: `%1` nests a quantifier or an alternation under a "
+            "quantifier, as (a+)+ or (a|b)+ do, which can backtrack without "
+            "end; write it without the nesting").arg(QLatin1String(arg));
+        return QJsonDocument(o);
+    };
+    if (queryMode == mcp::QueryMode::Regex)
+        if (auto r = nestedQuantifier("query", queryArg)) return r;
     // ANTS-5468 — `body_match` bounds WHAT of each row comes back, where
     // `query` picks WHICH rows: each body keeps only the lines that match,
     // case-insensitively. Same matcher as `query`, so the two read alike.
-    bodyMatchArg =
-        req.value(QStringLiteral("body_match")).toString();
+    // ANTS-6641 — and the same 200-char cap and control-byte scrub, so its
+    // echo is as safe as `query`'s.
+    bodyMatchArg = rcdetail::ceSanitiseEcho(
+        req.value(QStringLiteral("body_match")).toString(), 200);
     bodyMatchActive = !bodyMatchArg.isEmpty();
     bodyMatchMode =
         req.value(QStringLiteral("body_match_regex")).toBool(false)
@@ -1285,6 +1304,8 @@ auto RemoteControl::RoadmapQueryCall::parseTextFilters() -> std::optional<QJsonD
                 .arg(QRegularExpression(bodyMatchArg).errorString());
         return QJsonDocument(o);
     }
+    if (bodyMatchActive && bodyMatchMode == mcp::QueryMode::Regex)
+        if (auto r = nestedQuantifier("body_match", bodyMatchArg)) return r;
     return std::nullopt;
 }
 
@@ -3367,6 +3388,10 @@ auto RemoteControl::RoadmapQueryCall::sectionOrVersion() -> QJsonDocument {
             RoadmapIndex::descendantSlugs(rc.m_roadmapIndex, *sec);
         const QSet<QString> subtreeSlugs(subtreeSlugList.cbegin(),
                                          subtreeSlugList.cend());
+        // ANTS-6641 / ANTS-5923 — the project root's declaration, not the
+        // caller's folder's: a subdirectory caller has no .ants/project.json.
+        const RoadmapParse::IdFormat sectionDecl =
+            ProjectSettings::idFormatFor(rcProjectRootFor(callerCanonical));
         if (fromStore) {
             const auto whole = rc.roadmapBullets(callerCanonical, text,
                                               /*includeArchive=*/false,
@@ -3376,8 +3401,7 @@ auto RemoteControl::RoadmapQueryCall::sectionOrVersion() -> QJsonDocument {
             for (const auto &b : whole)
                 if (subtreeSlugs.contains(b.sectionSlug)) bullets.append(b);
         } else {
-            bullets = RoadmapParse::parseBullets(   // ANTS-3771
-                slice, ProjectSettings::idFormatFor(callerCanonical));
+            bullets = RoadmapParse::parseBullets(slice, sectionDecl);   // ANTS-3771
         }
         // ANTS-2225 — pass-heading fallback. parseBullets engages its
         // `#### Pass N.M` reader only when it sees >= 2 pass headings AND
@@ -3402,7 +3426,7 @@ auto RemoteControl::RoadmapQueryCall::sectionOrVersion() -> QJsonDocument {
         // pass-headings dialect this fallback exists for.
         if (!fromStore && bullets.empty()) {
             const auto whole = RoadmapParse::parseBullets(   // ANTS-3771
-                text.full(), ProjectSettings::idFormatFor(callerCanonical));
+                text.full(), sectionDecl);
             QVector<RoadmapParse::BulletRecord> filtered;
             for (const auto &b : whole)
                 if (b.sectionSlug == sec->slug) filtered.append(b);
@@ -4229,7 +4253,11 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         return QJsonDocument(env);
     }
     QJsonDocument doc = cmdRoadmapLogDispatch(opReq);
-    if (plan && !doc.object().value(QStringLiteral("ok")).toBool())
+    // ANTS-6641 — not after write_failed: the store has committed, and a
+    // second apply would write again (an append sent with force:true twice).
+    if (plan && !doc.object().value(QStringLiteral("ok")).toBool() &&
+        doc.object().value(QStringLiteral("code")).toString() !=
+            QLatin1String("write_failed"))
         rlRestorePlan(req.value(QStringLiteral("plan_id")).toString(), *plan);
     // ANTS-5704 — a successful preview names the plan that applies it.
     if (opReq.value(QStringLiteral("dry_run")).toBool() &&

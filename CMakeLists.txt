@@ -3313,6 +3313,9 @@ if(ANTS_TESTS)
                 # ANTS-5334 — flip/annotate on a store-served pass-headings
                 # roadmap write through the store; other writes refuse there.
                 tests/features/roadmap_pass_store_write/test_roadmap_pass_store_write.cpp
+                # ANTS-6641 — the smaller roadmap_query / roadmap_log fixes from
+                # the 2026-11-06 reviews.
+                tests/features/roadmap_log_review_fixes/test_roadmap_log_review_fixes.cpp
                 # ANTS-5311 — ants-mcpd usage snapshots (drives cmdTokenUsage).
                 tests/features/mcpd_usage_snapshots/test_mcpd_usage_snapshots.cpp
                 # ANTS-4659 — undeclared-argument survey ledger and its wiring.

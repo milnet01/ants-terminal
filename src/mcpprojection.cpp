@@ -1,4 +1,5 @@
 #include "mcpprojection.h"
+#include "regexharden.h"   // ANTS-6641 — QueryMatcher's Regex mode
 #include <QRegularExpression>
 
 #include <algorithm>
@@ -796,11 +797,13 @@ QueryMatcher::QueryMatcher(const QString &needle, QueryMode mode)
     // rule looks wrong at a glance — the noise this exists to remove is
     // "decision" / "efficiency" / "precision" / "facing", where the term sits
     // INSIDE a word.
+    // ANTS-6641 — a caller's own pattern takes PCRE2's match-step limit, so a
+    // backtracking pattern aborts as a miss instead of hanging the verb.
     const QString pattern =
         (mode == QueryMode::WholeWord)
             ? QStringLiteral("\\b") + QRegularExpression::escape(needle) +
                   QStringLiteral("\\b")
-            : needle;
+            : ants::regex::hardenUserRegex(needle);
     m_re = QRegularExpression(pattern,
                               QRegularExpression::CaseInsensitiveOption);
     m_re.optimize();

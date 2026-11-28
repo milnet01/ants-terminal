@@ -743,9 +743,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             // Idempotent re-annotate, mirroring appendBodyNote()'s
             // noteAlreadyPresent: the markdown path does not append a note the
             // bullet already carries, and a caller re-running a batch must not
-            // get a second copy for having migrated.
-            st.noteAlreadyPresent =
-                !t.note.isEmpty() && before->body.contains(t.note);
+            // get a second copy for having migrated. ANTS-6641 — whole lines.
+            st.noteAlreadyPresent = rlBodyHoldsNote(before->body, t.note);
             st.newBody = (t.note.isEmpty() || st.noteAlreadyPresent)
                              ? before->body
                              : rlAppendBodyNote(before->body, t.note);

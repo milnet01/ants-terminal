@@ -287,6 +287,19 @@ static QJsonArray rcPassIgnoredFields(const QJsonObject &req) {
     return out;
 }
 
+// ANTS-6641 — the ids the file's passes already hold. A designator names one
+// item, so the file writers refuse a taken one as the store writer does.
+static QSet<QString> rcPassIdsIn(const QString &markdown) {
+    QSet<QString> ids;
+    for (const auto &r : RoadmapParse::parseBullets(markdown))
+        ids.insert(r.id);
+    return ids;
+}
+
+static QString rcPassIdTakenMessage(const QString &id) {
+    return QStringLiteral("%1 already exists; a pass designator names one item").arg(id);
+}
+
 QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
         const QJsonObject &req, const QString &roadmapPath,
         const QString &markdown) {
@@ -296,6 +309,8 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     const QString section = req.value(QStringLiteral("section")).toString();
     const PassAppendItem it = rcRenderPassBullet(req);
     if (!it.ok) return err(it.code, it.error);
+    if (rcPassIdsIn(markdown).contains(it.synthId))
+        return err(QStringLiteral("id_taken"), rcPassIdTakenMessage(it.synthId));
 
     const auto index = RoadmapIndex::buildIndex(markdown);
     QJsonDocument refusal;
@@ -319,10 +334,12 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     const QString updated =
         rcSplicePassBlock(markdown, *sec, spliced, &headingIdx0);
 
-    // The preview and the write share every key but the byte count.
+    // The preview and the write share every key but the byte count and, as on
+    // the store path (ANTS-6641), the name of the id key.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
     QJsonObject out;
     out["ok"]            = true;
-    out["id"]            = it.synthId;
+    out[dryRun ? QStringLiteral("would_be_id") : QStringLiteral("id")] = it.synthId;
     // ANTS-4116 — echo the roadmap file actually resolved, not a canonical
     // display name. RetroDB's roadmap is lowercase `roadmap.md`, so
     // echoing "ROADMAP.md" named a file that does not exist in that repo:
@@ -342,7 +359,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     rcPutScrubbed(out, QStringLiteral("body_scrubbed_params"), it.bodyScrubbed);
     const qint64 blockBytes = block.toUtf8().size();
 
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
+    if (dryRun) {
         out["dry_run"] = true;
         out["bytes"]   = blockBytes;
         return QJsonDocument(out);
@@ -368,11 +385,18 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
     QJsonArray applied, skipped;
     QStringList renderedBlocks;
     const bool useSeparator = rcPassBlocksUseSeparator(markdown);  // ANTS-4117
+    const QSet<QString> taken = rcPassIdsIn(markdown);             // ANTS-6641
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
     for (int i = 0; i < bullets.size(); ++i) {
-        const PassAppendItem it = rcRenderPassBullet(
+        PassAppendItem it = rcRenderPassBullet(
             bullets.at(i).toObject(),
             req.value(QStringLiteral("pass")).toString(),     // ANTS-4354
             req.value(QStringLiteral("status")).toString());  // ANTS-6372
+        if (it.ok && taken.contains(it.synthId)) {
+            it.ok    = false;
+            it.code  = QStringLiteral("id_taken");
+            it.error = rcPassIdTakenMessage(it.synthId);
+        }
         if (!it.ok) {
             QJsonObject s;
             s["bullet_index"] = i;
@@ -384,7 +408,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
         renderedBlocks << it.block;
         QJsonObject a;
         a["bullet_index"] = i;
-        a["id"]           = it.synthId;
+        a[dryRun ? QStringLiteral("would_be_id") : QStringLiteral("id")] = it.synthId;
         rcPutScrubbed(a, QStringLiteral("body_scrubbed_params"), it.bodyScrubbed);
         applied.append(a);
     }
@@ -428,7 +452,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
     const QString updated =
         rcSplicePassBlock(markdown, *sec, combined, &headingIdx0);
 
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
+    if (dryRun) {
         QJsonObject out = envelope(-1).object();
         out["dry_run"] = true;
         return QJsonDocument(out);
@@ -1009,12 +1033,11 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
     // ANTS-3863 — the line that makes the laziness pay. It is reached only when
     // the project is NOT migrated, which is the one case where the whole file
     // was always going to be needed.
-    // ANTS-3771 — meant to be the declaration the seam above was given, so
-    // the two outcomes cannot resolve one bullet to two ids (INV-13). It
-    // reads `projectRoot`, not the resolved `root`, so a subdirectory caller
-    // misses .ants/project.json here: ANTS-5923.
+    // ANTS-3771 — the declaration the seam above was given, so the two
+    // outcomes cannot resolve one bullet to two ids (INV-13). The resolved
+    // `root`, so a subdirectory caller reads .ants/project.json (ANTS-5923).
     return RoadmapParse::parseBullets(
-        text.full(), ProjectSettings::idFormatFor(projectRoot));
+        text.full(), ProjectSettings::idFormatFor(root));
 }
 
 std::optional<QVector<RoadmapParse::BulletRecord>>
@@ -2163,6 +2186,19 @@ QString rcdetail::rlAppendBodyNote(const QString &body, const QString &note) {
     return out + QLatin1Char('\n') + note;
 }
 
+bool rcdetail::rlBodyHoldsNote(const QString &body, const QString &note) {
+    if (note.isEmpty()) return false;
+    const QStringList have = body.split(QLatin1Char('\n'));
+    const QStringList want = note.split(QLatin1Char('\n'));
+    for (qsizetype i = 0; i + want.size() <= have.size(); ++i) {
+        bool run = true;
+        for (qsizetype k = 0; run && k < want.size(); ++k)
+            run = have.at(i + k).trimmed() == want.at(k).trimmed();
+        if (run) return true;
+    }
+    return false;
+}
+
 // § 2.2 — a located BulletRecord becomes an item_pk. Two steps, because one
 // does not cover the corpus.
 //
@@ -2660,15 +2696,12 @@ bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
         QString     scalar;
         QStringList list;
         if (k.list) {
-            // lanes / evidence. `evidence` gets the same per-path sanitising the
-            // render applies, so the column holds what a GFM `Evidence:` line
-            // could carry.
+            // lanes / evidence. Each element gets the same sanitising the
+            // render applies to `evidence`, so the column holds what a one-line
+            // trailer could carry. ANTS-6641 — `lanes` too: stored raw, a
+            // newline in one published an extra line in ROADMAP.md.
             const QJsonArray a = bulletReq.value(field).toArray();
             for (const auto &v : a) {
-                if (field == QLatin1String("lanes")) {
-                    list.append(v.toString());
-                    continue;
-                }
                 QString p = rcSanitizeBulletField(v.toString(), 500);
                 p.replace(QChar('\n'), QChar(' '));
                 p.replace(QChar(','), QChar(' '));
