@@ -109,7 +109,7 @@ run_script() {
             "$TIMEOUT_BIN" 60 "$TOOLS/sh" "$script" "$@" 2>&1); RC=$?
 }
 submit() { run_script "$REPO/packaging/obs/obs-submit.sh" "$@"; }
-setup()  { run_script "$SETUP_SH" "$@"; }
+setup()  { run_script "$SETUP_SH"; }
 check() {                           # label expected-rc [grep-pattern-for-OUT]
     if [ "$RC" -eq "$2" ] && { [ -z "${3-}" ] || grep -q -- "$3" <<<"$OUT"; }; then ok "$1"
     else bad "$1 — expected exit $2${3:+ with /$3/}, got $RC: $OUT"; fi
