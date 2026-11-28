@@ -27,6 +27,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **quotation_check stops looking once it passes a quotation's cited line (ANTS-6989).**
+
 - **Under the Kitty keyboard protocol, Ctrl+letter is sent as CSI <letter>;5u and Shift+letter as plain text, as the protocol says (ANTS-6654).**
 
 - **The Bash and ROADMAP vetoes block through Claude Code's current permissionDecision:"deny" hook output (ANTS-6651).**
@@ -133,6 +135,28 @@ for security-relevant changes.
   The next query reads the files again.
 
 ### Fixed
+
+- **Editing a roadmap declared in .ants/project.json refreshes project_layout at once (ANTS-6987).**
+
+- **The daily release audit reports a release whose assets cannot be listed as not checked (ANTS-6987).**
+
+- **The pre-push gate says when CI's build-test image could not run the job, instead of calling it a build failure (ANTS-6987).**
+
+- **tools/vendor-grammars.sh --pin stops when it cannot write the checksum into the manifest (ANTS-6987).**
+
+- **build_status reports stale_unknown for a cache with no recorded time (ANTS-6988).**
+
+- **read_log refuses an include or exclude pattern over 1024 characters, and a slow pattern gives up on a line (ANTS-6988).**
+
+- **Document checks stay fast on text with many unmatched backticks of different lengths (ANTS-6988).**
+
+- **The verify.json trust prompt's command preview never cuts an emoji in half (ANTS-6988).**
+
+- **get_text, recent_errors, last_selection, select-window and set-title refuse a tab or count that is not a whole number (ANTS-6989).**
+
+- **changelog_query reports changelog_read_failed when CHANGELOG.md cannot be read (ANTS-6989).**
+
+- **Turning on automatic light/dark switching applies the system's scheme at once (ANTS-6989).**
 
 - **A background task in a helper transcript that was replaced on disk counts once, not twice (ANTS-6986).**
 

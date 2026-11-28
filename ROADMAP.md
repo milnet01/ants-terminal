@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7046 -->
+<!-- ants-roadmap-id-high-water: ANTS=7052 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98844,7 +98844,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6626/6627 helpers 2026-11-27.
   Lanes: claude-integration, claude-session-widgets.
 
-- 📋 [ANTS-6987] **Fix the bugs the ANTS-6628 to ANTS-6631 helpers found.**
+- ✅ [ANTS-6987] **Fix the bugs the ANTS-6628 to ANTS-6631 helpers found.**
   - trace: decide on a tree-sitter match limit (set_match_limit drops
     in-progress matches) and index class ranges once instead of nested
     scans (row 175's remainder); the trace spec's parse_timeout reason
@@ -98860,12 +98860,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - local-ci.sh's build-test leg reports qt62-guard exit 4 as "build-test
     job FAILED locally".
   - vendor-grammars.sh fetch ignores a failed jq rewrite under --pin.
+  2026-11-28 (2476e9b5): seven fixed. The trace match limit stays unset
+  (user, 2026-11-28: a cap drops matches silently; the shared 2 s
+  deadline already bounds the query). Manifest signing moved to
+  ANTS-7048. Follow-ups ANTS-7049-7051. Suite 6983/6983.
   **Layman:** Small bugs in the code-search tools, release scripts and push checks, found while fixing others.
   Kind: fix.
   Source: ANTS-6628–6631 helpers 2026-11-27.
   Lanes: code-index-search, config-session-project, dev-python-ci-packaging, dev-shell-tools.
 
-- 📋 [ANTS-6988] **Fix the bugs the ANTS-6632 to ANTS-6635 helpers found.**
+- ✅ [ANTS-6988] **Fix the bugs the ANTS-6632 to ANTS-6635 helpers found.**
   - build_status: a cache with no time reports stale_walk_capped:true,
     which names the wrong cause; add stale_unknown or rename.
   - read_log: row 435's pattern-length cap and (*LIMIT_MATCH=...) prefix
@@ -98879,12 +98883,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
     two new SelfUpdate tests.
   - packaging/obs: obs-setup.sh and obs-submit.sh have no behaviour test
     (a stub-osc test would cover them).
+  2026-11-28 (484742ef, 96eed265): all six fixed; ANTS-1855 amended for
+  the pattern cap. The codeSpans test was raised to 400 000 rows to fail
+  on the old code (3.0 s vs 0.13 s). A read_log exclude whose match hits
+  the PCRE2 limit lets the line through; kept as is. Suite 6983/6983.
   **Layman:** Small bugs in logging, document checks, the update dialog and packaging, found while fixing others.
   Kind: fix.
   Source: ANTS-6632–6635 helpers 2026-11-27.
   Lanes: diagnostics-logging, doc-engines, dialog-chrome-theme, hooks-packaging.
 
-- 📋 [ANTS-6989] **Fix the bugs the ANTS-6636 to ANTS-6638 helpers found.**
+- ✅ [ANTS-6989] **Fix the bugs the ANTS-6636 to ANTS-6638 helpers found.**
   - select-window, get-text, set-title, recent_errors and last_selection
     read `tab` with toInt(), as send-text did (ANTS-6637 row 132); so do
     lines, max_bytes and max_results arguments. Use wholeIntArg.
@@ -98900,6 +98908,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - MainWindow's constructor comment (ANTS-5090) says creation order
     alone sets teardown order; ~MainWindow now has a backstop.
   - ai_context_redaction spec table's PEM row omits " BLOCK".
+  2026-11-28 (2d51a5da, 96eed265): all fixed. The user chose "system
+  wins" for automatic light/dark switching; built as ANTS-7047. The
+  quotation_check bench is ANTS-7052. Suite 6983/6983.
   **Layman:** Small bugs in MCP argument checks, the main window and specs, found while fixing others.
   Kind: fix.
   Source: ANTS-6636–6638 helpers 2026-11-27.
@@ -98917,6 +98928,68 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: ANTS-6986 helper follow-up 2026-11-28.
   Lanes: claude-session-widgets.
+
+- 📋 [ANTS-7047] **While automatic light/dark switching is on, the system's scheme decides the theme, and Settings says so.**
+  The user chose (2026-11-28): while autoColorScheme is on, follow the
+  system. Grey out the main Theme picker (the Dark and Light pickers
+  are already greyed when it is off) and re-run the switch on every
+  Apply, so changing the Dark or Light picker while it is on applies
+  at once. ANTS-6989 made turning the setting on apply at once
+  (m_autoColorSchemeSeen in reapplyConfig). Hot reload: Settings
+  Apply and the config.json watcher; no relaunch.
+  **Layman:** With auto-switch on, Ants always follows your system's light or dark mode; the main theme picker is greyed out.
+  Kind: ux.
+  Source: user decision 2026-11-28 (ANTS-6989).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-7048] **Sign the self-update manifest in its own release job that receives only the built AppImage.**
+  release.yml signs the update manifest in the job that also downloads
+  linuxdeploy. A separate job that receives only the built AppImage as
+  an artifact keeps ANTS_UPDATE_SIGNING_KEY away from that download.
+  Needs a new job, an artifact hand-off and moving the publish steps;
+  checked only by a CI release run.
+  **Layman:** The key that signs updates never shares a build machine with downloaded build tools.
+  Kind: security.
+  Source: ANTS-6987-6989 helper follow-ups 2026-11-28.
+  Lanes: dev-python-ci-packaging.
+
+- 📋 [ANTS-7049] **project_layout also probes a declared changelog and .ants/project.json, so editing either refreshes the cache.**
+  ANTS-6987 added a declared roadmap to probedPaths. scanChangelog
+  does not add a declared changelog, and .ants/project.json itself is
+  not probed, so either edit waits for the 7-day TTL. Bump
+  kProbeSetVersion (ANTS-1430's widening rule).
+  **Layman:** Changing which roadmap or changelog a project uses shows up at once, not after a week.
+  Kind: fix.
+  Source: ANTS-6987-6989 helper follow-ups 2026-11-28.
+  Lanes: config-session-project.
+
+- 📋 [ANTS-7050] **trace marks only a function directly inside a class as a method.**
+  src/trace/extract.cpp marks any function anywhere inside a class
+  range as a method; its comment says directly inside. A function
+  nested in a Python method reads as a method. Check the nearest
+  enclosing definition instead.
+  **Layman:** A helper function defined inside a Python method is no longer listed as a method.
+  Kind: fix.
+  Source: ANTS-6987-6989 helper follow-ups 2026-11-28.
+  Lanes: code-index-search.
+
+- 📋 [ANTS-7051] **vendor-grammars.sh says an entry has no sha256 instead of reporting a mismatch against null.**
+  fetch reads a missing sha256 key as the text "null", so it reports
+  a mismatch rather than "no sha256; rerun with --pin". Not checked
+  whether any manifest entry lacks the key today.
+  **Layman:** The grammar fetch script explains a missing checksum clearly.
+  Kind: fix.
+  Source: ANTS-6987-6989 helper follow-ups 2026-11-28.
+  Lanes: dev-shell-tools.
+
+- 📋 [ANTS-7052] **Add a perf bench for quotation_check's nearest-occurrence walk on a 16 MiB subject.**
+  Row 147: ANTS-6989 stops the walk at the first occurrence on or
+  past the cited line; no bench measures it. Needs a bench target,
+  CMake wiring and a baseline row from tools/perf-report.sh.
+  **Layman:** Measure how fast quotation checks run on a very large file.
+  Kind: perf.
+  Source: ANTS-6987-6989 helper follow-ups 2026-11-28.
+  Lanes: mcp-content-verbs.
 
 ### Other bugs (2026-11-06 review)
 
