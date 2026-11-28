@@ -27,6 +27,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Bash and ROADMAP vetoes block through Claude Code's current permissionDecision:"deny" hook output (ANTS-6651).**
+
 - **trace caps max_bytes at 4 MiB, like the other read verbs (ANTS-6628).**
 
 - **roadmap_log append and append_batch refuse an id_hint more than 1,000,000 above the highest id, so a stray hint cannot push every later id far ahead (ANTS-6640).**
@@ -129,6 +131,28 @@ for security-relevant changes.
   The next query reads the files again.
 
 ### Fixed
+
+- **git_state op:diff and spec_lint's since/staged runs name files as they are on disk, for names with spaces, quotes or accents, and whatever the user's diff settings (ANTS-6650).**
+
+- **MCP path arguments reach files whose names are stored in decomposed Unicode (NFD) (ANTS-6650).**
+
+- **Review Changes notices a folder made inside a folder of folders, stops reporting a folder moved out of the tree, and re-watches a folder made again after its parent is renamed (ANTS-6650).**
+
+- **A clipboard write cut at the size cap never ends in half a character, and rich-text copy strips NUL characters as plain copy does (ANTS-6650).**
+
+- **A slow git start on a busy machine is no longer reported as git missing (ANTS-6650).**
+
+- **A store-served roadmap read reports a store failure when the project's record cannot be read, instead of reading it in the wrong format (ANTS-6648).**
+
+- **Roadmap fold-ins from the review dialogs write to the roadmap file named in .ants/project.json (ANTS-6648).**
+
+- **Fold-in id allocation refuses an id too large to hold, and --import-roadmap stops with exit 2 when it cannot look up the project (ANTS-6648).**
+
+- **Flipping a pass whose Status line holds only ** keeps the ** and writes the status word after it (ANTS-6648).**
+
+- **The grep nudge also catches a recursive flag inside a cluster such as grep -nr, and a project path containing /proc or /sys is no longer treated as a system directory (ANTS-6651).**
+
+- **cc-job clean <name> closes only that job's watch window, not those of jobs whose names start with it (ANTS-6651).**
 
 - **A roadmap table cell holding a backslash before a pipe keeps its backslash through bundle_row, the store render and migration (ANTS-6640).**
 

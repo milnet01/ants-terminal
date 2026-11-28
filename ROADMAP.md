@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=7022 -->
+<!-- ants-roadmap-id-high-water: ANTS=7029 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -99662,7 +99662,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6648] **Fix the smaller bugs the 2026-11-06 reviews found in roadmap-parse-render.**
+- ✅ [ANTS-6648] **Fix the smaller bugs the 2026-11-06 reviews found in roadmap-parse-render.**
   9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 327 `roadmapparse.cpp:2385-2398` (Medium)
   - row 329 `roadmapsource.cpp:539-541` (Medium)
@@ -99673,6 +99673,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1350 `src/roadmapparse.h:472-477` (Info)
   - row 1351 `src/roadmapexport.cpp:1193-1198` (Info)
   - row 1352 `src/roadmapfoldin.cpp:915` (Info)
+  2026-11-28 (210e6fe7): rows 329, 331, 332, 334, 1348, 1351, 1352
+  fixed; 1350 already fixed (efda6b79); 327 moved to its own item.
+  Suite 6910/6910.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -99807,7 +99810,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6650] **Fix the smaller bugs the 2026-11-06 reviews found in shared-utilities.**
+- ✅ [ANTS-6650] **Fix the smaller bugs the 2026-11-06 reviews found in shared-utilities.**
   9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 217 `gitwrap.cpp:99-109` (Medium)
   - row 219 `pathvalidation.cpp:225,234-239` (Medium)
@@ -99818,12 +99821,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 224 `gitwrap.cpp:22` (Low)
   - row 226 `remotecontrol_docs.cpp:862-868` (Info)
   - row 1467 `src/terminalwidget.cpp:3317` (Info)
+  2026-11-28 (534d18f9): rows 217, 219, 220, 221, 223, 226, 1467
+  fixed; 224 partly (start wait up to 5 s; Flatpak half moved to its
+  own item); 222 not a bug (the fixed 20000 cap leaves the user-wide
+  inotify pool to other programs). Suite 6910/6910.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: shared-utilities.
 
-- 📋 [ANTS-6651] **Fix the smaller bugs the 2026-11-06 reviews found in shell-surface.**
+- 🚧 [ANTS-6651] **Fix the smaller bugs the 2026-11-06 reviews found in shell-surface.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 268 `hooks/ants-inbox-notice.sh:89` (Medium)
   - row 275 `_common.sh:108` (Low)
@@ -99837,6 +99844,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   The spec half stays: ANTS-1252 § 1.5 still promises the spec path,
   and § 1.2 and its risk table say the veto strips a trailing bypass
   token, where the code exits on it anywhere.
+  2026-11-28 (109bc8bb): rows 275, 276, 278, 279, 283 fixed; 281
+  already fixed (be4ee347); 268 not a bug (a body is a JSON string, so
+  an inner "unacked_count": is always escaped). Row 280 waits on the
+  user: cc-job's .env is left only when the unit fails after
+  systemd-run returned (mode 0600; next start, clean and the 30-day
+  prune remove it). Options: (a) dismiss (recommended); (b) write it
+  under $XDG_RUNTIME_DIR so it never stays on disk; (c) an
+  ExecStopPost cleanup (misses a bad working directory). Live hooks
+  change only after tools/install-hooks.sh.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -100223,6 +100239,72 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: helper follow-ups 2026-11-28.
   Lanes: mcp-spec.
+
+- 📋 [ANTS-7023] **Skip fenced lines in every roadmap heading and bullet walk together, so a fenced `## ` line is never a section and the slugs still agree.**
+  ANTS-6648 row 327, too big for that bundle. parseBulletLines,
+  parsePassHeadingBullets, RoadmapIndex::buildIndex and the dialog's
+  slug walk (headingSlugsInWalkOrder, renderCardsHtml) must all mask
+  fences at once, or the parser and the dialog give different slugs.
+  **Layman:** A heading shown inside a code example in the roadmap should not be treated as a real section.
+  Kind: review-fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: roadmap-store, roadmap-dialog.
+
+- 📋 [ANTS-7024] **Keep the 64-bit floor in StoreFoldIn::writeItems' id render.**
+  `renderId(prefix, int(++highest))` cuts a 64-bit floor the way
+  ANTS-6648 row 332 did on the file path.
+  **Layman:** The database fold-in path can still hand out a wrong id near the top of the number range.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-7025] **Refuse a fold-in when StoreFoldIn's allocation-floor query fails, instead of starting at 0.**
+  `allocationFloor(..., err)` returns 0 when its query fails, so a
+  failed floor read can lead to reissued ids.
+  **Layman:** If the database can't say which ids are used, the fold-in should stop rather than reuse ids.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-7026] **Name the over-INT_MAX refusal when an empty allocateIds result is explained, not counter_failed.**
+  Since ANTS-6648 row 332, allocateIds returns no ids past INT_MAX;
+  callers that explain an empty result through inspectCounter see a
+  healthy counter and report a misleading counter_failed. Also: the
+  corpusHighWater comment in roadmapfoldin.cpp still says the prefix is
+  sniffed "from ROADMAP.md".
+  **Layman:** A fold-in that runs out of id numbers should say so, not blame the counter.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-7027] **Watch a renamed folder's new name on the first re-seed, whatever the sort order.**
+  treewatcher.cpp's re-seed list is sorted, so an old name such as
+  `a/b` can come before its new name `c/b`; the new name is then
+  skipped once as already watched. Seen while building ANTS-6650 row
+  221.
+  **Layman:** After renaming a folder, Review Changes can miss edits in it until it rescans.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: workspace.
+
+- 📋 [ANTS-7028] **git_state reports git_missing when ants-mcpd runs in a Flatpak and the host has no git.**
+  ANTS-6650 row 224's Flatpak half. Check flatpak-spawn's real exit
+  code and stderr first: the reviewer's remedy maps exit 127, but
+  `flatpak-spawn --host` may exit 1 with "Portal call failed" (not
+  verified; flatpak-spawn is not installed here).
+  **Layman:** Inside a Flatpak, a missing git should be reported as missing git, not a vague failure.
+  Kind: fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: workspace.
+
+- 📋 [ANTS-7029] **Route `git diff --stat` to git_state op:diff in ANTS-1252 § 1.2.**
+  ANTS-1252 § 1.2 sends `git diff --stat` to
+  get_git_status/roadmap_query; the hook sends it to git_state
+  op:"diff". Seen while building ANTS-6651.
+  **Layman:** A design note still points one command at the wrong tool.
+  Kind: doc-fix.
+  Source: helper follow-ups 2026-11-28.
+  Lanes: hook-pack.
 
 ### Readability (2026-11-06 review)
 
