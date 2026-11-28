@@ -78,8 +78,9 @@ protected:
 private:
     QList<ReviewLane> selectedReviewLanes() const;
     const ColdEyesEngine::Lane *laneByName(const QString &name) const;
-    QStringList laneKeywords(const ColdEyesEngine::Lane &lane) const;
     // Static: the brief work calls them on a worker thread (ANTS-5624).
+    static QStringList laneKeywords(const ColdEyesEngine::Lane &lane,
+                                    const QString &summary);
     static QString     staleFindingLine(const QString &cite, const QString &lane);
     static QString     assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
                                             const QString &summary,

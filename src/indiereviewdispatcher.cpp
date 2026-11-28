@@ -210,8 +210,7 @@ void writeLaneReport(const QString &absReportsDir, const DispatchRequest &req,
     const QByteArray utf8 = assistantText.toUtf8();
     if (f.write(utf8) != utf8.size() || !f.commit()) {
         lr.status = QStringLiteral("write_failed");
-        lr.error  = QStringLiteral("write/commit failed: %1")
-                        .arg(redactAndTruncate(utf8, req.apiKey, 4 * 1024));
+        lr.error  = QStringLiteral("write/commit failed: %1").arg(f.errorString());
         return;
     }
     lr.status = QStringLiteral("ok");

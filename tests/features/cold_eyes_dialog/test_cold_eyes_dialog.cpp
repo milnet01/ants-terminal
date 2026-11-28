@@ -445,3 +445,78 @@ TEST(ColdEyesDialog, Ants5101StaleCitationsDoNotSurviveRepartition) {
             << "a stale citation from the previous partition survived: "
             << s.toStdString();
 }
+
+// INV-10 — ANTS-6646. A spec lane's keywords come from its H1 (the manifest
+// summary) and its spec ID, not the generic "Single spec lane" placeholder.
+TEST(ColdEyesDialog, INV10_SpecLaneKeywordsComeFromItsH1) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    buildDocTree(tmp.path());
+    writeFile(tmp.path() + "/docs/specs/ANTS-0042-widget.md",
+              "# ANTS-0042 — Frobulator rewrite\n\nBody.\n");
+    writeFile(tmp.path() + "/ROADMAP.md",
+              "# Roadmap\n\n## Work\n\n"
+              "### Frobulator detail\n- FROBSECTIONMARK\n\n"
+              "### Single lane chatter\n- CHATTERSECTIONMARK\n");
+
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+    const ReviewLane spec =
+        laneById(dlg.derivePartition(), QStringLiteral("spec/ANTS-0042-widget"));
+    ASSERT_FALSE(spec.id.isEmpty()) << "fixture should produce the spec lane";
+
+    const QString p = dlg.composeBrief(spec).userPrompt;
+    EXPECT_TRUE(p.contains("FROBSECTIONMARK"))
+        << "the section naming the spec's H1 subject must be inlined";
+    EXPECT_FALSE(p.contains("CHATTERSECTIONMARK"))
+        << "a section matching only the generic placeholder words was inlined";
+}
+
+// INV-11 — ANTS-6646. A full dispatch starts its stale citations afresh: a
+// lane deselected since the last brief surfaces none.
+TEST(ColdEyesDialog, INV11_FullDispatchDropsDeselectedLaneStaleCitations) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    buildDocTree(tmp.path());
+    writeFile(tmp.path() + "/docs/standards/coding.md",
+              "# Coding\n\nSee src/missing_xyz.cpp:10 — does not exist.\n");
+
+    Config cfg;
+    cfg.setAiEndpoint(QStringLiteral("http://127.0.0.1:9/v1/chat/completions"));
+    Dlg dlg(tmp.path(), nullptr, &cfg);
+    dlg.setJobRunner([](const LlmJob &,
+                        const std::function<void(const LlmResult &)> &done) {
+        LlmResult r; r.ok = true;
+        done(r);
+    });
+
+    const ReviewLane std = laneById(dlg.derivePartition(), QStringLiteral("standards"));
+    ASSERT_FALSE(std.id.isEmpty());
+    (void)dlg.composeBrief(std);   // records the stale citation
+    dlg.setLaneSelected(QStringLiteral("standards"), false);
+
+    dlg.startDispatch();
+    ASSERT_TRUE(pumpUntil([&] { return dlg.loopLog().size() == 1; }))
+        << "the round never finished";
+    for (const QString &s : dlg.results().staleFindings)
+        EXPECT_FALSE(s.contains(QStringLiteral("missing_xyz.cpp")))
+            << "a deselected lane's stale citation survived: " << s.toStdString();
+}
+
+// INV-12 — ANTS-6646. Each results row shows the per-lane context.
+TEST(ColdEyesDialog, INV12_ResultsRowsShowPerLaneContext) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    buildDocTree(tmp.path());
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+
+    QHash<QString, QString> reports;
+    reports.insert(QStringLiteral("contracts"),
+                   QStringLiteral("- [HIGH] src/foo.cpp:42 — CONTRACTSCTXMARK\n"));
+    reports.insert(QStringLiteral("standards"),
+                   QStringLiteral("- [HIGH] src/foo.cpp:42 — STANDARDSCTXMARK\n"));
+    dlg.onAllReportsCollected(reports);
+    ASSERT_EQ(dlg.results().corroborated.size(), 1);
+
+    QString shown;
+    for (QPlainTextEdit *edit : dlg.findChildren<QPlainTextEdit *>())
+        shown += edit->toPlainText();
+    EXPECT_TRUE(shown.contains(QStringLiteral("CONTRACTSCTXMARK"))) << shown.toStdString();
+    EXPECT_TRUE(shown.contains(QStringLiteral("STANDARDSCTXMARK"))) << shown.toStdString();
+}

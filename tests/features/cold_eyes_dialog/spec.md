@@ -61,3 +61,12 @@ loop. INV-8 is a construction smoke assertion.
   `onAllReportsCollected` with no round pending appends nothing. The log is
   also rendered into a `QPlainTextEdit` results view, one line per round,
   each containing the text `"Round N"`.
+- **INV-10** — a spec lane's cross-reference keywords come from its name,
+  its spec ID as one keyword, and the manifest summary (the spec's H1),
+  without the generic words every spec lane shares (`spec`, `lane`,
+  `single`, `ants`, `docs`): a ROADMAP section naming the H1's subject is
+  inlined, one saying only "single spec lane" is not (ANTS-6646).
+- **INV-11** — a full dispatch drops the stale citations of earlier
+  rounds, so a lane deselected since then surfaces none (ANTS-6646).
+- **INV-12** — each results row shows every citing lane's context next to
+  `file:line` (ANTS-6646; ANTS-1721 §2.3).

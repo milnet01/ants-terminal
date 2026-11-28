@@ -40,7 +40,10 @@ detector-expansion addendum.
   Finding.
 - **INV-13a.** `applyMechanicalFix` returns
   `{applied:false, errorCode:"file_changed", …}` when the marker
-  is no longer on the cited line (idempotent re-apply guard).
+  is no longer on the cited line (idempotent re-apply guard). For
+  `orphan_q_unused`, a marker on that line for a different variable
+  than the finding's message names also counts as moved (ANTS-6646;
+  `Ants6646ApplyRefusesMarkerForOtherVariable`).
 - **INV-13b.** `templateDebtSweepFoldInBlock` returns empty when
   inputs are mismatched-length or `deferred` is empty.
 
@@ -81,3 +84,13 @@ detector-expansion addendum.
   - `triaged:true` always allows, regardless of size.
   - Echoes `total`, `nonAutoFixable` (message only), `threshold` for the
     caller's refusal envelope.
+
+## ANTS-6646 doc-drift regressions
+
+- `detectRoadmapShippedWithoutCommit` matches a commit subject on the
+  whole id, so `ANTS-1250` does not cover `ANTS-125`
+  (`Ants6646ShippedWithoutCommitMatchesWholeId`).
+- `detectChangelogStaleBullets` returns empty when git cannot resolve the
+  diff base (a repo with no tags and fewer than eleven commits gets
+  `HEAD~10`) or the diff list hits its cap
+  (`Ants6646ChangelogStaleBulletsSkipsUnresolvableBase`).

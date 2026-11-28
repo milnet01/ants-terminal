@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QProcess>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -262,4 +263,27 @@ TEST(IndieReviewResolution, Inv8BuildBasenameIndexIgnoresBuildTree) {
     EXPECT_EQ(index.value(QStringLiteral("foo.cpp")), QStringLiteral("src/foo.cpp"))
         << "build/foo.cpp must not make the basename ambiguous; got: "
         << qPrintable(index.value(QStringLiteral("foo.cpp")));
+}
+
+// INV-9 — ANTS-6646. A same-named file in a git-ignored tree must not make a
+// real basename ambiguous, or every citation of it is dropped.
+TEST(IndieReviewResolution, Inv9BuildBasenameIndexSkipsGitIgnoredTree) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedRoot(tmp, {
+        QStringLiteral("src/engine.c"),
+        QStringLiteral("vendor_cache/engine.c"),
+    });
+    writeFile(root, QStringLiteral(".gitignore"), QByteArray("vendor_cache/\n"));
+    // check-ignore needs a repository; without one the exclusion cannot bite.
+    ASSERT_EQ(QProcess::execute(QStringLiteral("git"),
+                                {QStringLiteral("-C"), root,
+                                 QStringLiteral("init"), QStringLiteral("-q")}), 0)
+        << "git is required for this case";
+
+    const auto index = IndieReviewEngine::buildBasenameIndex(root);
+    ASSERT_TRUE(index.contains(QStringLiteral("engine.c")));
+    EXPECT_EQ(index.value(QStringLiteral("engine.c")), QStringLiteral("src/engine.c"))
+        << "the ignored vendor_cache/engine.c made the basename ambiguous; got: "
+        << qPrintable(index.value(QStringLiteral("engine.c")));
 }

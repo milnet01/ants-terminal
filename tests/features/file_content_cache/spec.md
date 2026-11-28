@@ -29,7 +29,8 @@ one cache, one lock, one byte budget (`kByteBudget`). Each engine's
   whole and does not set `truncated`.
 - **INV-3 (freshness and read mode are both part of the key)** — a file
   rewritten with a new modification time returns its new content on the
-  next read. Reading the same path with `textMode=false` and with
+  next read, and so does one rewritten to a different size with its
+  modification time kept (ANTS-6646). Reading the same path with `textMode=false` and with
   `textMode=true` returns different content once the file has CRLF line
   endings — `textMode=true` collapses them to LF — so the two modes must
   not share a cache entry.
@@ -97,3 +98,6 @@ for the retired cache shape's absence and the shared call's presence.
   to keep it; the read now stops at `kMaxReadBytes`.
   `ColdEyesEngine`'s `input_hash` streams a clipped file whole, so a change
   past the cap still changes the hash.
+- **Changed:** ANTS-6646 — an entry matched on mtime alone, so a rewrite
+  that kept its mtime was served stale; the file size is now part of the
+  stamp.

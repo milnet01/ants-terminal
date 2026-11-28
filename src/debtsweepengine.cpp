@@ -974,7 +974,11 @@ QList<Finding> detectRoadmapShippedWithoutCommit(
 
     QList<Finding> out;
     for (const auto &p : std::as_const(ids)) {
-        if (log.contains(p.first)) continue;
+        // ANTS-6646 — whole id only: a substring test let an ANTS-1250
+        // subject count as mentioning ANTS-125.
+        const QRegularExpression idRe(QStringLiteral("\\b%1\\b")
+                                          .arg(QRegularExpression::escape(p.first)));
+        if (idRe.match(log).hasMatch()) continue;
         Finding fnd;
         fnd.category    = QStringLiteral("doc_drift");
         fnd.detectorId  = QStringLiteral("shipped_without_commit");
@@ -1012,9 +1016,17 @@ QList<Finding> detectChangelogStaleBullets(
     }
     if (start < 0) return {};
 
-    // Resolve diff scope.
+    // Resolve diff scope. ANTS-6646 — a base git cannot resolve (HEAD~10 on
+    // a young repo, or no checkout) gives an empty diff, and a capped one an
+    // incomplete diff; flagging against either reports bullets that are fine.
     const QString since = resolveSinceRef(projectPath, opt.sinceRef);
+    if (runGit(projectPath, {QStringLiteral("rev-parse"), QStringLiteral("--verify"),
+                             QStringLiteral("--quiet"),
+                             since + QStringLiteral("^{commit}")})
+            .trimmed().isEmpty())
+        return {};
     const QStringList diffPaths = diffedFiles(projectPath, since, {});
+    if (diffPaths.size() >= kMaxDiffPaths) return {};
     QSet<QString> diffSet(diffPaths.begin(), diffPaths.end());
 
     static const QRegularExpression kFilePathInBacktick(
@@ -1477,8 +1489,19 @@ ApplyVerdict applyMechanicalFix(
 
     if (finding.detectorId == QStringLiteral("orphan_q_unused")) {
         static const QRegularExpression kMarkerRe(
-            QStringLiteral(R"(Q_UNUSED\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)|\(void\)\s*[A-Za-z_][A-Za-z0-9_]*\s*;)"));
-        if (!kMarkerRe.match(target).hasMatch()) { staleVerdict(); return v; }
+            QStringLiteral(R"(Q_UNUSED\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)|\(void\)\s*([A-Za-z_][A-Za-z0-9_]*)\s*;)"));
+        // ANTS-6646 — the finding's message names the variable; a marker for
+        // a different one now on this line means the file moved under us.
+        static const QRegularExpression kNamedRe(
+            QStringLiteral(R"(Q_UNUSED\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\))"));
+        const QString wanted = kNamedRe.match(finding.message).captured(1);
+        bool onLine = false;
+        for (auto it = kMarkerRe.globalMatch(target); it.hasNext() && !onLine;) {
+            const auto m = it.next();
+            const QString name = m.captured(1).isEmpty() ? m.captured(2) : m.captured(1);
+            onLine = wanted.isEmpty() || name == wanted;
+        }
+        if (!onLine) { staleVerdict(); return v; }
         kept.removeAt(idx);
         rawLines.removeAt(idx);
     } else if (finding.detectorId == QStringLiteral("duplicate_include")) {

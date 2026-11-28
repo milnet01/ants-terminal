@@ -178,15 +178,33 @@ const ColdEyesEngine::Lane *ColdEyesDialog::laneByName(const QString &name) cons
     return nullptr;
 }
 
-QStringList ColdEyesDialog::laneKeywords(const ColdEyesEngine::Lane &lane) const {
+// ANTS-1721 §2.2 — tokens from the lane name, the spec ID as one keyword, and
+// the manifest summary (a spec lane's H1). ANTS-6646 — the generic words every
+// spec lane shares would pull in any ROADMAP section that says "spec".
+QStringList ColdEyesDialog::laneKeywords(const ColdEyesEngine::Lane &lane,
+                                         const QString &summary) {
     static const QRegularExpression splitter(QStringLiteral("[^A-Za-z0-9]+"));
+    static const QRegularExpression specIdRe(QStringLiteral("\\b[A-Z][A-Z0-9]*-\\d+\\b"));
+    static const QSet<QString> kGeneric{
+        QStringLiteral("spec"), QStringLiteral("lane"), QStringLiteral("single"),
+        QStringLiteral("ants"), QStringLiteral("docs")};
     QStringList kw;
     const auto add = [&](const QString &raw) {
         for (const QString &t : raw.split(splitter, Qt::SkipEmptyParts))
-            if (t.size() >= 4) kw << t.toLower();
+            if (t.size() >= 4 && !kGeneric.contains(t.toLower())) kw << t.toLower();
     };
-    add(lane.name);
-    add(lane.summary);
+    QString name = lane.name;
+    QString words = summary;
+    if (lane.name.startsWith(QStringLiteral("spec/"))) {
+        const QString id = specIdRe.match(lane.name).captured(0);
+        if (!id.isEmpty()) {
+            kw << id.toLower();
+            name.remove(id);
+            words.remove(id);
+        }
+    }
+    add(name);
+    add(words);
     kw.removeDuplicates();
     return kw;
 }
@@ -264,14 +282,14 @@ ReviewDialogBase::BriefWork ColdEyesDialog::briefWork(const ReviewLane &laneRef)
         return [req]() { return ComposedBrief{ req, {} }; };
     }
 
-    return [this, req, root = projectCwd(), lane = *found,
-            kw = laneKeywords(*found)]() mutable {
+    return [this, req, root = projectCwd(), lane = *found]() mutable {
         // The manifest already embeds an FP block, the prior-fix block, and
         // Read-tool instructions — all of which are wrong for a raw inlined-
         // bodies endpoint. Use it only for its structured fields and compose
         // our own prompt; pass no prior fixes — a re-review runs cold
         // (ANTS-2011).
         const auto m = ColdEyesEngine::assembleBriefManifest(root, lane);
+        const QStringList kw = laneKeywords(lane, m.summary);
 
         QStringList stale;
         for (const QString &c : m.staleCitations)
@@ -341,6 +359,11 @@ QStringList ColdEyesDialog::lanesToReReview() const {
 
 void ColdEyesDialog::prepareDispatch() {
     // A full dispatch sends every selected lane (ANTS-2011 loop log).
+    // ANTS-6646 — and starts its reports afresh (startDispatch clears them),
+    // so a lane deselected since the last round keeps no stale citations.
+    // A re-review merges into the last round instead; each re-briefed lane
+    // replaces its own entry.
+    m_staleByLane.clear();
     m_roundLanes.clear();
     for (const ReviewLane &lane : selectedReviewLanes()) m_roundLanes << lane.id;
 }
@@ -408,20 +431,22 @@ void ColdEyesDialog::rebuildPartitionPanel() {
 void ColdEyesDialog::renderResultsWidget() {
     if (!m_resultsView) return;
     QString s;
+    // ANTS-6646 — each row shows the per-lane context (ANTS-1721 §2.3).
+    const auto row = [&s](const IndieReviewEngine::CorroboratedFinding &f) {
+        s += QStringLiteral("  • %1:%2  [%3]\n")
+                 .arg(f.file)
+                 .arg(f.line)
+                 .arg(f.citingLanes.join(QStringLiteral(", ")));
+        for (qsizetype i = 0; i < f.contexts.size(); ++i)
+            s += QStringLiteral("      %1: %2\n")
+                     .arg(f.citingLanes.value(i), f.contexts.at(i));
+    };
     s += tr("Corroborated findings (≥2 lanes): %1\n")
              .arg(m_results.corroborated.size());
-    for (const auto &f : m_results.corroborated)
-        s += QStringLiteral("  • %1:%2  [%3]\n")
-                 .arg(f.file)
-                 .arg(f.line)
-                 .arg(f.citingLanes.join(QStringLiteral(", ")));
+    for (const auto &f : m_results.corroborated) row(f);
     s += tr("\nUncorroborated (single-lane): %1\n")
              .arg(m_results.uncorroborated.size());
-    for (const auto &f : m_results.uncorroborated)
-        s += QStringLiteral("  • %1:%2  [%3]\n")
-                 .arg(f.file)
-                 .arg(f.line)
-                 .arg(f.citingLanes.join(QStringLiteral(", ")));
+    for (const auto &f : m_results.uncorroborated) row(f);
     if (!m_results.staleFindings.isEmpty()) {
         s += tr("\nStale citations (accuracy): %1\n")
                  .arg(m_results.staleFindings.size());

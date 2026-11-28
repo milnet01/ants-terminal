@@ -287,20 +287,22 @@ void IndieReviewDialog::rebuildPartitionPanel() {
 void IndieReviewDialog::renderResultsWidget() {
     if (!m_resultsView) return;
     QString s;
+    // ANTS-6646 — each row shows the per-lane context (ANTS-1258 §2.3).
+    const auto row = [&s](const IndieReviewEngine::CorroboratedFinding &f) {
+        s += QStringLiteral("  • %1:%2  [%3]\n")
+                 .arg(f.file)
+                 .arg(f.line)
+                 .arg(f.citingLanes.join(QStringLiteral(", ")));
+        for (qsizetype i = 0; i < f.contexts.size(); ++i)
+            s += QStringLiteral("      %1: %2\n")
+                     .arg(f.citingLanes.value(i), f.contexts.at(i));
+    };
     s += tr("Corroborated findings (≥2 lanes): %1\n")
              .arg(m_results.corroborated.size());
-    for (const auto &f : m_results.corroborated)
-        s += QStringLiteral("  • %1:%2  [%3]\n")
-                 .arg(f.file)
-                 .arg(f.line)
-                 .arg(f.citingLanes.join(QStringLiteral(", ")));
+    for (const auto &f : m_results.corroborated) row(f);
     s += tr("\nUncorroborated (single-lane): %1\n")
              .arg(m_results.uncorroborated.size());
-    for (const auto &f : m_results.uncorroborated)
-        s += QStringLiteral("  • %1:%2  [%3]\n")
-                 .arg(f.file)
-                 .arg(f.line)
-                 .arg(f.citingLanes.join(QStringLiteral(", ")));
+    for (const auto &f : m_results.uncorroborated) row(f);
     if (!m_synthText.isEmpty())
         s += QStringLiteral("\n=== Cross-cutting synthesis ===\n\n")
              + m_synthText;

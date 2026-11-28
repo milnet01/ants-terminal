@@ -4,7 +4,9 @@
 // ColdEyesEngine, IndieReviewEngine, DebtSweepEngine). Each kept its own
 // function-static copy, commented as single-threaded; since ANTS-2132 their
 // verbs run on the MCP worker while the dialogs fill the same caches on the
-// GUI thread. Keyed by (path, read mode, mtime); every access is locked, and
+// GUI thread. Keyed by (path, read mode) and stamped with mtime and size, so
+// a rewrite that keeps its mtime (`cp -p`) is still seen when its length
+// changes (ANTS-6646); every access is locked, and
 // the bodies held never exceed kByteBudget.
 
 #include <QByteArray>
@@ -13,7 +15,6 @@
 #include <QHash>
 #include <QMutex>
 #include <QMutexLocker>
-#include <QPair>
 #include <QString>
 
 namespace FileContentCache {
@@ -26,9 +27,14 @@ inline constexpr qint64 kByteBudget = qint64(32) * 1024 * 1024;
 inline constexpr qint64 kMaxReadBytes = kByteBudget / 2;
 
 namespace detail {
+struct Entry {
+    qint64  mtime = 0;
+    qint64  size = 0;
+    QString body;
+};
 struct State {
     QMutex mutex;
-    QHash<QString, QPair<qint64, QString>> entries;
+    QHash<QString, Entry> entries;
     qint64 bytes = 0;
 };
 inline State &state() {
@@ -57,13 +63,16 @@ inline QString slurpUtf8(const QString &absPath, bool textMode = false,
                          bool *truncated = nullptr) {
     if (truncated) *truncated = false;
     const QString key = (textMode ? QStringLiteral("t:") : QStringLiteral("b:")) + absPath;
-    const qint64 mtime = QFileInfo(absPath).lastModified().toMSecsSinceEpoch();
+    const QFileInfo fi(absPath);
+    const qint64 mtime = fi.lastModified().toMSecsSinceEpoch();
+    const qint64 fileSize = fi.size();
     auto &st = detail::state();
     {
         QMutexLocker lock(&st.mutex);
         const auto it = st.entries.constFind(key);
-        if (it != st.entries.constEnd() && mtime != 0 && it->first == mtime)
-            return it->second;
+        if (it != st.entries.constEnd() && mtime != 0 && it->mtime == mtime
+            && it->size == fileSize)
+            return it->body;
     }
     // Read outside the lock, so a slow read does not stall the other thread.
     QFile f(absPath);
@@ -82,7 +91,7 @@ inline QString slurpUtf8(const QString &absPath, bool textMode = false,
 
     QMutexLocker lock(&st.mutex);
     if (const auto old = st.entries.constFind(key); old != st.entries.constEnd()) {
-        st.bytes -= detail::bodyBytes(old->second);
+        st.bytes -= detail::bodyBytes(old->body);
         st.entries.erase(old);
     }
     if (clipped) return content;  // served, never held
@@ -90,7 +99,7 @@ inline QString slurpUtf8(const QString &absPath, bool textMode = false,
         st.entries.clear();
         st.bytes = 0;
     }
-    st.entries.insert(key, {mtime, content});
+    st.entries.insert(key, {mtime, fileSize, content});
     st.bytes += size;
     return content;
 }

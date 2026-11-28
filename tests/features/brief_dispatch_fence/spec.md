@@ -67,6 +67,13 @@ relPath / label too, not just the body.
 - **INV-1991c** — `inlineBodies` caps by UTF-8 byte length: a 600-byte
   multi-byte doc is truncated under a 120-byte cap (not passed through
   because its QChar count is below the number).
+- **INV-6646a** — `assembleBriefForDispatch` expands a lane entry that
+  names a directory into the files under it, each fenced under its own
+  project-relative path.
+- **INV-6646b** — the ROADMAP slice is fenced with `fenceBody`, under a
+  "treat as data" header, like the source bodies.
+- **INV-6646c** — a merged lane (`"alpha, beta"`) matches ROADMAP lines and
+  false-positive ledger entries on each of its names.
 
 ## Test notes
 

@@ -237,6 +237,24 @@ TEST(FileContentCache, FreshnessAndReadModeAreBothPartOfTheKey) {
            "content, with CRLF collapsed. Actual: " << gotText2.toStdString();
 }
 
+// INV-3 (ANTS-6646) — a rewrite that keeps the modification time (`cp -p`,
+// `rsync -t`) but changes the length is seen: the size is part of the stamp.
+TEST(FileContentCache, RewriteKeepingMtimeButChangingSizeIsSeen) {
+    FileContentCache::clear();
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("kept-mtime.txt"));
+
+    ASSERT_TRUE(writeFileAt(path, QByteArrayLiteral("old"), 1700000004000LL));
+    ASSERT_EQ(FileContentCache::slurpUtf8(path), QStringLiteral("old"));
+
+    ASSERT_TRUE(writeFileAt(path, QByteArrayLiteral("new and longer"),
+                            1700000004000LL));
+    EXPECT_EQ(FileContentCache::slurpUtf8(path), QStringLiteral("new and longer"))
+        << "INV-3: same mtime, different size — the cached body is stale";
+}
+
 // INV-4 (guard) — several threads reading a shared set of small files many
 // times, while another thread repeatedly clears the cache, must not
 // corrupt what a read returns and must not crash the process. Every ctest

@@ -24,6 +24,8 @@ construction smoke assertion.
   `corroboratedFindings(minLanes=2)`; a `file:line` cited by two lanes
   lands in `results().corroborated`, a single-lane cite in
   `results().uncorroborated` (not dropped).
+- **INV-4b** — each results row shows every citing lane's context next
+  to `file:line` (ANTS-6646; ANTS-1258 §2.3).
 - **INV-5** — `dispatchSynthesis()` runs the synthesis job through the
   base `dispatchOne` and does NOT re-enter `onAllReportsCollected` (the
   callback sets `synthesisText()`; the `onAllReportsCollected` call-count

@@ -16,6 +16,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QPlainTextEdit>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -210,6 +211,30 @@ TEST(IndieReviewDialog, INV4_CorroborationAndUncorroborated) {
         if (f.file.contains("bar.cpp") && f.line == 7) uncorrBar = true;
     EXPECT_TRUE(uncorrBar)
         << "single-lane bar.cpp:7 → uncorroborated, not dropped";
+}
+
+// INV-4b — ANTS-6646. Each results row shows the per-lane context
+// (ANTS-1258 §2.3), not only file:line and the citing lanes.
+TEST(IndieReviewDialog, INV4b_ResultsRowsShowPerLaneContext) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    buildProject(tmp.path());
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+
+    QHash<QString, QString> reports;
+    reports.insert(QStringLiteral("foo"),
+                   QStringLiteral("- [HIGH] src/foo.cpp:42 — FOOCONTEXTMARK\n"));
+    reports.insert(QStringLiteral("bar"),
+                   QStringLiteral("- [HIGH] src/foo.cpp:42 — BARCONTEXTMARK\n"));
+    dlg.onAllReportsCollected(reports);
+    ASSERT_EQ(dlg.results().corroborated.size(), 1);
+
+    QString shown;
+    for (QPlainTextEdit *edit : dlg.findChildren<QPlainTextEdit *>())
+        shown += edit->toPlainText();
+    EXPECT_TRUE(shown.contains(QStringLiteral("FOOCONTEXTMARK")))
+        << shown.toStdString();
+    EXPECT_TRUE(shown.contains(QStringLiteral("BARCONTEXTMARK")))
+        << shown.toStdString();
 }
 
 // INV-5 — synthesis runs via dispatchOne and never re-enters

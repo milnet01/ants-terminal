@@ -1124,3 +1124,87 @@ TEST(DebtSweepEngine, Ants6525ScriptOutputMemoryIsBounded) {
     // Measured 2026-11-16: 131 MiB before ANTS-6525, 9 MiB after.
     EXPECT_LT(growth, 24) << "64 MiB of script output raised peak memory " << growth << " MiB";
 }
+
+// ANTS-6646 — INV-13a: the stale-file guard checks the variable too. The line
+// moved, and a valid marker for a different variable now sits on it.
+TEST(DebtSweepEngine, Ants6646ApplyRefusesMarkerForOtherVariable) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), "src/foo.cpp",
+              "void f(int keep) {\n"
+              "    Q_UNUSED(keep);\n"
+              "}\n");
+
+    DebtSweepEngine::Finding f;
+    f.category    = "code_drift";
+    f.detectorId  = "orphan_q_unused";
+    f.file        = "src/foo.cpp";
+    f.line        = 2;
+    f.message     = "Q_UNUSED(stale) — no declaration of stale in this file";
+    f.autoFixable = true;
+
+    const auto v = DebtSweepEngine::applyMechanicalFix(tmp.path(), f);
+    EXPECT_FALSE(v.applied);
+    EXPECT_EQ(v.errorCode, QString("file_changed"));
+    EXPECT_TRUE(slurp(tmp.path() + "/src/foo.cpp").contains("Q_UNUSED(keep)"))
+        << "a valid marker for another variable was deleted";
+}
+
+// ANTS-6646 — shipped_without_commit matches the whole id: a subject naming
+// ANTS-1250 does not count as mentioning ANTS-125.
+TEST(DebtSweepEngine, Ants6646ShippedWithoutCommitMatchesWholeId) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not available";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+    ASSERT_EQ(runGitIn(dir, {"init", "-q"}), 0);
+    runGitIn(dir, {"config", "user.email", "t@example.com"});
+    runGitIn(dir, {"config", "user.name", "Test"});
+
+    writeFile(dir, "ROADMAP.md", "- 📋 [ANTS-125] planned\n");
+    ASSERT_EQ(runGitIn(dir, {"add", "ROADMAP.md"}), 0);
+    ASSERT_EQ(runGitIn(dir, {"commit", "-q", "-m", "base"}), 0);
+    writeFile(dir, "ROADMAP.md", "- ✅ [ANTS-125] shipped\n");
+    ASSERT_EQ(runGitIn(dir, {"add", "ROADMAP.md"}), 0);
+    ASSERT_EQ(runGitIn(dir, {"commit", "-q", "-m", "ANTS-1250: another item"}), 0);
+
+    DebtSweepEngine::ScanOptions opt;
+    opt.sinceRef = "HEAD~1";
+    const auto out = DebtSweepEngine::detectRoadmapShippedWithoutCommit(dir, opt);
+    ASSERT_EQ(out.size(), 1) << "ANTS-1250 in a subject hid ANTS-125's miss";
+    EXPECT_TRUE(out[0].message.contains("ANTS-125 "));
+}
+
+// ANTS-6646 — stale_changelog_bullet stops when git cannot diff the window.
+// A repo with no tags and two commits resolves the base to HEAD~10, which does
+// not exist; the empty diff used to flag every bullet that cites a file.
+TEST(DebtSweepEngine, Ants6646ChangelogStaleBulletsSkipsUnresolvableBase) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not available";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+    ASSERT_EQ(runGitIn(dir, {"init", "-q"}), 0);
+    runGitIn(dir, {"config", "user.email", "t@example.com"});
+    runGitIn(dir, {"config", "user.name", "Test"});
+
+    writeFile(dir, "src/a.cpp", "int a;\n");
+    writeFile(dir, "src/b.cpp", "int b;\n");
+    writeFile(dir, "CHANGELOG.md",
+              "# Changelog\n\n## [Unreleased]\n\n"
+              "- Changed `src/a.cpp`.\n"
+              "- Changed `src/b.cpp`.\n");
+    ASSERT_EQ(runGitIn(dir, {"add", "-A"}), 0);
+    ASSERT_EQ(runGitIn(dir, {"commit", "-q", "-m", "base"}), 0);
+    writeFile(dir, "src/a.cpp", "int a = 1;\n");
+    ASSERT_EQ(runGitIn(dir, {"commit", "-q", "-am", "edit a"}), 0);
+
+    DebtSweepEngine::ScanOptions opt;   // no tags, so the base is HEAD~10
+    EXPECT_TRUE(DebtSweepEngine::detectChangelogStaleBullets(dir, opt).isEmpty())
+        << "an undiffable window flagged bullets";
+
+    // Control: with a base git can resolve, the detector still flags.
+    opt.sinceRef = "HEAD~1";
+    const auto out = DebtSweepEngine::detectChangelogStaleBullets(dir, opt);
+    ASSERT_EQ(out.size(), 1);
+    EXPECT_TRUE(out[0].message.contains("src/b.cpp"));
+}

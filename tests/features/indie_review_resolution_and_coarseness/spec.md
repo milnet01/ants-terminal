@@ -110,3 +110,11 @@ directory names, which is the same mistake one level down.
   *Test:* `Inv8BuildBasenameIndexIgnoresBuildTree`.
   *Breaks when:* the noise-directory exclusion is dropped, or moving onto
   the pruning walk changes which directory name is treated as noise.
+
+- **INV-9** (a git-ignored tree never enters the basename index) —
+  ANTS-6646. In a git repository whose `.gitignore` names
+  `vendor_cache/`, `buildBasenameIndex` maps `engine.c` to
+  `src/engine.c` alone; `vendor_cache/engine.c` does not make it
+  ambiguous, so its citations still resolve.
+  *Test:* `Inv9BuildBasenameIndexSkipsGitIgnoredTree`.
+  *Breaks when:* the index stops consulting `git check-ignore`.

@@ -880,38 +880,65 @@ QString assembleBriefForDispatch(const QString &projectPath,
         const QString canon =
             BriefDispatch::safeCanon(projectPath, rootCanon, sp);
         if (canon.isEmpty()) continue;
-        // ANTS-1727 — fence-hardening extracted to BriefDispatch::fenceBody
-        // (the shared kernel; byte-identical to the prior inline form).
-        out += BriefDispatch::fenceBody(sp, slurpCappedUtf8(canon));
+        if (!QFileInfo(canon).isDir()) {
+            // ANTS-1727 — fence-hardening extracted to BriefDispatch::fenceBody
+            // (the shared kernel; byte-identical to the prior inline form).
+            out += BriefDispatch::fenceBody(sp, slurpCappedUtf8(canon));
+            continue;
+        }
+        // ANTS-6646 — a lane may name a directory (ANTS-4100); inline the
+        // files it covers, in a stable order, instead of an empty body.
+        constexpr int kMaxDirFiles = 200;
+        Lane dirLane;
+        dirLane.sourcePaths = {sp};
+        QSet<QString> files;
+        collectLaneFiles(projectPath, dirLane, &files, kMaxDirFiles);
+        QStringList sorted(files.constBegin(), files.constEnd());
+        sorted.sort();
+        for (const QString &f : sorted) {
+            const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
+                                    ? f.mid(rootCanon.size() + 1) : f;
+            out += BriefDispatch::fenceBody(rel, slurpCappedUtf8(f));
+        }
     }
 
-    // ROADMAP slice.
+    // ROADMAP slice. ANTS-6646 — fenced as data like the source bodies, and
+    // a merged lane ("a, b") matches on each of its names.
     const QString roadmap = slurpUtf8(projectPath
                                       + QStringLiteral("/ROADMAP.md"));
+    const QStringList laneNames = lane.name.split(QStringLiteral(", "));
     if (!roadmap.isEmpty()) {
-        out += QStringLiteral("=== ROADMAP slice ===\n");
+        QString slice;
         const QStringList lines = roadmap.split(QChar('\n'));
-        const QString needle = lane.name;
         for (const QString &line : lines) {
-            const bool lanesLine =
-                line.contains(QStringLiteral("Lanes:"), Qt::CaseInsensitive)
-                && line.contains(needle, Qt::CaseInsensitive);
-            if (lanesLine
-                || line.contains(QStringLiteral("`") + needle + QStringLiteral("`"))) {
-                out += line;
-                out += QChar('\n');
+            const bool hit = std::any_of(
+                laneNames.cbegin(), laneNames.cend(), [&](const QString &needle) {
+                    return (line.contains(QStringLiteral("Lanes:"), Qt::CaseInsensitive)
+                            && line.contains(needle, Qt::CaseInsensitive))
+                           || line.contains(QStringLiteral("`") + needle
+                                            + QStringLiteral("`"));
+                });
+            if (hit) {
+                slice += line;
+                slice += QChar('\n');
             }
         }
-        out += QChar('\n');
+        out += BriefDispatch::fenceBody(QStringLiteral("ROADMAP.md"), slice,
+                                        QStringLiteral("ROADMAP slice"));
     }
 
     // ANTS-1457 — previously-rejected findings block, inserted
     // before the inlined standards docs so the dispatched reviewer
     // sees it without scrolling past the (much larger) standards.
     {
-        const auto fpEntries = ants::falsepos::filter(
-            ants::falsepos::loadEntries(projectPath),
-            QStringLiteral("indie-review"), lane.name);
+        // ANTS-6646 — an entry for any of a merged lane's names applies.
+        QList<ants::falsepos::LedgerEntry> fpEntries;
+        for (const auto &e : ants::falsepos::filter(
+                 ants::falsepos::loadEntries(projectPath),
+                 QStringLiteral("indie-review"), QString()))
+            if (e.lane.isEmpty() || lane.name.isEmpty() || e.lane == lane.name
+                || laneNames.contains(e.lane))
+                fpEntries << e;
         const QString block = ants::falsepos::formatForBrief(fpEntries);
         if (!block.isEmpty()) {
             out += block;
@@ -940,17 +967,20 @@ QString assembleBriefForDispatch(const QString &projectPath,
 
 
 QHash<QString, QString> buildBasenameIndex(const QString &projectPath) {
-    // Most of deriveComputedPartition's filters (no generated output, no
-    // noise directories), with its own, larger cap on the files it indexes.
-    // Two differ: it does not drop git-ignored directories (underIgnoredDir),
-    // and it admits by suffix alone (isIndexableSuffix), not isIndexableFile,
-    // so an extensionless `#!` script is not indexed. A citation names
-    // `path.ext`, so such a file could never be cited.
+    // deriveComputedPartition's filters (no generated output, no noise or
+    // git-ignored directories), with its own, larger cap on the files it
+    // indexes. ANTS-6646 — a same-named file in an ignored tree made a real
+    // basename ambiguous and dropped its citations. One differs: it admits by
+    // suffix alone (isIndexableSuffix), not isIndexableFile, so an
+    // extensionless `#!` script is not indexed. A citation names `path.ext`,
+    // so such a file could never be cited.
     constexpr int kMaxFilesTotal = 20000;
     QHash<QString, QString> out;
     const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
     if (rootCanon.isEmpty()) return out;
 
+    const QSet<QString> ignoredDirs =
+        ignoredDirPrefixes(rootCanon, {QStringLiteral(".")});
     int seen = 0;
     PrunedWalk::walkFiles(rootCanon, isPartitionNoiseDir, [&](const QString &abs) {
         if (seen >= kMaxFilesTotal) return false;
@@ -960,6 +990,7 @@ QHash<QString, QString> buildBasenameIndex(const QString &projectPath) {
         if (!CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())) return true;
         if (isGeneratedSource(fi.fileName())) return true;
         if (inNoiseDir(rel)) return true;
+        if (underIgnoredDir(rel, ignoredDirs)) return true;
         ++seen;
         const QString base = fi.fileName();
         auto existing = out.constFind(base);
